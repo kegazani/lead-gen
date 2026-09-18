@@ -62,3 +62,7 @@
 - [ ] 10.2 Провести проверку границы персональных данных: аудит хранилищ и журналов после полного цикла и серии заявок (верификация: аудит не находит персональных данных ни из материалов клиента, ни из заявок)
 - [ ] 10.3 Провести проверку переиспользования: подтвердить, что тексты генерируются через `linguistics`, а сбор — через движок 3.1 (верификация: собственных механизмов генерации текста и сбора в модуле нет)
 - [ ] 10.4 Проверить выполнение требований спеки по capability `landing-page-generator` (верификация: `openspec validate landing-page-generator --strict` проходит без ошибок)
+
+## 11. Доменная привязка
+
+- [ ] 11.1 Сверить доменную привязку с `architecture/domain-catalog.yaml`: context `content-production`, aggregate `content-package`, aggregate root `content-asset`, события `content-version-created`, `content-rendered`, контракты `content-request`, `content-version`, `rendered-artifact` (верификация: `go -C tools/archlint run .` завершается кодом 0; при изменении границы обновлены каталог, `docs/domain-model.md` и затронутые диаграммы)

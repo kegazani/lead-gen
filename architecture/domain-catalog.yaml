@@ -504,7 +504,12 @@
     {"id": "integrations-for-delivery", "upstream": "integration-platform", "downstream": "message-delivery", "pattern": "anticorruption-layer", "integration": "command", "contract": "provider-port"},
     {"id": "integrations-for-sales", "upstream": "integration-platform", "downstream": "sales-workflow", "pattern": "anticorruption-layer", "integration": "command", "contract": "provider-port"},
     {"id": "integrations-for-community", "upstream": "integration-platform", "downstream": "community-intelligence", "pattern": "anticorruption-layer", "integration": "command", "contract": "provider-port"},
-    {"id": "integrations-for-publishing", "upstream": "integration-platform", "downstream": "publishing", "pattern": "anticorruption-layer", "integration": "command", "contract": "provider-port"}
+    {"id": "integrations-for-publishing", "upstream": "integration-platform", "downstream": "publishing", "pattern": "anticorruption-layer", "integration": "command", "contract": "provider-port"},
+    {"id": "integrations-for-outreach", "upstream": "integration-platform", "downstream": "outreach-orchestration", "pattern": "anticorruption-layer", "integration": "command", "contract": "provider-port"},
+    {"id": "delivery-to-lead", "upstream": "message-delivery", "downstream": "lead-management", "pattern": "published-language", "integration": "event", "contract": "delivery-event"},
+    {"id": "engagement-to-audience", "upstream": "engagement-observation", "downstream": "audience", "pattern": "published-language", "integration": "event", "contract": "engagement-event"},
+    {"id": "governance-policy-for-audience", "upstream": "data-governance", "downstream": "audience", "pattern": "published-language", "integration": "policy", "contract": "data-zone-policy"},
+    {"id": "lead-to-sales", "upstream": "lead-management", "downstream": "sales-workflow", "pattern": "customer-supplier", "integration": "query", "contract": "company-profile"}
   ],
   "required_diagrams": [
     {"id": "bounded-context-map", "path": "architecture/diagrams/bounded-context-map.puml", "contexts": ["platform-governance", "data-governance", "lead-management", "audience", "content-production", "outreach-orchestration", "message-delivery", "engagement-observation", "sales-workflow", "community-intelligence", "publishing", "analytics", "billing", "integration-platform"]},

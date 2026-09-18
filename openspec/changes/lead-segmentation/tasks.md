@@ -68,3 +68,7 @@
 - [ ] 12.3 Провести проверку отсутствия открытий (верификация: ни через интерфейс, ни через API признак открытия задать нельзя)
 - [ ] 12.4 Провести проверку границы: аудит хранилищ платформы после полного цикла (верификация: состава сегментов и записей пула на платформе не обнаружено)
 - [ ] 12.5 Проверить выполнение требований спеки по capability `lead-segmentation` (верификация: `openspec validate lead-segmentation --strict` проходит без ошибок)
+
+## 13. Доменная привязка
+
+- [ ] 13.1 Сверить доменную привязку с `architecture/domain-catalog.yaml`: context `audience`, aggregate `audience-segment`, aggregate root `segment`, события `segment-membership-changed`, контракты `audience-snapshot`, `segment-membership`, `lead-profile` (верификация: `go -C tools/archlint run .` завершается кодом 0; при изменении границы обновлены каталог, `docs/domain-model.md` и затронутые диаграммы)

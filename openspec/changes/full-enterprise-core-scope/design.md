@@ -210,6 +210,10 @@
 
 **Следствие.** Пропускная способность зависит от однородности очереди. Чем разнороднее материалы и сегменты, тем меньше средний пакет и тем ниже темп. Это надо учитывать при планировании кампаний: разнообразие сегментов стоит времени оператора.
 
+### Решение 12. Доменная привязка
+
+Рамка охватывает восемь bounded contexts: `data-governance` (`data-handling`, `lead-pool-client-side`), `lead-management` (`osint-enrichment`), `content-production` (`linguistics`, `presentation-generator`), `outreach-orchestration` (`outreach-approval`), `message-delivery` (`outreach-channel-email`, `domain-deliverability`), `engagement-observation` (`read-tracking`), `sales-workflow` (`crm-workflow`), `billing` (`billing-subscription`, `billing-success-fee`). Каждая capability получает ровно один primary context; вторичные контексты-потребители перечисляются в каталоге отдельно и владением не обладают. Решения рамки формируют язык и инварианты этих контекстов: разделение зон (Решение 1) выражается policy `data-zone-policy` в `data-governance`, обязательное утверждение (Решение 3) — policy `operator-approval-required` в `outreach-orchestration`, изоляция персональных данных — политиками агрегатов `contact`, `lead-profile` и `processing-governance`. Рамка не создаёт сущностей, агрегатов и связей сверх объявленных в `architecture/domain-catalog.yaml`, поэтому каталог, `docs/domain-model.md` и диаграммы остаются без изменений.
+
 ## Risks / Trade-offs
 
 - **[Стоимость обогащения растёт из-за запрета кеша]** → Ограничить частоту запросов квотами тарифа; явно показывать пользователю стоимость запроса; не маскировать это техническими обходными кешами во внешних сервисах.

@@ -244,16 +244,16 @@ Core-контексты выражают конкурентное преимущ
 
 `published-language` означает стабильный версионированный контракт владельца. `customer-supplier` означает, что upstream согласует контракт с потребностью downstream. `anticorruption-layer` означает обязательный перевод модели внешней системы в язык потребляющего контекста.
 
-- `data-governance` публикует `data-zone-policy`, `processing-authority` и `suppression-policy`; lead, outreach и delivery применяют решения, но не воспроизводят правила локально.
-- `lead-management` предоставляет `lead-profile` для `audience`; аудитория хранит ссылку/снимок необходимых атрибутов, а не редактирует лид.
+- `data-governance` публикует `data-zone-policy`, `processing-authority` и `suppression-policy`; lead, audience, outreach и delivery применяют решения, но не воспроизводят правила локально.
+- `lead-management` предоставляет `lead-profile` для `audience`; аудитория хранит ссылку/снимок необходимых атрибутов, а не редактирует лид. Тот же контекст предоставляет `company-profile` для `sales-workflow`: карточка сделки читает профиль компании, включая размер, не воспроизводя его локально.
 - `audience` предоставляет `audience-snapshot`, а `content-production` — `content-version`; оба являются входами кампании.
 - `outreach-orchestration` публикует `approved-action` как command intent для delivery и `outreach-outcome` для sales.
-- `message-delivery` публикует `delivery-event`; observation квалифицирует его, analytics проецирует его.
-- `engagement-observation` возвращает `engagement-event` в orchestration и analytics.
+- `message-delivery` публикует `delivery-event`; observation квалифицирует его, analytics проецирует его, а `lead-management` по отказу доставки обновляет статус адреса в aggregate `contact` (цикл подавления).
+- `engagement-observation` возвращает `engagement-event` в orchestration, audience (поведенческая сегментация потребляет сигналы взаимодействия) и analytics.
 - `sales-workflow` публикует `attributed-result` для billing и `deal-state` для analytics.
 - `community-intelligence` передаёт `community-digest` в publishing по customer-supplier контракту.
 - `platform-governance` публикует `access-decision`; потребители не реализуют собственную RBAC-семантику.
-- `integration-platform` предоставляет `provider-port` через ACL для lead, content, delivery, sales, community и publishing. Он не владеет их workflow.
+- `integration-platform` предоставляет `provider-port` через ACL для lead, content, delivery, sales, community, publishing и outreach. Он не владеет их workflow.
 
 Контракты имеют semantic version. Добавление опционального поля совместимо; изменение смысла, обязательности или типа требует новой major-версии и периода параллельного чтения. Command принимается идемпотентно; event неизменяем и содержит `event_id`, `occurred_at`, `tenant_id`, `correlation_id`, `causation_id`, имя и версию схемы.
 

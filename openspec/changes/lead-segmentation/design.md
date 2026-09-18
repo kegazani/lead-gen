@@ -76,6 +76,10 @@
 
 **Это предложение, а не окончательное решение.** Набор минимален намеренно: каждый сегмент требует своего материала, и рост числа групп прямо удорожает шаг 4. Расширение — задачами настройки, а не набором по умолчанию.
 
+### Решение 6. Доменная привязка
+
+Изменение целиком лежит в context `audience`; новые элементы принадлежат aggregate `audience-segment` (root `segment`, entities `segment`, `lead-score`, value objects `segment-criteria`, `score-value`) и второму aggregate `audience-snapshot` (root `audience-snapshot`, value objects `snapshot-criteria`); доменные факты — события `segment-membership-changed`, `audience-snapshot-created`; правила — policies `segment-eligibility`; взаимодействия — через контракты `audience-snapshot`, `segment-membership`, `lead-profile`; прямой импорт доменной модели чужого контекста запрещён; каталог остаётся без изменений.
+
 ## Risks / Trade-offs
 
 - **[Число сегментов удорожает подготовку]** → Каждый сегмент — свой набор черновиков. Смягчение: минимальный набор первой версии; ограничение числа активных сегментов на кампанию.

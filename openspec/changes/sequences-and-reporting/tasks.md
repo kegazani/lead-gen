@@ -78,3 +78,7 @@
 - [ ] 13.2 Провести проверку запрета автоутверждения (верификация: имитация длительного отсутствия утверждений не приводит к исполнению шагов)
 - [ ] 13.3 Провести проверку границы отчётности (верификация: аудит хранилищ платформы не находит записей пула; малые срезы не отображаются и не выгружаются)
 - [ ] 13.4 Проверить выполнение требований спек по обеим capability (верификация: `openspec validate sequences-and-reporting --strict` проходит без ошибок)
+
+## 14. Доменная привязка
+
+- [ ] 14.1 Сверить доменную привязку с `architecture/domain-catalog.yaml`: context `outreach-orchestration` (aggregate `campaign`, aggregate root `campaign`, события `campaign-state-changed`, `outreach-outcome-recorded`) и context `analytics` (aggregate `campaign-report`, aggregate root `report-snapshot`, события `report-snapshot-created`), контракты `campaign-command`, `analytics-event`, `campaign-report`, `outreach-outcome` (верификация: `go -C tools/archlint run .` завершается кодом 0; при изменении границы обновлены каталог, `docs/domain-model.md` и затронутые диаграммы)

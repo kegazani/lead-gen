@@ -22,12 +22,16 @@ rectangle "integration-platform" as Integration
 Governance --> Leads : PL / policy\ndata-zone-policy
 Governance --> Outreach : PL / policy\nprocessing-authority
 Governance --> Delivery : PL / policy\nsuppression-policy
+Governance --> Audience : PL / policy\ndata-zone-policy
 Leads --> Audience : C/S / query\nlead-profile
+Leads --> Sales : C/S / query\ncompany-profile
 Audience --> Outreach : C/S / query\naudience-snapshot
 Content --> Outreach : C/S / query\ncontent-version
 Outreach --> Delivery : PL / command\napproved-action
 Delivery --> Engagement : PL / event\ndelivery-event
+Delivery --> Leads : PL / event\ndelivery-event
 Engagement --> Outreach : PL / event\nengagement-event
+Engagement --> Audience : PL / event\nengagement-event
 Outreach --> Sales : PL / event\noutreach-outcome
 Sales --> Billing : PL / event\nattributed-result
 Community --> Publishing : C/S / command\ncommunity-digest
@@ -43,6 +47,7 @@ Integration ..> Delivery : ACL / command\nprovider-port
 Integration ..> Sales : ACL / command\nprovider-port
 Integration ..> Community : ACL / command\nprovider-port
 Integration ..> Publishing : ACL / command\nprovider-port
+Integration ..> Outreach : ACL / command\nprovider-port
 
 legend bottom
   PL = Published Language

@@ -64,3 +64,7 @@
 - [ ] 8.3 Провести сценарий потери аккаунта: ограничение основного аккаунта, продолжение чтения через резервный (верификация: чтение не прервано, событие зафиксировано, оператор уведомлён)
 - [ ] 8.4 Провести проверку разделения зон: аудит хранилищ после полного цикла (верификация: аудит не находит связей содержания с авторами в зелёной зоне; выгрузка красной зоны отклоняется)
 - [ ] 8.5 Проверить выполнение требований спеки по capability `telegram-community-digest` (верификация: `openspec validate telegram-community-digest --strict` проходит без ошибок)
+
+## 9. Доменная привязка
+
+- [ ] 9.1 Сверить доменную привязку с `architecture/domain-catalog.yaml`: context `community-intelligence`, aggregate `community-digest`, aggregate root `community-digest`, события `community-digest-created`, контракты `community-digest` и `community-read-command` (верификация: `go -C tools/archlint run .` завершается кодом 0; при изменении границы обновлены каталог, `docs/domain-model.md` и затронутые диаграммы)

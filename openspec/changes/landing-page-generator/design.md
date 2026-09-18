@@ -79,6 +79,10 @@
 
 **Рассмотренные альтернативы.** Не проверять вовсе — отклонено: перенос чужого текста на новую страницу создаёт риск, которого у файла в письме нет. Проверять только по материалам клиента — недостаточно: фрагменты могут совпасть со сторонними источниками.
 
+### Решение 7. Доменная привязка
+
+Изменение целиком лежит в context `content-production`; новые элементы принадлежат aggregate `content-package` (root `content-asset`, entities `content-asset`, `content-version`, `landing-content`, `document`, value objects `content-locale`) и aggregate `render-job` (root `render-job`, value objects `render-format`); доменные факты — события `content-version-created`, `content-rendered`; правила — policies `immutable-content-version`; взаимодействия — через контракты `content-request`, `content-version`, `rendered-artifact`; прямой импорт доменной модели чужого контекста запрещён; каталог остаётся без изменений.
+
 ## Risks / Trade-offs
 
 - **[Модуль зависит от рамки]** → Он использует движок 3.1 и `linguistics`; при изменениях в них модуль затрагивается. Смягчение: зависимость объявлена явно, а не скрыта.

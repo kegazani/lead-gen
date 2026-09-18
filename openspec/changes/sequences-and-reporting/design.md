@@ -71,6 +71,10 @@
 
 **Почему.** Это сведения о работе сотрудников клиента, а не о лидах. Смешение создаёт две проблемы: в отчётах по лидам появляются данные о людях, а управленческий отчёт начинает зависеть от состава пула. Разделение сохраняет оба отчёта честными.
 
+### Решение 6. Доменная привязка
+
+Изменение целиком лежит в contexts `outreach-orchestration` (capability `outreach-sequences`) и `analytics` (capability `campaign-reporting`); новые элементы принадлежат aggregate `campaign` (root `campaign`, entities `sequence-definition`, `sequence-execution`, value objects `campaign-window`, `sequence-step`) и aggregate `campaign-report` (root `report-snapshot`, value objects `report-period`, `funnel-metric`); доменные факты — события `campaign-state-changed`, `outreach-outcome-recorded`, `report-snapshot-created`; правила — policies `outreach-scheduling`, `operator-approval-required`, `anonymized-reporting`; взаимодействия — через контракты `campaign-command`, `analytics-event`, `campaign-report`, `outreach-outcome`; прямой импорт доменной модели чужого контекста запрещён; каталог остаётся без изменений.
+
 ## Risks / Trade-offs
 
 - **[Простой цепочек снижает эффект]** → Без утверждения цепочка стоит. Смягчение: простой виден в отчётности; пакетное утверждение (общий вопрос 22) снижает его — но не отменяет.

@@ -62,3 +62,7 @@
 - [ ] 10.2 Провести проверку цикла: отправка, жёсткий отказ, мягкий отказ, обновление статусов, стоп-лист (верификация: статусы обновлены, стоп-лист пополнен, ручных действий не потребовалось)
 - [ ] 10.3 Провести проверку честности статусов: catch-all домен, Gmail и Outlook (верификация: catch-all даёт не выше `risky`, Gmail и Outlook дают `unknown`, статус `deliverable` по ним не присваивается)
 - [ ] 10.4 Проверить выполнение требований спеки по capability `email-verification` (верификация: `openspec validate email-verification --strict` проходит без ошибок)
+
+## 11. Доменная привязка
+
+- [ ] 11.1 Сверить доменную привязку с `architecture/domain-catalog.yaml`: context `lead-management`, aggregate `contact`, aggregate root `contact`, события `lead-verified`, контракты `lead-verified`, `lead-profile` (верификация: `go -C tools/archlint run .` завершается кодом 0; при изменении границы обновлены каталог, `docs/domain-model.md` и затронутые диаграммы)
