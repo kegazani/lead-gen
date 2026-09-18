@@ -1,0 +1,97 @@
+{
+  "formulae": [
+    {
+      "name": "hiredis",
+      "full_name": "hiredis",
+      "tap": "homebrew/core",
+      "oldnames": [],
+      "aliases": [],
+      "versioned_formulae": [],
+      "desc": "Minimalistic client for Redis",
+      "license": "BSD-3-Clause",
+      "homepage": "https://github.com/redis/hiredis",
+      "versions": {
+        "stable": "1.4.1",
+        "head": "HEAD",
+        "bottle": true
+      },
+      "urls": {
+        "stable": {
+          "url": "https://github.com/redis/hiredis/archive/refs/tags/v1.4.1.tar.gz",
+          "tag": null,
+          "revision": null,
+          "using": null,
+          "checksum": "ca3180359a8b1275838a45415851f8cd5c411e27bdbf18f4823012e45507d2e4"
+        },
+        "head": {
+          "url": "https://github.com/redis/hiredis.git",
+          "branch": "master",
+          "using": null
+        }
+      },
+      "patches": [],
+      "revision": 0,
+      "version_scheme": 0,
+      "compatibility_version": null,
+      "autobump": true,
+      "no_autobump_message": null,
+      "skip_livecheck": false,
+      "bottle": {
+        "stable": {
+          "rebuild": 0,
+          "root_url": "https://ghcr.io/v2/homebrew/core",
+          "files": {
+            "arm64_tahoe": {
+              "cellar": ":any",
+              "url": "https://ghcr.io/v2/homebrew/core/hiredis/blobs/sha256:42b0b6e7412063e9f18126ed8ffbca90a00dbe6f637e91bf18e0466a0662f318",
+              "sha256": "42b0b6e7412063e9f18126ed8ffbca90a00dbe6f637e91bf18e0466a0662f318"
+            }
+          }
+        }
+      },
+      "pour_bottle_only_if": null,
+      "keg_only": false,
+      "keg_only_reason": null,
+      "options": [],
+      "build_dependencies": [],
+      "dependencies": [
+        "openssl@3"
+      ],
+      "test_dependencies": [],
+      "recommended_dependencies": [],
+      "optional_dependencies": [],
+      "uses_from_macos": [],
+      "uses_from_macos_bounds": [],
+      "requirements": [],
+      "conflicts_with": [],
+      "conflicts_with_reasons": [],
+      "link_overwrite": [],
+      "caveats": null,
+      "installed": [],
+      "linked_keg": null,
+      "pinned": false,
+      "outdated": false,
+      "deprecated": false,
+      "deprecation_date": null,
+      "deprecation_reason": null,
+      "deprecation_replacement_formula": null,
+      "deprecation_replacement_cask": null,
+      "deprecate_args": null,
+      "disabled": false,
+      "disable_date": null,
+      "disable_reason": null,
+      "disable_replacement_formula": null,
+      "disable_replacement_cask": null,
+      "disable_args": null,
+      "post_install_steps": [],
+      "post_install_defined": false,
+      "service": null,
+      "tap_git_head": "997c5ff421c66e6509d00d0cd10b844900c84003",
+      "ruby_source_path": "Formula/h/hiredis.rb",
+      "ruby_source_checksum": {
+        "sha256": "9d72d02ab15262dbcfd3e4f17171b85a986fca4bf619c40082f6efe0cd57934d"
+      }
+    }
+  ],
+  "casks": []
+}

@@ -1,0 +1,5 @@
+# ninja log v7
+1	76	1789632830010833083	CMakeFiles/coro_smoke.dir/Users/kgz/Desktop/p/lead-gen/tmp/cpp-baseline-check/coro_test.cpp.o	68ede233dd9d46b8
+76	104	1789632830085870917	coro_smoke	9ab19d8e0ccb4a32
+1	416	1789632830011133958	CMakeFiles/format_smoke.dir/Users/kgz/Desktop/p/lead-gen/tmp/cpp-baseline-check/format_test.cpp.o	5febcfe9cc584c7b
+417	446	1789632830426472266	format_smoke	d78ae6764b925fce

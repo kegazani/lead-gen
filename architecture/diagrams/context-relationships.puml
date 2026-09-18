@@ -1,0 +1,68 @@
+@startuml context-relationships
+title Отношения bounded contexts и published language
+left to right direction
+skinparam componentStyle rectangle
+skinparam shadowing false
+
+rectangle "platform-governance" as Platform
+rectangle "data-governance" as Governance
+rectangle "lead-management" as Leads
+rectangle "audience" as Audience
+rectangle "content-production" as Content
+rectangle "outreach-orchestration" as Outreach
+rectangle "message-delivery" as Delivery
+rectangle "engagement-observation" as Engagement
+rectangle "sales-workflow" as Sales
+rectangle "community-intelligence" as Community
+rectangle "publishing" as Publishing
+rectangle "analytics" as Analytics
+rectangle "billing" as Billing
+rectangle "integration-platform" as Integration
+
+Governance --> Leads : PL / policy\ndata-zone-policy
+Governance --> Outreach : PL / policy\nprocessing-authority
+Governance --> Delivery : PL / policy\nsuppression-policy
+Leads --> Audience : C/S / query\nlead-profile
+Audience --> Outreach : C/S / query\naudience-snapshot
+Content --> Outreach : C/S / query\ncontent-version
+Outreach --> Delivery : PL / command\napproved-action
+Delivery --> Engagement : PL / event\ndelivery-event
+Engagement --> Outreach : PL / event\nengagement-event
+Outreach --> Sales : PL / event\noutreach-outcome
+Sales --> Billing : PL / event\nattributed-result
+Community --> Publishing : C/S / command\ncommunity-digest
+Outreach --> Analytics : PL / event\nanalytics-event
+Delivery --> Analytics : PL / event\ndelivery-event
+Engagement --> Analytics : PL / event\nengagement-event
+Sales --> Analytics : PL / event\ndeal-state
+Platform --> Outreach : PL / policy\naccess-decision
+
+Integration ..> Leads : ACL / command\nprovider-port
+Integration ..> Content : ACL / command\nprovider-port
+Integration ..> Delivery : ACL / command\nprovider-port
+Integration ..> Sales : ACL / command\nprovider-port
+Integration ..> Community : ACL / command\nprovider-port
+Integration ..> Publishing : ACL / command\nprovider-port
+
+legend bottom
+  PL = Published Language
+  C/S = Customer / Supplier
+  ACL = Anticorruption Layer
+  Стрелка направлена от upstream к downstream.
+endlegend
+
+' CTX:platform-governance
+' CTX:data-governance
+' CTX:lead-management
+' CTX:audience
+' CTX:content-production
+' CTX:outreach-orchestration
+' CTX:message-delivery
+' CTX:engagement-observation
+' CTX:sales-workflow
+' CTX:community-intelligence
+' CTX:publishing
+' CTX:analytics
+' CTX:billing
+' CTX:integration-platform
+@enduml

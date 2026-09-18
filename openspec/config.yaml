@@ -20,6 +20,21 @@ context: |
   - Если пользователь пишет на другом языке, всё равно отвечай и создавай
     артефакты на русском, кроме случая, когда пользователь явно попросил
     использовать другой язык.
+
+  ## Доменная архитектура
+  Канонические границы находятся в `architecture/domain-catalog.yaml`, их
+  объяснение — в `docs/domain-model.md`.
+
+  - Каждый change, затрагивающий продуктовую capability, доменную сущность,
+    агрегат, domain event, policy или межконтекстный контракт, обязан назвать
+    affected bounded contexts по идентификаторам каталога.
+  - Если change добавляет capability или агрегат, переносит владение либо
+    меняет relationship, он обязан обновить каталог, модель домена и затронутые
+    диаграммы в рамках того же change.
+  - Bounded context — граница модели и владения; процесс — единица развёртывания;
+    BRD-движок — функциональная возможность. Не смешивай эти понятия.
+  - Реализация на Go строится context-first. Общие `internal/domain`,
+    `internal/app` и `internal/ports` как основная структура запрещены.
 # Per-artifact rules (optional)
 # Add custom rules for specific artifacts.
 rules:
@@ -27,6 +42,7 @@ rules:
     - Пиши proposal.md полностью на русском языке.
     - Заголовки разделов оставляй на английском (Why, What Changes, Capabilities, Impact) для совместимости, содержание — на русском.
     - Не переводи имена capability в kebab-case и пути файлов.
+    - В Impact перечисляй affected bounded contexts; если change не затрагивает доменную модель, укажи это явно.
   specs:
     - Пиши spec.md полностью на русском языке.
     - Сохраняй структурные маркеры OpenSpec (ADDED/MODIFIED/REMOVED, Requirement:, Scenario:, WHEN/THEN/SHALL) без изменений, а описательный текст требований и шагов сценариев — на русском.
@@ -34,10 +50,12 @@ rules:
   design:
     - Пиши design.md полностью на русском языке.
     - Технические названия, код, команды, флаги и имена API не переводи.
+    - Для новой сущности или правила называй owning context, aggregate root, domain events и межконтекстные контракты.
   tasks:
     - Пиши tasks.md полностью на русском языке.
     - Каждый пункт задачи формулируй на русском, сохраняя чекбоксы `- [ ]` и нумерацию.
     - Команды, пути и имена файлов внутри задач не переводи.
+    - Если меняется доменная граница, включай задачи обновления `architecture/domain-catalog.yaml`, `docs/domain-model.md`, диаграмм и запуска `go -C tools/archlint run .`.
 
 # Per-operation guidance (optional)
 # Add advisory guidance for how apply and archive work should be conducted.
@@ -46,6 +64,7 @@ operations:
     guidance:
       - Все сообщения о ходе работы, итоговые отчёты и summary пиши на русском языке.
       - Комментарии в коде и текст коммитов — на русском, если в проекте не принято иное.
+      - Перед завершением change запускай `go -C tools/archlint run .`; нарушение архитектурной границы не отмечай выполненным.
   archive:
     guidance:
       - Итоговое описание архивации пиши на русском языке.
