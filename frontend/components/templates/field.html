@@ -1,0 +1,16 @@
+{{- define "field" -}}
+<p class="field{{with .Class}} {{.}}{{end}}">
+  {{- if eq .Type "checkbox" }}
+  <label><input type="checkbox" name="{{.Name}}" value="yes"{{if .Checked}} checked{{end}}{{if .Error}} aria-invalid="true"{{end}}> {{.Label}}</label>
+  {{- else if eq .Type "textarea" }}
+  <label for="{{.ID}}">{{.Label}}</label>
+  <textarea id="{{.ID}}" name="{{.Name}}" rows="{{.Rows}}"{{if .Error}} aria-invalid="true"{{end}}>{{.Value}}</textarea>
+  {{- else }}
+  <label for="{{.ID}}">{{.Label}}</label>
+  <input id="{{.ID}}" name="{{.Name}}" type="text" value="{{.Value}}"{{with .Autocomplete}} autocomplete="{{.}}"{{end}}{{if .Error}} aria-invalid="true"{{end}}{{if .Required}} required{{end}}>
+  {{- end }}
+  {{- with .Error }}
+  <span class="field-error">{{.}}</span>
+  {{- end }}
+</p>
+{{- end -}}

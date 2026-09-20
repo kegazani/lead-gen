@@ -1,0 +1,21 @@
+{{- define "content" -}}
+{{- with .View -}}
+{{- with .Page -}}
+<article class="presentation">
+  <h1>{{.Title}}</h1>
+  {{- range $slide := .Slides }}
+  <section class="slide">
+    <h2>{{$slide.Heading}}</h2>
+    {{- with $slide.Bullets }}
+    <ul>
+      {{- range . }}
+      <li>{{.}}</li>
+      {{- end }}
+    </ul>
+    {{- end }}
+  </section>
+  {{- end }}
+</article>
+{{- end -}}
+{{- end -}}
+{{- end -}}

@@ -1,0 +1,21 @@
+{{- define "content" -}}
+{{- with .View -}}
+{{- with .Page -}}
+<article class="landing">
+  <h1>{{.Headline}}</h1>
+  {{- with .Intro }}
+  <p class="intro">{{.}}</p>
+  {{- end }}
+  {{- range .Sections }}
+  <section class="section">
+    <h2>{{.Heading}}</h2>
+    <p>{{.Body}}</p>
+  </section>
+  {{- end }}
+  {{- with .FormRef }}
+  <p class="cta"><a class="button" href="/f/{{.}}">Оставить заявку</a></p>
+  {{- end }}
+</article>
+{{- end -}}
+{{- end -}}
+{{- end -}}

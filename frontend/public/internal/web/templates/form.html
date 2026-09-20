@@ -1,0 +1,18 @@
+{{- define "content" -}}
+{{- with .View -}}
+{{- if .Sent }}
+{{ template "notice" .SentNotice }}
+{{- else }}
+<form class="lead-form" method="post" action="{{.Action}}">
+  <h1>Оставить заявку</h1>
+  {{- with .Failure }}
+  <p class="form-failure" role="alert">{{.}}</p>
+  {{- end }}
+  {{- range .Fields }}
+  {{ template "field" . }}
+  {{- end }}
+  <p class="actions"><button type="submit">Отправить</button></p>
+</form>
+{{- end }}
+{{- end -}}
+{{- end -}}
