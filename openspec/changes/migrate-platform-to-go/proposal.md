@@ -5,14 +5,14 @@
 ## What Changes
 
 - **BREAKING:** серверный контур переводится с C++20 на Go; C++-фреймворк, CMake, Inja, GoogleTest и языковые SDK заменяются средствами экосистемы Go.
-- **BREAKING:** структура Go-модуля строится context-first по `architecture/domain-catalog.yaml`: `internal/contexts/<context-id>/{domain,app,ports,adapters}`. Общие `internal/domain`, `internal/app` и `internal/ports` не используются как основная ось.
+- **BREAKING:** структура Go-модуля строится context-first по `architecture/domain-catalog.yaml`: `backend/contexts/<context-id>/{domain,app,ports,adapters}`. Общие `internal/domain`, `internal/app` и `internal/ports` не используются как основная ось.
 - Все внешние системы подключаются через внутренние порты и отдельные адаптеры. Типы, ошибки и клиенты SDK поставщиков не допускаются в доменном и прикладном слоях.
 - Конкретный поставщик выбирается конфигурацией из числа установленных адаптеров. Добавление нового поставщика не требует изменения потребителей порта.
 - Для объектного хранения, отправки почты, очередей, долгих процессов, кэша, LLM, CRM, верификации адресов, оценки трафика, сбора данных, публикации и иных внешних интеграций вводятся независимые контракты и контрактные тесты.
 - Amazon SES, AWS S3 и AWS SDK перестают быть архитектурными требованиями. Они могут появиться только как необязательные адаптеры наравне с альтернативами.
 - Конфигурация, секреты, идентификаторы, ошибки, повторные попытки, тайм-ауты и наблюдаемость нормализуются на границе адаптера; специфические возможности поставщика не проникают в ядро.
 - Существующий change `system-map-and-cpp-baseline` сохраняется как исторический результат и явно заменяется этим изменением в части языка и зависимого от языка стека.
-- Каждый aggregate root, entity, value object, domain event и policy размещается внутри owning context; процессы получают готовые use cases через `internal/composition`.
+- Каждый aggregate root, entity, value object, domain event и policy размещается внутри owning context; процессы получают готовые use cases через `backend/contexts/<context-id>`.
 
 ## Capabilities
 

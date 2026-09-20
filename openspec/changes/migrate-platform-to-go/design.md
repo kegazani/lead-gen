@@ -38,12 +38,12 @@
 
 ```text
 cmd/<process>/*
-internal/contexts/<context-id>/domain/*
-internal/contexts/<context-id>/app/*
-internal/contexts/<context-id>/ports/*
-internal/contexts/<context-id>/adapters/<port>/*
-internal/composition/*
-internal/platform/*
+backend/contexts/<context-id>/domain/*
+backend/contexts/<context-id>/app/*
+backend/contexts/<context-id>/ports/*
+backend/contexts/<context-id>/adapters/<port>/*
+backend/contexts/<context-id>/*
+backend/platform/*
 ```
 
 `domain` содержит aggregate roots, entities, value objects, domain events и policies одного контекста и не импортирует другой context, `app`, `ports`, `adapters` или `platform`. `app` оркестрирует агрегаты и зависит от собственных `domain` и `ports`. Межконтекстный вызов использует опубликованный contract владельца и wiring в `composition`, а не импорт чужого `domain`.
