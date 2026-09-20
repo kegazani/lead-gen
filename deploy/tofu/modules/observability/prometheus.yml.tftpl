@@ -1,0 +1,15 @@
+# Конфигурация Prometheus. Цели приходят из env-слоя (адреса docker-сети).
+global:
+  scrape_interval: 15s
+  external_labels:
+    stack: "${stack}"
+
+scrape_configs:
+  - job_name: lead-gen-app
+    metrics_path: /metrics
+    static_configs:
+      - targets: ${jsonencode(targets)}
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]

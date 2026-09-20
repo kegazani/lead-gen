@@ -1,0 +1,102 @@
+# Группы процессов (единый образ, единая точка входа `cmd/lead-gen`).
+#
+# Два именованных состояния одной и той же конфигурации:
+#   - совмещённый первый деплой (текущее содержимое файла) — шесть групп, в каждой
+#     несколько сервисов: меньше процессов на старте, один образ на всё;
+#   - целевое состояние — четырнадцать групп, по одной на каждый сервис каталога
+#     (`architecture/domain-catalog.yaml`). Пример целевого файла — `deploy/README.md`.
+# Переход между состояниями — правка только этого файла: ни код, ни доменная
+# модель, ни схема данных не меняются (design.md, Решения 5 и 11).
+#
+# Статус реализации. Контекст `outreach-orchestration` реализован; остальные
+# тринадцать сервисов каталога пока поднимаются заглушкой (`cmd/lead-gen`,
+# тип `stubService`). Поэтому группы ниже описывают форму деплоя, а не готовность
+# кода: сервис может быть объявлен и запущен, ещё не имея собственной реализации.
+# Порядок и критерий выделения сервисов в собственные группы — `deploy/README.md`,
+# разделы «Задачи 4.2–4.5».
+#
+# Группировка — только способ запуска и не создаёт второго владельца модели:
+# каталог всегда объявляет один сервис на контекст, а выделение сервиса сводится
+# к переносу его в собственную группу без правки домена.
+#
+# Роли в группе — подмножество ролей сервиса. Сервис MAY присутствовать в
+# нескольких группах, но каждая его роль встречается ровно один раз по всем
+# группам: роль — единица размещения, и разнести её по процессам нельзя. Группа
+# не вправе объявить роль или сервис, которых нет в каталоге. `mechanism` группы
+# описывает режим запуска: `in-process` — сервисы группы исполняются в одном
+# процессе образа.
+#
+# Обоснование группировки — по силе связи в каталоге:
+#   core     — горячий путь кампании: оркестрация → аналитика;
+#   delivery — изолированный контур отправки: async-роли message-delivery
+#              (worker, schedule) и транспортный sender integration-platform;
+#   demand   — цепочка подготовки аудитории: лиды → сегменты → контент;
+#   public   — публичный контур: приём внешних событий, чтение сообществ и публикация;
+#   platform — общий фундамент: интеграционные порты и правила доступа/данных;
+#   revenue  — результат и деньги: сделки → биллинг.
+#
+# Почему `delivery` выделен (задача 2.2). Раньше `message-delivery` со всей ролью
+# `sender` и `integration-platform` с ролями `api` и `sender` стояли в группах
+# `core` и `platform`, то есть опасная роль `sender` делила процесс с точкой входа
+# `api`. Отправка — необратимое внешнее действие, и её контур обязан иметь
+# отдельную границу отказа и масштабирования, отдельную от обработки API-запросов.
+# Поэтому роль `sender` и отвязанная от `api` async-часть `message-delivery`
+# (worker, schedule) вынесены в собственный процесс, а `sender`
+# `integration-platform` — из `platform`, чтобы ни один процесс не совмещал
+# `sender` и `api`. Публичный edge-образ отделён структурно (отдельный модуль и
+# образ) и сервисом каталога здесь не объявляется.
+
+processes:
+  - name: core
+    mechanism: in-process
+    services:
+      - id: outreach-orchestration
+        roles: [api, worker, chains, schedule]
+      - id: analytics
+        roles: [api, worker, schedule]
+
+  - name: delivery
+    mechanism: in-process
+    services:
+      - id: message-delivery
+        roles: [sender, worker, schedule]
+      - id: integration-platform
+        roles: [sender]
+
+  - name: demand
+    mechanism: in-process
+    services:
+      - id: lead-management
+        roles: [api, worker]
+      - id: audience
+        roles: [api, worker, schedule]
+      - id: content-production
+        roles: [api, worker]
+
+  - name: public
+    mechanism: in-process
+    services:
+      - id: engagement-observation
+        roles: [ingest, worker]
+      - id: community-intelligence
+        roles: [worker, schedule]
+      - id: publishing
+        roles: [api, worker, schedule]
+
+  - name: platform
+    mechanism: in-process
+    services:
+      - id: integration-platform
+        roles: [api, ingest, worker, chains, schedule]
+      - id: platform-governance
+        roles: [api, worker]
+      - id: data-governance
+        roles: [api, worker, chains]
+
+  - name: revenue
+    mechanism: in-process
+    services:
+      - id: sales-workflow
+        roles: [api, ingest, worker]
+      - id: billing
+        roles: [api, worker]

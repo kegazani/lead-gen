@@ -1,0 +1,34 @@
+output "network" {
+  description = "Имя docker-сети окружения."
+  value       = module.network.name
+}
+
+output "data_containers" {
+  description = "Идентификатор узла -> контейнер данных."
+  value       = module.data.containers
+}
+
+output "data_endpoints" {
+  description = "Идентификатор узла -> внутренний адрес на docker-сети."
+  value       = module.data.endpoints
+}
+
+output "app_containers" {
+  description = "Группа процессов -> контейнер служебного образа."
+  value       = module.app.containers
+}
+
+output "app_image" {
+  description = "Собранный (или взятый готовым) служебный образ."
+  value       = module.app.image
+}
+
+output "observability_containers" {
+  description = "Идентификатор узла метрик -> контейнер."
+  value       = module.observability.containers
+}
+
+output "secret_dir" {
+  description = "Каталог файлов секретов на docker-хосте (значений здесь нет)."
+  value       = module.secrets.secret_dir
+}

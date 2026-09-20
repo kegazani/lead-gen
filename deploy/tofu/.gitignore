@@ -1,0 +1,17 @@
+# Рабочие артефакты OpenTofu: в репозиторий не попадают.
+.terraform/
+**/.terraform/
+
+# Состояние и его резервные копии (локальный backend окружения local).
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+
+# Значения секретов (рендер модуля secrets) и сгенерированные конфигурации.
+.secrets/
+.generated/
+
+# Локальные переопределения переменных.
+*.tfvars
+!*.tfvars.example

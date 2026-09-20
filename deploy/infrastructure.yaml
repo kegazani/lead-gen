@@ -1,0 +1,40 @@
+# Инфраструктурные узлы консоли топологии. Адреса — внутренние, наружу не публикуются.
+#
+# Формат разбирает backend/platform/deployment: обязательны `id` и `kind`, поля
+# `label`, `zone` и `addresses` необязательны. Неизвестный ключ или вид — ошибка
+# загрузки, а не молчаливый пропуск. Допустимые виды: postgres, broker, cache,
+# object-storage, workflow, metrics, external. Секретов здесь нет — только адрес
+# и имя; сами секреты задаёт механизм управления секретами, и консоль их не
+# показывает.
+nodes:
+  - id: postgres-green
+    kind: postgres
+    label: "PostgreSQL, зелёная зона (схема на сервис)"
+    zone: green
+    addresses: ["postgres-green:5432"]
+  - id: postgres-red
+    kind: postgres
+    label: "PostgreSQL, красная зона (контур клиента)"
+    zone: red
+    addresses: ["<внутренний адрес контура клиента>"]
+  - id: rabbitmq
+    kind: broker
+    label: "RabbitMQ"
+    addresses: ["rabbitmq:5672"]
+  - id: valkey
+    kind: cache
+    label: "Valkey"
+    addresses: ["valkey:6379"]
+  - id: object-storage
+    kind: object-storage
+    label: "S3-совместимое объектное хранилище"
+  - id: temporal
+    kind: workflow
+    label: "Temporal"
+  - id: prometheus
+    kind: metrics
+    label: "Prometheus"
+    addresses: ["prometheus:9090"]
+  - id: external-providers
+    kind: external
+    label: "Внешние провайдеры (через integration-platform)"
