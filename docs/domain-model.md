@@ -77,34 +77,51 @@
 
 Core-контексты выражают конкурентное преимущество продукта. Supporting-контексты реализуются ровно настолько глубоко, насколько требуется core-потокам. Generic-контексты не должны поглощать бизнес-решения core-контекстов.
 
+### Bounded context, сервис развёртывания и BRD-движок
+
+Эти понятия не смешиваются:
+
+| Понятие | Что это | Не означает |
+|---|---|---|
+| Bounded context | граница модели и владения: язык, инварианты, сущности, контракты | единицу развёртывания |
+| Сервис развёртывания | эксплуатационная единица: граница отказа, релиза и масштабирования; ровно один сервис на контекст, `service` = `id` контекста | владельца сущностей или модель |
+| Роль запуска | режим работы сервиса: `api`, `ingest`, `sender`, `worker`, `chains`, `schedule` | единицу размещения или второго владельца модели |
+| BRD-движок | функциональная возможность из BRD | доменную границу или единицу развёртывания |
+
+Владение сущностью всегда у bounded context — не у сервиса и не у роли. Сервис собирает application services своего контекста; совмещённый первый деплой может собрать в одной группе несколько сервисов, но модель и владелец остаются за контекстами (`docs/system-map.md` §2.0, `docs/architecture.md` §8).
+
 ### Capability matrix
 
-| Capability | Владелец | Исполняющие процессы | Основной результат |
-|---|---|---|---|
-| `domain-architecture` | `platform-governance` | api, worker | Правила границ и аудируемая эволюция |
-| `data-handling` | `data-governance` | api, worker, sender, chains | `data-zone-policy` |
-| `lead-pool-client-side` | `data-governance` | api, worker, sender, chains | `processing-authority`, `suppression-policy` |
-| `osint-enrichment` | `lead-management` | api, worker | Обогащённый `lead-profile` |
-| `company-size-assessment` | `lead-management` | api, worker | `company-profile` |
-| `email-verification` | `lead-management` | api, worker | `lead-verified` |
-| `lead-segmentation` | `audience` | api, worker, schedule | `audience-snapshot` |
-| `linguistics` | `content-production` | api, worker | `content-version` |
-| `presentation-generator` | `content-production` | api, worker | `rendered-artifact` |
-| `landing-page-generator` | `content-production` | api, worker | `rendered-artifact` |
-| `outreach-approval` | `outreach-orchestration` | api, worker, chains, schedule | `approved-action` |
-| `outreach-sequences` | `outreach-orchestration` | api, worker, chains, schedule | `campaign-command`, `outreach-outcome` |
-| `call-orchestration` | `outreach-orchestration` | api, worker, chains, schedule | `call-scheduled` |
-| `outreach-channel-form` | `outreach-orchestration` | api, worker, chains, schedule | Утверждённое form-действие |
-| `outreach-channel-email` | `message-delivery` | sender, worker, schedule | `delivery-event` |
-| `domain-deliverability` | `message-delivery` | sender, worker, schedule | `deliverability-policy` |
-| `read-tracking` | `engagement-observation` | ingest, worker | `engagement-event`, `read-signal` |
-| `crm-workflow` | `sales-workflow` | api, ingest, worker | `deal-state`, `attributed-result` |
-| `telegram-community-digest` | `community-intelligence` | worker, schedule | `community-digest` |
-| `digest-publishing` | `publishing` | api, worker, schedule | `publication-result` |
-| `campaign-reporting` | `analytics` | api, worker, schedule | `campaign-report` |
-| `billing-subscription` | `billing` | api, worker | `billing-entitlement` |
-| `billing-success-fee` | `billing` | api, worker | `billing-result` |
-| `provider-agnostic-integrations` | `integration-platform` | api, ingest, sender, worker, chains, schedule | `provider-port`, `adapter-capability`, `integration-error` |
+| Capability | Владелец | Сервис | Роли | Основной результат |
+|---|---|---|---|---|
+| `domain-architecture` | `platform-governance` | `platform-governance` | api, worker | Правила границ и аудируемая эволюция |
+| `service-topology-console` | `platform-governance` | `platform-governance` | api | Эксплуатационная проекция топологии: граф сервисов и инфраструктуры, состояние узлов и метрики |
+| `deployment-topology` | `platform-governance` | `platform-governance` | api, worker | Модульный монолит, группы процессов и декларативная инфраструктура |
+| `data-handling` | `data-governance` | `data-governance` | api, worker, chains | `data-zone-policy` |
+| `lead-pool-client-side` | `data-governance` | `data-governance` | api, worker, chains | `processing-authority`, `suppression-policy` |
+| `osint-enrichment` | `lead-management` | `lead-management` | api, worker | Обогащённый `lead-profile` |
+| `company-size-assessment` | `lead-management` | `lead-management` | api, worker | `company-profile` |
+| `email-verification` | `lead-management` | `lead-management` | api, worker | `lead-verified` |
+| `lead-segmentation` | `audience` | `audience` | api, worker, schedule | `audience-snapshot` |
+| `linguistics` | `content-production` | `content-production` | api, worker | `content-version` |
+| `presentation-generator` | `content-production` | `content-production` | api, worker | `rendered-artifact` |
+| `landing-page-generator` | `content-production` | `content-production` | api, worker | `rendered-artifact` |
+| `outreach-approval` | `outreach-orchestration` | `outreach-orchestration` | api, worker, chains, schedule | `approved-action` |
+| `outreach-sequences` | `outreach-orchestration` | `outreach-orchestration` | api, worker, chains, schedule | `campaign-command`, `outreach-outcome` |
+| `call-orchestration` | `outreach-orchestration` | `outreach-orchestration` | api, worker, chains, schedule | `call-scheduled` |
+| `outreach-channel-form` | `outreach-orchestration` | `outreach-orchestration` | api, worker, chains, schedule | Утверждённое form-действие |
+| `outreach-channel-email` | `message-delivery` | `message-delivery` | sender, worker, schedule | `delivery-event` |
+| `domain-deliverability` | `message-delivery` | `message-delivery` | sender, worker, schedule | `deliverability-policy` |
+| `read-tracking` | `engagement-observation` | `engagement-observation` | ingest, worker | `engagement-event`, `read-signal` |
+| `crm-workflow` | `sales-workflow` | `sales-workflow` | api, ingest, worker | `deal-state`, `attributed-result` |
+| `telegram-community-digest` | `community-intelligence` | `community-intelligence` | worker, schedule | `community-digest` |
+| `digest-publishing` | `publishing` | `publishing` | api, worker, schedule | `publication-result` |
+| `campaign-reporting` | `analytics` | `analytics` | api, worker, schedule | `campaign-report` |
+| `billing-subscription` | `billing` | `billing` | api, worker | `billing-entitlement` |
+| `billing-success-fee` | `billing` | `billing` | api, worker | `billing-result` |
+| `provider-agnostic-integrations` | `integration-platform` | `integration-platform` | api, ingest, sender, worker, chains, schedule | `provider-port`, `adapter-capability`, `integration-error` |
+
+**`service-topology-console` не добавляет модель.** Консоль — эксплуатационная проекция роли `api` сервиса `platform-governance`: она строит граф из объявлений каталога и `deploy/services.yaml` и читает метрики Prometheus через серверный прокси. Консоль **не владеет сущностями и не является bounded context**: она не вводит агрегатов, value objects, domain events, policies и межконтекстных контрактов, а её состояние узлов (`up`/`degraded`/`down`/`unknown`) и раскладка — результат наблюдения и состояние интерфейса, а не агрегат или событие. Узлы-сервисы — те же 14 bounded contexts, рёбра — те же 28 связей каталога; состав контекстов и связей не меняется, capability лишь назначена существующему владельцу как уточнение покрытия. Владение моделью остаётся у контекстов: владелец capability не получает ни новых сущностей, ни нового языка.
 
 ## Тактическая модель
 
@@ -255,7 +272,7 @@ Core-контексты выражают конкурентное преимущ
 - `platform-governance` публикует `access-decision`; потребители не реализуют собственную RBAC-семантику.
 - `integration-platform` предоставляет `provider-port` через ACL для lead, content, delivery, sales, community, publishing и outreach. Он не владеет их workflow.
 
-Контракты имеют semantic version. Добавление опционального поля совместимо; изменение смысла, обязательности или типа требует новой major-версии и периода параллельного чтения. Command принимается идемпотентно; event неизменяем и содержит `event_id`, `occurred_at`, `tenant_id`, `correlation_id`, `causation_id`, имя и версию схемы.
+Контракты имеют semantic version. Добавление опционального поля совместимо; изменение смысла, обязательности или типа требует новой major-версии и периода параллельного чтения. Команда принимается идемпотентно; event неизменяем и содержит `event_id`, `occurred_at`, `tenant_id`, `correlation_id`, `causation_id`, имя и версию схемы. Транспорт определяется видом интеграции: `command`/`query` идут синхронно (`sync`/`http-json`), `event`/`policy` — асинхронно (`async`/`amqp`); `policy` доставляется как подписка на изменение правила.
 
 ## Владение и зоны данных
 
@@ -283,17 +300,21 @@ Core-контексты выражают конкурентное преимущ
 Целевая структура — отдельное дерево на контекст, например:
 
 ```text
-internal/contexts/<context-id>/
-  domain/     # агрегаты, VO, domain events, чистые политики
-  app/        # commands, queries, use cases, process managers
-  ports/      # потребляемые и предоставляемые интерфейсы контекста
-  adapters/   # repositories, outbox, provider adapters, HTTP/gRPC/event handlers и DTO
-internal/platform/      # общие технические примитивы без доменных правил
-internal/composition/   # сборка контекстов в приложение и процессы
-cmd/<process>/          # точка входа процесса из `deployed_by`
+backend/contexts/<context-id>/   # модуль контекста: internal/{domain,app,ports,adapters}
+  internal/domain/     # агрегаты, VO, domain events, чистые политики
+  internal/app/        # commands, queries, use cases, process managers
+  internal/ports/      # потребляемые и предоставляемые интерфейсы контекста
+  internal/adapters/   # repositories, outbox, provider adapters, HTTP/JSON- и AMQP-обработчики и DTO
+contracts/<owner>/               # published language владельца (общий для backend и frontend)
+backend/platform/                # общие технические примитивы без доменных правил:
+                                 # composition, contracts, messaging, observability,
+                                 # reliability, transport, deployment, migrate
+backend/cmd/lead-gen/            # единая точка входа; сервис и его роли задаются конфигурацией
+frontend/components/             # общий слой серверных UI-компонентов
+frontend/public/                 # публичный edge
 ```
 
-`<context-id>` — точный kebab-case идентификатор контекста из каталога; соответствие пакета контексту фиксируется в README пакета. Внутренние типы одного контекста не импортируются другим. Интеграция идёт через contract DTO, сгенерированные типы схем или application ports. Каталог описывает доменное владение, а `deployed_by` — процессы размещения; один процесс может собрать несколько контекстов, не объединяя их модели.
+`<context-id>` — точный kebab-case идентификатор контекста из каталога; соответствие пакета контексту фиксируется в README пакета. Внутренние типы одного контекста не импортируются другим. Интеграция идёт через contract DTO, сгенерированные типы схем или application ports. Каталог описывает доменное владение, а `service` и `roles` — размещение: один сервис разворачивает ровно один контекст, роли внутри сервиса задают режим запуска. Сборка сервиса (composition root) — публичный корневой пакет `backend/contexts/<context-id>`, а не общий `backend/platform/composition`. Совмещённый первый деплой может собрать несколько сервисов в одной группе, не объединяя их модели.
 
 Aggregate root инкапсулирует поля, проверяет инварианты в конструкторах и методах и возвращает domain events. Value object неизменяем и валидируется при создании. Repository существует для aggregate root, а не для каждой таблицы. Application service задаёт транзакцию и авторизацию, но не содержит доменных правил. `adapters` и `ports` не импортируются из `domain`.
 
@@ -306,7 +327,7 @@ Aggregate root инкапсулирует поля, проверяет инва�
 5. Изменение published language содержит план совместимости, миграции потребителей и удаления старой версии.
 6. Перенос ownership выполняется фазами: новый контракт, backfill, dual-read/controlled dual-write при необходимости, переключение system of record, удаление старого пути. Не допускается скрытая совместная запись.
 7. Изменение red/mixed/analytics зоны требует отдельного privacy review и плана удаления уже созданных копий.
-8. Новая capability имеет ровно одного owner context; `deployed_by` не делает процесс владельцем capability.
+8. Новая capability имеет ровно одного owner context; `service` и `roles` не делают сервис или роль владельцем capability.
 9. Диаграммы являются проверяемыми представлениями каталога и обновляются в том же change.
 10. Исключение из правил фиксируется ADR со сроком, владельцем долга и критерием удаления.
 

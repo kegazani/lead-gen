@@ -57,7 +57,7 @@
     "context": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "name", "classification", "purpose", "capabilities", "deployed_by", "contracts"],
+      "required": ["id", "name", "classification", "purpose", "capabilities", "service", "roles", "contracts"],
       "properties": {
         "id": {"$ref": "#/$defs/identifier"},
         "name": {"$ref": "#/$defs/nonEmptyString"},
@@ -68,7 +68,8 @@
           "items": {"$ref": "#/$defs/identifier"},
           "uniqueItems": true
         },
-        "deployed_by": {
+        "service": {"type": "string", "minLength": 1},
+        "roles": {
           "type": "array",
           "minItems": 1,
           "items": {"enum": ["api", "ingest", "sender", "worker", "chains", "schedule"]},
@@ -179,14 +180,16 @@
     "relationship": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["id", "upstream", "downstream", "pattern", "integration", "contract"],
+      "required": ["id", "upstream", "downstream", "pattern", "integration", "contract", "transport", "mechanism"],
       "properties": {
         "id": {"$ref": "#/$defs/identifier"},
         "upstream": {"$ref": "#/$defs/identifier"},
         "downstream": {"$ref": "#/$defs/identifier"},
         "pattern": {"enum": ["customer-supplier", "conformist", "published-language", "anticorruption-layer"]},
         "integration": {"enum": ["command", "event", "query", "policy"]},
-        "contract": {"$ref": "#/$defs/identifier"}
+        "contract": {"$ref": "#/$defs/identifier"},
+        "transport": {"enum": ["sync", "async"]},
+        "mechanism": {"enum": ["http-json", "amqp"]}
       }
     },
     "diagram": {

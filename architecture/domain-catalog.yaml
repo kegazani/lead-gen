@@ -6,8 +6,9 @@
       "name": "Управление платформой и доступом",
       "classification": "generic",
       "purpose": "Тенанты, пользователи, роли, аудит и правила эволюции доменной архитектуры.",
-      "capabilities": ["domain-architecture"],
-      "deployed_by": ["api", "worker"],
+      "capabilities": ["domain-architecture", "service-topology", "service-topology-console", "deployment-topology"],
+      "service": "platform-governance",
+      "roles": ["api", "worker"],
       "contracts": ["access-decision", "audit-recorded", "tenant-context"]
     },
     {
@@ -16,7 +17,8 @@
       "classification": "generic",
       "purpose": "Зоны данных, основание обработки, поручение клиента и правила подавления контактов.",
       "capabilities": ["data-handling", "lead-pool-client-side"],
-      "deployed_by": ["api", "worker", "sender", "chains"],
+      "service": "data-governance",
+      "roles": ["api", "worker", "chains"],
       "contracts": ["data-zone-policy", "processing-authority", "suppression-policy"]
     },
     {
@@ -25,7 +27,8 @@
       "classification": "core",
       "purpose": "Приём, нормализация, обогащение и проверка компаний и контактов в пуле клиента.",
       "capabilities": ["osint-enrichment", "company-size-assessment", "email-verification"],
-      "deployed_by": ["api", "worker"],
+      "service": "lead-management",
+      "roles": ["api", "worker"],
       "contracts": ["lead-profile", "lead-verified", "company-profile"]
     },
     {
@@ -34,7 +37,8 @@
       "classification": "core",
       "purpose": "Скоринг, сегментация и фиксация целевой аудитории кампании.",
       "capabilities": ["lead-segmentation"],
-      "deployed_by": ["api", "worker", "schedule"],
+      "service": "audience",
+      "roles": ["api", "worker", "schedule"],
       "contracts": ["audience-snapshot", "segment-membership"]
     },
     {
@@ -43,7 +47,8 @@
       "classification": "supporting",
       "purpose": "Генерация, версионирование и рендеринг текстов, презентаций, документов и лендингов.",
       "capabilities": ["linguistics", "presentation-generator", "landing-page-generator"],
-      "deployed_by": ["api", "worker"],
+      "service": "content-production",
+      "roles": ["api", "worker"],
       "contracts": ["content-request", "content-version", "rendered-artifact"]
     },
     {
@@ -52,7 +57,8 @@
       "classification": "core",
       "purpose": "Кампании, последовательности, черновики, решение оператора и планирование встреч.",
       "capabilities": ["outreach-approval", "outreach-sequences", "call-orchestration", "outreach-channel-form"],
-      "deployed_by": ["api", "worker", "chains", "schedule"],
+      "service": "outreach-orchestration",
+      "roles": ["api", "worker", "chains", "schedule"],
       "contracts": ["approved-action", "analytics-event", "campaign-command", "outreach-outcome"]
     },
     {
@@ -61,7 +67,8 @@
       "classification": "core",
       "purpose": "Исполнение утверждённых почтовых действий, доставляемость и репутация отправляющих доменов.",
       "capabilities": ["outreach-channel-email", "domain-deliverability"],
-      "deployed_by": ["sender", "worker", "schedule"],
+      "service": "message-delivery",
+      "roles": ["sender", "worker", "schedule"],
       "contracts": ["delivery-command", "delivery-event", "deliverability-policy"]
     },
     {
@@ -70,7 +77,8 @@
       "classification": "supporting",
       "purpose": "Квалификация событий доставки, переходов и ответов без трекинговых пикселей.",
       "capabilities": ["read-tracking"],
-      "deployed_by": ["ingest", "worker"],
+      "service": "engagement-observation",
+      "roles": ["ingest", "worker"],
       "contracts": ["engagement-event", "read-signal"]
     },
     {
@@ -79,7 +87,8 @@
       "classification": "core",
       "purpose": "Жизненный цикл сделки, CRM-синхронизация и подтверждаемая атрибуция результата.",
       "capabilities": ["crm-workflow"],
-      "deployed_by": ["api", "ingest", "worker"],
+      "service": "sales-workflow",
+      "roles": ["api", "ingest", "worker"],
       "contracts": ["deal-state", "crm-event", "attributed-result"]
     },
     {
@@ -88,7 +97,8 @@
       "classification": "supporting",
       "purpose": "Чтение разрешённых Telegram-сообществ и формирование обезличенной выжимки.",
       "capabilities": ["telegram-community-digest"],
-      "deployed_by": ["worker", "schedule"],
+      "service": "community-intelligence",
+      "roles": ["worker", "schedule"],
       "contracts": ["community-digest", "community-read-command"]
     },
     {
@@ -97,7 +107,8 @@
       "classification": "supporting",
       "purpose": "Подготовка и публикация утверждённых материалов через официальные API площадок.",
       "capabilities": ["digest-publishing"],
-      "deployed_by": ["api", "worker", "schedule"],
+      "service": "publishing",
+      "roles": ["api", "worker", "schedule"],
       "contracts": ["publication-command", "publication-result"]
     },
     {
@@ -106,7 +117,8 @@
       "classification": "supporting",
       "purpose": "Обезличенные read-модели и отчётность по кампаниям, источникам и воронке.",
       "capabilities": ["campaign-reporting"],
-      "deployed_by": ["api", "worker", "schedule"],
+      "service": "analytics",
+      "roles": ["api", "worker", "schedule"],
       "contracts": ["analytics-event", "campaign-report"]
     },
     {
@@ -115,7 +127,8 @@
       "classification": "supporting",
       "purpose": "Подписки, тарифные лимиты, счета и вознаграждение от подтверждённого результата.",
       "capabilities": ["billing-subscription", "billing-success-fee"],
-      "deployed_by": ["api", "worker"],
+      "service": "billing",
+      "roles": ["api", "worker"],
       "contracts": ["billing-entitlement", "billing-result", "usage-record"]
     },
     {
@@ -124,7 +137,8 @@
       "classification": "generic",
       "purpose": "Vendor-neutral порты, адаптеры, нормализация ошибок и manifest возможностей поставщиков.",
       "capabilities": ["provider-agnostic-integrations"],
-      "deployed_by": ["api", "ingest", "sender", "worker", "chains", "schedule"],
+      "service": "integration-platform",
+      "roles": ["api", "ingest", "sender", "worker", "chains", "schedule"],
       "contracts": ["adapter-capability", "integration-error", "provider-port"]
     }
   ],
@@ -482,34 +496,34 @@
     {"id": "error-normalization", "owner_context": "integration-platform", "owner_aggregate": "integration-invocation", "inputs": [{"kind": "contract", "id": "integration-error"}], "action": {"kind": "domain-event", "id": "integration-failed"}}
   ],
   "relationships": [
-    {"id": "governance-policy-for-leads", "upstream": "data-governance", "downstream": "lead-management", "pattern": "published-language", "integration": "policy", "contract": "data-zone-policy"},
-    {"id": "governance-policy-for-outreach", "upstream": "data-governance", "downstream": "outreach-orchestration", "pattern": "published-language", "integration": "policy", "contract": "processing-authority"},
-    {"id": "governance-policy-for-delivery", "upstream": "data-governance", "downstream": "message-delivery", "pattern": "published-language", "integration": "policy", "contract": "suppression-policy"},
-    {"id": "lead-to-audience", "upstream": "lead-management", "downstream": "audience", "pattern": "customer-supplier", "integration": "query", "contract": "lead-profile"},
-    {"id": "audience-to-outreach", "upstream": "audience", "downstream": "outreach-orchestration", "pattern": "customer-supplier", "integration": "query", "contract": "audience-snapshot"},
-    {"id": "content-to-outreach", "upstream": "content-production", "downstream": "outreach-orchestration", "pattern": "customer-supplier", "integration": "query", "contract": "content-version"},
-    {"id": "outreach-to-delivery", "upstream": "outreach-orchestration", "downstream": "message-delivery", "pattern": "published-language", "integration": "command", "contract": "approved-action"},
-    {"id": "delivery-to-observation", "upstream": "message-delivery", "downstream": "engagement-observation", "pattern": "published-language", "integration": "event", "contract": "delivery-event"},
-    {"id": "observation-to-outreach", "upstream": "engagement-observation", "downstream": "outreach-orchestration", "pattern": "published-language", "integration": "event", "contract": "engagement-event"},
-    {"id": "outreach-to-sales", "upstream": "outreach-orchestration", "downstream": "sales-workflow", "pattern": "published-language", "integration": "event", "contract": "outreach-outcome"},
-    {"id": "sales-to-billing", "upstream": "sales-workflow", "downstream": "billing", "pattern": "published-language", "integration": "event", "contract": "attributed-result"},
-    {"id": "community-to-publishing", "upstream": "community-intelligence", "downstream": "publishing", "pattern": "customer-supplier", "integration": "command", "contract": "community-digest"},
-    {"id": "outreach-to-analytics", "upstream": "outreach-orchestration", "downstream": "analytics", "pattern": "published-language", "integration": "event", "contract": "analytics-event"},
-    {"id": "delivery-to-analytics", "upstream": "message-delivery", "downstream": "analytics", "pattern": "published-language", "integration": "event", "contract": "delivery-event"},
-    {"id": "observation-to-analytics", "upstream": "engagement-observation", "downstream": "analytics", "pattern": "published-language", "integration": "event", "contract": "engagement-event"},
-    {"id": "sales-to-analytics", "upstream": "sales-workflow", "downstream": "analytics", "pattern": "published-language", "integration": "event", "contract": "deal-state"},
-    {"id": "platform-access-for-outreach", "upstream": "platform-governance", "downstream": "outreach-orchestration", "pattern": "published-language", "integration": "policy", "contract": "access-decision"},
-    {"id": "integrations-for-leads", "upstream": "integration-platform", "downstream": "lead-management", "pattern": "anticorruption-layer", "integration": "command", "contract": "provider-port"},
-    {"id": "integrations-for-content", "upstream": "integration-platform", "downstream": "content-production", "pattern": "anticorruption-layer", "integration": "command", "contract": "provider-port"},
-    {"id": "integrations-for-delivery", "upstream": "integration-platform", "downstream": "message-delivery", "pattern": "anticorruption-layer", "integration": "command", "contract": "provider-port"},
-    {"id": "integrations-for-sales", "upstream": "integration-platform", "downstream": "sales-workflow", "pattern": "anticorruption-layer", "integration": "command", "contract": "provider-port"},
-    {"id": "integrations-for-community", "upstream": "integration-platform", "downstream": "community-intelligence", "pattern": "anticorruption-layer", "integration": "command", "contract": "provider-port"},
-    {"id": "integrations-for-publishing", "upstream": "integration-platform", "downstream": "publishing", "pattern": "anticorruption-layer", "integration": "command", "contract": "provider-port"},
-    {"id": "integrations-for-outreach", "upstream": "integration-platform", "downstream": "outreach-orchestration", "pattern": "anticorruption-layer", "integration": "command", "contract": "provider-port"},
-    {"id": "delivery-to-lead", "upstream": "message-delivery", "downstream": "lead-management", "pattern": "published-language", "integration": "event", "contract": "delivery-event"},
-    {"id": "engagement-to-audience", "upstream": "engagement-observation", "downstream": "audience", "pattern": "published-language", "integration": "event", "contract": "engagement-event"},
-    {"id": "governance-policy-for-audience", "upstream": "data-governance", "downstream": "audience", "pattern": "published-language", "integration": "policy", "contract": "data-zone-policy"},
-    {"id": "lead-to-sales", "upstream": "lead-management", "downstream": "sales-workflow", "pattern": "customer-supplier", "integration": "query", "contract": "company-profile"}
+    {"id": "governance-policy-for-leads", "upstream": "data-governance", "downstream": "lead-management", "pattern": "published-language", "integration": "policy", "transport": "async", "mechanism": "amqp", "contract": "data-zone-policy"},
+    {"id": "governance-policy-for-outreach", "upstream": "data-governance", "downstream": "outreach-orchestration", "pattern": "published-language", "integration": "policy", "transport": "async", "mechanism": "amqp", "contract": "processing-authority"},
+    {"id": "governance-policy-for-delivery", "upstream": "data-governance", "downstream": "message-delivery", "pattern": "published-language", "integration": "policy", "transport": "async", "mechanism": "amqp", "contract": "suppression-policy"},
+    {"id": "lead-to-audience", "upstream": "lead-management", "downstream": "audience", "pattern": "customer-supplier", "integration": "query", "transport": "sync", "mechanism": "http-json", "contract": "lead-profile"},
+    {"id": "audience-to-outreach", "upstream": "audience", "downstream": "outreach-orchestration", "pattern": "customer-supplier", "integration": "query", "transport": "sync", "mechanism": "http-json", "contract": "audience-snapshot"},
+    {"id": "content-to-outreach", "upstream": "content-production", "downstream": "outreach-orchestration", "pattern": "customer-supplier", "integration": "query", "transport": "sync", "mechanism": "http-json", "contract": "content-version"},
+    {"id": "outreach-to-delivery", "upstream": "outreach-orchestration", "downstream": "message-delivery", "pattern": "published-language", "integration": "command", "transport": "sync", "mechanism": "http-json", "contract": "approved-action"},
+    {"id": "delivery-to-observation", "upstream": "message-delivery", "downstream": "engagement-observation", "pattern": "published-language", "integration": "event", "transport": "async", "mechanism": "amqp", "contract": "delivery-event"},
+    {"id": "observation-to-outreach", "upstream": "engagement-observation", "downstream": "outreach-orchestration", "pattern": "published-language", "integration": "event", "transport": "async", "mechanism": "amqp", "contract": "engagement-event"},
+    {"id": "outreach-to-sales", "upstream": "outreach-orchestration", "downstream": "sales-workflow", "pattern": "published-language", "integration": "event", "transport": "async", "mechanism": "amqp", "contract": "outreach-outcome"},
+    {"id": "sales-to-billing", "upstream": "sales-workflow", "downstream": "billing", "pattern": "published-language", "integration": "event", "transport": "async", "mechanism": "amqp", "contract": "attributed-result"},
+    {"id": "community-to-publishing", "upstream": "community-intelligence", "downstream": "publishing", "pattern": "customer-supplier", "integration": "command", "transport": "sync", "mechanism": "http-json", "contract": "community-digest"},
+    {"id": "outreach-to-analytics", "upstream": "outreach-orchestration", "downstream": "analytics", "pattern": "published-language", "integration": "event", "transport": "async", "mechanism": "amqp", "contract": "analytics-event"},
+    {"id": "delivery-to-analytics", "upstream": "message-delivery", "downstream": "analytics", "pattern": "published-language", "integration": "event", "transport": "async", "mechanism": "amqp", "contract": "delivery-event"},
+    {"id": "observation-to-analytics", "upstream": "engagement-observation", "downstream": "analytics", "pattern": "published-language", "integration": "event", "transport": "async", "mechanism": "amqp", "contract": "engagement-event"},
+    {"id": "sales-to-analytics", "upstream": "sales-workflow", "downstream": "analytics", "pattern": "published-language", "integration": "event", "transport": "async", "mechanism": "amqp", "contract": "deal-state"},
+    {"id": "platform-access-for-outreach", "upstream": "platform-governance", "downstream": "outreach-orchestration", "pattern": "published-language", "integration": "policy", "transport": "async", "mechanism": "amqp", "contract": "access-decision"},
+    {"id": "integrations-for-leads", "upstream": "integration-platform", "downstream": "lead-management", "pattern": "anticorruption-layer", "integration": "command", "transport": "sync", "mechanism": "http-json", "contract": "provider-port"},
+    {"id": "integrations-for-content", "upstream": "integration-platform", "downstream": "content-production", "pattern": "anticorruption-layer", "integration": "command", "transport": "sync", "mechanism": "http-json", "contract": "provider-port"},
+    {"id": "integrations-for-delivery", "upstream": "integration-platform", "downstream": "message-delivery", "pattern": "anticorruption-layer", "integration": "command", "transport": "sync", "mechanism": "http-json", "contract": "provider-port"},
+    {"id": "integrations-for-sales", "upstream": "integration-platform", "downstream": "sales-workflow", "pattern": "anticorruption-layer", "integration": "command", "transport": "sync", "mechanism": "http-json", "contract": "provider-port"},
+    {"id": "integrations-for-community", "upstream": "integration-platform", "downstream": "community-intelligence", "pattern": "anticorruption-layer", "integration": "command", "transport": "sync", "mechanism": "http-json", "contract": "provider-port"},
+    {"id": "integrations-for-publishing", "upstream": "integration-platform", "downstream": "publishing", "pattern": "anticorruption-layer", "integration": "command", "transport": "sync", "mechanism": "http-json", "contract": "provider-port"},
+    {"id": "integrations-for-outreach", "upstream": "integration-platform", "downstream": "outreach-orchestration", "pattern": "anticorruption-layer", "integration": "command", "transport": "sync", "mechanism": "http-json", "contract": "provider-port"},
+    {"id": "delivery-to-lead", "upstream": "message-delivery", "downstream": "lead-management", "pattern": "published-language", "integration": "event", "transport": "async", "mechanism": "amqp", "contract": "delivery-event"},
+    {"id": "engagement-to-audience", "upstream": "engagement-observation", "downstream": "audience", "pattern": "published-language", "integration": "event", "transport": "async", "mechanism": "amqp", "contract": "engagement-event"},
+    {"id": "governance-policy-for-audience", "upstream": "data-governance", "downstream": "audience", "pattern": "published-language", "integration": "policy", "transport": "async", "mechanism": "amqp", "contract": "data-zone-policy"},
+    {"id": "lead-to-sales", "upstream": "lead-management", "downstream": "sales-workflow", "pattern": "customer-supplier", "integration": "query", "transport": "sync", "mechanism": "http-json", "contract": "company-profile"}
   ],
   "required_diagrams": [
     {"id": "bounded-context-map", "path": "architecture/diagrams/bounded-context-map.puml", "contexts": ["platform-governance", "data-governance", "lead-management", "audience", "content-production", "outreach-orchestration", "message-delivery", "engagement-observation", "sales-workflow", "community-intelligence", "publishing", "analytics", "billing", "integration-platform"]},
