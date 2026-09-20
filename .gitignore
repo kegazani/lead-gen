@@ -1,0 +1,20 @@
+# Сборочные артефакты Go
+/bin/
+*.exe
+*.test
+*.out
+
+# Бинарники модулей с единственным main-пакетом: их пишет `go build ./...`
+# в каталог модуля (имя = последний сегмент пути пакета).
+/tools/archlint/archlint
+/tools/importlint/importlint
+/cmd/lead-gen/cmd
+
+# Локальный скрап и разовые проверки: не часть репозитория
+/tmp/
+
+# Редакторы и ОС
+.DS_Store
+.idea/
+.vscode/
+*.swp

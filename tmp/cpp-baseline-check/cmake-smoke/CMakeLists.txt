@@ -1,6 +1,0 @@
-cmake_minimum_required(VERSION 3.20)
-project(cpp_baseline_smoke CXX)
-set(CMAKE_CXX_STANDARD 20)
-set(CMAKE_CXX_STANDARD_REQUIRED ON)
-add_executable(coro_smoke ../coro_test.cpp)
-add_executable(format_smoke ../format_test.cpp)
