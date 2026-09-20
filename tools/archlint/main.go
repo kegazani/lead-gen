@@ -28,6 +28,8 @@ type Catalog struct {
 type Context struct {
 	ID           string   `json:"id"`
 	Capabilities []string `json:"capabilities"`
+	Service      string   `json:"service"`
+	Roles        []string `json:"roles"`
 	Contracts    []string `json:"contracts"`
 }
 
@@ -52,6 +54,8 @@ type Relationship struct {
 	Downstream  string `json:"downstream"`
 	Integration string `json:"integration"`
 	Contract    string `json:"contract"`
+	Transport   string `json:"transport"`
+	Mechanism   string `json:"mechanism"`
 }
 
 type Diagram struct {
@@ -459,6 +463,16 @@ func run(root, catalogPath, schemaPath string) (Catalog, []string) {
 		problems = append(problems, validateCatalog(catalog, capabilities)...)
 	}
 	problems = append(problems, validateDiagrams(root, catalog)...)
+	problems = append(problems, validateServicePerContext(catalog)...)
+	problems = append(problems, validateServiceModules(root, catalog)...)
+	problems = append(problems, validateContextRoles(catalog)...)
+	problems = append(problems, validateRelationshipTransports(catalog)...)
+	deploy, err := loadDeploy(filepath.Join(root, "deploy", "services.yaml"))
+	if err != nil {
+		problems = append(problems, err.Error())
+	} else {
+		problems = append(problems, validateDeploy(catalog, deploy)...)
+	}
 	return catalog, problems
 }
 
