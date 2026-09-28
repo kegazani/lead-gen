@@ -2,10 +2,13 @@ go 1.25
 
 use (
 	./backend/cmd/lead-gen
+	./backend/contexts/integration-platform
+	./backend/contexts/lead-management
 	./backend/contexts/outreach-orchestration
 	./backend/platform
 	./contracts/content-production
 	./contracts/engagement-observation
+	./contracts/integration-platform
 	./contracts/outreach-orchestration
 	./frontend/components
 	./frontend/public

@@ -1,0 +1,7 @@
+{{- define "tabs" -}}
+<nav class="tabs">
+{{- range .Items }}
+  <a class="tab{{if eq $.Active .Key}} is-active{{end}}" href="{{.Href}}"{{if eq $.Active .Key}} aria-current="page"{{end}}>{{.Label}}</a>
+{{- end }}
+</nav>
+{{- end -}}

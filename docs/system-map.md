@@ -326,12 +326,14 @@
 | Capability | Primary context | Движок BRD | Роли запуска | Зона | Спека |
 |---|---|---|---|---|---|
 | `domain-architecture` | `platform-governance` | — | — | — | `openspec/specs/domain-architecture/spec.md` |
+| `platform-access` | `platform-governance` | 3.16 | `api`, `worker` | зелёная | `platform-governance/specs/platform-access/spec.md` |
 | `service-topology-console` | `platform-governance` | — | `api` | зелёная | `service-topology-console/specs/service-topology-console/spec.md` |
 | `outreach-approval` | `outreach-orchestration` | — (ядро) | `api`, `chains` | зелёная | `full-enterprise-core-scope/specs/outreach-approval/spec.md` |
 | `read-tracking` | `engagement-observation` | 3.9 | `ingest`, `worker` | обезличенно | `full-enterprise-core-scope/specs/read-tracking/spec.md` |
 | `domain-deliverability` | `message-delivery` | 3.8 | `sender`, `schedule` | зелёная | `full-enterprise-core-scope/specs/domain-deliverability/spec.md` |
 | `data-handling` | `data-governance` | — (ядро) | все роли | обе | `full-enterprise-core-scope/specs/data-handling/spec.md` |
-| `osint-enrichment` | `lead-management` | 3.1, 3.3 | `worker` | контур клиента (результат не хранится) | `full-enterprise-core-scope/specs/osint-enrichment/spec.md` |
+| `contact-suppression` | `data-governance` | — (ядро) | `api`, `worker`, `chains` | контур клиента | `data-governance/specs/contact-suppression/spec.md` |
+| `osint-enrichment` | `lead-management` | 3.1, 3.3 | `worker` | обе (карточка — зелёная, контакты — красная) | `mvp-lead-search/specs/osint-enrichment/spec.md` |
 | `outreach-channel-email` | `message-delivery` | 3.8 | `sender` | зелёная + контур клиента | `full-enterprise-core-scope/specs/outreach-channel-email/spec.md` |
 | `lead-pool-client-side` | `data-governance` | 3.2, 3.4 | `worker` | контур клиента | `full-enterprise-core-scope/specs/lead-pool-client-side/spec.md` |
 | `crm-workflow` | `sales-workflow` | 3.14 | `worker`, `ingest` | контур клиента | `full-enterprise-core-scope/specs/crm-workflow/spec.md` |

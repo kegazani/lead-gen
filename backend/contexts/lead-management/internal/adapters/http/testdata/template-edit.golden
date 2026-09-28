@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Библиотека шаблонов</title>
+  <link rel="stylesheet" href="/static/console.css">
+  <script src="/static/htmx.min.js" defer></script>
+  <script src="/static/console.js" defer></script>
+  <script src="/static/assistant.js" defer></script>
+</head>
+<body>
+  <nav class="sidebar">
+  <ul class="sidebar-list">
+    <li><a href="/">Главная</a></li>
+    <li><a href="/cards">Карточки</a></li>
+    <li><a href="/funnel">Воронка</a></li>
+    <li><a href="/send" class="is-active" aria-current="page">Отправка</a></li>
+    <li><a href="/assistant">Ассистент</a></li>
+    <li><a href="/forum-signals">Форумы</a></li>
+  </ul>
+</nav>
+  <main class="page">
+<header class="page-head">
+  <h1>Библиотека шаблонов</h1>
+</header>
+
+<section class="panel">
+  <h2>Правка шаблона</h2><p class="hint">Редакция: intro@1</p>
+  <form method="post" action="/templates/intro">
+    <input type="hidden" name="csrf" value="TOKEN">
+    <p class="field">
+      <label for="tpl-name">Имя</label>
+      <input id="tpl-name" name="name" type="text" value="Приветствие">
+    </p>
+    <p class="field">
+      <label for="subject">Тема</label>
+      <input id="subject" name="subject" type="text" value="Тема для {{company}}" data-placeholder-field>
+    </p>
+    <p class="field">
+      <label for="body">Текст письма</label>
+      <textarea id="body" name="body" rows="6" data-placeholder-field data-placeholder-default>Здравствуйте, {{company}}!</textarea>
+    </p>
+    <fieldset class="variables">
+  <legend>Переменные шаблона</legend>
+  <ul class="variable-list">
+    <li class="variable-row">
+      <label class="variable-toggle">
+        <input type="checkbox" name="var_company" value="yes" checked> Название компании
+      </label>
+      <span class="hint">название карточки</span>
+      <input type="text" name="fallback_company" value="ваша компания" placeholder="fallback">
+      <button type="button" class="button-secondary" data-insert-placeholder="company">Вставить в текст</button>
+    </li>
+    <li class="variable-row">
+      <label class="variable-toggle">
+        <input type="checkbox" name="var_company_domain" value="yes"> Домен компании
+      </label>
+      <span class="hint">нормализованный идентификатор карточки</span>
+      <input type="text" name="fallback_company_domain" value="" placeholder="fallback">
+      <button type="button" class="button-secondary" data-insert-placeholder="company_domain">Вставить в текст</button>
+    </li>
+    <li class="variable-row">
+      <label class="variable-toggle">
+        <input type="checkbox" name="var_company_description" value="yes"> Описание компании
+      </label>
+      <span class="hint">описание карточки</span>
+      <input type="text" name="fallback_company_description" value="" placeholder="fallback">
+      <button type="button" class="button-secondary" data-insert-placeholder="company_description">Вставить в текст</button>
+    </li>
+    <li class="variable-row">
+      <label class="variable-toggle">
+        <input type="checkbox" name="var_contact" value="yes"> Роль контакта
+      </label>
+      <span class="hint">роль контакта</span>
+      <input type="text" name="fallback_contact" value="" placeholder="fallback">
+      <button type="button" class="button-secondary" data-insert-placeholder="contact">Вставить в текст</button>
+    </li>
+    <li class="variable-row">
+      <label class="variable-toggle">
+        <input type="checkbox" name="var_contact_email" value="yes"> Email контакта
+      </label>
+      <span class="hint">адрес контакта</span>
+      <input type="text" name="fallback_contact_email" value="" placeholder="fallback">
+      <button type="button" class="button-secondary" data-insert-placeholder="contact_email">Вставить в текст</button>
+    </li>
+    <li class="variable-row">
+      <label class="variable-toggle">
+        <input type="checkbox" name="var_contact_phone" value="yes"> Телефон контакта
+      </label>
+      <span class="hint">телефон контакта</span>
+      <input type="text" name="fallback_contact_phone" value="" placeholder="fallback">
+      <button type="button" class="button-secondary" data-insert-placeholder="contact_phone">Вставить в текст</button>
+    </li>
+    <li class="variable-row">
+      <label class="variable-toggle">
+        <input type="checkbox" name="var_industry" value="yes"> Отрасль
+      </label>
+      <span class="hint">источника данных пока нет — уходит в fallback</span>
+      <input type="text" name="fallback_industry" value="" placeholder="fallback">
+      <button type="button" class="button-secondary" data-insert-placeholder="industry">Вставить в текст</button>
+    </li>
+  </ul>
+</fieldset>
+    <p class="actions"><button type="submit">Сохранить</button></p>
+  </form>
+  <form method="post" action="/templates/intro/delete">
+    <input type="hidden" name="csrf" value="TOKEN">
+    <p class="actions"><button class="button-danger" type="submit">Удалить</button></p>
+  </form>
+</section>
+
+<section class="panel">
+  <h2>Список шаблонов</h2>
+  <form class="search-form" method="get" action="/templates" hx-get="/templates" hx-target="#template-list" hx-swap="innerHTML">
+  <p class="field">
+    <label for="template-query">Поиск шаблона</label>
+    <input id="template-query" name="q" type="text" value="">
+  </p>
+  <p class="actions"><button type="submit">Найти</button></p>
+</form>
+<div id="template-list">
+
+<ul class="template-list">
+  <li class="template-item">
+    <a class="link" href="/templates/intro/edit">Приветствие</a>
+    <span class="template-meta">Тема для {{company}} · ревизия 1</span>
+  </li>
+</ul>
+</div>
+</section>
+  </main>
+</body>
+</html>

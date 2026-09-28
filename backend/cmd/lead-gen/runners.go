@@ -3,14 +3,23 @@ package main
 import (
 	"context"
 	"errors"
-	"log/slog"
+	"fmt"
 	"net/http"
+	"strings"
 	"sync"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
+	integrationplatform "lead-gen/backend/contexts/integration-platform"
+	leadmanagement "lead-gen/backend/contexts/lead-management"
 	outreachorchestration "lead-gen/backend/contexts/outreach-orchestration"
 	composition "lead-gen/backend/platform/composition"
+	"lead-gen/backend/platform/migrate"
+	"lead-gen/backend/platform/observability/observ"
 	"lead-gen/backend/platform/transport/amqp"
+	"lead-gen/contracts/integration-platform/budget"
+	"lead-gen/contracts/integration-platform/llm"
 )
 
 // buildOptions — параметры, общие для сборки сервисов в одном процессе.
@@ -19,6 +28,32 @@ type buildOptions struct {
 	publishInterval time.Duration
 	actor           string
 	tenant          string
+
+	// Наблюдаемость процесса: логгер и метрики общие для сервисов, трейсер
+	// строится на сервис (service.name).
+	logger  observ.Logger
+	metrics observ.Metrics
+
+	// Конфигурация сервиса lead-management.
+	leadGreenDSN        string // DSN зелёной зоны; пусто — in-memory адаптеры
+	leadRedDSN          string // DSN красной зоны; пусто — DSN зелёной зоны
+	firecrawlKey        string // ключ Firecrawl; обязателен для поиска и обхода
+	firecrawlURL        string // базовый адрес Firecrawl; пусто — по умолчанию
+	llmBaseURL          string // базовый адрес LLM (DeepSeek); пусто — по умолчанию
+	llmModel            string // модель LLM; пусто — по умолчанию
+	llmKey              string // ключ LLM; пусто — LLM-планирование отключено
+	consoleUser         string // логин оператора консоли
+	consolePassword     string // пароль оператора консоли
+	leadMaxPages        int    // верхний предел страниц обхода на сайт; 0 — без предела
+	leadMaxDepth        int    // максимальная глубина обхода
+	leadMaxTimeSeconds  int    // предельное время обхода, с
+	dialogueMaxTurns    int    // предел числа ходов диалога ассистента
+	firecrawlMaxCredits int    // лимит кредитов Firecrawl на задачу; 0 — без бюджета
+	smtpHost            string // адрес SMTP-сервера отправки писем
+	smtpPort            int    // порт SMTP-сервера
+	smtpUsername        string // имя учётной записи SMTP
+	smtpPassword        string // пароль учётной записи SMTP
+	smtpFrom            string // адрес отправителя писем
 }
 
 // buildService собирает сервис по его идентификатору и механизму группы
@@ -36,6 +71,7 @@ func buildService(
 	broker amqp.Publisher,
 	stub *publicIngestStub,
 ) (composition.Service, error) {
+	tracer := observ.NewTracer(id)
 	switch id {
 	case outreachorchestration.ServiceID:
 		return outreachorchestration.New(outreachorchestration.Config{
@@ -45,10 +81,172 @@ func buildService(
 			Risk:      outreachorchestration.NoUpstreamRiskChecks,
 			Publisher: broker,
 			Transport: mechanism,
+			Logger:    opts.logger,
+			Metrics:   opts.metrics,
+			Tracer:    tracer,
+		})
+	case leadmanagement.ServiceID:
+		return buildLeadManagement(opts, tracer)
+	case integrationplatform.ServiceID:
+		return integrationplatform.New(integrationplatform.Config{
+			Logger:  opts.logger,
+			Metrics: opts.metrics,
+			Tracer:  tracer,
 		})
 	default:
 		return &stubService{id: id, ingest: stub}, nil
 	}
+}
+
+// buildLeadManagement собирает сервис lead-management и впрыскивает адаптеры.
+// Репозитории берутся из PostgreSQL по DSN зон либо из памяти (dev); поиск и
+// обход обслуживает Firecrawl, планирование — LLM (DeepSeek), если задан ключ.
+func buildLeadManagement(opts buildOptions, tracer observ.Tracer) (composition.Service, error) {
+	if strings.TrimSpace(opts.firecrawlKey) == "" {
+		return nil, errors.New("lead-management: firecrawl-key обязателен для поиска и обхода")
+	}
+
+	firecrawlClient, err := integrationplatform.NewFirecrawl(integrationplatform.FirecrawlConfig{
+		APIKey:  opts.firecrawlKey,
+		BaseURL: opts.firecrawlURL,
+		Logger:  opts.logger,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("lead-management: Firecrawl: %w", err)
+	}
+
+	// Бюджетная обёртка Firecrawl строится всегда при заданном ключе: она нужна
+	// не только для кредитного лимита задания, но и для измерения фактического
+	// расхода. Задание без явного бюджета (maxCredits == 0) обрабатывается самой
+	// обёрткой как безлимитное: лимит не применяется, расход фиксируется.
+	guard, err := integrationplatform.NewFirecrawlGuard(integrationplatform.FirecrawlGuardConfig{
+		APIKey:  opts.firecrawlKey,
+		BaseURL: opts.firecrawlURL,
+		Logger:  opts.logger,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("lead-management: Firecrawl guard: %w", err)
+	}
+	firecrawlBudget := budget.Factory(guard)
+	firecrawlAccount := budget.AccountReader(guard)
+
+	// Форумный источник по умолчанию — тот же поисковый движок, ограниченный
+	// доменами форумов; отдельного ключа не требует.
+	forumClient := integrationplatform.NewForum(integrationplatform.ForumConfig{Search: firecrawlClient})
+
+	var repos leadmanagement.Repositories
+	if opts.leadGreenDSN == "" {
+		// Dev без внешней СУБД: состояние живёт в памяти процесса.
+		repos = leadmanagement.NewMemoryRepositories()
+	} else {
+		greenPool, err := newLeadPool(opts.leadGreenDSN, "green")
+		if err != nil {
+			return nil, err
+		}
+		redDSN := opts.leadRedDSN
+		if redDSN == "" {
+			redDSN = opts.leadGreenDSN
+		}
+		redPool, err := newLeadPool(redDSN, "red")
+		if err != nil {
+			greenPool.Close()
+			return nil, err
+		}
+
+		if err := applyMigrations(greenPool, "backend/contexts/lead-management/migrations/green"); err != nil {
+			greenPool.Close()
+			redPool.Close()
+			return nil, err
+		}
+		if err := applyMigrations(redPool, "backend/contexts/lead-management/migrations/red"); err != nil {
+			greenPool.Close()
+			redPool.Close()
+			return nil, err
+		}
+
+		// Пулы живут столько же, сколько процесс: сервис не владеет их закрытием
+		// (нет shutdown-хука в composition.Service), поэтому закрываются на выходе.
+		repos = leadmanagement.NewPostgresRepositories(greenPool, redPool)
+	}
+
+	var llmPort llm.Port
+	if opts.llmKey != "" {
+		llmPort = integrationplatform.NewOpenAI(integrationplatform.OpenAIConfig{
+			BaseURL: opts.llmBaseURL,
+			Model:   opts.llmModel,
+			APIKey:  opts.llmKey,
+		})
+	}
+
+	smtpHost := opts.smtpHost
+	if strings.TrimSpace(smtpHost) == "" {
+		smtpHost = "localhost"
+	}
+	smtpClient, err := integrationplatform.NewSmtp(integrationplatform.SmtpConfig{
+		Host:     smtpHost,
+		Port:     opts.smtpPort,
+		Username: opts.smtpUsername,
+		Password: opts.smtpPassword,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("lead-management: SMTP: %w", err)
+	}
+
+	return leadmanagement.New(leadmanagement.Config{
+		APIAddr:          opts.apiAddr,
+		Profiles:         repos.Profiles,
+		Contacts:         repos.Contacts,
+		Jobs:             repos.Jobs,
+		Messages:         repos.Messages,
+		Templates:        repos.Templates,
+		Activity:         repos.Activity,
+		Assessments:      repos.Assessments,
+		Search:           firecrawlClient,
+		Crawl:            firecrawlClient,
+		Budget:           firecrawlBudget,
+		Account:          firecrawlAccount,
+		LLM:              llmPort,
+		DialogueMaxTurns: opts.dialogueMaxTurns,
+		Forum:            forumClient,
+		Mail:             smtpClient,
+		MailFrom:         opts.smtpFrom,
+		ConsoleUser:      opts.consoleUser,
+		ConsolePassword:  opts.consolePassword,
+		Logger:           opts.logger,
+		Metrics:          opts.metrics,
+		Tracer:           tracer,
+		Limits: leadmanagement.CrawlLimits{
+			MaxDepth:       opts.leadMaxDepth,
+			MaxTimeSeconds: opts.leadMaxTimeSeconds,
+			MaxPages:       opts.leadMaxPages,
+			IncludePaths:   []string{"contact", "team", "about", "staff", "impressum"},
+		},
+		Interval: time.Second,
+	})
+}
+
+// newLeadPool собирает пул соединений PostgreSQL для зоны данных.
+func newLeadPool(dsn, zone string) (*pgxpool.Pool, error) {
+	pool, err := pgxpool.New(context.Background(), dsn)
+	if err != nil {
+		return nil, fmt.Errorf("lead-management: пул зоны %s: %w", zone, err)
+	}
+	return pool, nil
+}
+
+// applyMigrations загружает миграции схемы сервиса из каталога и применяет их к
+// пулу. Принадлежность схеме проверяет migrate.Load до выполнения.
+func applyMigrations(pool *pgxpool.Pool, dir string) error {
+	migrations, err := migrate.Load(dir, migrate.OwnSchema(leadmanagement.ServiceID))
+	if err != nil {
+		return err
+	}
+	for _, m := range migrations {
+		if _, err := pool.Exec(context.Background(), m.SQL); err != nil {
+			return fmt.Errorf("lead-management: миграция %s: %w", m.Name, err)
+		}
+	}
+	return nil
 }
 
 // stubService — сервис, для которого composition-пакет ещё не написан. Роль не
@@ -76,12 +274,13 @@ func (s *stubService) RoleRunner(role composition.Role) (composition.RoleRunner,
 // один на процесс, сколько бы сервисов ни объявляли роль ingest: без
 // зарегистрированных обработчиков все пути отвечают 404.
 type publicIngestStub struct {
-	addr string
-	once sync.Once
+	addr   string
+	logger observ.Logger
+	once   sync.Once
 }
 
-func newPublicIngestStub(addr string) *publicIngestStub {
-	return &publicIngestStub{addr: addr}
+func newPublicIngestStub(addr string, logger observ.Logger) *publicIngestStub {
+	return &publicIngestStub{addr: addr, logger: logger}
 }
 
 // run поднимает сервер при первом вызове и блокируется до отмены контекста.
@@ -99,9 +298,9 @@ func (p *publicIngestStub) run(ctx context.Context) error {
 			ReadHeaderTimeout: 5 * time.Second,
 		}
 		go func() {
-			slog.Info("ingest: публичный HTTP-сервер запущен (заглушка 404)", "addr", p.addr)
+			p.logger.Info("ingest: публичный HTTP-сервер запущен (заглушка 404)", observ.Fields{}, "addr", p.addr)
 			if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-				slog.Error("ingest: работа HTTP-сервера", "error", err)
+				p.logger.Error("ingest: работа HTTP-сервера", err, observ.Fields{})
 			}
 		}()
 		go func() {

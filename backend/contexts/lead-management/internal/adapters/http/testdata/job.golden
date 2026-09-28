@@ -1,0 +1,118 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Задание</title>
+  <link rel="stylesheet" href="/static/console.css">
+  <script src="/static/htmx.min.js" defer></script>
+  <script src="/static/console.js" defer></script>
+  <script src="/static/assistant.js" defer></script>
+</head>
+<body>
+  <nav class="sidebar">
+  <ul class="sidebar-list">
+    <li><a href="/" class="is-active" aria-current="page">Главная</a></li>
+    <li><a href="/cards">Карточки</a></li>
+    <li><a href="/funnel">Воронка</a></li>
+    <li><a href="/send">Отправка</a></li>
+    <li><a href="/assistant">Ассистент</a></li>
+    <li><a href="/forum-signals">Форумы</a></li>
+  </ul>
+</nav>
+  <main class="page">
+<header class="page-head">
+  <h1>Задание</h1>
+</header>
+
+<article class="card job-detail">
+  <header class="card-head">
+    <h2>Запрос</h2>
+    <p class="job-query">агентства автоматизации B2B</p>
+    <p class="card-source">
+      <span class="status status-done" title="найдено компаний 2">done</span>
+      <span class="job-id">job-1</span>
+    </p>
+  </header>
+
+  <section class="card-section">
+    <h3>Сводка</h3>
+    <dl class="job-facts">
+      <dt>Создано</dt><dd> 2026-01-02 10:00:00</dd>
+      <dt>Обновлено</dt><dd> 2026-01-02 10:00:00</dd>
+      <dt>Найдено компаний</dt><dd> 2</dd>
+      <dt>Бюджет</dt><dd> —</dd>
+      <dt>Ход</dt><dd> завершение · страниц 12 · компаний 2 · токенов 340</dd>
+    </dl>
+  </section>
+
+  
+  <section class="card-section">
+    <h3>Распределение оценок</h3>
+    <dl class="verdict-distribution">
+      <dt>Подходит</dt><dd data-verdict="fits">1</dd>
+      <dt>Гипотеза</dt><dd data-verdict="hypothesis">1</dd>
+      <dt>Не подходит</dt><dd data-verdict="unsuitable">0</dd>
+    </dl>
+    <p class="hint"><a class="link" href="/cards?job=job-1">Открыть список результатов по оценкам</a></p>
+  </section>
+
+  
+  <section class="card-section">
+    <h3>Подходящие: основания и источники</h3>
+    <ul class="fit-list">
+      <li class="fit-item">
+        <p class="fit-head">
+          <a class="link" href="/cards/example.com?job=job-1">example.com</a>
+          <span class="verdict verdict-fits">Подходит</span>
+          <span class="assessment-signal">косвенный сигнал</span>
+        </p>
+        <ul class="evidence-list">
+  <li class="evidence-item">
+    <dl class="evidence-facts">
+      <dt>Критерий</dt><dd>агентства автоматизации B2B-продаж</dd><dt>Факт</dt><dd>компания наняла руководителя отдела продаж</dd><dt>Источник</dt><dd><a class="link" href="https://example.com/careers" rel="noopener noreferrer">https://example.com/careers</a></dd><dt>Объяснение связи</dt><dd>рост отдела продаж указывает на потребность в автоматизации</dd>
+      <dt>Тип сигнала</dt><dd>косвенный сигнал</dd>
+    </dl>
+  </li>
+</ul>
+      </li>
+    </ul>
+  </section>
+
+  <section class="card-section">
+    <h3>Найденные компании</h3>
+    <ul class="socials">
+      <li>
+        <a class="link" href="/cards/example.com?job=job-1">example.com</a> <span class="verdict verdict-fits">Подходит</span>
+      </li>
+      <li>
+        <a class="link" href="/cards/alpha.example?job=job-1">alpha.example</a> <span class="verdict verdict-hypothesis">Гипотеза</span>
+      </li>
+    </ul>
+  </section>
+
+  <section class="card-section">
+    <h3>Ход выполнения</h3>
+    <ol class="timeline">
+  <li class="timeline-point is-done" data-detail="2026-01-02 10:00:00" title="2026-01-02 10:00:00">
+    <span class="timeline-dot" aria-hidden="true"></span>
+    <span class="timeline-label">Поставлено в очередь</span><span class="timeline-detail" role="tooltip">2026-01-02 10:00:00</span>
+  </li>
+  <li class="timeline-point is-done" data-detail="2026-01-02 10:00:00 · обход · страниц 10 · компаний 2" title="2026-01-02 10:00:00 · обход · страниц 10 · компаний 2">
+    <span class="timeline-dot" aria-hidden="true"></span>
+    <span class="timeline-label">Фаза: обход</span><span class="timeline-detail" role="tooltip">2026-01-02 10:00:00 · обход · страниц 10 · компаний 2</span>
+  </li>
+  <li class="timeline-point is-done" data-detail="2026-01-02 10:00:00 · завершение · страниц 12 · компаний 2 · токенов 340" title="2026-01-02 10:00:00 · завершение · страниц 12 · компаний 2 · токенов 340">
+    <span class="timeline-dot" aria-hidden="true"></span>
+    <span class="timeline-label">Завершено</span><span class="timeline-detail" role="tooltip">2026-01-02 10:00:00 · завершение · страниц 12 · компаний 2 · токенов 340</span>
+  </li>
+</ol>
+  </section>
+
+  <footer class="card-actions">
+    <a class="link" href="/">← К журналу</a>
+  </footer>
+</article>
+  </main>
+</body>
+</html>

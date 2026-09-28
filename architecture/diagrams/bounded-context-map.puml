@@ -12,6 +12,9 @@ package "Generic" {
 }
 package "Core" {
   rectangle "Управление лидами\n<<core>>" as Leads
+  note right of Leads
+    capability: lead-workflow, lead-email
+  end note
   rectangle "Аудитория\n<<core>>" as Audience
   rectangle "Оркестрация исходящих\nдействий\n<<core>>" as Outreach
   rectangle "Доставка сообщений\n<<core>>" as Delivery

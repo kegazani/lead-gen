@@ -18,24 +18,38 @@ var baseFS embed.FS
 
 // baseTemplates — файлы каркаса и общих фрагментов, подключаемые к каждой
 // странице. Фрагменты переиспользуются страницами через {{ template }}.
-var baseTemplates = []string{"templates/layout.html", "templates/notice.html", "templates/field.html"}
+// Вкладки, бейдж статуса и происхождение — тоже фрагменты полной страницы:
+// они объявлены здесь, чтобы шаблон "content" консоли мог их вызвать, а
+// функции Render* остались для гипермедиа-частичных ответов.
+var baseTemplates = []string{
+	"templates/layout.html",
+	"templates/notice.html",
+	"templates/field.html",
+	"templates/tabs.html",
+	"templates/status-badge.html",
+	"templates/provenance.html",
+	"templates/nav.html",
+}
 
 // LangRu — язык разметки по умолчанию: содержимое компонентов на русском.
 const LangRu = "ru"
 
-// Layout — каркас страницы: язык документа, заголовок окна и внешние таблицы
-// стилей. Тело страницы задаёт шаблон "content" конкретной страницы.
+// Layout — каркас страницы: язык документа, заголовок окна, внешние таблицы
+// стилей и скрипты. Тело страницы задаёт шаблон "content" конкретной страницы.
 type Layout struct {
 	Lang        string
 	Title       string
 	Stylesheets []string
+	Scripts     []string
 }
 
-// Page — данные страницы: каркас и модель экрана. Заголовок вынесен отдельно,
-// потому что его видит и каркас, а модель — только шаблон самого экрана.
+// Page — данные страницы: каркас, необязательная вертикальная навигация и модель
+// экрана. Заголовок вынесен отдельно, потому что его видит и каркас, а модель —
+// только шаблон самого экрана.
 type Page struct {
-	Layout Layout
-	View   any
+	Layout  Layout
+	Sidebar Nav
+	View    any
 }
 
 // Notice — переиспользуемый фрагмент уведомления: отказ, ненайденная страница,
@@ -43,6 +57,21 @@ type Page struct {
 type Notice struct {
 	Heading string
 	Message string
+}
+
+// NavItem — пункт вертикальной навигации (sidebar): подпись, адрес и флаг
+// активности. Компонент не знает, куда ведут пункты и что за ними: это данные
+// представления.
+type NavItem struct {
+	Label  string
+	Href   string
+	Active bool
+}
+
+// Nav — вертикальная навигация (sidebar) каркаса. Пустой список Items означает
+// «страница без sidebar».
+type Nav struct {
+	Items []NavItem
 }
 
 // Field — поле формы: подпись, контрол и сообщение об ошибке. Ошибка приходит
@@ -103,6 +132,18 @@ func (s *Set) Render(w io.Writer, name string, page Page) error {
 		page.Layout.Lang = LangRu
 	}
 	return parsed.ExecuteTemplate(w, "layout", page)
+}
+
+// RenderFragment исполняет именованный шаблон (фрагмент) набора страницы без
+// каркаса layout. Нужен для гипермедиа-частичных ответов: вернуть только фрагмент
+// (например, обновлённый журнал заданий), который HTMX подставит в уже открытую
+// страницу. Фрагмент объявляется в том же файле страницы, что и "content".
+func (s *Set) RenderFragment(w io.Writer, pageName, fragmentName string, data any) error {
+	parsed, ok := s.pages[pageName]
+	if !ok {
+		return fmt.Errorf("components: неизвестная страница %q", pageName)
+	}
+	return parsed.ExecuteTemplate(w, fragmentName, data)
 }
 
 // FieldError — ошибка поля по имени, пустая строка при её отсутствии. Помогает

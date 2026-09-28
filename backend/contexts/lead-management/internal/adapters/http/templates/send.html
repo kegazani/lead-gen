@@ -1,0 +1,41 @@
+{{- define "content" -}}
+{{- with .View -}}
+<header class="page-head">
+  <h1>Отправка</h1>
+</header>
+
+{{- if or (gt .Sent 0) (gt .Skipped 0) }}
+<section class="panel">
+  <h2>Итог рассылки</h2>
+  <p>Отправлено: {{.Sent}}, пропущено: {{.Skipped}}</p>
+</section>
+{{- end }}
+
+<section class="panel">
+  <h2>Рассылка по сегменту</h2>
+  <form method="post" action="/send-segment">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <p class="field">
+      <label for="template">Шаблон</label>
+      <select id="template" name="template">
+        <option value="">— выберите шаблон —</option>
+        {{- range .Options }}
+        <option value="{{.ID}}"{{if .Selected}} selected{{end}}>{{.Name}}</option>
+        {{- end }}
+      </select>
+    </p>
+    {{ .ValuesHTML }}
+    <p class="actions">
+      <button type="button" class="button-secondary" hx-post="/send/preview" hx-include="closest form" hx-target="#email-preview">Предпросмотр</button>
+      <button type="submit">Разослать</button>
+    </p>
+  </form>
+  <div id="email-preview">{{ .Preview }}</div>
+</section>
+
+<section class="panel">
+  <h2>Библиотека шаблонов</h2>
+  {{ .TemplateList }}
+</section>
+{{- end -}}
+{{- end -}}

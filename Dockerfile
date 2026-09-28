@@ -20,17 +20,20 @@ ENV CGO_ENABLED=0 \
     GOOS=linux \
     GOFLAGS=-trimpath
 
-# go.sum не копируется: go.mod-модулей без внешних зависимостей. При их появлении
-# добавить `COPY go.sum ./` и `RUN go mod download` перед копированием исходников.
-#
-# go.work в образ не копируется: он ссылается на модули, которых в контексте образа
-# нет (frontend/*, tools/*), и сборка упала бы на «модуль не найден». Вместо него
-# образ создаёт минимальный workspace из модулей служебного контура и его
-# зависимостей. Внешних зависимостей у модулей нет — сборка идёт без сети.
+# Модули служебного контура. Полный go.work в образ не копируется: он ссылается
+# на frontend/public и tools/*, которых в контексте образа нет (см. .dockerignore), —
+# вместо него ниже собирается минимальный workspace из модулей, нужных
+# cmd/lead-gen (консоль lead-management переиспользует frontend/components).
+# Вместе с каталогами приходят go.sum модулей с внешними зависимостями (pgx/v5).
 COPY backend/ ./backend/
 COPY contracts/ ./contracts/
+COPY frontend/components/ ./frontend/components/
 
-RUN printf 'go 1.25\n\nuse (\n\t./backend/cmd/lead-gen\n\t./backend/contexts/outreach-orchestration\n\t./backend/platform\n\t./contracts/outreach-orchestration\n)\n' > go.work
+RUN printf 'go 1.25\n\nuse (\n\t./backend/cmd/lead-gen\n\t./backend/contexts/outreach-orchestration\n\t./backend/contexts/lead-management\n\t./backend/contexts/integration-platform\n\t./backend/platform\n\t./contracts/outreach-orchestration\n\t./contracts/integration-platform\n\t./frontend/components\n)\n' > go.work
+
+# Внешние зависимости появились (github.com/jackc/pgx/v5 и транзитивные):
+# скачиваем до сборки, чтобы слой кэшировался. Требует сети.
+RUN go mod download
 
 RUN go build -ldflags="-s -w" -o /out/lead-gen ./backend/cmd/lead-gen
 
@@ -38,13 +41,21 @@ FROM gcr.io/distroless/static-debian12:nonroot AS runtime
 
 COPY --from=build /out/lead-gen /usr/local/bin/lead-gen
 
-# Конфигурация по умолчанию: образ самодостаточен. OpenTofu монтирует актуальную
-# копию deploy/services.yaml поверх этого пути (только на чтение).
+# Конфигурация по умолчанию: образ самодостаточен. Оркестрация (OpenTofu или
+# docker compose) задаёт актуальную копию deploy/services.yaml поверх этого пути
+# (bind-mount только на чтение) и передаёт `-config`.
 COPY deploy/services.yaml /etc/lead-gen/services.yaml
+
+# Миграции схемы lead-management читаются из каталога относительно рабочего
+# каталога (applyMigrations в cmd/lead-gen), поэтому кладём их по тому же пути
+# от корня. Рабочий каталог ступени выполнения — /.
+COPY backend/contexts/lead-management/migrations/ /backend/contexts/lead-management/migrations/
+
+WORKDIR /
 
 USER nonroot:nonroot
 
-# Внутренние HTTP-сервера ролей: api и ingest. Наружу не публикуются.
+# Внутренние HTTP-сервера ролей: api и ingest. Наружу публикует оркестрация.
 EXPOSE 8080 8081
 
 ENTRYPOINT ["/usr/local/bin/lead-gen"]

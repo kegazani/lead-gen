@@ -6,7 +6,7 @@ skinparam shadowing false
 
 rectangle "platform-governance\n---\ntenant [green]\nuser-role [green]\naudit-record [green]" as Platform
 rectangle "data-governance\n---\nprocessing-basis [red]\nsuppression-entry [red]" as Governance
-rectangle "lead-management\n---\ncompany [mixed]\ncontact [red]\nattribute-provenance [red]\nemail-verification [red]\ncompany-size-profile [green]" as Leads
+rectangle "lead-management\n---\ncompany [mixed]\ncontact [red]\nattribute-provenance [red]\nemail-verification [red]\ncompany-size-profile [green]\noutbound-message [green]\nemail-template [green]\nlead-status [green]\nlead-assessment [green]" as Leads
 rectangle "audience\n---\nlead-score [red]\nsegment [red]\naudience-snapshot [red]" as Audience
 rectangle "content-production\n---\ncontent-asset [green]\ncontent-version [green]\nlanding-content [green]\ndocument [green]\nrender-job [green]" as Content
 rectangle "outreach-orchestration\n---\ncampaign [green]\nsequence-definition [green]\nsequence-execution [green]\naction-draft [green]\noperator-decision [green]\ncall [red]" as Outreach

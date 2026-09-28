@@ -32,7 +32,7 @@
 ## 5. Адаптеры
 
 - [x] 5.1 Реализовать in-memory адаптеры `CampaignRepository` и `Outbox` для тестов (верификация: общий contract suite проходит против in-memory-реализации)
-- [ ] 5.2 Реализовать PostgreSQL-адаптер `CampaignRepository` в зелёной зоне (верификация: тот же contract suite проходит против PostgreSQL-реализации). ЗАБЛОКИРОВАНА: нет драйвера PostgreSQL (`pgx`) и сетевого доступа к базе, решение по внешней зависимости не принято — в `adapters/persistence/postgres` оставлен только компилируемый каркас (`ErrDriverUnavailable`)
+- [x] 5.2 Реализовать PostgreSQL-адаптер `CampaignRepository` в зелёной зоне (верификация: тот же contract suite проходит против PostgreSQL-реализации). **Выполнено:** решение по зависимости принято — `github.com/jackc/pgx/v5` v5.8.0; `adapters/persistence/postgres` реализует `Save` (upsert агрегата целиком, составная запись в транзакции), `FindByID` и `LoadDraftWindow`, схема сервиса — `migrations/0001_campaign.sql` с директивой `-- schema: outreach-orchestration`. Тот же `contracttest.RunCampaignRepositoryContract` и `RunDraftWindowContract` проходят против PostgreSQL (`LEADGEN_POSTGRES_TEST_DSN`, цель `make test-postgres`).
 - [x] 5.3 Реализовать минимальный адаптер `AccessDecision` с явной пометкой «заглушка среза» (верификация: проверка права действует в пределах тенанта; в коде и README пакета указано, что полная политика RBAC остаётся за `platform-governance`)
 - [x] 5.4 Реализовать HTTP-обработчики `api` для команд и запросов среза (верификация: интеграционный тест проводит черновик от постановки до решения через HTTP)
 

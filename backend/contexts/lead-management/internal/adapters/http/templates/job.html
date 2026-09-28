@@ -1,0 +1,131 @@
+{{- define "timeline" -}}
+<ol class="timeline">
+{{- range . }}
+  <li class="timeline-point is-{{.State}}"{{ with .Detail }} data-detail="{{.}}" title="{{.}}"{{ end }}>
+    <span class="timeline-dot" aria-hidden="true"></span>
+    <span class="timeline-label">{{.Label}}</span>
+    {{- with .Detail }}<span class="timeline-detail" role="tooltip">{{.}}</span>{{- end }}
+  </li>
+{{- end }}
+</ol>
+{{- end -}}
+
+{{- define "evidence-list" -}}
+<ul class="evidence-list">
+{{- range . }}
+  <li class="evidence-item">
+    <dl class="evidence-facts">
+      <dt>Критерий</dt><dd>{{.Criterion}}</dd>
+      {{- with .Fact }}<dt>Факт</dt><dd>{{.}}</dd>{{ end }}
+      {{- with .SourceURL }}<dt>Источник</dt><dd><a class="link" href="{{.}}" rel="noopener noreferrer">{{.}}</a></dd>{{ end }}
+      {{- with .Reasoning }}<dt>Объяснение связи</dt><dd>{{.}}</dd>{{ end }}
+      <dt>Тип сигнала</dt><dd>{{.SignalLabel}}</dd>
+      {{- with .Missing }}<dt>Не хватает</dt><dd>{{.}}</dd>{{ end }}
+      {{- with .Mismatch }}<dt>Несоответствие</dt><dd>{{.}}</dd>{{ end }}
+    </dl>
+  </li>
+{{- else }}
+  <li class="empty">Свидетельств нет</li>
+{{- end }}
+</ul>
+{{- end -}}
+
+{{- define "content" -}}
+{{- with .View -}}
+<header class="page-head">
+  <h1>Задание</h1>
+</header>
+
+<article class="card job-detail">
+  <header class="card-head">
+    <h2>Запрос</h2>
+    <p class="job-query">{{.Query}}</p>
+    <p class="card-source">
+      {{ template "status-badge" .Badge }}
+      <span class="job-id">{{.ID}}</span>
+    </p>
+  </header>
+
+  <section class="card-section">
+    <h3>Сводка</h3>
+    <dl class="job-facts">
+      <dt>Создано</dt><dd>{{- if .Created}} {{.Created}}{{ else }} —{{ end }}</dd>
+      <dt>Обновлено</dt><dd>{{- if .Updated}} {{.Updated}}{{ else }} —{{ end }}</dd>
+      <dt>Найдено компаний</dt><dd> {{.Result}}</dd>
+      <dt>Бюджет</dt><dd>{{- if .Budget}} {{.Budget}}{{ else }} —{{ end }}</dd>
+      <dt>Ход</dt><dd>{{- if .Progress}} {{.Progress}}{{ else }} —{{ end }}</dd>
+    </dl>
+    {{- with .Error }}
+    <p class="error-text">{{.}}</p>
+    {{- end }}
+  </section>
+
+  {{/* Распределение оценок в контексте этого задания. Число компаний выше —
+       мониторинг; здесь — состав по вердиктам самого задания. */}}
+  <section class="card-section">
+    <h3>Распределение оценок</h3>
+    <dl class="verdict-distribution">
+      <dt>Подходит</dt><dd data-verdict="fits">{{.Distribution.Fits}}</dd>
+      <dt>Гипотеза</dt><dd data-verdict="hypothesis">{{.Distribution.Hypothesis}}</dd>
+      <dt>Не подходит</dt><dd data-verdict="unsuitable">{{.Distribution.Unsuitable}}</dd>
+    </dl>
+    {{- if eq .Distribution.Total 0 }}
+    <p class="empty">Оценок пока нет</p>
+    {{- end }}
+    <p class="hint"><a class="link" href="/cards?job={{.ID}}">Открыть список результатов по оценкам</a></p>
+  </section>
+
+  {{/* Основания и источники подходящих результатов: для «Подходит» видны
+       свидетельства, подтверждающие приведённые факты. */}}
+  <section class="card-section">
+    <h3>Подходящие: основания и источники</h3>
+    {{- if .Fits }}
+    <ul class="fit-list">
+    {{- range .Fits }}
+      <li class="fit-item">
+        <p class="fit-head">
+          <a class="link" href="{{.Href}}">{{.ID}}</a>
+          <span class="verdict verdict-{{.VerdictClass}}">{{.VerdictLabel}}</span>
+          <span class="assessment-signal">{{.SignalLabel}}</span>
+        </p>
+        {{ template "evidence-list" .Evidence }}
+      </li>
+    {{- end }}
+    </ul>
+    {{- else }}
+    <p class="empty">Подходящих компаний нет</p>
+    {{- end }}
+  </section>
+
+  <section class="card-section">
+    <h3>Найденные компании</h3>
+    {{- if .Companies }}
+    <ul class="socials">
+    {{- range .Companies }}
+      {{- $verdict := .VerdictClass }}
+      <li>
+        <a class="link" href="{{.Href}}">{{.ID}}</a>
+        {{- with .VerdictLabel }} <span class="verdict verdict-{{$verdict}}">{{.}}</span>{{ end }}
+      </li>
+    {{- end }}
+    </ul>
+    {{- else }}
+    <p class="empty">Компании не найдены</p>
+    {{- end }}
+  </section>
+
+  <section class="card-section">
+    <h3>Ход выполнения</h3>
+    {{- if .Points }}
+    {{ template "timeline" .Points }}
+    {{- else }}
+    <p class="empty">Ход выполнения не записан</p>
+    {{- end }}
+  </section>
+
+  <footer class="card-actions">
+    <a class="link" href="/">← К журналу</a>
+  </footer>
+</article>
+{{- end -}}
+{{- end -}}

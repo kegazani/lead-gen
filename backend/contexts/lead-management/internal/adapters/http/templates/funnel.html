@@ -1,0 +1,44 @@
+{{- define "content" -}}
+{{- with .View -}}
+{{- $csrf := .CSRF }}
+<header class="page-head">
+  <h1>Воронка</h1>
+  <p class="hint">Перетащите лида в колонку этапа. Перенос доступен и без перетаскивания: выберите этап в форме карточки и подтвердите — тот же путь работает с клавиатуры и при отключённом JavaScript.</p>
+</header>
+
+<section class="board">
+{{- range .Stages }}
+  {{- $stage := .Stage }}
+  <article class="stage-col" data-stage="{{.Stage}}">
+    <header class="stage-head">
+      <span class="stage-dot" aria-hidden="true"></span>
+      <h2>{{.Label}}</h2>
+      <span class="stage-count">{{.Count}}</span>
+    </header>
+    {{- if .Leads }}
+    <ul class="lead-list">
+    {{- range .Leads }}
+      <li class="lead" draggable="true" data-lead="{{.ID}}">
+        <span class="lead-name"><a class="link" href="/cards/{{.ID}}" draggable="false">{{.Name}}</a></span>
+        <form class="lead-move" method="post" action="/funnel/{{.ID}}/stage">
+          <input type="hidden" name="csrf" value="{{$csrf}}">
+          <label class="lead-move-label" for="stage-{{.ID}}">Этап для переноса</label>
+          <select id="stage-{{.ID}}" name="stage">
+            <option value="not warmed"{{if eq $stage "not warmed"}} selected{{end}}>Не прогрет</option>
+            <option value="email sent"{{if eq $stage "email sent"}} selected{{end}}>Письмо отправлено</option>
+            <option value="warming"{{if eq $stage "warming"}} selected{{end}}>Прогрев</option>
+            <option value="cold"{{if eq $stage "cold"}} selected{{end}}>Холодный</option>
+          </select>
+          <button class="button-secondary" type="submit">Перенести</button>
+        </form>
+      </li>
+    {{- end }}
+    </ul>
+    {{- else }}
+    <p class="empty">Лидов нет</p>
+    {{- end }}
+  </article>
+{{- end }}
+</section>
+{{- end -}}
+{{- end -}}

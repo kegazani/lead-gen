@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Ассистент</title>
+  <link rel="stylesheet" href="/static/console.css">
+  <script src="/static/htmx.min.js" defer></script>
+  <script src="/static/console.js" defer></script>
+  <script src="/static/assistant.js" defer></script>
+</head>
+<body>
+  <nav class="sidebar">
+  <ul class="sidebar-list">
+    <li><a href="/">Главная</a></li>
+    <li><a href="/cards">Карточки</a></li>
+    <li><a href="/funnel">Воронка</a></li>
+    <li><a href="/send">Отправка</a></li>
+    <li><a href="/assistant" class="is-active" aria-current="page">Ассистент</a></li>
+    <li><a href="/forum-signals">Форумы</a></li>
+  </ul>
+</nav>
+  <main class="page">
+<header class="page-head">
+  <h1>Ассистент</h1>
+  <p class="hint">Опишите, каких клиентов ищете. Ассистент задаст уточняющие вопросы и соберёт план. Операторские параметры — глубина и время работы в секундах — согласуются в разговоре, а цели, целевое число компаний и лимит поиска можно править прямо в панели плана перед запуском.</p>
+</header>
+
+<section class="panel">
+  <h2>Диалог</h2>
+  <ul class="dialogue" data-dialogue aria-live="polite">
+    <li class="dialogue-operator">ищем B2B-логистов</li>
+    <li class="dialogue-agent">Собираю план: ищем B2B-логистов.</li>
+  </ul>
+
+  <form method="post" action="/assistant" data-assistant-form>
+    <input type="hidden" name="csrf" value="TOKEN">
+    <input type="hidden" name="history" value="[{&#34;role&#34;:&#34;user&#34;,&#34;content&#34;:&#34;ищем B2B-логистов&#34;},{&#34;role&#34;:&#34;assistant&#34;,&#34;content&#34;:&#34;Собираю план: ищем B2B-логистов.&#34;}]">
+    <input type="hidden" name="plan" value="[{&#34;query&#34;:&#34;логистические компании B2B&#34;}]">
+    <input type="hidden" name="maxDepth" value="3">
+    <input type="hidden" name="maxTimeSeconds" value="120">
+    <input type="hidden" name="probeMaxDepth" value="1">
+    <input type="hidden" name="probeMaxTimeSeconds" value="60">
+    <input type="hidden" name="probeMaxCredits" value="5">
+
+    <p class="field">
+      <label for="message">Ваш ответ</label>
+      <textarea id="message" name="message" rows="3"></textarea>
+    </p>
+    <p class="actions">
+      <button type="submit" name="action" value="turn">Отправить</button>
+      <button type="submit" name="action" value="launch" class="button-secondary">Запустить краулинг</button>
+      <button type="submit" name="action" value="probe" class="button-secondary">Проверочная сессия</button>
+    </p>
+    <p class="hint" data-assistant-status role="status"></p>
+  </form>
+</section>
+
+<section class="panel" data-interpretation-section>
+  <h2>Как система поняла запрос</h2>
+  
+  <div data-interpretation-body>
+    <p class="hint" data-interpretation-uncertainty>Не удалось определить критерии: провайдер интерпретации недоступен</p>
+  </div>
+</section>
+
+<section class="panel" data-plan-section>
+  <h2>Технический план обхода</h2>
+  <ul class="plan-targets" data-plan-targets>
+    <li>Запрос: логистические компании B2B</li>
+  </ul>
+  <ul class="plan-chips" data-plan-limits>
+    <li class="chip"><span class="chip-label">Глубина</span> <span class="chip-value">3</span></li>
+    <li class="chip"><span class="chip-label">Время, с</span> <span class="chip-value">120</span></li>
+  </ul>
+  
+  <div class="plan-edit" data-plan-edit>
+    <p class="field">
+      <label for="targetCompanies">Сколько найти компаний</label>
+      <input id="targetCompanies" name="targetCompanies" type="text" value="">
+    </p>
+    <p class="field">
+      <label for="maxResults">Результатов на запрос</label>
+      <input id="maxResults" name="maxResults" type="text" value="">
+    </p>
+    <p class="field">
+      <label for="manualTargets">Свои цели (по строке — запрос или URL)</label>
+      <textarea id="manualTargets" name="manualTargets" rows="3"></textarea>
+    </p>
+  </div>
+  <p class="hint" data-plan-ready>Ассистент считает план готовым — можно запускать.</p>
+</section>
+  </main>
+</body>
+</html>

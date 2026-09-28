@@ -1,0 +1,58 @@
+{{- define "cards-group" -}}
+{{- range . }}
+  {{- $verdict := .VerdictClass }}
+  <a class="cards-item{{ if .NoEmail }} is-no-email{{ end }}" href="/cards/{{.ID}}" data-group="{{.Group}}"{{ if .NoEmail }} aria-label="{{.Name}} — нет email"{{ end }}>
+    <span class="card-email">{{ if .Email }}{{.Email}}{{ else }}<span class="card-no-email">нет email</span>{{ end }}</span>
+    <span class="card-name">{{.Name}}</span>
+    {{- with .VerdictLabel }}<span class="card-verdict verdict verdict-{{$verdict}}">{{.}}</span>{{ end }}
+    <span class="card-desc">{{.ShortDescription}}</span>
+  </a>
+{{- end -}}
+{{- end -}}
+
+{{- define "content" -}}
+{{- with .View -}}
+<header class="page-head">
+  <h1>Карточки</h1>
+  {{- if .JobScoped }}
+  <p class="hint">Состав по оценкам задания</h1>: {{.JobQuery}} <span class="job-id">{{.JobID}}</span></p>
+  {{- end }}
+</header>
+
+<section class="panel">
+  {{/* Две независимые оси: состав результатов (по умолчанию «Подходящие»,
+       вторая группа — переключением) и представление «плитки/строки». Обе оси
+       работают на одном контейнере через разные атрибуты, поэтому не влияют друг
+       на друга. Без JavaScript список остаётся читаемым: показаны «Подходящие» в
+       плитках, отрисованных сервером. */}}
+  <div class="cards-toolbar">
+    <div class="composition-switch" role="group" aria-label="Состав результатов">
+      <button type="button" class="view-option is-active" data-composition-set="fits" aria-pressed="true">Подходящие</button>
+      <button type="button" class="view-option" data-composition-set="other" aria-pressed="false">Неподходящие и гипотезы</button>
+    </div>
+    <div class="view-switch" role="group" aria-label="Вид списка карточек">
+      <button type="button" class="view-option is-active" data-view-set="tiles" aria-pressed="true">Плитки</button>
+      <button type="button" class="view-option" data-view-set="rows" aria-pressed="false">Строки</button>
+    </div>
+  </div>
+
+  {{/* Одна модель карточки на оба представления и оба состава: вид переключает
+       атрибут data-cards-view, состав — data-cards-composition. Обе группы
+       остаются в разметке, вторая не удаляется. */}}
+  <div class="cards" data-cards-view="tiles" data-cards-composition="fits">
+    {{ template "cards-group" .Fits }}
+    {{ template "cards-group" .Other }}
+    {{- if and (not .Fits) (not .Other) }}
+    <p class="empty">Карточек пока нет</p>
+    {{- else }}
+    {{- if not .Fits }}
+    <p class="empty cards-empty" data-group="fits">Подходящих компаний пока нет</p>
+    {{- end }}
+    {{- if not .Other }}
+    <p class="empty cards-empty" data-group="other">Неподходящих компаний и гипотез пока нет</p>
+    {{- end }}
+    {{- end }}
+  </div>
+</section>
+{{- end -}}
+{{- end -}}

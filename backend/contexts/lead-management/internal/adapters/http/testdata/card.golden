@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Пример Компании</title>
+  <link rel="stylesheet" href="/static/console.css">
+  <script src="/static/htmx.min.js" defer></script>
+  <script src="/static/console.js" defer></script>
+  <script src="/static/assistant.js" defer></script>
+</head>
+<body>
+  <nav class="sidebar">
+  <ul class="sidebar-list">
+    <li><a href="/">Главная</a></li>
+    <li><a href="/cards" class="is-active" aria-current="page">Карточки</a></li>
+    <li><a href="/funnel">Воронка</a></li>
+    <li><a href="/send">Отправка</a></li>
+    <li><a href="/assistant">Ассистент</a></li>
+    <li><a href="/forum-signals">Форумы</a></li>
+  </ul>
+</nav>
+  <main class="page">
+<header class="page-head">
+  <h1>Карточка</h1>
+</header>
+
+<article class="card">
+  <header class="card-head">
+    <h2>Пример Компании</h2>
+    <p class="card-source">
+      <span class="status status-not-warmed">not warmed</span>
+      <span class="provenance"><a href="https://example.com" rel="noopener noreferrer">https://example.com</a> <time datetime="2026-01-02">2026-01-02</time></span>
+    </p>
+  </header>
+  <p class="card-description">Описание компании</p>
+
+  <section class="card-section">
+    <h3>Стадия</h3>
+    <ol class="timeline">
+  <li class="timeline-point is-current">
+    <span class="timeline-dot" aria-hidden="true"></span>
+    <span class="timeline-label">Не прогрет</span>
+  </li>
+  <li class="timeline-point is-pending">
+    <span class="timeline-dot" aria-hidden="true"></span>
+    <span class="timeline-label">Письмо отправлено</span>
+  </li>
+  <li class="timeline-point is-pending">
+    <span class="timeline-dot" aria-hidden="true"></span>
+    <span class="timeline-label">Прогрев</span>
+  </li>
+  <li class="timeline-point is-pending">
+    <span class="timeline-dot" aria-hidden="true"></span>
+    <span class="timeline-label">Холодный</span>
+  </li>
+</ol>
+  </section>
+
+  
+  <section class="card-section assessment">
+    <h3>Почему эта оценка?</h3>
+    <p class="assessment-verdict">
+      <span class="verdict verdict-hypothesis">Гипотеза</span>
+      <span class="assessment-signal">Тип сигнала: совпадение по профилю</span> <span class="assessment-context job-id">job-hypothesis</span>
+    </p>
+    <ul class="evidence-list">
+  <li class="evidence-item">
+    <dl class="evidence-facts">
+      <dt>Критерий</dt><dd>агентства автоматизации B2B-продаж</dd><dt>Факт</dt><dd>профиль: B2B-агентство из отраслевого каталога</dd><dt>Источник</dt><dd><a class="link" href="https://example.com/about" rel="noopener noreferrer">https://example.com/about</a></dd><dt>Объяснение связи</dt><dd>профиль совпадает, но заявленной потребности в автоматизации нет</dd>
+      <dt>Тип сигнала</dt><dd>совпадение по профилю</dd><dt>Не хватает</dt><dd>прямое заявление о потребности в автоматизации продаж</dd>
+    </dl>
+  </li>
+</ul>
+  </section>
+  <section class="card-section">
+    <h3>Соцсети</h3>
+    <ul class="socials">
+      <li><a class="link" href="https://www.linkedin.com/company/example" rel="noopener noreferrer">https://www.linkedin.com/company/example</a></li>
+    </ul>
+  </section>
+
+  <section class="card-section">
+    <h3>Контакты</h3>
+    <table class="table">
+      <thead>
+        <tr><th>Email</th><th>Телефон</th><th>Роль</th><th>Источник</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>hello@example.com</td>
+          <td>&#43;7 999 123-45-67</td>
+          <td>основатель</td>
+          <td>
+            <span class="provenance"><a href="https://example.com" rel="noopener noreferrer">https://example.com</a> <time datetime="2026-01-02">2026-01-02</time></span><span class="method">regex</span>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="card-section">
+    <h3>Переписка</h3>
+    <p class="empty">Переписки пока нет</p>
+  </section>
+
+  <details class="disclosure">
+    <summary>Отложить</summary>
+    <div class="reveal"><div class="disclosure-body">
+      <form method="post" action="/cards/example.com/snooze">
+        <input type="hidden" name="csrf" value="TOKEN">
+        <p class="field">
+          <label for="days">Дней</label>
+          <input id="days" name="days" type="text" value="7">
+        </p>
+        <p class="actions"><button class="button-secondary" type="submit">Отложить</button></p>
+      </form>
+    </div></div>
+  </details>
+
+  <details class="disclosure">
+    <summary>Отправить письмо</summary>
+    <div class="reveal"><div class="disclosure-body">
+      <form method="post" action="/cards/example.com/send">
+        <input type="hidden" name="key" value="TOKEN">
+        <input type="hidden" name="csrf" value="TOKEN">
+        <p class="field">
+          <label for="template">Шаблон</label>
+          <select id="template" name="template">
+            <option value="">— выберите шаблон —</option>
+            <option value="intro">Приветствие</option>
+          </select>
+        </p>
+        
+        <p class="actions">
+          <button type="button" class="button-secondary" hx-post="/cards/example.com/send/preview" hx-include="closest form" hx-target="#email-preview">Предпросмотр</button>
+          <button type="submit">Отправить</button>
+        </p>
+      </form>
+      <div id="email-preview"></div>
+    </div></div>
+  </details>
+
+  <section class="card-section">
+    <h3>Библиотека шаблонов</h3>
+    <form class="search-form" method="get" action="/cards/example.com?job=job-hypothesis" hx-get="/cards/example.com?job=job-hypothesis" hx-target="#template-list" hx-swap="innerHTML">
+  <p class="field">
+    <label for="template-query">Поиск шаблона</label>
+    <input id="template-query" name="q" type="text" value="">
+  </p>
+  <p class="actions"><button type="submit">Найти</button></p>
+</form>
+<div id="template-list">
+
+<ul class="template-list">
+  <li class="template-item">
+    <a class="link" href="/cards/example.com?template=intro&amp;job=job-hypothesis">Приветствие</a>
+    <span class="template-meta">Тема для {{company}} · ревизия 1</span>
+  </li>
+</ul>
+</div>
+  </section>
+
+  <footer class="card-actions">
+    <form method="post" action="/cards/example.com/hide">
+      <input type="hidden" name="csrf" value="TOKEN">
+      <button class="button-secondary" type="submit">Скрыть</button>
+    </form>
+    <form method="post" action="/cards/example.com/delete">
+      <input type="hidden" name="csrf" value="TOKEN">
+      <button class="button-danger" type="submit">Удалить</button>
+    </form>
+  </footer>
+</article>
+  </main>
+</body>
+</html>

@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -12,6 +11,7 @@ import (
 	"lead-gen/backend/contexts/outreach-orchestration/internal/adapters/outbox/relay"
 	"lead-gen/backend/contexts/outreach-orchestration/internal/domain"
 	composition "lead-gen/backend/platform/composition"
+	"lead-gen/backend/platform/observability/observ"
 	"lead-gen/backend/platform/transport/amqp"
 )
 
@@ -44,6 +44,12 @@ type Config struct {
 	// значение означает in-process (совмещённый деплой); сетевой транспорт в
 	// объёме среза не реализован.
 	Transport string
+
+	// Наблюдаемость сервиса: логгер, метрики и трейсер впрыскиваются
+	// composition root'ом; обязательны.
+	Logger  observ.Logger
+	Metrics observ.Metrics
+	Tracer  observ.Tracer
 }
 
 // Service — собранный сервис outreach-orchestration. Реализует
@@ -53,6 +59,9 @@ type Service struct {
 	sink     *AMQPSink
 	apiAddr  string
 	interval time.Duration
+	logger   observ.Logger
+	metrics  observ.Metrics
+	tracer   observ.Tracer
 }
 
 // New собирает сервис из in-memory адаптеров. Публикация собирается только
@@ -60,6 +69,15 @@ type Service struct {
 func New(cfg Config) (*Service, error) {
 	if cfg.Interval <= 0 {
 		cfg.Interval = time.Second
+	}
+	if cfg.Logger == nil {
+		return nil, fmt.Errorf("outreach-orchestration: Logger обязателен")
+	}
+	if cfg.Metrics == nil {
+		return nil, fmt.Errorf("outreach-orchestration: Metrics обязателен")
+	}
+	if cfg.Tracer == nil {
+		return nil, fmt.Errorf("outreach-orchestration: Tracer обязателен")
 	}
 
 	// Способ связи синхронного контракта выбирается топологией, а не сборкой:
@@ -90,6 +108,9 @@ func New(cfg Config) (*Service, error) {
 		sink:     amqpSink,
 		apiAddr:  cfg.APIAddr,
 		interval: cfg.Interval,
+		logger:   cfg.Logger,
+		metrics:  cfg.Metrics,
+		tracer:   cfg.Tracer,
 	}, nil
 }
 
@@ -126,9 +147,10 @@ func (s *Service) RoleRunner(role composition.Role) (composition.RoleRunner, boo
 // runAPI поднимает внутренний HTTP-сервер контекста и останавливает его по
 // отмене контекста.
 func (s *Service) runAPI(ctx context.Context) error {
+	handler := observ.Middleware(s.logger, s.metrics, s.tracer, ServiceID)(s.slice.Server)
 	server := &http.Server{
 		Addr:              s.apiAddr,
-		Handler:           s.slice.Server,
+		Handler:           handler,
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
@@ -137,11 +159,11 @@ func (s *Service) runAPI(ctx context.Context) error {
 		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 		defer cancel()
 		if err := server.Shutdown(shutdownCtx); err != nil {
-			slog.Error("api: останов HTTP-сервера", "service", ServiceID, "error", err)
+			s.logger.Error("api: останов HTTP-сервера", err, observ.Fields{}, "service", ServiceID)
 		}
 	}()
 
-	slog.Info("api: HTTP-сервер запущен", "service", ServiceID, "addr", s.apiAddr)
+	s.logger.Info("api: HTTP-сервер запущен", observ.Fields{}, "service", ServiceID, "addr", s.apiAddr)
 	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return fmt.Errorf("api: работа HTTP-сервера: %w", err)
 	}
@@ -162,13 +184,13 @@ func (s *Service) runWorker(ctx context.Context) error {
 
 	go func() {
 		if err := s.sink.Run(ctx); err != nil {
-			slog.Error("worker: транспортный relay", "service", ServiceID, "error", err)
+			s.logger.Error("worker: транспортный relay", err, observ.Fields{}, "service", ServiceID)
 		}
 	}()
 
-	slog.Warn("worker: обработчики очередей не зарегистрированы", "service", ServiceID)
+	s.logger.Warn("worker: обработчики очередей не зарегистрированы", observ.Fields{}, "service", ServiceID)
 
-	slog.Info("worker: публикация approved-action запущена", "service", ServiceID)
+	s.logger.Info("worker: публикация approved-action запущена", observ.Fields{}, "service", ServiceID)
 	s.publishPending(ctx)
 
 	ticker := time.NewTicker(s.interval)
@@ -176,7 +198,7 @@ func (s *Service) runWorker(ctx context.Context) error {
 	for {
 		select {
 		case <-ctx.Done():
-			slog.Info("worker: останов", "service", ServiceID)
+			s.logger.Info("worker: останов", observ.Fields{}, "service", ServiceID)
 			return nil
 		case <-ticker.C:
 			s.publishPending(ctx)
@@ -190,11 +212,11 @@ func (s *Service) runWorker(ctx context.Context) error {
 func (s *Service) publishPending(ctx context.Context) {
 	published, err := s.slice.Relay.PublishPending(ctx)
 	if err != nil {
-		slog.Error("worker: публикация approved-action", "service", ServiceID, "error", err, "published", published)
+		s.logger.Error("worker: публикация approved-action", err, observ.Fields{}, "service", ServiceID, "published", published)
 		return
 	}
 	if published > 0 {
-		slog.Info("worker: проход публикации завершён", "service", ServiceID, "published", published)
+		s.logger.Info("worker: проход публикации завершён", observ.Fields{}, "service", ServiceID, "published", published)
 	}
 }
 
@@ -202,7 +224,7 @@ func (s *Service) publishPending(ctx context.Context) {
 // (design.md, Решение 6) в срезе не реализован: роли честно сообщают об этом и
 // не делают вид, что ведут цепочки.
 func (s *Service) runChains(ctx context.Context) error {
-	slog.Warn("chains: планировщик долгих состояний не реализован", "service", ServiceID)
+	s.logger.Warn("chains: планировщик долгих состояний не реализован", observ.Fields{}, "service", ServiceID)
 	<-ctx.Done()
 	return nil
 }
@@ -210,7 +232,7 @@ func (s *Service) runChains(ctx context.Context) error {
 // runSchedule — каркас роли schedule. Тикер идемпотентных окон в срезе не
 // реализован: роль только сообщает о себе и завершается по отмене контекста.
 func (s *Service) runSchedule(ctx context.Context) error {
-	slog.Warn("schedule: тикер идемпотентных окон не реализован", "service", ServiceID)
+	s.logger.Warn("schedule: тикер идемпотентных окон не реализован", observ.Fields{}, "service", ServiceID)
 	<-ctx.Done()
 	return nil
 }

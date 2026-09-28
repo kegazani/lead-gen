@@ -1,0 +1,115 @@
+{{- define "content" -}}
+{{- with .View -}}
+<header class="page-head">
+  <h1>Ассистент</h1>
+  <p class="hint">Опишите, каких клиентов ищете. Ассистент задаст уточняющие вопросы и соберёт план. Операторские параметры — глубина и время работы в секундах — согласуются в разговоре, а цели, целевое число компаний и лимит поиска можно править прямо в панели плана перед запуском.</p>
+</header>
+
+<section class="panel">
+  <h2>Диалог</h2>
+  <ul class="dialogue" data-dialogue aria-live="polite">
+  {{- range .Messages }}
+    <li class="dialogue-{{.Role}}">{{.Text}}</li>
+  {{- else }}
+    <li class="empty">Опишите, каких клиентов ищете, — ассистент задаст уточняющие вопросы.</li>
+  {{- end }}
+  {{- with .Error }}
+    <li class="dialogue-error error-text">{{.}}</li>
+  {{- end }}
+  </ul>
+
+  <form method="post" action="/assistant" data-assistant-form>
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <input type="hidden" name="history" value="{{.History}}">
+    <input type="hidden" name="plan" value="{{.PlanJSON}}">
+    <input type="hidden" name="maxDepth" value="{{.MaxDepth}}">
+    <input type="hidden" name="maxTimeSeconds" value="{{.MaxTimeSeconds}}">
+    <input type="hidden" name="probeMaxDepth" value="{{.ProbeDepth}}">
+    <input type="hidden" name="probeMaxTimeSeconds" value="{{.ProbeTimeSeconds}}">
+    <input type="hidden" name="probeMaxCredits" value="{{.ProbeMaxCredits}}">
+
+    <p class="field">
+      <label for="message">Ваш ответ</label>
+      <textarea id="message" name="message" rows="3">{{.Message}}</textarea>
+    </p>
+    <p class="actions">
+      <button type="submit" name="action" value="turn">Отправить</button>
+      <button type="submit" name="action" value="launch" class="button-secondary">Запустить краулинг</button>
+      <button type="submit" name="action" value="probe" class="button-secondary">Проверочная сессия</button>
+    </p>
+    <p class="hint" data-assistant-status role="status"></p>
+  </form>
+</section>
+
+<section class="panel" data-interpretation-section>
+  <h2>Как система поняла запрос</h2>
+  {{/* Критерии релевантности — отдельная от технического плана сущность: они
+       отвечают на «почему компания решает задачу». Без данных критерии не
+       выдумываются: показана явная неопределённость или «не определена». */}}
+  <div data-interpretation-body>
+  {{- if .Interpretation.Defined }}
+    {{- if .Interpretation.Uncertainty }}
+      {{- if .Interpretation.Reason }}
+    <p class="hint" data-interpretation-uncertainty>Не удалось определить критерии: {{.Interpretation.Reason}}</p>
+      {{- else }}
+    <p class="hint" data-interpretation-uncertainty>Недостаточно данных, чтобы определить признаки потребности. Уточните запрос — критерии не выдумываются.</p>
+      {{- end }}
+    {{- else }}
+    <dl class="interpretation">
+      <dt>Целевой лид</dt><dd data-interpretation="target-lead">{{.Interpretation.TargetLead}}</dd>
+      <dt>Признаки потребности</dt><dd>
+        <ul class="interpretation-list" data-interpretation="need-signals">
+        {{- range .Interpretation.NeedSignals }}<li>{{.}}</li>{{ end }}
+        </ul>
+      </dd>
+      <dt>Исключения</dt><dd>
+        <ul class="interpretation-list" data-interpretation="exclusions">
+        {{- range .Interpretation.Exclusions }}<li>{{.}}</li>{{ else }}<li class="empty">—</li>{{ end }}
+        </ul>
+      </dd>
+      <dt>Признаки гипотезы</dt><dd>
+        <ul class="interpretation-list" data-interpretation="hypothesis-signals">
+        {{- range .Interpretation.HypothesisSignals }}<li>{{.}}</li>{{ else }}<li class="empty">—</li>{{ end }}
+        </ul>
+      </dd>
+    </dl>
+    {{- end }}
+  {{- else }}
+  <p class="hint" data-interpretation-none>Интерпретация не определена.</p>
+  {{- end }}
+  </div>
+</section>
+
+<section class="panel" data-plan-section>
+  <h2>Технический план обхода</h2>
+  <ul class="plan-targets" data-plan-targets>
+  {{- range .Targets }}
+    <li>{{.Kind}}: {{.Value}}</li>
+  {{- end }}
+  </ul>
+  <ul class="plan-chips" data-plan-limits>
+  {{- range .Limits }}
+    <li class="chip"><span class="chip-label">{{.Label}}</span> <span class="chip-value">{{.Value}}</span></li>
+  {{- end }}
+  </ul>
+  {{/* Панель плана редактируема: оператор правит цели, целевое число компаний и
+       лимит поиска перед подтверждённым запуском. Согласованные в диалоге
+       глубина и время уезжают скрытыми полями и здесь не дублируются. */}}
+  <div class="plan-edit" data-plan-edit>
+    <p class="field">
+      <label for="targetCompanies">Сколько найти компаний</label>
+      <input id="targetCompanies" name="targetCompanies" type="text" value="{{.TargetCompanies}}">
+    </p>
+    <p class="field">
+      <label for="maxResults">Результатов на запрос</label>
+      <input id="maxResults" name="maxResults" type="text" value="{{.MaxResults}}">
+    </p>
+    <p class="field">
+      <label for="manualTargets">Свои цели (по строке — запрос или URL)</label>
+      <textarea id="manualTargets" name="manualTargets" rows="3">{{.ManualTargets}}</textarea>
+    </p>
+  </div>
+  <p class="hint" data-plan-ready{{ if not .Ready }} hidden{{ end }}>Ассистент считает план готовым — можно запускать.</p>
+</section>
+{{- end -}}
+{{- end -}}

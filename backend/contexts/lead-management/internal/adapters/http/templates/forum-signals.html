@@ -1,0 +1,32 @@
+{{- define "content" -}}
+{{- with .View -}}
+<header class="page-head">
+  <h1>Форумы</h1>
+</header>
+
+<section class="panel">
+  <h2>Поиск сигналов</h2>
+  <form method="get" action="/forum-signals">
+    {{ template "field" .QueryField }}
+    <p class="actions"><button type="submit">Искать</button></p>
+  </form>
+</section>
+
+{{- if .Query }}
+<section class="panel">
+  <h2>Сигналы по запросу «{{.Query}}»</h2>
+  <ul class="signal-list">
+  {{- range .Signals }}
+    <li class="signal">
+      <p class="signal-topic">{{.Topic}}</p>
+      {{- with .Summary }}<p class="signal-summary">{{.}}</p>{{- end }}
+      <p class="signal-meta"><a class="link" href="{{.URL}}" rel="noopener noreferrer">{{.URL}}</a>{{with .Date}} · {{.}}{{end}}</p>
+    </li>
+  {{- else }}
+    <li class="empty">Сигналов не найдено</li>
+  {{- end }}
+  </ul>
+</section>
+{{- end }}
+{{- end -}}
+{{- end -}}

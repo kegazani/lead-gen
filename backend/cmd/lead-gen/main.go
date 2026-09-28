@@ -14,7 +14,6 @@ package main
 import (
 	"context"
 	"flag"
-	"log/slog"
 	"os"
 	"os/signal"
 	"strings"
@@ -24,6 +23,7 @@ import (
 
 	composition "lead-gen/backend/platform/composition"
 	"lead-gen/backend/platform/deployment"
+	"lead-gen/backend/platform/observability/observ"
 	"lead-gen/backend/platform/transport/amqp"
 )
 
@@ -37,21 +37,48 @@ func main() {
 	tenant := flag.String("tenant", "", "тенант, в котором выдано право сборки")
 	brokerAttempts := flag.Int("broker-attempts", 3, "число попыток доставки в брокер до DLQ")
 	publishInterval := flag.Duration("publish-interval", time.Second, "интервал публикации approved-action")
+
+	// Секреты и конфигурация сервиса lead-management. Секреты задаются вне
+	// репозитория (env/флаги на деплое), значения по умолчанию — пустые.
+	leadGreenDSN := flag.String("lead-green-dsn", "", "DSN зелёной зоны lead-management (пусто — in-memory адаптеры)")
+	leadRedDSN := flag.String("lead-red-dsn", "", "DSN красной зоны lead-management (пусто — DSN зелёной зоны)")
+	firecrawlKey := flag.String("firecrawl-key", "", "ключ доступа Firecrawl (поиск и обход)")
+	firecrawlURL := flag.String("firecrawl-url", "", "базовый адрес Firecrawl API (пусто — адрес по умолчанию)")
+	llmBaseURL := flag.String("llm-base-url", "", "базовый адрес LLM API (DeepSeek; пусто — адрес по умолчанию)")
+	llmModel := flag.String("llm-model", "", "модель LLM (DeepSeek; пусто — модель по умолчанию)")
+	llmKey := flag.String("llm-key", "", "ключ доступа LLM (пусто — LLM-планирование отключено)")
+	consoleUser := flag.String("console-user", "operator", "логин оператора консоли")
+	consolePassword := flag.String("console-password", "secret", "пароль оператора консоли")
+	leadMaxPages := flag.Int("lead-max-pages", 50, "верхний предел страниц обхода на один сайт (внутренний предохранитель; 0 — без предела)")
+	leadMaxDepth := flag.Int("lead-max-depth", 3, "максимальная глубина обхода lead-management")
+	leadMaxTimeSeconds := flag.Int("lead-max-time-seconds", 120, "предельное время обхода lead-management, с")
+	dialogueMaxTurns := flag.Int("dialogue-max-turns", 8, "предел числа ходов диалога ассистента (0 — значение по умолчанию)")
+	firecrawlMaxCredits := flag.Int("firecrawl-max-credits", 0, "лимит кредитов Firecrawl на задачу; 0 — без бюджета (по умолчанию)")
+	smtpHost := flag.String("smtp-host", "localhost", "адрес SMTP-сервера отправки писем")
+	smtpPort := flag.Int("smtp-port", 25, "порт SMTP-сервера отправки писем")
+	smtpUsername := flag.String("smtp-username", "", "имя учётной записи SMTP (пусто — без аутентификации)")
+	smtpPassword := flag.String("smtp-password", "", "пароль учётной записи SMTP")
+	smtpFrom := flag.String("smtp-from", "leads@lead-gen.local", "адрес отправителя писем")
 	flag.Parse()
+
+	// Наблюдаемость строится один раз на процесс: логгер и метрики общие для
+	// сервисов (потокобезопасны), трейсер — на сервис (несёт service.name).
+	logger := observ.NewLogger()
+	metrics := observ.NewMetrics()
 
 	data, err := os.ReadFile(*configPath)
 	if err != nil {
-		slog.Error("lead-gen: чтение конфигурации развёртывания", "path", *configPath, "error", err)
+		logger.Error("lead-gen: чтение конфигурации развёртывания", err, observ.Fields{}, "path", *configPath)
 		os.Exit(1)
 	}
 	cfg, err := deployment.ParseDeployConfig(data)
 	if err != nil {
-		slog.Error("lead-gen: разбор конфигурации развёртывания", "error", err)
+		logger.Error("lead-gen: разбор конфигурации развёртывания", err, observ.Fields{})
 		os.Exit(1)
 	}
 	selected, err := selectServices(cfg, *processFilter, *serviceFilter)
 	if err != nil {
-		slog.Error("lead-gen: выбор сервисов", "error", err)
+		logger.Error("lead-gen: выбор сервисов", err, observ.Fields{})
 		os.Exit(1)
 	}
 
@@ -59,12 +86,33 @@ func main() {
 	// и Publisher, и Consumer, поэтому публикация одного сервиса доходит до
 	// очередей другого без внешней сети.
 	broker := amqp.NewInMemoryBroker(*brokerAttempts)
-	stub := newPublicIngestStub(*ingestAddr)
+	stub := newPublicIngestStub(*ingestAddr, logger)
 	opts := buildOptions{
-		apiAddr:         *apiAddr,
-		publishInterval: *publishInterval,
-		actor:           *actor,
-		tenant:          *tenant,
+		logger:              logger,
+		metrics:             metrics,
+		apiAddr:             *apiAddr,
+		publishInterval:     *publishInterval,
+		actor:               *actor,
+		tenant:              *tenant,
+		leadGreenDSN:        *leadGreenDSN,
+		leadRedDSN:          *leadRedDSN,
+		firecrawlKey:        *firecrawlKey,
+		firecrawlURL:        *firecrawlURL,
+		llmBaseURL:          *llmBaseURL,
+		llmModel:            *llmModel,
+		llmKey:              *llmKey,
+		consoleUser:         *consoleUser,
+		consolePassword:     *consolePassword,
+		leadMaxPages:        *leadMaxPages,
+		leadMaxDepth:        *leadMaxDepth,
+		leadMaxTimeSeconds:  *leadMaxTimeSeconds,
+		dialogueMaxTurns:    *dialogueMaxTurns,
+		firecrawlMaxCredits: *firecrawlMaxCredits,
+		smtpHost:            *smtpHost,
+		smtpPort:            *smtpPort,
+		smtpUsername:        *smtpUsername,
+		smtpPassword:        *smtpPassword,
+		smtpFrom:            *smtpFrom,
 	}
 
 	signalCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -76,17 +124,17 @@ func main() {
 	for _, sel := range selected {
 		service, err := buildService(sel.ID, sel.Mechanism, opts, broker, stub)
 		if err != nil {
-			slog.Error("lead-gen: сборка сервиса", "service", sel.ID, "error", err)
+			logger.Error("lead-gen: сборка сервиса", err, observ.Fields{}, "service", sel.ID)
 			os.Exit(1)
 		}
-		startRoles(ctx, &wg, cancel, sel, service)
+		startRoles(ctx, &wg, cancel, sel, service, logger)
 	}
 
-	slog.Info("lead-gen: процессы запущены",
+	logger.Info("lead-gen: процессы запущены", observ.Fields{},
 		"processes", len(cfg.Processes), "services", len(selected))
 
 	<-ctx.Done()
-	slog.Info("lead-gen: останов")
+	logger.Info("lead-gen: останов", observ.Fields{})
 
 	done := make(chan struct{})
 	go func() {
@@ -96,7 +144,7 @@ func main() {
 	select {
 	case <-done:
 	case <-time.After(15 * time.Second):
-		slog.Warn("lead-gen: роли не завершились за 15с, выход")
+		logger.Warn("lead-gen: роли не завершились за 15с, выход", observ.Fields{})
 	}
 }
 
@@ -167,22 +215,23 @@ func startRoles(
 	cancel context.CancelFunc,
 	sel selectedService,
 	service composition.Service,
+	logger observ.Logger,
 ) {
 	for _, role := range sel.Roles {
 		runner, ok := service.RoleRunner(role)
 		if !ok {
-			slog.Warn("роль не зарегистрирована у сервиса",
+			logger.Warn("роль не зарегистрирована у сервиса", observ.Fields{},
 				"process", sel.Process, "service", sel.ID, "role", role)
 			continue
 		}
 		wg.Add(1)
 		go func(role composition.Role, runner composition.RoleRunner) {
 			defer wg.Done()
-			slog.Info("роль запущена",
+			logger.Info("роль запущена", observ.Fields{},
 				"process", sel.Process, "service", sel.ID, "role", role)
 			if err := runner.Run(ctx); err != nil {
-				slog.Error("роль остановлена с ошибкой",
-					"process", sel.Process, "service", sel.ID, "role", role, "error", err)
+				logger.Error("роль остановлена с ошибкой", err, observ.Fields{},
+					"process", sel.Process, "service", sel.ID, "role", role)
 				cancel()
 			}
 		}(role, runner)

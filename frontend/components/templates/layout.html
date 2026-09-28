@@ -8,8 +8,14 @@
   {{- range .Layout.Stylesheets }}
   <link rel="stylesheet" href="{{.}}">
   {{- end }}
+  {{- range .Layout.Scripts }}
+  <script src="{{.}}" defer></script>
+  {{- end }}
 </head>
 <body>
+{{- if .Sidebar.Items }}
+  {{ template "nav" .Sidebar }}
+{{- end }}
   <main class="page">
 {{ template "content" . }}
   </main>

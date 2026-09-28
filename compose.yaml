@@ -1,0 +1,82 @@
+# Локальный запуск MVP-среза поиска лидов: PostgreSQL (зелёная и красная зоны)
+# + служебный образ lead-management (роли api и worker).
+#
+# Секреты и конфигурация берутся из .env (образец — .env.example).
+# Быстрый старт:
+#   cp .env.example .env   # заполнить FIRECRAWL_API_KEY (и, по желанию, LLM_*)
+#   docker compose up --build
+#   открыть http://localhost:8080/
+
+services:
+  postgres-green:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: lead_gen
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?задайте POSTGRES_PASSWORD в .env}
+      POSTGRES_DB: lead_gen
+    volumes:
+      - postgres-green-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lead_gen -d lead_gen"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  postgres-red:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: lead_gen
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?задайте POSTGRES_PASSWORD в .env}
+      POSTGRES_DB: lead_gen
+    volumes:
+      - postgres-red-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U lead_gen -d lead_gen"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  lead-management:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      postgres-green:
+        condition: service_healthy
+      postgres-red:
+        condition: service_healthy
+    # Конфигурация групп процессов — источник истины deploy/services.yaml;
+    # монтируется только на чтение, чтобы правки файла применялись без пересборки.
+    volumes:
+      - ./deploy/services.yaml:/etc/lead-gen/services.yaml:ro
+    command:
+      - -config
+      - /etc/lead-gen/services.yaml
+      - -service
+      - lead-management
+      - -lead-green-dsn
+      - postgres://lead_gen:${POSTGRES_PASSWORD}@postgres-green:5432/lead_gen?sslmode=disable
+      - -lead-red-dsn
+      - postgres://lead_gen:${POSTGRES_PASSWORD}@postgres-red:5432/lead_gen?sslmode=disable
+      - -firecrawl-key
+      - ${FIRECRAWL_API_KEY:?задайте FIRECRAWL_API_KEY в .env}
+      - -firecrawl-url
+      - ${FIRECRAWL_BASE_URL:-}
+      - -llm-base-url
+      - ${LLM_BASE_URL:-}
+      - -llm-model
+      - ${LLM_MODEL:-}
+      - -llm-key
+      - ${LLM_API_KEY:-}
+      - -console-user
+      - ${CONSOLE_USER:-admin}
+      - -console-password
+      - ${CONSOLE_PASSWORD:-admin}
+      - -addr
+      - :8080
+    ports:
+      - "${LEAD_HTTP_PORT:-8080}:8080"
+
+volumes:
+  postgres-green-data:
+  postgres-red-data:

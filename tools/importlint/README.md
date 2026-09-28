@@ -20,13 +20,15 @@ multi-module workspace `lead-gen`. Читает Go-импорты через `go
 1. `internal/domain` не импортирует свой `internal/app`/`internal/ports`/`internal/adapters`.
 2. `internal/app` не импортирует свой `internal/adapters`.
 3. `internal/ports` не импортирует свой `internal/adapters`.
-4. Межконтекстно контекст импортирует другой контекст только через
+4. Внутренние слои контекста, кроме `internal/adapters`, не импортируют внешние
+   модули (SDK поставщика, драйвер хранилища): они допустимы только в `adapters`.
+5. Межконтекстно контекст импортирует другой контекст только через
    `lead-gen/contracts/<owner>`. Чужой `lead-gen/contexts/<owner>/internal/...`,
    чужой корневой пакет контекста и чужое хранилище
    `.../internal/adapters/persistence/**` запрещены без исключений.
-5. `lead-gen/frontend/public/...` не импортирует `lead-gen/contexts/...` и
+6. `lead-gen/frontend/public/...` не импортирует `lead-gen/contexts/...` и
    адаптеры хранилищ (любой путь `lead-gen/.../adapters/persistence`).
-6. `lead-gen/cmd/...` — composition root, границами не ограничен.
+7. `lead-gen/cmd/...` — composition root, границами не ограничен.
 
 Исключение `lead-gen/contracts/<owner>` — единственный легальный
 межконтекстный импорт: это контракт, который владелец публикует явно. Общий

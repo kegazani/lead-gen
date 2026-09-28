@@ -1,0 +1,121 @@
+{{- define "template-list" -}}
+{{- with . -}}
+{{- if .Items }}
+<ul class="template-list">
+{{- range .Items }}
+  <li class="template-item{{if .Selected}} is-selected{{end}}">
+    <a class="link" href="{{.Href}}">{{.Name}}</a>
+    <span class="template-meta">{{.Subject}} · ревизия {{.Revision}}</span>
+  </li>
+{{- end }}
+</ul>
+{{- else }}
+<p class="empty">Шаблонов не найдено. Измените запрос или создайте новый шаблон.</p>
+{{- end }}
+{{- end -}}
+{{- end -}}
+
+{{- define "template-picker" -}}
+<form class="search-form" method="get" action="{{.Action}}" hx-get="{{.Action}}" hx-target="#template-list" hx-swap="innerHTML">
+  <p class="field">
+    <label for="template-query">Поиск шаблона</label>
+    <input id="template-query" name="q" type="text" value="{{.Query}}">
+  </p>
+  <p class="actions"><button type="submit">Найти</button></p>
+</form>
+<div id="template-list">
+{{ template "template-list" . }}
+</div>
+{{- end -}}
+
+{{- define "variable-values" -}}
+<fieldset class="variables">
+  <legend>Значения переменных</legend>
+  {{- range . }}
+  <p class="field">
+    <label for="value-{{.Key}}">{{.Label}}</label>
+    <input id="value-{{.Key}}" name="value_{{.Key}}" type="text" value="{{.Value}}" placeholder="{{.Fallback}}">
+  </p>
+  {{- end }}
+</fieldset>
+{{- end -}}
+
+{{- define "variable-form-options" -}}
+<fieldset class="variables">
+  <legend>Переменные шаблона</legend>
+  <ul class="variable-list">
+  {{- range . }}
+    <li class="variable-row">
+      <label class="variable-toggle">
+        <input type="checkbox" name="var_{{.Key}}" value="yes"{{if .Declared}} checked{{end}}> {{.Label}}
+      </label>
+      <span class="hint">{{.Source}}</span>
+      <input type="text" name="fallback_{{.Key}}" value="{{.Fallback}}" placeholder="fallback">
+      <button type="button" class="button-secondary" data-insert-placeholder="{{.Key}}">Вставить в текст</button>
+    </li>
+  {{- end }}
+  </ul>
+</fieldset>
+{{- end -}}
+
+{{- define "email-preview" -}}
+{{- with . -}}
+{{- if .Reference }}
+<h3>Предпросмотр</h3>
+<p class="hint">Ссылка на шаблон: {{.Reference}}</p>
+<dl class="preview">
+  <dt>Тема</dt>
+  <dd class="preview-subject">{{.Subject}}</dd>
+  <dt>Текст</dt>
+  <dd class="preview-body">{{.Body}}</dd>
+</dl>
+{{- else }}
+<p class="empty">Выберите шаблон, чтобы увидеть предпросмотр собранного письма.</p>
+{{- end }}
+{{- end -}}
+{{- end -}}
+
+{{- define "content" -}}
+{{- with .View -}}
+<header class="page-head">
+  <h1>Библиотека шаблонов</h1>
+</header>
+
+{{- with .Error }}
+<p class="error-text" role="alert">{{.}}</p>
+{{- end }}
+
+<section class="panel">
+  <h2>{{if eq .Form.Mode "edit"}}Правка шаблона{{else}}Новый шаблон{{end}}</h2>
+  {{- with .Form.Reference }}<p class="hint">Редакция: {{.}}</p>{{- end }}
+  <form method="post" action="{{.Form.Action}}">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <p class="field">
+      <label for="tpl-name">Имя</label>
+      <input id="tpl-name" name="name" type="text" value="{{.Form.Name}}">
+    </p>
+    <p class="field">
+      <label for="subject">Тема</label>
+      <input id="subject" name="subject" type="text" value="{{.Form.Subject}}" data-placeholder-field>
+    </p>
+    <p class="field">
+      <label for="body">Текст письма</label>
+      <textarea id="body" name="body" rows="6" data-placeholder-field data-placeholder-default>{{.Form.Body}}</textarea>
+    </p>
+    {{ template "variable-form-options" .Form.Options }}
+    <p class="actions"><button type="submit">{{if eq .Form.Mode "edit"}}Сохранить{{else}}Создать{{end}}</button></p>
+  </form>
+  {{- if eq .Form.Mode "edit" }}
+  <form method="post" action="{{.Form.DeleteAction}}">
+    <input type="hidden" name="csrf" value="{{.CSRF}}">
+    <p class="actions"><button class="button-danger" type="submit">Удалить</button></p>
+  </form>
+  {{- end }}
+</section>
+
+<section class="panel">
+  <h2>Список шаблонов</h2>
+  {{ template "template-picker" .List }}
+</section>
+{{- end -}}
+{{- end -}}

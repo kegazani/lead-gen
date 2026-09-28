@@ -7,10 +7,13 @@ import (
 )
 
 // Logger — структурированный логгер. Уровень и формат задаёт реализация;
-// вызывающий передаёт поля корреляции и ошибку, а не склеенную строку.
+// вызывающий передаёт поля корреляции, ошибку и, при необходимости,
+// дополнительные структурированные атрибуты (пары «ключ, значение» в формате
+// log/slog), а не склеенную строку.
 type Logger interface {
-	Info(msg string, f Fields)
-	Error(msg string, err error, f Fields)
+	Info(msg string, f Fields, attrs ...any)
+	Warn(msg string, f Fields, attrs ...any)
+	Error(msg string, err error, f Fields, attrs ...any)
 }
 
 // slogLogger — реализация Logger поверх log/slog с JSON-выводом.
@@ -25,22 +28,38 @@ func NewLogger() Logger {
 	return newLogger(os.Stderr)
 }
 
+// NewLoggerWithWriter возвращает логгер с JSON-выводом в заданный приёмник.
+// Применяется для тестов и кастомных приёмников; NewLogger — сокращение для
+// stderr.
+func NewLoggerWithWriter(w io.Writer) Logger {
+	return newLogger(w)
+}
+
 // newLogger собирает логгер с заданным приёмником; вынесено отдельно, чтобы
 // тесты проверяли форму вывода без перехвата stderr.
 func newLogger(w io.Writer) Logger {
 	return &slogLogger{log: slog.New(slog.NewJSONHandler(w, nil))}
 }
 
-func (l *slogLogger) Info(msg string, f Fields) {
-	l.log.Info(msg, f.attrs()...)
+func (l *slogLogger) Info(msg string, f Fields, attrs ...any) {
+	a := f.attrs()
+	a = append(a, attrs...)
+	l.log.Info(msg, a...)
 }
 
-func (l *slogLogger) Error(msg string, err error, f Fields) {
-	attrs := f.attrs()
+func (l *slogLogger) Warn(msg string, f Fields, attrs ...any) {
+	a := f.attrs()
+	a = append(a, attrs...)
+	l.log.Warn(msg, a...)
+}
+
+func (l *slogLogger) Error(msg string, err error, f Fields, attrs ...any) {
+	a := f.attrs()
 	if err != nil {
-		attrs = append(attrs, slog.String("error", err.Error()))
+		a = append(a, slog.String("error", err.Error()))
 	}
-	l.log.Error(msg, attrs...)
+	a = append(a, attrs...)
+	l.log.Error(msg, a...)
 }
 
 // attrs переводит поля корреляции в атрибуты slog, пропуская пустые.

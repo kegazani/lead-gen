@@ -26,6 +26,8 @@
 //	   lead-gen/backend/contexts/... вообще и не импортирует пакеты-адаптеры хранилищ
 //	   (любой путь lead-gen/.../adapters/persistence).
 //	d) cmd — composition root, не ограничен.
+//	e) Внутренний слой контекста, кроме adapters, не импортирует внешние модули
+//	   (SDK поставщика, драйвер хранилища): они допустимы только в adapters.
 //
 // Инструмент использует только стандартную библиотеку и не резолвит импорты:
 // достаточно синтаксического разбора (parser.ImportsOnly), поэтому фикстуры в
@@ -105,6 +107,41 @@ func isPersistence(subpath string) bool {
 // (любой путь lead-gen/.../adapters/persistence...).
 func isStorageAdapter(role Role) bool {
 	return role.Kind == kindContext && role.Layer == "adapters" && isPersistence(role.Subpath)
+}
+
+// isWorkspacePackage сообщает, что путь принадлежит workspace (совпадает с базовым
+// префиксом модуля или вложен в него), а не внешнему модулю.
+func isWorkspacePackage(module, importPath string) bool {
+	return importPath == module || strings.HasPrefix(importPath, module+"/")
+}
+
+// hasModuleDot сообщает, что первый сегмент пути импорта содержит точку — признак
+// внешнего модуля (SDK поставщика, драйвер хранилища и т.п.). У пакетов
+// стандартной библиотеки точки в первом сегменте нет.
+func hasModuleDot(importPath string) bool {
+	first := importPath
+	if index := strings.IndexByte(importPath, '/'); index >= 0 {
+		first = importPath[:index]
+	}
+	return strings.Contains(first, ".")
+}
+
+// externalImportReason возвращает причину запрета, если внутренний слой контекста,
+// кроме adapters, импортирует внешний модуль. SDK поставщика и драйвер хранилища
+// допустимы только в adapters (design.md, Решение 5); домен и app не импортируют
+// SDK, вызов оформлен интерфейсом порта. Пустая строка — ребро допустимо.
+func externalImportReason(module string, importerRole Role, importPath string) string {
+	if importerRole.Kind != kindContext || !importerRole.Internal {
+		return ""
+	}
+	if importerRole.Layer == "adapters" {
+		return ""
+	}
+	if isWorkspacePackage(module, importPath) || !hasModuleDot(importPath) {
+		return ""
+	}
+	return fmt.Sprintf("внешний модуль (SDK поставщика, драйвер) допустим только в adapters: слой %q не импортирует его",
+		importerRole.Layer)
 }
 
 // crossContextReason объясняет запрет импорта чужого контекста. Контекст вправе
@@ -316,7 +353,11 @@ func analyze(root, module string) (Analysis, error) {
 				continue
 			}
 			importedRole := parseRole(module, importedPath)
-			if reason := forbiddenLayer(importerRole, importedRole); reason != "" {
+			reason := forbiddenLayer(importerRole, importedRole)
+			if reason == "" {
+				reason = externalImportReason(module, importerRole, importedPath)
+			}
+			if reason != "" {
 				analysis.Violations = append(analysis.Violations, Violation{
 					File: path, Importer: importerPath, Imported: importedPath, Reason: reason,
 				})

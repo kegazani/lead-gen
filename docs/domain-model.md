@@ -51,6 +51,8 @@
 | Provider port | Стабильный интерфейс потребности домена во внешней системе | SDK конкретного поставщика |
 | Регистрация адаптера | Запись адаптера с объявленными возможностями и версией manifest | Код адаптера или учётные данные поставщика |
 | Вызов интеграции | Единичный вызов внешней зависимости через provider port с нормализованным результатом | Конфигурация адаптера или сырой ответ SDK поставщика |
+| Статус лида | Текущая стадия воронки лида и срок отложенности (snooze), после которого лид возвращается в активную воронку | Пользователь платформы или история переходов между стадиями |
+| Исходящее сообщение | Неизменяемый журнал прямой отправки письма: получатель, шаблон, тело, исход доставки и причина отказа | Сообщение delivery-конвейера или переписка целиком |
 
 В коде, API и событиях используются термины контекста-владельца. При пересечении границы получатель переводит published language в собственную модель и не импортирует внутренние Go-типы поставщика.
 
@@ -62,7 +64,7 @@
 |---|---|---|---|
 | `platform-governance` | generic | Тенанты, пользователи, роли, аудит и правила эволюции | Тенант, Пользователь и роль, Запись аудита |
 | `data-governance` | generic | Зоны, полномочия обработки и подавление контактов | Основание обработки, Запись стоп-листа |
-| `lead-management` | core | Нормализация, обогащение и проверка компаний и контактов | Компания, Контакт, Происхождение атрибута, Верификация адреса, Профиль размера компании |
+| `lead-management` | core | Нормализация, обогащение и проверка компаний и контактов | Компания, Контакт, Происхождение атрибута, Верификация адреса, Профиль размера компании, Исходящее сообщение |
 | `audience` | core | Скоринг, сегментация и фиксация аудитории | Скоринг лида, Сегмент, Снимок аудитории |
 | `content-production` | supporting | Версионирование и рендеринг материалов | Контент-пакет, Версия контента, Наполнение лендинга, Документ, Задание рендеринга |
 | `outreach-orchestration` | core | Кампании, цепочки, human approval и планирование | Кампания, Сценарий цепочки, Выполнение цепочки, Черновик действия, Решение оператора, Звонок |
@@ -95,13 +97,29 @@ Core-контексты выражают конкурентное преимущ
 | Capability | Владелец | Сервис | Роли | Основной результат |
 |---|---|---|---|---|
 | `domain-architecture` | `platform-governance` | `platform-governance` | api, worker | Правила границ и аудируемая эволюция |
+| `platform-access` | `platform-governance` | `platform-governance` | api, worker | `access-decision`, `audit-recorded`, `tenant-context` |
 | `service-topology-console` | `platform-governance` | `platform-governance` | api | Эксплуатационная проекция топологии: граф сервисов и инфраструктуры, состояние узлов и метрики |
 | `deployment-topology` | `platform-governance` | `platform-governance` | api, worker | Модульный монолит, группы процессов и декларативная инфраструктура |
 | `data-handling` | `data-governance` | `data-governance` | api, worker, chains | `data-zone-policy` |
-| `lead-pool-client-side` | `data-governance` | `data-governance` | api, worker, chains | `processing-authority`, `suppression-policy` |
+| `contact-suppression` | `data-governance` | `data-governance` | api, worker, chains | `suppression-policy` |
+| `lead-pool-client-side` | `data-governance` | `data-governance` | api, worker, chains | `processing-authority` |
 | `osint-enrichment` | `lead-management` | `lead-management` | api, worker | Обогащённый `lead-profile` |
 | `company-size-assessment` | `lead-management` | `lead-management` | api, worker | `company-profile` |
 | `email-verification` | `lead-management` | `lead-management` | api, worker | `lead-verified` |
+| `lead-workflow` | `lead-management` | `lead-management` | api, worker | Статусная воронка лида (`not warmed`/`email sent`/`warming`/`cold`), snooze и перенос между стадиями |
+| `lead-email` | `lead-management` | `lead-management` | api, worker | Прямая отправка писем из карточки и сегмента, шаблоны с merge-полями, лог доставки и история переписки |
+| `email-template-library` | `lead-management` | `lead-management` | api, worker | Библиотека переиспользуемых писем: создание, редактирование, поиск и выбор шаблона, каталог объявленных переменных, запрет необъявленного плейсхолдера, подстановка значений с fallback и предпросмотр собранного письма |
+| `search-strategy` | `lead-management` | `lead-management` | api, worker | Диалоговый подбор стратегии поиска с помощью LLM: уточняющие вопросы агента, согласованный план обхода (цели и лимиты) и запуск только по явному подтверждению оператора |
+| `company-quota-search` | `lead-management` | `lead-management` | api, worker | Поиск до заданного оператором целевого числа уникальных компаний с добором целей обхода и предсказуемыми условиями остановки |
+| `forum-lead-signals` | `lead-management` | `lead-management` | api, worker | Обезличенные сигналы с форумов (темы, боли, обсуждения) как источник выбора ниш |
+| `lead-relevance` | `lead-management` | `lead-management` | api, worker | Оценка компании относительно конкретного задания: вердикт («Подходит»/«Гипотеза»/«Не подходит»), тип сигнала и свидетельства со ссылками на источники |
+| `search-job-control` | `lead-management` | `lead-management` | api, worker | Отмена задания поиска из консоли (в очереди и во время выполнения) с сохранением уже обойдённых результатов |
+| `search-job-lifecycle` | `lead-management` | `lead-management` | api, worker | Гарантии жизненного цикла задания поиска: легальность и неизменяемость переходов статуса, единственность взятия из очереди, согласование осиротевших заданий |
+| `search-job-progress` | `lead-management` | `lead-management` | api, worker | Наблюдаемый прогресс задания поиска: фаза, адрес, обойдённые страницы, найденные компании и кредиты |
+| `search-job-error-codes` | `lead-management` | `lead-management` | api, worker | Стабильные машинные коды отказа задания поиска с бизнес-формулировкой для оператора |
+| `search-job-events` | `lead-management` | `lead-management` | api, worker | Персистентный журнал событий жизненного цикла задания поиска |
+| `job-journal-console` | `lead-management` | `lead-management` | api | Эксплуатационная проекция журнала заданий поиска: компактные строки, раскрытие со сводкой и экран подробностей с ходом выполнения |
+| `lead-cards-console` | `lead-management` | `lead-management` | api | Эксплуатационная проекция витрины карточек: плитки и строки, краткое описание, email и подсветка компании без email |
 | `lead-segmentation` | `audience` | `audience` | api, worker, schedule | `audience-snapshot` |
 | `linguistics` | `content-production` | `content-production` | api, worker | `content-version` |
 | `presentation-generator` | `content-production` | `content-production` | api, worker | `rendered-artifact` |
@@ -123,6 +141,12 @@ Core-контексты выражают конкурентное преимущ
 
 **`service-topology-console` не добавляет модель.** Консоль — эксплуатационная проекция роли `api` сервиса `platform-governance`: она строит граф из объявлений каталога и `deploy/services.yaml` и читает метрики Prometheus через серверный прокси. Консоль **не владеет сущностями и не является bounded context**: она не вводит агрегатов, value objects, domain events, policies и межконтекстных контрактов, а её состояние узлов (`up`/`degraded`/`down`/`unknown`) и раскладка — результат наблюдения и состояние интерфейса, а не агрегат или событие. Узлы-сервисы — те же 14 bounded contexts, рёбра — те же 28 связей каталога; состав контекстов и связей не меняется, capability лишь назначена существующему владельцу как уточнение покрытия. Владение моделью остаётся у контекстов: владелец capability не получает ни новых сущностей, ни нового языка.
 
+**`job-journal-console` и `lead-cards-console` не добавляют модель.** Эти capability принадлежат `lead-management` и описывают эксплуатационные проекции роли `api` — консольные экраны журнала заданий и витрины карточек. Они **не владеют сущностями и не являются bounded context**: не вводят агрегатов, value objects, domain events, policies и межконтекстных контрактов. Журнал показывает уже существующую операционную запись задания (`search_job`, `search_job_event`), витрина — уже существующие агрегаты `lead-profile` и `contact`; источники данных и их владельцы не меняются. Capability лишь назначена существующему контексту как уточнение покрытия, владение моделью остаётся у контекстов.
+
+**`search-job-control`, `search-job-lifecycle`, `search-job-progress`, `search-job-error-codes` и `search-job-events` не добавляют модель.** Эти capability принадлежат `lead-management` и описывают управление уже существующей операционной записью — заданием поиска (таблицы `search_job` и `search_job_event`), а не доменным агрегатом. Задание не является сущностью каталога: отмена, переходы состояний, прогресс, коды ошибок и журнал событий не вводят агрегатов, value objects, domain events, policies и межконтекстных контрактов. Роли `api` и `worker` одного сервиса `lead-management` лишь разделяют обязанности: `api` фиксирует запрос отмены и показывает прогресс, `worker` исполняет задание, ведёт переходы состояния и публикует прогресс; владельцем capability остаётся контекст, а не роль.
+
+**`company-quota-search` не добавляет модель.** Capability принадлежит `lead-management` и описывает поведение задания поиска, а не доменный агрегат: целевое число компаний, добор целей обхода и причины остановки — свойства операционной записи задания (`search_job`, `search_job_event`). Capability не вводит агрегатов, value objects, domain events, policies и межконтекстных контрактов; владение моделью по-прежнему у контекстов `lead-management` и `integration-platform`, а само задание остаётся операционным примитивом, а не сущностью каталога.
+
 ## Тактическая модель
 
 Ниже **AR** означает aggregate root, **E** — entity, **VO** — value object. Только aggregate root принимает команды извне агрегата. Ссылки на другие агрегаты и контексты хранятся как идентификаторы или снимки опубликованного контракта, а не как указатели на чужие объекты. Раздел является представлением [`architecture/domain-catalog.yaml`](../architecture/domain-catalog.yaml): состав агрегатов, сущностей, value objects, инвариантов, событий и политик приводится строго по каталогу.
@@ -143,7 +167,7 @@ Core-контексты выражают конкурентное преимущ
 
 ### `lead-management`
 
-- **`lead-profile`** (AR: `company`): E: `company`, `company-size-profile`; VO: `company-identity`, `confidence-score`.
+- **`lead-profile`** (AR: `company`): E: `company`, `company-size-profile`; VO: `company-identity`, `confidence-score`, `lead-status`.
   - Инварианты: нормализованный идентификатор компании не меняется молча; профиль размера компании согласован с актуальными атрибутами компании.
   - События: `lead-profile-enriched`.
   - Политики: —.
@@ -151,6 +175,20 @@ Core-контексты выражают конкурентное преимущ
   - Инварианты: каждое внешнее значение атрибута контакта имеет происхождение; результат проверки адреса имеет время и срок актуальности.
   - События: `lead-verified`.
   - Политики: `attribute-provenance-required`, `verification-freshness`.
+- **`outbound-message`** (AR: `outbound-message`): E: `outbound-message`; VO: `message-status`.
+  - Инварианты: получатель обязателен; отправка на подавленный адрес запрещена; лог неизменяем после фиксации исхода.
+  - События: `message-sent`.
+  - Политики: —.
+- **`email-template`** (AR: `email-template`): E: `email-template`; VO: `merge-variable`, `template-reference`.
+  - Инварианты: имя, тема и тело непусты после обрезки пробелов; объявленные переменные — подмножество каталога переменных; каждая объявленная переменная имеет непустое fallback-значение; каждый плейсхолдер темы и тела объявлен; объявленная, но неиспользованная переменная допустима.
+  - События: — (потребителя нет; аудит действий оператора — `audit-recorded` на границе API).
+  - Политики: —.
+  - Примечание: агрегат переиспользуемого письма редактируется на месте с ростом `revision`; ссылка `template_id@revision` и снимок собранного тела фиксируются в `outbound-message`, поэтому правка шаблона не переписывает прошлые отправки. Библиотека — написанные человеком письма, владелец `lead-management`; сгенерированные и отрендеренные версии контента остаются за `content-production` (граница не затрагивается).
+- **`lead-assessment`** (AR: `lead-assessment`): E: `lead-assessment`; VO: `assessment-evidence`, `signal-kind`.
+  - Инварианты: оценка привязана к паре (job, company) и не переносится между заданиями; наблюдаемый факт отделён от интерпретации и от неподтверждённого намерения купить; «Не подходит» требует установленного несоответствия; «Гипотеза» требует указания недостающего свидетельства.
+  - События: `lead-assessed`, `lead-assessment-revised`.
+  - Политики: —.
+  - Примечание: оценка — не постоянное свойство компании, а вывод в контексте конкретного задания поиска; свидетельства несут критерий из интерпретации запроса, факт, URL источника и обоснование связи. Наблюдаемый факт, интерпретация и неподтверждённое намерение купить — раздельные поля, поэтому ссылка подтверждает факт, а не существование компании. Значения вердикта и типа сигнала взяты из интерпретации запроса (`search-strategy`) и не смешиваются с техническим планом обхода.
 
 ### `audience`
 
@@ -270,7 +308,7 @@ Core-контексты выражают конкурентное преимущ
 - `sales-workflow` публикует `attributed-result` для billing и `deal-state` для analytics.
 - `community-intelligence` передаёт `community-digest` в publishing по customer-supplier контракту.
 - `platform-governance` публикует `access-decision`; потребители не реализуют собственную RBAC-семантику.
-- `integration-platform` предоставляет `provider-port` через ACL для lead, content, delivery, sales, community, publishing и outreach. Он не владеет их workflow.
+- `integration-platform` предоставляет `provider-port` через ACL для lead, content, delivery, sales, community, publishing и outreach. Он не владеет их workflow. Прямая отправка `lead-email` идёт за портом `mail` (`contracts/integration-platform`) — это внешний адаптер за `provider-port`, а не новый межконтекстный контракт.
 
 Контракты имеют semantic version. Добавление опционального поля совместимо; изменение смысла, обязательности или типа требует новой major-версии и периода параллельного чтения. Команда принимается идемпотентно; event неизменяем и содержит `event_id`, `occurred_at`, `tenant_id`, `correlation_id`, `causation_id`, имя и версию схемы. Транспорт определяется видом интеграции: `command`/`query` идут синхронно (`sync`/`http-json`), `event`/`policy` — асинхронно (`async`/`amqp`); `policy` доставляется как подписка на изменение правила.
 

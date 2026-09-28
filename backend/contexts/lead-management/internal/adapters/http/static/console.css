@@ -1,0 +1,1657 @@
+/* Оформление консоли оператора lead-management. Направление — «термальная
+   прозрачность» (design.md, Решение 1): светлая воздушная поверхность, где
+   единственный насыщенный цветовой канал — температура лида, а стекло означает
+   слоистость, а не декор.
+
+   Отдельный файл, а не встроенный стиль: CSP консоли запрещает inline-стили и
+   скрипты. Ни один компонент не задаёт цвет напрямую — только через токен. */
+
+/* ============================================================= Токены */
+
+:root {
+  color-scheme: light dark;
+
+  /* Служебные роли поверхности и текста (почти бесцветны). */
+  --paper: #f7f8fa;
+  --paper-2: #eef1f6;
+  --surface: #ffffff;
+  --glass: rgba(255, 255, 255, 0.72);
+  --glass-border: rgba(255, 255, 255, 0.6);
+  --ink: #16181d;
+  --ink-soft: #6a7080;
+  --line: rgba(20, 22, 30, 0.08);
+  --line-strong: rgba(20, 22, 30, 0.16);
+  --shadow: 0 10px 30px -22px rgba(20, 22, 30, 0.5);
+
+  /* Термо-рампа: единственный насыщенный канал. Красный — только сбой. */
+  --cold: #3b5bdb;
+  --warming: #e8a33d;
+  --sent: #2c8c7a;
+  --cooled: #56a15a;
+  --fail: #de3b3b;
+  --cold-soft: #e7ebfb;
+  --warming-soft: #fbf0dc;
+  --sent-soft: #e2f0ec;
+  --cooled-soft: #e6f2e7;
+  --fail-soft: #fbe5e5;
+
+  /* Геометрия и ритм. */
+  --spacing: 1.25rem;
+  --radius: 0.9rem;
+  --radius-sm: 0.55rem;
+  --sidebar-w: minmax(12.5rem, 15rem);
+  --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+
+/* Тёмный режим — переопределение тех же ролей, а не инверсия значений: любой
+   новый компонент автоматически корректен в обеих темах (design.md, Решение 2). */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #0e1014;
+    --paper-2: #07090c;
+    --surface: #161a21;
+    --glass: rgba(28, 32, 40, 0.72);
+    --glass-border: rgba(255, 255, 255, 0.08);
+    --ink: #e8eaf0;
+    --ink-soft: #9aa3b2;
+    --line: rgba(255, 255, 255, 0.09);
+    --line-strong: rgba(255, 255, 255, 0.18);
+    --shadow: 0 12px 34px -24px rgba(0, 0, 0, 0.9);
+
+    --cold: #7d97ff;
+    --warming: #f0b65a;
+    --sent: #52b49c;
+    --cooled: #78c07c;
+    --fail: #f0625f;
+    --cold-soft: rgba(125, 151, 255, 0.16);
+    --warming-soft: rgba(240, 182, 90, 0.16);
+    --sent-soft: rgba(82, 180, 156, 0.16);
+    --cooled-soft: rgba(120, 192, 124, 0.16);
+    --fail-soft: rgba(240, 98, 95, 0.18);
+  }
+}
+
+/* ============================================================= База */
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  line-height: 1.55;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Каркас с боковым меню: меню — отдельный слой над полотном. Гейт :has() не
+   трогает страницы без меню (вход, уведомление, публичный edge). */
+body:has(> .sidebar) {
+  display: grid;
+  grid-template-columns: var(--sidebar-w) 1fr;
+  align-items: start;
+}
+
+h1,
+h2,
+h3 {
+  font-weight: 660;
+  letter-spacing: -0.02em;
+  line-height: 1.2;
+}
+
+h1 {
+  font-size: clamp(1.45rem, 1.15rem + 1vw, 1.9rem);
+  margin: 0 0 0.75rem;
+}
+
+h2 {
+  font-size: 1.1rem;
+  margin: 0 0 0.75rem;
+}
+
+h3 {
+  font-size: 0.95rem;
+  margin: 0 0 0.5rem;
+  color: var(--ink-soft);
+  font-weight: 600;
+}
+
+.page {
+  margin: 0 auto;
+  max-width: 74rem;
+  padding: var(--spacing);
+}
+
+body:has(> .sidebar) .page {
+  padding: clamp(1.25rem, 1rem + 1.5vw, 2.5rem);
+}
+
+.page-head {
+  margin-bottom: var(--spacing);
+}
+
+.hint {
+  color: var(--ink-soft);
+  font-size: 0.9rem;
+  margin: 0.75rem 0 0;
+}
+
+.error-text {
+  color: var(--fail);
+  font-size: 0.88rem;
+}
+
+/* ============================================================= Боковое меню */
+
+.sidebar {
+  position: sticky;
+  top: 0;
+  align-self: start;
+  height: 100vh;
+  overflow-y: auto;
+  padding: 1.4rem 1rem;
+  background: var(--glass);
+  border-right: 1px solid var(--line);
+  /* Стекло = слоистость: меню лежит над полотном (design.md, Решение 4). */
+  backdrop-filter: blur(14px) saturate(150%);
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
+}
+
+@supports not (backdrop-filter: blur(1px)) {
+  .sidebar {
+    background: var(--surface);
+  }
+}
+
+.sidebar-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.12rem;
+}
+
+.sidebar-list li {
+  animation: rail-in 0.34s var(--ease) both;
+}
+
+.sidebar-list li:nth-child(2) { animation-delay: 0.03s; }
+.sidebar-list li:nth-child(3) { animation-delay: 0.06s; }
+.sidebar-list li:nth-child(4) { animation-delay: 0.09s; }
+.sidebar-list li:nth-child(5) { animation-delay: 0.12s; }
+.sidebar-list li:nth-child(6) { animation-delay: 0.15s; }
+
+.sidebar-list a {
+  position: relative;
+  display: block;
+  padding: 0.52rem 0.7rem;
+  border-radius: var(--radius-sm);
+  color: var(--ink-soft);
+  text-decoration: none;
+  transition: color 0.18s var(--ease), background 0.18s var(--ease);
+}
+
+.sidebar-list a:hover {
+  color: var(--ink);
+  background: var(--paper-2);
+}
+
+.sidebar-list a.is-active {
+  color: var(--ink);
+  font-weight: 620;
+  background: var(--paper-2);
+}
+
+/* Активный пункт помечается термальной полосой — единственное место, где
+   рампа работает как «направление», а не как статус. */
+.sidebar-list a.is-active::before {
+  content: "";
+  position: absolute;
+  left: -0.5rem;
+  top: 0.45rem;
+  bottom: 0.45rem;
+  width: 3px;
+  border-radius: 3px;
+  background: linear-gradient(var(--cold), var(--warming));
+}
+
+/* ============================================================= Поверхности */
+
+/* Роли поверхностей различаются, а не сливаются в одинаковые плашки
+   (design.md, Решение 8): секция, карточка сущности, строка списка, уведомление. */
+
+.panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: var(--spacing);
+  margin-bottom: var(--spacing);
+}
+
+/* Карточка сущности — старшая по иерархии: крупнее радиус, мягкая тень. */
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: calc(var(--radius) + 0.2rem);
+  box-shadow: var(--shadow);
+  padding: calc(var(--spacing) * 1.15);
+  margin-bottom: var(--spacing);
+}
+
+.card-head h2 {
+  margin-bottom: 0.25rem;
+}
+
+.card-source {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0;
+}
+
+.card-description {
+  margin-top: 0.75rem;
+}
+
+.card-section {
+  margin-top: var(--spacing);
+  padding-top: var(--spacing);
+  border-top: 1px solid var(--line);
+}
+
+.card-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: var(--spacing);
+  padding-top: var(--spacing);
+  border-top: 1px solid var(--line);
+}
+
+/* Уведомление — отдельная роль: тёплая левая грань, без тени. */
+.notice {
+  border: 1px solid var(--line);
+  border-left: 4px solid var(--warming);
+  background: var(--surface);
+  border-radius: var(--radius);
+  padding: var(--spacing);
+}
+
+.notice h1 {
+  margin-top: 0;
+}
+
+/* ============================================================= Раскрытие (карточки) */
+
+/* Анимация открытия/закрытия — по действию пользователя, не по таймеру
+   (design.md, Решения 8–9). Механизм grid-template-rows даёт плавную высоту
+   без измерения из скрипта. */
+.reveal {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.28s var(--ease);
+}
+
+.reveal > * {
+  overflow: hidden;
+  min-height: 0;
+}
+
+details[open] > .reveal {
+  grid-template-rows: 1fr;
+}
+
+.disclosure {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+  margin-top: var(--spacing);
+}
+
+.disclosure > summary {
+  cursor: pointer;
+  padding: 0.75rem var(--spacing);
+  font-weight: 600;
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  transition: background 0.18s var(--ease);
+}
+
+.disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+.disclosure > summary::before {
+  content: "";
+  width: 0.5rem;
+  height: 0.5rem;
+  border-right: 2px solid var(--ink-soft);
+  border-bottom: 2px solid var(--ink-soft);
+  transform: rotate(-45deg);
+  transition: transform 0.22s var(--ease);
+}
+
+.disclosure[open] > summary::before {
+  transform: rotate(45deg);
+}
+
+.disclosure > summary:hover {
+  background: var(--paper-2);
+}
+
+.disclosure-body {
+  padding: 0 var(--spacing) var(--spacing);
+}
+
+/* ============================================================= Формы */
+
+.field {
+  margin-bottom: 0.75rem;
+}
+
+.field label {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 0.3rem;
+}
+
+.field input[type="text"],
+.field input[type="password"],
+.field textarea,
+.field select {
+  width: 100%;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  padding: 0.55rem 0.7rem;
+  font: inherit;
+  background: var(--surface);
+  color: var(--ink);
+  transition: border-color 0.16s var(--ease), box-shadow 0.16s var(--ease);
+}
+
+.field input:focus-visible,
+.field textarea:focus-visible,
+.field select:focus-visible,
+button:focus-visible,
+a:focus-visible,
+summary:focus-visible {
+  outline: 2px solid var(--cold);
+  outline-offset: 2px;
+}
+
+.field input[aria-invalid="true"],
+.field textarea[aria-invalid="true"] {
+  border-color: var(--fail);
+}
+
+.field-error {
+  color: var(--fail);
+  font-size: 0.85rem;
+}
+
+.search-form {
+  display: flex;
+  align-items: flex-end;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.search-form .field {
+  flex: 1 1 12rem;
+  margin: 0;
+}
+
+.actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  margin: 0.75rem 0 0;
+}
+
+/* Кнопки нейтральны: термо-рампа не тратится на действие. */
+button {
+  background: var(--ink);
+  color: var(--paper);
+  border: 1px solid var(--ink);
+  border-radius: var(--radius-sm);
+  padding: 0.55rem 1rem;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+  transition: transform 0.12s var(--ease), opacity 0.16s var(--ease);
+}
+
+button:hover {
+  opacity: 0.9;
+}
+
+button:active {
+  transform: translateY(1px);
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.button-secondary {
+  background: transparent;
+  color: var(--ink);
+  border: 1px solid var(--line-strong);
+}
+
+.button-danger {
+  background: transparent;
+  color: var(--fail);
+  border: 1px solid var(--fail);
+}
+
+/* ============================================================= Таблицы */
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.table th,
+.table td {
+  text-align: left;
+  padding: 0.6rem 0.75rem;
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+
+.table th {
+  color: var(--ink-soft);
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.table tbody tr {
+  transition: background 0.16s var(--ease);
+}
+
+.table tbody tr:hover {
+  background: var(--paper-2);
+}
+
+.table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+.journal-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.5rem;
+}
+
+.journal-select-all {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--ink-soft);
+  font-size: 0.85rem;
+}
+
+.journal-scroll {
+  max-height: 60vh;
+  overflow-y: auto;
+}
+
+/* Компактный журнал: строка — состояние, дата и короткий запрос. Полный запрос,
+   ход и ошибка уезжают в раскрытие details, поэтому строка остаётся читаемой. */
+.journal-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.journal-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  border-bottom: 1px solid var(--line);
+  transition: background 0.16s var(--ease);
+}
+
+.journal-row:last-child {
+  border-bottom: 0;
+}
+
+.journal-row:hover {
+  background: var(--paper-2);
+}
+
+.journal-item {
+  flex: 1;
+  min-width: 0;
+}
+
+.journal-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.6rem 0.75rem;
+  cursor: pointer;
+  list-style: none;
+  transition: background 0.16s var(--ease);
+}
+
+.journal-summary::-webkit-details-marker {
+  display: none;
+}
+
+/* Указатель раскрытия — тот же треугольник, что у общего disclosure. */
+.journal-summary::before {
+  content: "";
+  flex: none;
+  width: 0.45rem;
+  height: 0.45rem;
+  border-right: 2px solid var(--ink-soft);
+  border-bottom: 2px solid var(--ink-soft);
+  transform: rotate(-45deg);
+  transition: transform 0.22s var(--ease);
+}
+
+.journal-item[open] > .journal-summary::before {
+  transform: rotate(45deg);
+}
+
+.journal-summary:hover {
+  background: var(--paper-2);
+}
+
+.journal-date {
+  flex: none;
+  color: var(--ink-soft);
+  font-size: 0.85rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.journal-query {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.journal-more {
+  padding: 0 0.75rem 0.75rem 1.95rem;
+}
+
+.journal-fact {
+  margin: 0.25rem 0;
+  overflow-wrap: anywhere;
+}
+
+.journal-label {
+  display: inline-block;
+  min-width: 4.5rem;
+  color: var(--ink-soft);
+  font-size: 0.85rem;
+}
+
+.journal-more .actions {
+  margin: 0.5rem 0 0;
+}
+
+.cell-main {
+  font-weight: 600;
+}
+
+.cell-select {
+  flex: none;
+  width: 2.2rem;
+  padding-top: 0.7rem;
+  text-align: center;
+}
+
+/* ============================================================= Экран задания */
+
+.job-query {
+  margin: 0;
+  font-size: 1.02rem;
+  font-weight: 600;
+  overflow-wrap: anywhere;
+}
+
+.job-id {
+  color: var(--ink-soft);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.82rem;
+}
+
+.job-facts {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.35rem 1rem;
+  margin: 0;
+}
+
+.job-facts dt {
+  color: var(--ink-soft);
+  font-size: 0.85rem;
+}
+
+.job-facts dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.empty {
+  color: var(--ink-soft);
+  text-align: center;
+  padding: 1.5rem;
+}
+
+/* ============================================================= Ссылки и служебное */
+
+.link {
+  color: var(--ink);
+  text-decoration: underline;
+  text-decoration-color: var(--line-strong);
+  text-underline-offset: 3px;
+  transition: text-decoration-color 0.16s var(--ease);
+}
+
+.link:hover {
+  text-decoration-color: var(--ink);
+}
+
+.provenance {
+  color: var(--ink-soft);
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.provenance a {
+  color: var(--ink-soft);
+}
+
+.method {
+  display: inline-block;
+  margin-left: 0.4rem;
+  padding: 0.05rem 0.4rem;
+  border-radius: 0.3rem;
+  background: var(--paper-2);
+  color: var(--ink-soft);
+  font-size: 0.75rem;
+}
+
+/* Вкладки (для экранов, где они появятся). */
+.tabs {
+  display: flex;
+  gap: 0.25rem;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: var(--spacing);
+}
+
+.tab {
+  padding: 0.6rem 1rem;
+  text-decoration: none;
+  color: var(--ink-soft);
+  border-bottom: 2px solid transparent;
+  transition: color 0.16s var(--ease);
+}
+
+.tab:hover {
+  color: var(--ink);
+}
+
+.tab.is-active {
+  color: var(--ink);
+  border-bottom-color: var(--warming);
+  font-weight: 620;
+}
+
+/* ============================================================= Бейдж статуса */
+
+/* Форма маркера кодирует тип, цвет — температуру. Статус читается без цвета
+   (design.md, Решение 5). */
+.status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.15rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  white-space: nowrap;
+  background: var(--paper-2);
+  color: var(--ink-soft);
+}
+
+.status::before {
+  content: "";
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: currentColor;
+  flex: none;
+}
+
+/* Ожидание — полый круг. */
+.status-queued,
+.status-not-warmed {
+  background: var(--cold-soft);
+  color: var(--cold);
+}
+
+.status-queued::before,
+.status-not-warmed::before {
+  background: transparent;
+  border: 2px solid currentColor;
+}
+
+/* Прогрев — заполненный круг. */
+.status-running,
+.status-warming {
+  background: var(--warming-soft);
+  color: var(--warming);
+}
+
+/* Отправлено / остыло — заполненный круг. */
+.status-done,
+.status-sent,
+.status-email-sent {
+  background: var(--sent-soft);
+  color: var(--sent);
+}
+
+.status-cold {
+  background: var(--cooled-soft);
+  color: var(--cooled);
+}
+
+/* Сбой — ромб. Красный используется только здесь. */
+.status-failed,
+.status-bounced,
+.status-rejected,
+.status-unsubscribed {
+  background: var(--fail-soft);
+  color: var(--fail);
+}
+
+.status-failed::before,
+.status-bounced::before,
+.status-rejected::before,
+.status-unsubscribed::before {
+  border-radius: 2px;
+  transform: rotate(45deg);
+}
+
+.status-cancelled {
+  background: var(--paper-2);
+  color: var(--ink-soft);
+}
+
+/* ============================================================= Таймлайн статусов */
+
+/* Прямой линейный таймлайн: позиция точки = этап, форма маркера = тип
+   (design.md, Решение 6). */
+.timeline {
+  display: flex;
+  align-items: flex-start;
+  margin: var(--spacing) 0;
+  padding: 0;
+  list-style: none;
+}
+
+.timeline-point {
+  position: relative;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 0 0.25rem;
+}
+
+.timeline-point::before {
+  content: "";
+  position: absolute;
+  top: 7px;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: var(--line-strong);
+}
+
+.timeline-point:first-child::before {
+  left: 50%;
+}
+
+.timeline-point:last-child::before {
+  right: 50%;
+}
+
+.timeline-dot {
+  position: relative;
+  z-index: 1;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 2px solid var(--line-strong);
+  background: var(--surface);
+  transition: background 0.2s var(--ease), border-color 0.2s var(--ease), transform 0.2s var(--ease);
+}
+
+.timeline-point.is-done .timeline-dot {
+  border-color: var(--sent);
+  background: var(--sent);
+}
+
+.timeline-point.is-current .timeline-dot {
+  border-color: var(--warming);
+  background: var(--warming);
+  box-shadow: 0 0 0 4px var(--warming-soft);
+  animation: heat 1.8s var(--ease) infinite;
+}
+
+.timeline-point.is-fail .timeline-dot {
+  border-color: var(--fail);
+  background: var(--fail);
+  border-radius: 3px;
+  transform: rotate(45deg);
+}
+
+.timeline-label {
+  margin-top: 0.45rem;
+  font-size: 0.76rem;
+  color: var(--ink-soft);
+}
+
+.timeline-point.is-current .timeline-label,
+.timeline-point.is-fail .timeline-label {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* Детали статуса при наведении — стеклянная подсказка над колонкой. */
+.timeline-point[data-detail] {
+  cursor: help;
+}
+
+.timeline-point[data-detail]:hover .timeline-detail,
+.timeline-point[data-detail]:focus-within .timeline-detail {
+  opacity: 1;
+  transform: translate(-50%, 0);
+  pointer-events: auto;
+}
+
+.timeline-detail {
+  position: absolute;
+  bottom: calc(100% + 0.35rem);
+  left: 50%;
+  z-index: 5;
+  transform: translate(-50%, 4px);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s var(--ease), transform 0.18s var(--ease);
+  max-width: 16rem;
+  padding: 0.5rem 0.7rem;
+  font-size: 0.78rem;
+  font-weight: 400;
+  color: var(--ink);
+  text-align: left;
+  background: var(--glass);
+  border: 1px solid var(--glass-border);
+  border-radius: var(--radius-sm);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(12px) saturate(150%);
+  -webkit-backdrop-filter: blur(12px) saturate(150%);
+}
+
+/* Компактный таймлайн в строке истории переписки. */
+.timeline-inline {
+  margin: 0;
+}
+
+.timeline-inline .timeline-point {
+  flex: none;
+  width: 4.5rem;
+}
+
+.timeline-inline .timeline-dot {
+  width: 12px;
+  height: 12px;
+}
+
+.timeline-inline .timeline-label {
+  font-size: 0.72rem;
+}
+
+/* ============================================================= Воронка (канбан) */
+
+.board {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(14rem, 1fr));
+  gap: var(--spacing);
+  align-items: start;
+}
+
+.stage-col {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.9rem;
+  transition: border-color 0.18s var(--ease), box-shadow 0.18s var(--ease), background 0.18s var(--ease);
+}
+
+/* Зона приёма нагревается под перетаскиваемым лидом. */
+.stage-col.is-over {
+  border-color: var(--warming);
+  box-shadow: 0 0 0 3px var(--warming-soft);
+}
+
+.stage-col.is-heating {
+  animation: heat 0.6s var(--ease) 1;
+}
+
+.stage-head {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.stage-head h2 {
+  margin: 0;
+  font-size: 0.98rem;
+  flex: 1;
+}
+
+.stage-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--line-strong);
+}
+
+.stage-col[data-stage="not warmed"] .stage-dot { background: var(--cold); }
+.stage-col[data-stage="email sent"] .stage-dot { background: var(--sent); }
+.stage-col[data-stage="warming"] .stage-dot { background: var(--warming); }
+.stage-col[data-stage="cold"] .stage-dot { background: var(--cooled); }
+
+.stage-count {
+  font-size: 0.78rem;
+  color: var(--ink-soft);
+  background: var(--paper-2);
+  border-radius: 999px;
+  padding: 0.05rem 0.5rem;
+}
+
+.lead-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.lead {
+  background: var(--paper);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 0.55rem 0.65rem;
+  cursor: grab;
+  transition: transform 0.14s var(--ease), box-shadow 0.14s var(--ease), opacity 0.14s var(--ease);
+}
+
+.lead:hover {
+  transform: translateY(-1px);
+  box-shadow: var(--shadow);
+}
+
+.lead.is-dragging {
+  opacity: 0.5;
+  cursor: grabbing;
+}
+
+.lead-name {
+  display: block;
+  font-weight: 600;
+  margin-bottom: 0.35rem;
+}
+
+/* Доступный fallback переноса: форма работает без JavaScript и с клавиатуры. */
+.lead-move {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.lead-move-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+}
+
+.lead-move select {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  padding: 0.3rem 0.4rem;
+  font: inherit;
+  font-size: 0.82rem;
+  background: var(--surface);
+  color: var(--ink);
+}
+
+.lead-move button {
+  padding: 0.3rem 0.55rem;
+  font-size: 0.82rem;
+}
+
+/* ============================================================= История переписки */
+
+.history-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.history-item {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  padding: 0.6rem 0.75rem;
+}
+
+.history-head {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.history-head .timeline {
+  margin: 0.5rem 0 0;
+}
+
+.history-meta {
+  color: var(--ink-soft);
+  font-size: 0.82rem;
+}
+
+/* ============================================================= Диалог ассистента */
+
+.dialogue {
+  list-style: none;
+  margin: 0 0 var(--spacing);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+
+.dialogue li {
+  max-width: 44rem;
+  padding: 0.6rem 0.85rem;
+  border-radius: var(--radius);
+  animation: turn-in 0.26s var(--ease) both;
+}
+
+.dialogue-operator {
+  align-self: flex-end;
+  background: var(--cold-soft);
+  border: 1px solid var(--line);
+}
+
+.dialogue-agent {
+  align-self: flex-start;
+  background: var(--paper-2);
+  border: 1px solid var(--line);
+}
+
+.plan-limits {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.75rem var(--spacing) var(--spacing);
+  margin: 0 0 var(--spacing);
+}
+
+.plan-limits legend {
+  color: var(--ink-soft);
+  font-size: 0.85rem;
+  padding: 0 0.4rem;
+}
+
+.plan-targets {
+  margin: 0;
+  padding-left: 1.1rem;
+}
+
+/* Чипы согласованных в диалоге параметров: значения приходят готовыми строками. */
+.plan-chips {
+  list-style: none;
+  margin: 0.75rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.35rem;
+  padding: 0.2rem 0.6rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  font-size: 0.82rem;
+  background: var(--paper);
+}
+
+.chip-label {
+  color: var(--ink-soft);
+}
+
+.chip-value {
+  font-weight: 600;
+}
+
+/* ============================================================= Форумные сигналы */
+
+.signal-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.signal {
+  border-left: 2px solid var(--line-strong);
+  padding-left: 0.85rem;
+}
+
+.signal-topic {
+  margin: 0;
+  font-weight: 600;
+}
+
+.signal-summary {
+  margin: 0.25rem 0;
+  color: var(--ink-soft);
+}
+
+.signal-meta {
+  margin: 0.25rem 0 0;
+  font-size: 0.82rem;
+  color: var(--ink-soft);
+}
+
+.socials {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.socials li {
+  margin-bottom: 0.25rem;
+}
+
+/* ============================================================= Движение */
+
+/* Движение только в ответ на действие; один оркестрованный момент — «нагрев»
+   лида (design.md, Решение 9). */
+@keyframes rail-in {
+  from {
+    opacity: 0;
+    transform: translateX(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes turn-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes heat {
+  0%,
+  100% {
+    box-shadow: 0 0 0 3px var(--warming-soft);
+  }
+  50% {
+    box-shadow: 0 0 0 7px var(--warming-soft);
+  }
+}
+
+/* Обязательное уважение пользовательской настройки: переходы мгновенны, но
+   действия остаются доступны. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ============================================================= Адаптив */
+
+@media (max-width: 52rem) {
+  body:has(> .sidebar) {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    position: static;
+    height: auto;
+    border-right: 0;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .sidebar-list {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+}
+
+/* ============================================================= Библиотека шаблонов */
+
+/* Список шаблонов — строка списка (design.md, Решение 8): то же полотно, что у
+   панелей, но без рамки-плашки; активная строка помечается фоновой ролью. */
+.template-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.template-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.12rem;
+  padding: 0.5rem 0.7rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+}
+
+.template-item.is-selected {
+  background: var(--paper-2);
+  border-color: var(--line-strong);
+}
+
+.template-meta {
+  color: var(--ink-soft);
+  font-size: 0.82rem;
+}
+
+/* Переменные шаблона: объявление и fallback. */
+.variables {
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  margin: 0 0 var(--spacing);
+  padding: 0.75rem var(--spacing) var(--spacing);
+}
+
+.variables legend {
+  color: var(--ink-soft);
+  font-size: 0.85rem;
+  padding: 0 0.4rem;
+}
+
+.variable-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.variable-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.variable-toggle {
+  min-width: 11rem;
+}
+
+.variable-row input[type="text"] {
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--paper);
+  color: var(--ink);
+}
+
+/* Предпросмотр собранного письма. */
+.preview {
+  margin: 0.5rem 0 0;
+}
+
+.preview dt {
+  color: var(--ink-soft);
+  font-size: 0.82rem;
+}
+
+.preview dd {
+  margin: 0.15rem 0 0.75rem;
+  white-space: pre-wrap;
+}
+
+/* ============================================================= Витрина карточек */
+
+/* Список карточек в двух представлениях: одна модель карточки, различие —
+   контейнер и его класс data-cards-view (design.md, Решение 1). */
+.cards-toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+  margin-bottom: 0.75rem;
+}
+
+.composition-switch,
+.view-switch {
+  display: inline-flex;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+}
+
+.view-option {
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  background: var(--paper);
+  color: var(--ink-soft);
+  padding: 0.35rem 0.85rem;
+  font: inherit;
+  cursor: pointer;
+}
+
+.view-option + .view-option {
+  border-left: 1px solid var(--line-strong);
+}
+
+.view-option:hover {
+  background: var(--paper-2);
+}
+
+.view-option.is-active {
+  background: var(--cold-soft);
+  color: var(--ink);
+}
+
+.view-option:focus-visible {
+  outline: 2px solid var(--cold);
+  outline-offset: -2px;
+}
+
+.cards {
+  display: grid;
+  gap: 0.6rem;
+  align-items: stretch;
+}
+
+.cards[data-cards-view="tiles"] {
+  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+}
+
+.cards[data-cards-view="rows"] {
+  grid-template-columns: 1fr;
+}
+
+/* Карточка — строка списка (design.md, Решение 8): то же полотно, что у панелей,
+   но кликабельная целиком и без внешней тени. */
+.cards-item {
+  display: grid;
+  gap: 0.3rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--surface);
+  color: inherit;
+  text-decoration: none;
+  transition: border-color 0.18s var(--ease), box-shadow 0.18s var(--ease);
+}
+
+.cards-item:hover {
+  border-color: var(--line-strong);
+  box-shadow: var(--shadow);
+}
+
+.cards-item:focus-visible {
+  outline: 2px solid var(--cold);
+  outline-offset: 2px;
+}
+
+.cards-item .card-name {
+  font-weight: 600;
+}
+
+.cards-item .card-desc {
+  color: var(--ink-soft);
+  font-size: 0.85rem;
+}
+
+.cards-item .card-email {
+  color: var(--ink-soft);
+  font-size: 0.85rem;
+  word-break: break-all;
+}
+
+.cards-item .card-no-email {
+  color: var(--fail);
+  font-weight: 600;
+}
+
+/* Плитка: название и краткое описание, email не показывается. */
+.cards[data-cards-view="tiles"] .card-email {
+  display: none;
+}
+
+/* Строка: email, название и краткое описание в ряд. */
+.cards[data-cards-view="rows"] .cards-item {
+  grid-template-columns: minmax(11rem, 15rem) minmax(9rem, 1fr) 2fr;
+  align-items: baseline;
+}
+
+/* Карточка без email выделяется красным. Цвет — не единственный носитель
+   смысла: отсутствие письма озвучено меткой «нет email» в строке и aria-label на
+   карточке (design.md, Решение 6). */
+.cards-item.is-no-email {
+  border-color: var(--fail);
+  background: var(--fail-soft);
+}
+
+.cards-item.is-no-email .card-name {
+  color: var(--fail);
+}
+
+@media (max-width: 52rem) {
+  .cards[data-cards-view="rows"] .cards-item {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Состав результатов — отдельная ось от представления: обе группы лежат в DOM,
+   переключение меняет лишь видимую. Вторая группа не удаляется. */
+.cards[data-cards-composition="fits"] .cards-item[data-group="other"],
+.cards[data-cards-composition="fits"] .cards-empty[data-group="other"] {
+  display: none;
+}
+
+.cards[data-cards-composition="other"] .cards-item[data-group="fits"],
+.cards[data-cards-composition="other"] .cards-empty[data-group="fits"] {
+  display: none;
+}
+
+/* Вердикт оценки: цвет — не единственный носитель смысла, рядом всегда стоит
+   текстовая подпись вердикта. */
+.verdict {
+  display: inline-block;
+  padding: 0.1rem 0.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.verdict-fits {
+  background: var(--cold-soft);
+  border-color: var(--cold);
+}
+
+.verdict-hypothesis {
+  background: var(--paper-2);
+}
+
+.verdict-unsuitable {
+  background: var(--fail-soft);
+  border-color: var(--fail);
+  color: var(--fail);
+}
+
+.verdict-unknown {
+  background: var(--paper-2);
+  color: var(--ink-soft);
+}
+
+.cards-item .card-verdict {
+  justify-self: start;
+}
+
+/* Раскрытие «Почему эта оценка?» и основания результатов задания. */
+.assessment-verdict,
+.fit-head {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.assessment-signal {
+  color: var(--ink-soft);
+  font-size: 0.85rem;
+}
+
+.evidence-list {
+  list-style: none;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.evidence-item {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.6rem 0.8rem;
+  background: var(--surface);
+}
+
+.evidence-facts {
+  display: grid;
+  grid-template-columns: minmax(6rem, 10rem) 1fr;
+  gap: 0.2rem 0.75rem;
+  margin: 0;
+}
+
+.evidence-facts dt {
+  color: var(--ink-soft);
+  font-size: 0.8rem;
+}
+
+.evidence-facts dd {
+  margin: 0;
+  word-break: break-word;
+}
+
+.fit-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.75rem;
+}
+
+.fit-item {
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 0.6rem 0.8rem;
+}
+
+.verdict-distribution {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem 1.5rem;
+  margin: 0;
+}
+
+.verdict-distribution dt {
+  color: var(--ink-soft);
+}
+
+.verdict-distribution dd {
+  margin: 0;
+  font-weight: 600;
+}
+
+/* Интерпретация запроса — отдельный от плана блок на экране согласования. */
+.interpretation {
+  display: grid;
+  grid-template-columns: minmax(8rem, 12rem) 1fr;
+  gap: 0.3rem 0.75rem;
+  margin: 0;
+}
+
+.interpretation dt {
+  color: var(--ink-soft);
+}
+
+.interpretation dd {
+  margin: 0;
+}
+
+.interpretation-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.15rem;
+}
+
+.interpretation-list .empty {
+  color: var(--ink-soft);
+}

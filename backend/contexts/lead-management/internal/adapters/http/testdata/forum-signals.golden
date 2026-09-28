@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Форумы</title>
+  <link rel="stylesheet" href="/static/console.css">
+  <script src="/static/htmx.min.js" defer></script>
+  <script src="/static/console.js" defer></script>
+  <script src="/static/assistant.js" defer></script>
+</head>
+<body>
+  <nav class="sidebar">
+  <ul class="sidebar-list">
+    <li><a href="/">Главная</a></li>
+    <li><a href="/cards">Карточки</a></li>
+    <li><a href="/funnel">Воронка</a></li>
+    <li><a href="/send">Отправка</a></li>
+    <li><a href="/assistant">Ассистент</a></li>
+    <li><a href="/forum-signals" class="is-active" aria-current="page">Форумы</a></li>
+  </ul>
+</nav>
+  <main class="page">
+<header class="page-head">
+  <h1>Форумы</h1>
+</header>
+
+<section class="panel">
+  <h2>Поиск сигналов</h2>
+  <form method="get" action="/forum-signals">
+    <p class="field">
+  <label for="q">Запрос</label>
+  <input id="q" name="q" type="text" value="saas" required>
+</p>
+    <p class="actions"><button type="submit">Искать</button></p>
+  </form>
+</section>
+<section class="panel">
+  <h2>Сигналы по запросу «saas»</h2>
+  <ul class="signal-list">
+    <li class="signal">
+      <p class="signal-topic">Тема 1</p><p class="signal-summary">Выжимка 1</p>
+      <p class="signal-meta"><a class="link" href="https://reddit.com/t/1" rel="noopener noreferrer">https://reddit.com/t/1</a> · 2026-01-02</p>
+    </li>
+    <li class="signal">
+      <p class="signal-topic">Тема 2</p>
+      <p class="signal-meta"><a class="link" href="https://news.ycombinator.com/item?id=1" rel="noopener noreferrer">https://news.ycombinator.com/item?id=1</a> · 2026-01-02</p>
+    </li>
+  </ul>
+</section>
+  </main>
+</body>
+</html>

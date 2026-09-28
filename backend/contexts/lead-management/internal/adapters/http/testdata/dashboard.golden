@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Главная</title>
+  <link rel="stylesheet" href="/static/console.css">
+  <script src="/static/htmx.min.js" defer></script>
+  <script src="/static/console.js" defer></script>
+  <script src="/static/assistant.js" defer></script>
+</head>
+<body>
+  <nav class="sidebar">
+  <ul class="sidebar-list">
+    <li><a href="/" class="is-active" aria-current="page">Главная</a></li>
+    <li><a href="/cards">Карточки</a></li>
+    <li><a href="/funnel">Воронка</a></li>
+    <li><a href="/send">Отправка</a></li>
+    <li><a href="/assistant">Ассистент</a></li>
+    <li><a href="/forum-signals">Форумы</a></li>
+  </ul>
+</nav>
+  <main class="page">
+<header class="page-head">
+  <h1>Главная</h1>
+</header>
+
+<section class="panel">
+  <h2>Новый поиск</h2>
+  <form class="search-form" method="post" action="/search">
+    <p class="field">
+  <label for="query">Запрос</label>
+  <input id="query" name="query" type="text" value="" required>
+</p>
+    <p class="field">
+  <label for="targetCompanies">Сколько найти компаний (необязательно)</label>
+  <input id="targetCompanies" name="targetCompanies" type="text" value="">
+</p>
+    <p class="field">
+  <label for="maxResults">Результатов на запрос (необязательно)</label>
+  <input id="maxResults" name="maxResults" type="text" value="">
+</p>
+    <p class="field">
+  <label for="manualTargets">Свои цели (по строке — запрос или URL; необязательно)</label>
+  <textarea id="manualTargets" name="manualTargets" rows="3"></textarea>
+</p>
+    <p class="field">
+  <label for="budget">Бюджет кредитов Firecrawl (необязательно)</label>
+  <input id="budget" name="budget" type="text" value="">
+</p>
+    <input type="hidden" name="csrf" value="TOKEN">
+    <p class="actions"><button type="submit">Запустить поиск</button></p>
+  </form>
+  <p class="hint">Поиск находит сайты по запросу, обходит их и собирает контакты в карточки. «Сколько найти» останавливает задание по достижении N уникальных компаний (пусто — прежнее поведение); «Результатов на запрос» ограничивает выдачу поиска; «Свои цели» задают цели обхода вручную, по строке. Бюджет кредитов Firecrawl ограничивает стоимость запроса.</p>
+</section>
+
+<section class="panel">
+  <h2>Журнал заданий</h2>
+  <form method="post" action="/jobs/cancel" class="journal-form">
+    <input type="hidden" name="csrf" value="TOKEN">
+    <div class="journal-toolbar">
+      <label class="journal-select-all">
+        <input type="checkbox" data-select-all aria-label="Выбрать все задания">
+        <span>Все</span>
+      </label>
+      <button type="submit" data-cancel-selected>Отменить выбранные</button>
+      <span class="hint" data-selected-count>выбрано: 0</span>
+    </div>
+    <div class="journal-scroll">
+    <ul class="journal-list">
+      <li class="empty">Заданий пока нет</li>
+    </ul>
+    </div>
+  </form>
+</section>
+
+<section class="panel">
+  <h2>Последние лиды</h2>
+  <table class="table">
+    <thead>
+      <tr><th>Компания</th><th>Описание</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="cell-main"><a class="link" href="/cards/example.com">Пример Компании</a></td>
+        <td>Описание компании с email</td>
+      </tr>
+      <tr>
+        <td class="cell-main"><a class="link" href="/cards/phone.example.com">Только Телефон</a></td>
+        <td>Описание компании без email</td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+  </main>
+</body>
+</html>

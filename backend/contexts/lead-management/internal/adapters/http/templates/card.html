@@ -1,0 +1,190 @@
+{{- define "timeline" -}}
+<ol class="timeline">
+{{- range . }}
+  <li class="timeline-point is-{{.State}}"{{ with .Detail }} data-detail="{{.}}" title="{{.}}"{{ end }}>
+    <span class="timeline-dot" aria-hidden="true"></span>
+    <span class="timeline-label">{{.Label}}</span>
+    {{- with .Detail }}<span class="timeline-detail" role="tooltip">{{.}}</span>{{- end }}
+  </li>
+{{- end }}
+</ol>
+{{- end -}}
+
+{{- define "evidence-list" -}}
+<ul class="evidence-list">
+{{- range . }}
+  <li class="evidence-item">
+    <dl class="evidence-facts">
+      <dt>Критерий</dt><dd>{{.Criterion}}</dd>
+      {{- with .Fact }}<dt>Факт</dt><dd>{{.}}</dd>{{ end }}
+      {{- with .SourceURL }}<dt>Источник</dt><dd><a class="link" href="{{.}}" rel="noopener noreferrer">{{.}}</a></dd>{{ end }}
+      {{- with .Reasoning }}<dt>Объяснение связи</dt><dd>{{.}}</dd>{{ end }}
+      <dt>Тип сигнала</dt><dd>{{.SignalLabel}}</dd>
+      {{- with .Missing }}<dt>Не хватает</dt><dd>{{.}}</dd>{{ end }}
+      {{- with .Mismatch }}<dt>Несоответствие</dt><dd>{{.}}</dd>{{ end }}
+    </dl>
+  </li>
+{{- else }}
+  <li class="empty">Свидетельств нет</li>
+{{- end }}
+</ul>
+{{- end -}}
+
+{{- define "content" -}}
+{{- with .View -}}
+<header class="page-head">
+  <h1>Карточка</h1>
+</header>
+
+<article class="card">
+  <header class="card-head">
+    <h2>{{.Card.Name}}</h2>
+    <p class="card-source">
+      {{ template "status-badge" .Card.StageBadge }}
+      {{ template "provenance" .Card.Source }}
+      {{- if .Card.Snoozed }} <span class="status status-queued">Отложен</span>{{- end }}
+    </p>
+  </header>
+
+  {{- with .Card.Description }}
+  <p class="card-description">{{.}}</p>
+  {{- end }}
+
+  <section class="card-section">
+    <h3>Стадия</h3>
+    {{ template "timeline" .Card.StagePoints }}
+  </section>
+
+  {{/* Раскрытие «Почему эта оценка?»: критерий, факт, источник, объяснение, тип
+       сигнала; для гипотезы — недостающее свидетельство, для «Не подходит» —
+       несоответствие. Оценка существует только в контексте задания, поэтому без
+       задания она не подставляется. */}}
+  <section class="card-section assessment">
+    <h3>Почему эта оценка?</h3>
+    {{- if .Assessment }}
+    <p class="assessment-verdict">
+      <span class="verdict verdict-{{.Assessment.VerdictClass}}">{{.Assessment.VerdictLabel}}</span>
+      <span class="assessment-signal">Тип сигнала: {{.Assessment.SignalLabel}}</span>
+      {{- if .JobScoped }} <span class="assessment-context job-id">{{.JobID}}</span>{{ end }}
+    </p>
+    {{ template "evidence-list" .Assessment.Evidence }}
+    {{- else if .JobScoped }}
+    <p class="hint">В этом задании оценка компании не определена.</p>
+    {{- else }}
+    <p class="hint">Оценка привязана к заданию: откройте карточку из результатов задания, чтобы увидеть вердикт и свидетельства.</p>
+    {{- end }}
+  </section>
+
+  {{- if .Card.Socials }}
+  <section class="card-section">
+    <h3>Соцсети</h3>
+    <ul class="socials">
+    {{- range .Card.Socials }}
+      <li><a class="link" href="{{.}}" rel="noopener noreferrer">{{.}}</a></li>
+    {{- end }}
+    </ul>
+  </section>
+  {{- end }}
+
+  <section class="card-section">
+    <h3>Контакты</h3>
+    <table class="table">
+      <thead>
+        <tr><th>Email</th><th>Телефон</th><th>Роль</th><th>Источник</th></tr>
+      </thead>
+      <tbody>
+      {{- range .Card.Contacts }}
+        <tr>
+          <td>{{.Email}}</td>
+          <td>{{.Phone}}</td>
+          <td>{{.Role}}</td>
+          <td>
+            {{ template "provenance" .Source }}
+            {{- with .Method }}<span class="method">{{.}}</span>{{- end }}
+          </td>
+        </tr>
+      {{- else }}
+        <tr><td colspan="4" class="empty">Контактов пока нет</td></tr>
+      {{- end }}
+      </tbody>
+    </table>
+  </section>
+
+  <section class="card-section">
+    <h3>Переписка</h3>
+    {{- if .Card.History }}
+    <ul class="history-list">
+    {{- range .Card.History }}
+      <li class="history-item">
+        <div class="history-head">
+          <span class="cell-main">{{.Recipient}}</span>
+          {{ template "status-badge" .Status }}
+          <span class="history-meta">{{.Template}} · {{.Created}}</span>
+        </div>
+        {{ template "timeline" .Points }}
+        {{- with .Reason }}<p class="error-text">{{.}}</p>{{- end }}
+      </li>
+    {{- end }}
+    </ul>
+    {{- else }}
+    <p class="empty">Переписки пока нет</p>
+    {{- end }}
+  </section>
+
+  <details class="disclosure">
+    <summary>Отложить</summary>
+    <div class="reveal"><div class="disclosure-body">
+      <form method="post" action="/cards/{{.Card.ID}}/snooze">
+        <input type="hidden" name="csrf" value="{{.CSRF}}">
+        <p class="field">
+          <label for="days">Дней</label>
+          <input id="days" name="days" type="text" value="7">
+        </p>
+        <p class="actions"><button class="button-secondary" type="submit">Отложить</button></p>
+      </form>
+    </div></div>
+  </details>
+
+  <details class="disclosure">
+    <summary>Отправить письмо</summary>
+    <div class="reveal"><div class="disclosure-body">
+      <form method="post" action="/cards/{{.Card.ID}}/send">
+        <input type="hidden" name="key" value="{{.SendKey}}">
+        <input type="hidden" name="csrf" value="{{.CSRF}}">
+        <p class="field">
+          <label for="template">Шаблон</label>
+          <select id="template" name="template">
+            <option value="">— выберите шаблон —</option>
+            {{- range .Options }}
+            <option value="{{.ID}}"{{if .Selected}} selected{{end}}>{{.Name}}</option>
+            {{- end }}
+          </select>
+        </p>
+        {{ .ValuesHTML }}
+        <p class="actions">
+          <button type="button" class="button-secondary" hx-post="/cards/{{.Card.ID}}/send/preview" hx-include="closest form" hx-target="#email-preview">Предпросмотр</button>
+          <button type="submit">Отправить</button>
+        </p>
+      </form>
+      <div id="email-preview">{{ .Preview }}</div>
+    </div></div>
+  </details>
+
+  <section class="card-section">
+    <h3>Библиотека шаблонов</h3>
+    {{ .TemplateList }}
+  </section>
+
+  <footer class="card-actions">
+    <form method="post" action="/cards/{{.Card.ID}}/hide">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <button class="button-secondary" type="submit">Скрыть</button>
+    </form>
+    <form method="post" action="/cards/{{.Card.ID}}/delete">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <button class="button-danger" type="submit">Удалить</button>
+    </form>
+  </footer>
+</article>
+{{- end -}}
+{{- end -}}

@@ -29,6 +29,8 @@
 | `tools/importlint/` | Проверка границ импортов между модулями, слоями и контекстами | `openspec/changes/migrate-platform-to-go/tasks.md` §2.3 |
 | `.agents/` | Навыки и правила работы агентов | — |
 
+**Дорожная карта полноценного core и фронта — [`docs/core-roadmap.md`](docs/core-roadmap.md):** что значит «полноценный core», инвентарь изменений, порядок этапов и точка подхвата для агентов.
+
 ## Контексты, сервисы и группы процессов
 
 **Bounded context — не процесс.** Контекст — граница модели, языка и владения
@@ -73,6 +75,17 @@ edge — отдельный минимальный образ модулей `fr
 ## Локальная разработка
 
 Требуется Go 1.25+.
+
+**Быстрый старт MVP-среза поиска лидов через Docker** (PostgreSQL + консоль,
+без локального Go):
+
+```sh
+cp .env.example .env   # заполнить FIRECRAWL_API_KEY
+docker compose up --build
+```
+
+Консоль — <http://localhost:8080/>. Подробности и ручной запуск —
+[`backend/contexts/lead-management/README.md`](backend/contexts/lead-management/README.md).
 
 ```sh
 make check     # сборка, тесты, vet, importlint, archlint, OpenSpec

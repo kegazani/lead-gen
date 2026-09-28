@@ -15,6 +15,11 @@ func TestForbiddenEdges(t *testing.T) {
 	}{
 		{"domain_to_adapters", "lead-gen/backend/contexts/alpha/internal/adapters"},
 		{"domain_to_app", "lead-gen/backend/contexts/alpha/internal/app"},
+		{"integration_platform_domain_to_adapters", "lead-gen/backend/contexts/integration-platform/internal/adapters"},
+		{"integration_platform_domain_to_app", "lead-gen/backend/contexts/integration-platform/internal/app"},
+		{"integration_platform_app_to_adapters", "lead-gen/backend/contexts/integration-platform/internal/adapters"},
+		{"integration_platform_app_to_foreign_context", "lead-gen/backend/contexts/lead-management/internal/app"},
+		{"integration_platform_sdk_in_app", "github.com/firecrawl/firecrawl-go/v2"},
 		{"app_to_foreign_domain", "lead-gen/backend/contexts/beta/internal/domain"},
 		{"foreign_persistence", "lead-gen/backend/contexts/beta/internal/adapters/persistence/postgres"},
 		{"foreign_app", "lead-gen/backend/contexts/beta/internal/app"},
@@ -73,6 +78,42 @@ func TestCrossContextEdges(t *testing.T) {
 	for _, testCase := range cases {
 		t.Run(testCase.name, func(t *testing.T) {
 			reason := forbiddenLayer(parseRole(defaultModule, testCase.importer), parseRole(defaultModule, testCase.imported))
+			if testCase.allowed && reason != "" {
+				t.Fatalf("ребро %s -> %s должно быть допустимо, получено %q", testCase.importer, testCase.imported, reason)
+			}
+			if !testCase.allowed && reason == "" {
+				t.Fatalf("ребро %s -> %s должно быть запрещено", testCase.importer, testCase.imported)
+			}
+		})
+	}
+}
+
+// TestExternalImports фиксирует правило изоляции внешних модулей (SDK поставщика,
+// драйвер хранилища): во внутреннем слое контекста они допустимы только в adapters,
+// а в domain, app и ports запрещены.
+func TestExternalImports(t *testing.T) {
+	consumer := "lead-gen/backend/contexts/integration-platform"
+	sdk := "github.com/firecrawl/firecrawl-go/v2"
+	cases := []struct {
+		name     string
+		importer string
+		imported string
+		allowed  bool
+	}{
+		{"SDK в domain", consumer + "/internal/domain", sdk, false},
+		{"SDK в app", consumer + "/internal/app", sdk, false},
+		{"SDK в ports", consumer + "/internal/ports", sdk, false},
+		{"драйвер хранилища в app", consumer + "/internal/app", "github.com/jackc/pgx/v5/pgxpool", false},
+		{"SDK в adapters", consumer + "/internal/adapters/firecrawl", sdk, true},
+		{"SDK в корневом пакете контекста", consumer, sdk, true},
+		{"стандартная библиотека в app", consumer + "/internal/app", "context", true},
+		{"контракт владельца в app", consumer + "/internal/app", "lead-gen/contracts/integration-platform", true},
+		{"свой слой в app", consumer + "/internal/app", consumer + "/internal/domain", true},
+		{"SDK в platform", "lead-gen/backend/platform", sdk, true},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			reason := externalImportReason(defaultModule, parseRole(defaultModule, testCase.importer), testCase.imported)
 			if testCase.allowed && reason != "" {
 				t.Fatalf("ребро %s -> %s должно быть допустимо, получено %q", testCase.importer, testCase.imported, reason)
 			}
