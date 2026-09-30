@@ -87,6 +87,53 @@ func (s *AssessmentStore) ListByJob(_ context.Context, jobID string) ([]*domain.
 	return assessments, nil
 }
 
+// LatestByCompany возвращает последнюю по времени оценку каждой из переданных
+// компаний по всем заданиям. Для компании выбирается оценка с максимальным
+// UpdatedAt, при равенстве — с максимальным CreatedAt, затем с наибольшим JobID.
+// Компания без оценок в результат не попадает.
+func (s *AssessmentStore) LatestByCompany(_ context.Context, companyIDs []string) (map[string]*domain.LeadAssessment, error) {
+	wanted := make(map[string]struct{}, len(companyIDs))
+	for _, id := range companyIDs {
+		wanted[id] = struct{}{}
+	}
+
+	s.mu.Lock()
+	latest := make(map[string]domain.LeadAssessmentSnapshot, len(companyIDs))
+	for _, snapshot := range s.assessments {
+		if _, ok := wanted[snapshot.CompanyID]; !ok {
+			continue
+		}
+		current, seen := latest[snapshot.CompanyID]
+		if !seen || moreRecentAssessment(snapshot, current) {
+			latest[snapshot.CompanyID] = snapshot
+		}
+	}
+	s.mu.Unlock()
+
+	result := make(map[string]*domain.LeadAssessment, len(latest))
+	for companyID, snapshot := range latest {
+		assessment, err := rehydrateAssessment(snapshot)
+		if err != nil {
+			return nil, err
+		}
+		result[companyID] = assessment
+	}
+	return result, nil
+}
+
+// moreRecentAssessment сообщает, должна ли candidate заменить current как более
+// свежая оценка компании: сначала по UpdatedAt, затем по CreatedAt, затем по
+// JobID — так выбор детерминирован и не зависит от порядка обхода карты.
+func moreRecentAssessment(candidate, current domain.LeadAssessmentSnapshot) bool {
+	if !candidate.UpdatedAt.Equal(current.UpdatedAt) {
+		return candidate.UpdatedAt.After(current.UpdatedAt)
+	}
+	if !candidate.CreatedAt.Equal(current.CreatedAt) {
+		return candidate.CreatedAt.After(current.CreatedAt)
+	}
+	return candidate.JobID > current.JobID
+}
+
 // VerdictDistribution считает распределение вердиктов по оценкам задания.
 // Задание без оценок даёт нулевые счётчики.
 func (s *AssessmentStore) VerdictDistribution(_ context.Context, jobID string) (ports.VerdictCounts, error) {

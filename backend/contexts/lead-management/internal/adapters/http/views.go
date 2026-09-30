@@ -22,6 +22,7 @@ import (
 const (
 	sidebarHome      = "home"
 	sidebarCards     = "cards"
+	sidebarLeads     = "leads"
 	sidebarFunnel    = "funnel"
 	sidebarSend      = "send"
 	sidebarAssistant = "assistant"
@@ -38,6 +39,7 @@ func consoleSidebar(active string) components.Nav {
 	return components.Nav{Items: []components.NavItem{
 		{Label: "Главная", Href: "/", Active: active == sidebarHome},
 		{Label: "Карточки", Href: "/cards", Active: active == sidebarCards},
+		{Label: "Лиды", Href: "/leads", Active: active == sidebarLeads},
 		{Label: "Воронка", Href: "/funnel", Active: active == sidebarFunnel},
 		{Label: "Отправка", Href: "/send", Active: active == sidebarSend},
 		{Label: "Ассистент", Href: "/assistant", Active: active == sidebarAssistant},
@@ -48,15 +50,25 @@ func consoleSidebar(active string) components.Nav {
 // pageView собирает страницу без боковой навигации (вход, уведомление).
 func pageView(title string, view any) components.Page {
 	return components.Page{
-		Layout: components.Layout{Title: title, Stylesheets: consoleStylesheets, Scripts: consoleScripts},
-		View:   view,
+		Layout: components.Layout{
+			Title:            title,
+			Stylesheets:      consoleStylesheets,
+			Scripts:          consoleScripts,
+			BootstrapScripts: consoleBootstrapScripts,
+		},
+		View: view,
 	}
 }
 
 // pageViewSidebar собирает страницу с боковой навигацией и моделью экрана.
 func pageViewSidebar(title string, nav components.Nav, view any) components.Page {
 	return components.Page{
-		Layout:  components.Layout{Title: title, Stylesheets: consoleStylesheets, Scripts: consoleScripts},
+		Layout: components.Layout{
+			Title:            title,
+			Stylesheets:      consoleStylesheets,
+			Scripts:          consoleScripts,
+			BootstrapScripts: consoleBootstrapScripts,
+		},
 		Sidebar: nav,
 		View:    view,
 	}
@@ -184,6 +196,8 @@ type jobRow struct {
 type jobCompanyRow struct {
 	ID           string
 	Href         string
+	Email        string
+	NoEmail      bool
 	VerdictLabel string
 	VerdictClass string
 }
@@ -192,15 +206,18 @@ type jobCompanyRow struct {
 // распределение оценок, основания подходящих результатов, найденные компании и ход
 // выполнения, собранный по событиям жизненного цикла.
 type jobView struct {
-	ID           string
-	Query        string
-	Badge        statusBadge
-	Created      string
-	Updated      string
-	Result       string
-	Budget       string
-	Progress     string
-	Error        string
+	ID       string
+	Query    string
+	Badge    statusBadge
+	Created  string
+	Updated  string
+	Result   string
+	Budget   string
+	Progress string
+	Error    string
+	// AutoRefresh — задание не терминально: экран опрашивается через htmx, пока
+	// результат ещё пополняется.
+	AutoRefresh  bool
 	Companies    []jobCompanyRow
 	Distribution verdictDistribution
 	Fits         []jobFitRow
@@ -283,6 +300,20 @@ type cardRow struct {
 	Group            string
 	VerdictLabel     string
 	VerdictClass     string
+}
+
+// leadsView — модель страницы лидов с email.
+type leadsView struct {
+	Rows []leadRow
+}
+
+// leadRow — строка списка лидов с email: ссылка на сайт, домен для подписи,
+// название и адрес.
+type leadRow struct {
+	Site   string
+	Domain string
+	Name   string
+	Email  string
 }
 
 // evidenceRow — свидетельство оценки для раскрытия «Почему эта оценка?»:
@@ -432,13 +463,14 @@ func shortQuery(query string) string {
 // оценкам в контексте этого задания. Оценки приходят уже отфильтрованными по
 // заданию: распределение, подписи и основания строятся только по ним, оценка
 // чужого задания в эту модель не попадает.
-func jobFrom(detail app.JobDetail, assessments []*domain.LeadAssessment) jobView {
+func jobFrom(detail app.JobDetail, assessments []*domain.LeadAssessment, emails map[string]app.CompanyEmail) jobView {
 	j := detail.Job
 	byCompany := assessmentsByCompany(assessments)
 
 	companies := make([]jobCompanyRow, 0, len(j.ResultRef))
 	for _, id := range j.ResultRef {
-		row := jobCompanyRow{ID: id, Href: cardHref(id, j.ID)}
+		contact := emails[id]
+		row := jobCompanyRow{ID: id, Href: cardHref(id, j.ID), Email: contact.Email, NoEmail: contact.NoEmail}
 		if a := byCompany[id]; a != nil {
 			row.VerdictLabel = verdictLabel(a.Verdict())
 			row.VerdictClass = verdictClass(a.Verdict())
@@ -477,6 +509,7 @@ func jobFrom(detail app.JobDetail, assessments []*domain.LeadAssessment) jobView
 		Budget:       budgetText(j.Budget),
 		Progress:     progressOrQueue(j),
 		Error:        errorText(j),
+		AutoRefresh:  j.Status == jobs.StatusQueued || j.Status == jobs.StatusRunning,
 		Companies:    companies,
 		Distribution: distribution,
 		Fits:         fits,
@@ -804,6 +837,47 @@ func cardRows(cards []app.Card) []cardRow {
 	return rows
 }
 
+// leadRows отбирает лиды с непустым email и отображает их в строки: ссылка на
+// сайт (домен компании), название и адрес. Лиды без email пропускаются.
+func leadRows(cards []app.Card) []leadRow {
+	rows := make([]leadRow, 0, len(cards))
+	for _, c := range cards {
+		if c.Email == "" {
+			continue
+		}
+		rows = append(rows, leadRow{
+			Site:   siteURL(c.ID),
+			Domain: siteDomain(c.ID),
+			Name:   c.Name,
+			Email:  c.Email,
+		})
+	}
+	return rows
+}
+
+// siteURL строит адрес сайта компании из её идентификатора (нормализованного
+// домена). Если схема уже указана, адрес возвращается как есть; пустой
+// идентификатор даёт пустую ссылку.
+func siteURL(id string) string {
+	id = strings.TrimSpace(id)
+	switch {
+	case id == "":
+		return ""
+	case strings.HasPrefix(id, "http://"), strings.HasPrefix(id, "https://"):
+		return id
+	default:
+		return "https://" + id
+	}
+}
+
+// siteDomain — домен компании для подписи ссылки: без схемы и хвостового слэша.
+func siteDomain(id string) string {
+	domain := strings.TrimSuffix(siteURL(id), "/")
+	domain = strings.TrimPrefix(domain, "https://")
+	domain = strings.TrimPrefix(domain, "http://")
+	return domain
+}
+
 // cardRowsWithAssessments накладывает на строки списка оценки задания. Карточка с
 // вердиктом «Подходит» остаётся в группе по умолчанию, «Гипотеза» и «Не подходит»
 // уходят во вторую группу с подписью. Оценки берутся только из переданного
@@ -811,7 +885,25 @@ func cardRows(cards []app.Card) []cardRow {
 // переноса). Компания результата без оценки не выдаётся за «Подходит»: она
 // остаётся во второй группе с явной пометкой «Не оценено».
 func cardRowsWithAssessments(cards []app.Card, byCompany map[string]*domain.LeadAssessment) []cardRow {
-	rows := cardRows(cards)
+	return applyAssessmentGroups(cardRows(cards), byCompany)
+}
+
+// cardRowsWithLatestAssessments накладывает на строки общей витрины последнюю по
+// времени оценку каждой компании по всем заданиям. «Подходит» остаётся в группе по
+// умолчанию; «Гипотеза» и «Не подходит» уходят во вторую группу; компания без
+// оценок — во вторую группу с пометкой «Не оценено». Последняя оценка — проекция
+// чтения: она не переносится в компанию как постоянное свойство и не выдаёт
+// оценку одного задания за оценку другого.
+func cardRowsWithLatestAssessments(cards []app.Card, latest map[string]*domain.LeadAssessment) []cardRow {
+	return applyAssessmentGroups(cardRows(cards), latest)
+}
+
+// applyAssessmentGroups раскладывает готовые строки по группам состава: вердикт
+// «Подходит» остаётся в группе по умолчанию, «Гипотеза» и «Не подходит» уходят во
+// вторую группу, отсутствие оценки — во вторую группу с пометкой «Не оценено».
+// Подпись и класс берутся из вердикта, чтобы оба пути (задание и общая витрина)
+// давали одинаковый результат.
+func applyAssessmentGroups(rows []cardRow, byCompany map[string]*domain.LeadAssessment) []cardRow {
 	for i := range rows {
 		a := byCompany[rows[i].ID]
 		if a == nil {

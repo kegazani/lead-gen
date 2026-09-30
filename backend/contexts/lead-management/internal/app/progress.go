@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"lead-gen/backend/contexts/lead-management/internal/ports"
+	"lead-gen/backend/platform/observability/observ"
 	"lead-gen/contracts/integration-platform/budget"
 )
 
@@ -28,17 +29,36 @@ const (
 // progressReporter накапливает прогресс задания и публикует его на границах
 // шагов. Постраничные счётчики обновляются в памяти и сбрасываются на границе
 // (смена фазы или следующий URL), чтобы не писать в хранилище на каждой странице.
+// Там же, на границе flush, фиксируется снимок найденных компаний: результат
+// задания виден по ходу прогона, а не только после завершения.
 type progressReporter struct {
-	store ports.SearchJobStore
-	id    string
-	now   func() time.Time
-	task  budget.Task // nil — бюджет не применяется
-	p     ports.SearchJobProgress
+	store  ports.SearchJobStore
+	id     string
+	now    func() time.Time
+	task   budget.Task // nil — бюджет не применяется
+	logger observ.Logger
+
+	// resultSupplier — снимок найденных компаний на момент flush; nil — результат
+	// общим репортером не фиксируется.
+	resultSupplier func() []string
+	// lastResult — последний успешно записанный снимок; запись при неизменном
+	// наборе пропускается, чтобы не множить записи на каждой странице.
+	lastResult     []string
+	resultRecorded bool
+
+	p ports.SearchJobProgress
 }
 
-// newProgressReporter собирает репортер прогресса задания. task может быть nil.
-func newProgressReporter(store ports.SearchJobStore, id string, now func() time.Time, task budget.Task) *progressReporter {
-	return &progressReporter{store: store, id: id, now: now, task: task}
+// newProgressReporter собирает репортер прогресса задания. task может быть nil,
+// logger может быть nil — тогда сбой записи результата не логируется.
+func newProgressReporter(store ports.SearchJobStore, id string, now func() time.Time, task budget.Task, logger observ.Logger) *progressReporter {
+	return &progressReporter{store: store, id: id, now: now, task: task, logger: logger}
+}
+
+// result задаёт поставщика найденных компаний: репортер вызывает его на границе
+// flush и фиксирует снимок, если набор изменился.
+func (rep *progressReporter) result(f func() []string) {
+	rep.resultSupplier = f
 }
 
 // phase фиксирует смену фазы, публикует прогресс и пишет событие жизненного цикла.
@@ -119,7 +139,8 @@ func (rep *progressReporter) tokens(n int) {
 }
 
 // flush публикует накопленный прогресс. Ошибка записи не прерывает задание:
-// прогресс — наблюдаемость, а не бизнес-результат.
+// прогресс — наблюдаемость, а не бизнес-результат. На той же границе фиксируется и
+// снимок найденных компаний (если задан поставщик результата).
 func (rep *progressReporter) flush(ctx context.Context) {
 	if rep == nil || rep.store == nil {
 		return
@@ -131,4 +152,39 @@ func (rep *progressReporter) flush(ctx context.Context) {
 	}
 	rep.p.UpdatedAt = rep.now()
 	_ = rep.store.RecordProgress(ctx, rep.id, rep.p)
+	rep.persistResult(ctx)
+}
+
+// persistResult фиксирует снимок найденных компаний, если поставщик задан и набор
+// изменился. Ошибка записи логируется и не прерывает задание: результат будет
+// записан на следующей границе, а сам прогон продолжается.
+func (rep *progressReporter) persistResult(ctx context.Context) {
+	if rep.resultSupplier == nil {
+		return
+	}
+	ids := rep.resultSupplier()
+	if rep.resultRecorded && equalStringSlices(ids, rep.lastResult) {
+		return
+	}
+	if err := rep.store.RecordResult(ctx, rep.id, ids); err != nil {
+		if rep.logger != nil {
+			rep.logger.Error("запись результата задания", err, observ.Fields{TaskID: rep.id})
+		}
+		return
+	}
+	rep.lastResult = ids
+	rep.resultRecorded = true
+}
+
+// equalStringSlices сравнивает два среза строк поэлементно.
+func equalStringSlices(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }

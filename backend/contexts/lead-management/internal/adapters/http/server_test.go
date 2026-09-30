@@ -841,6 +841,82 @@ func TestJobScreen(t *testing.T) {
 	}
 }
 
+// TestJobScreenAutoRefresh проверяет, что экран незавершённого задания несёт
+// htmx-опрос (состав пополняется без ручной перезагрузки), а терминальное задание
+// опроса не получает.
+func TestJobScreenAutoRefresh(t *testing.T) {
+	env := newTestEnv()
+	running, err := env.jobs.CreateSearchJob(context.Background(), "агентства", 0)
+	if err != nil {
+		t.Fatalf("CreateSearchJob: %v", err)
+	}
+
+	ts := httptest.NewServer(env.server)
+	defer ts.Close()
+	client := newConsoleClient(ts)
+	client.login(t, "operator", "secret")
+
+	runningHTML := readBody(t, client.get(t, "/jobs/"+running.ID))
+	if !strings.Contains(runningHTML, "hx-get=\"/jobs/"+running.ID+"\"") || !strings.Contains(runningHTML, "every 2s") {
+		t.Fatalf("экран незавершённого задания не несёт опрос:\n%s", runningHTML)
+	}
+
+	doneStore := goldenJobs{job: ports.SearchJob{
+		ID:        "job-done",
+		Query:     "завершённое задание",
+		Status:    jobs.StatusDone,
+		CreatedAt: testTime,
+		UpdatedAt: testTime,
+	}}
+	doneServer := httpapi.NewServer(httpapi.Dependencies{
+		Showcase: &app.Showcase{Jobs: doneStore},
+		Auth:     httpapi.AuthConfig{Username: "operator", Password: "secret"},
+	})
+	doneTS := httptest.NewServer(doneServer)
+	defer doneTS.Close()
+	doneClient := newConsoleClient(doneTS)
+	doneClient.login(t, "operator", "secret")
+
+	doneHTML := readBody(t, doneClient.get(t, "/jobs/job-done"))
+	if strings.Contains(doneHTML, "hx-get=\"/jobs/job-done\"") {
+		t.Fatalf("терминальное задание не должно опрашиваться:\n%s", doneHTML)
+	}
+}
+
+// TestJobScreenShowsEmails проверяет, что экран задания показывает email найденных
+// компаний и подсвечивает компанию без адреса, не выдавая отсутствие письма за
+// ошибку чтения.
+func TestJobScreenShowsEmails(t *testing.T) {
+	env := newTestEnv()
+	seedCompany(t, env.profiles, "a.example", "С Email", "Описание")
+	seedContact(t, env.contacts, "a.example", "hello@a.example", "", "основатель")
+	seedCompany(t, env.profiles, "b.example", "Без Email", "Описание")
+	job, err := env.jobs.CreateSearchJob(context.Background(), "агентства", 0)
+	if err != nil {
+		t.Fatalf("CreateSearchJob: %v", err)
+	}
+	if err := env.jobs.RecordResult(context.Background(), job.ID, []string{"a.example", "b.example"}); err != nil {
+		t.Fatalf("RecordResult: %v", err)
+	}
+
+	ts := httptest.NewServer(env.server)
+	defer ts.Close()
+	client := newConsoleClient(ts)
+	client.login(t, "operator", "secret")
+
+	html := readBody(t, client.get(t, "/jobs/"+job.ID))
+	for _, want := range []string{
+		"hello@a.example",
+		"is-no-email",
+		"нет email",
+		"b.example — нет email",
+	} {
+		if !strings.Contains(html, want) {
+			t.Fatalf("экран задания не содержит %q:\n%s", want, html)
+		}
+	}
+}
+
 // TestJobScreenWithoutEvents проверяет, что задание без событий показывает
 // состояние и пометку об отсутствии хода выполнения, не завершаясь ошибкой.
 // Хранилище задаётся фиксированным: memory-адаптер сам пишет событие enqueued,
@@ -1007,6 +1083,44 @@ func TestCardsJobScopedComposition(t *testing.T) {
 // TestCardAssessmentScopedToJob проверяет запрет переноса: одна компания имеет
 // разные оценки в двух заданиях, и карточка показывает вердикт того задания, в
 // контексте которого открыта. Без задания чужая оценка не подставляется.
+// TestCardsGlobalComposition проверяет, что общая витрина без контекста задания
+// делит карточки по последней оценке: «Подходит» — в группе по умолчанию,
+// «Не подходит» — во второй группе, а компания без оценок — во второй группе с
+// пометкой «Не оценено». Оценки берутся по всем заданиям, а не только из одного.
+func TestCardsGlobalComposition(t *testing.T) {
+	env := newTestEnv()
+	seedCompany(t, env.profiles, "fit.example", "Подходящая", "Описание")
+	seedCompany(t, env.profiles, "unsuitable.example", "Не подходит", "Описание")
+	seedCompany(t, env.profiles, "none.example", "Без оценки", "Описание")
+	seedAssessment(t, env.assessments, "job-1", "fit.example", domain.VerdictFits, domain.SignalDirect, []domain.Evidence{{
+		Criterion: "критерий", Fact: "факт", SourceURL: "https://fit.example/s", Reasoning: "связь", SignalKind: domain.SignalDirect,
+	}})
+	seedAssessment(t, env.assessments, "job-2", "unsuitable.example", domain.VerdictUnsuitable, domain.SignalProfile, []domain.Evidence{{
+		Criterion: "критерий", Fact: "факт", SourceURL: "https://unsuitable.example/s", Reasoning: "связь", SignalKind: domain.SignalProfile, Mismatch: "не та отрасль",
+	}})
+
+	ts := httptest.NewServer(env.server)
+	defer ts.Close()
+	client := newConsoleClient(ts)
+	client.login(t, "operator", "secret")
+
+	html := readBody(t, client.get(t, "/cards"))
+	for _, want := range []string{
+		"data-group=\"fits\"",
+		"data-group=\"other\"",
+		"verdict-unsuitable",
+		"Не подходит",
+		"Не оценено",
+		"fit.example",
+		"unsuitable.example",
+		"none.example",
+	} {
+		if !strings.Contains(html, want) {
+			t.Fatalf("общая витрина не содержит %q:\n%s", want, html)
+		}
+	}
+}
+
 func TestCardAssessmentScopedToJob(t *testing.T) {
 	env := newTestEnv()
 	seedCompany(t, env.profiles, "example.com", "Пример Компании", "Описание")

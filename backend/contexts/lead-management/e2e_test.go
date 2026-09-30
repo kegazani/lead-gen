@@ -11,6 +11,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -1053,4 +1054,150 @@ func TestShortSessionProgressEndToEnd(t *testing.T) {
 	if dist != progressCounts {
 		t.Fatalf("распределение хранилища %+v не совпало с прогрессом %+v", dist, progressCounts)
 	}
+}
+
+// e2eMultiTargetLLM — фейк LLM с несколькими целями планирования: базовое
+// поведение e2eAssessLLM, но Plan отдаёт заданный набор целей.
+type e2eMultiTargetLLM struct {
+	e2eAssessLLM
+	targets []llm.Target
+}
+
+// Plan отдаёт заданные цели.
+func (f *e2eMultiTargetLLM) Plan(context.Context, llm.PlanRequest) ([]llm.Target, llm.Usage, error) {
+	return f.targets, llm.Usage{}, nil
+}
+
+// e2eSequentialCrawl — фейк обхода из двух целей: обход первого URL отдаёт
+// страницу, обход второго сообщает о начале и ждёт освобождения, чтобы тест успел
+// заглянуть на экран выполняющегося задания.
+type e2eSequentialCrawl struct {
+	byURL      map[string]crawl.Page
+	blockURL   string
+	once       sync.Once
+	secondSeen chan struct{}
+	release    chan struct{}
+}
+
+// Crawl отдаёт страницу для первого URL и блокируется на втором до release.
+func (f *e2eSequentialCrawl) Crawl(ctx context.Context, req crawl.Request) (crawl.CrawlOutcome, error) {
+	if req.StartURL == f.blockURL {
+		f.once.Do(func() { close(f.secondSeen) })
+		select {
+		case <-f.release:
+			return crawl.CrawlOutcome{}, nil
+		case <-ctx.Done():
+			return crawl.CrawlOutcome{}, ctx.Err()
+		}
+	}
+	page, ok := f.byURL[req.StartURL]
+	if !ok {
+		return crawl.CrawlOutcome{}, nil
+	}
+	return crawl.CrawlOutcome{Pages: []crawl.Page{page}}, nil
+}
+
+// Extract в этих сценариях не используется.
+func (f *e2eSequentialCrawl) Extract(context.Context, crawl.ExtractRequest) ([]crawl.ContactCandidate, error) {
+	return nil, errors.New("эскалация на crawl.Extract не должна запускаться")
+}
+
+// TestGlobalCardsCompositionEndToEnd проверяет сквозной путь до общей витрины: без
+// контекста задания карточки делятся по оценкам, полученным в задании, —
+// «Подходит» в группе по умолчанию, «Не подходит» во второй.
+func TestGlobalCardsCompositionEndToEnd(t *testing.T) {
+	ctx := context.Background()
+	clock := fixedClock{now: time.Date(2026, time.January, 2, 10, 0, 0, 0, time.UTC)}
+
+	searchPort := &e2eSearch{byQuery: map[string][]search.Result{
+		"запрос": {{URL: "https://alpha.example"}, {URL: "https://beta.example"}},
+	}}
+	crawlPort := &e2eCrawl{byURL: map[string]crawl.Page{
+		"https://alpha.example": e2ePage("https://alpha.example", "Alpha Corp", "Описание alpha", "alpha@alpha.example"),
+		"https://beta.example":  e2ePage("https://beta.example", "Beta Corp", "Описание beta", "beta@beta.example"),
+	}}
+	llmPort := &e2eAssessLLM{
+		assess: func(req llm.AssessRequest) llm.Assessment {
+			if strings.Contains(e2eMaterialURL(req), "alpha.example") {
+				return e2eFitsAssessment(e2eMaterialURL(req))
+			}
+			return e2eUnsuitableAssessment(e2eMaterialURL(req))
+		},
+	}
+
+	env := newE2EEnv(searchPort, crawlPort, llmPort, clock)
+	if _, err := env.runSearch.Enqueue(ctx, "запрос", 0); err != nil {
+		t.Fatalf("Enqueue: %v", err)
+	}
+	env.process(t)
+
+	ts, client := env.console(t)
+	status, html := e2eGet(t, client, ts, "/cards")
+	if status != http.StatusOK {
+		t.Fatalf("GET /cards = %d, ожидался 200", status)
+	}
+	e2eRequireContains(t, html, []string{
+		"data-group=\"fits\"",
+		"data-group=\"other\"",
+		"verdict-unsuitable",
+		"Не подходит",
+		"alpha.example",
+		"beta.example",
+	})
+}
+
+// TestRunningJobScreenShowsExtractedEndToEnd проверяет, что экран выполняющегося
+// задания несёт уже извлечённые компании с email и опрос без ручной перезагрузки.
+func TestRunningJobScreenShowsExtractedEndToEnd(t *testing.T) {
+	ctx := context.Background()
+	clock := fixedClock{now: time.Date(2026, time.January, 2, 10, 0, 0, 0, time.UTC)}
+
+	searchPort := &e2eSearch{byQuery: map[string][]search.Result{
+		"one": {{URL: "https://one.example"}},
+		"two": {{URL: "https://two.example"}},
+	}}
+	crawlPort := &e2eSequentialCrawl{
+		byURL: map[string]crawl.Page{
+			"https://one.example": e2ePage("https://one.example", "One Corp", "Описание one", "one@one.example"),
+		},
+		blockURL:   "https://two.example",
+		secondSeen: make(chan struct{}),
+		release:    make(chan struct{}),
+	}
+	llmPort := &e2eMultiTargetLLM{targets: []llm.Target{{Query: "one"}, {Query: "two"}}}
+	llmPort.assess = func(req llm.AssessRequest) llm.Assessment { return e2eFitsAssessment(e2eMaterialURL(req)) }
+
+	env := newE2EEnv(searchPort, crawlPort, llmPort, clock)
+	job, err := env.runSearch.Enqueue(ctx, "запрос", 0)
+	if err != nil {
+		t.Fatalf("Enqueue: %v", err)
+	}
+	ts, client := env.console(t)
+
+	runner := &jobs.Runner{Store: env.jobs, Handler: env.runSearch.Handle}
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		_, _ = runner.RunOnce(ctx)
+	}()
+
+	select {
+	case <-crawlPort.secondSeen:
+	case <-time.After(5 * time.Second):
+		t.Fatal("обход второй цели не начался")
+	}
+
+	status, html := e2eGet(t, client, ts, "/jobs/"+url.PathEscape(job.ID))
+	if status != http.StatusOK {
+		t.Fatalf("GET /jobs/{id} = %d, ожидался 200", status)
+	}
+	e2eRequireContains(t, html, []string{
+		"one.example",
+		"one@one.example",
+		"hx-get=\"/jobs/" + job.ID + "\"",
+		"every 2s",
+	})
+
+	close(crawlPort.release)
+	<-done
 }

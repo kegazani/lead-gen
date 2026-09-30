@@ -199,6 +199,58 @@ func TestHandleCrawlFailureDoesNotFailJob(t *testing.T) {
 	}
 }
 
+// TestHandleCrawlTimeoutDoesNotCancelJob проверяет, что исчерпание дедлайна
+// времени на один сайт не отменяет всё задание: частично собранные страницы
+// обрабатываются, а обход продолжается со следующего сайта. Дедлайн одного сайта
+// — не отмена задания.
+func TestHandleCrawlTimeoutDoesNotCancelJob(t *testing.T) {
+	fc := &fakeCrawl{
+		crawlBlockUntilDone: map[string]bool{"https://slow.example": true},
+		pages: map[string][]crawl.Page{
+			"https://slow.example": {{
+				URL:      "https://slow.example",
+				Markdown: "# Slow Corp\n\nhello@slow.example",
+				Metadata: map[string]string{"description": "Slow"},
+			}},
+			"https://ok.example": {{
+				URL:      "https://ok.example",
+				Markdown: "# Ok Corp\n\nhello@ok.example",
+				Metadata: map[string]string{"description": "Ok"},
+			}},
+		},
+	}
+	fs := &fakeSearch{results: []search.Result{
+		{URL: "https://slow.example"},
+		{URL: "https://ok.example"},
+	}}
+	profiles := newMemProfiles()
+	contacts := newMemContacts()
+	store := newMemJobs()
+	limits := testCrawlLimits()
+	limits.MaxTimeSeconds = 1
+
+	r := &RunSearch{
+		Jobs:     store,
+		Profiles: profiles,
+		Contacts: contacts,
+		Search:   fs,
+		Crawl:    fc,
+		Clock:    fakeClock{t: testTime},
+		Limits:   limits,
+		Logger:   observ.NewLoggerWithWriter(io.Discard),
+		Metrics:  observ.NewMetrics(),
+		Tracer:   observ.NewTracer("lead-management"),
+	}
+
+	id := mustEnqueue(t, r, "example")
+	if err := r.Handle(context.Background(), jobs.Job{ID: id, Payload: []byte(`{"query":"example"}`)}); err != nil {
+		t.Fatalf("дедлайн одного сайта не должен отменять задание: %v", err)
+	}
+	if len(profiles.byID) != 2 {
+		t.Fatalf("карточек %d, ожидалось 2 (частичные страницы медленного сайта и страница второго сайта)", len(profiles.byID))
+	}
+}
+
 func TestHandleEscalatesWhenLowQuality(t *testing.T) {
 	fc := &fakeCrawl{
 		pages: map[string][]crawl.Page{
@@ -363,10 +415,58 @@ func TestHandleDedupEnrichesInsteadOfDuplicating(t *testing.T) {
 	}
 }
 
+// TestRunSearchPublishesResultDuringRun проверяет, что список найденных компаний
+// виден уже во время прогона: к началу обхода второй цели результат задания несёт
+// компании первой цели. Это то, что делает экран выполняющегося задания непустым.
+func TestRunSearchPublishesResultDuringRun(t *testing.T) {
+	fc := &fakeCrawl{pages: map[string][]crawl.Page{
+		"https://one.example": {{URL: "https://one.example", Markdown: "# One Corp\n\nhello@one.example", Metadata: map[string]string{"description": "One"}}},
+		"https://two.example": {{URL: "https://two.example", Markdown: "# Two Corp\n\nhello@two.example", Metadata: map[string]string{"description": "Two"}}},
+	}}
+	fs := &fakeSearch{byQuery: map[string][]search.Result{
+		"one": searchResult("https://one.example"),
+		"two": searchResult("https://two.example"),
+	}}
+	llmPort := &fakeLLM{targets: []llm.Target{{Query: "one"}, {Query: "two"}}}
+	store := newMemJobs()
+
+	r := &RunSearch{
+		Jobs:     store,
+		Profiles: newMemProfiles(),
+		Contacts: newMemContacts(),
+		Search:   fs,
+		Crawl:    fc,
+		LLM:      llmPort,
+		Clock:    fakeClock{t: testTime},
+		Limits:   testCrawlLimits(),
+		Logger:   observ.NewLoggerWithWriter(io.Discard),
+		Metrics:  observ.NewMetrics(),
+		Tracer:   observ.NewTracer("lead-management"),
+	}
+
+	id := mustEnqueue(t, r, "one two")
+	var midRun []string
+	fc.onCrawl = func() {
+		// К обходу второй цели результат первой уже должен быть записан.
+		if len(fc.requests) == 2 {
+			midRun = append([]string(nil), store.byID[id].ResultRef...)
+		}
+	}
+	if err := r.Handle(context.Background(), jobs.Job{ID: id, Payload: []byte(`{"query":"one two"}`)}); err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+
+	if len(midRun) != 1 || midRun[0] != "one.example" {
+		t.Fatalf("во время прогона ResultRef = %v, ожидалось [one.example]", midRun)
+	}
+	if got := store.byID[id].ResultRef; len(got) != 2 {
+		t.Fatalf("итоговый ResultRef = %v, ожидалось 2 компании", got)
+	}
+}
+
 func TestEnqueueValidation(t *testing.T) {
 	store := newMemJobs()
 	r := &RunSearch{Jobs: store}
-
 	if _, err := r.Enqueue(context.Background(), "   ", 0); err == nil {
 		t.Fatal("пустой запрос должен быть отклонён")
 	}
@@ -869,13 +969,18 @@ func TestRunSearchCancelKeepsSavedCards(t *testing.T) {
 	}
 }
 
-// cancelledCrawlWithPages — фейк обхода, возвращающий уже добытые страницы вместе
-// с crawl.ErrCancelled (как адаптер Firecrawl при отмене).
+// cancelledCrawlWithPages — фейк обхода, отменяющий родительский контекст
+// задания и возвращающий уже добытые страницы вместе с crawl.ErrCancelled
+// (как адаптер Firecrawl при отмене оператором).
 type cancelledCrawlWithPages struct {
-	pages []crawl.Page
+	pages  []crawl.Page
+	cancel context.CancelFunc
 }
 
 func (f *cancelledCrawlWithPages) Crawl(context.Context, crawl.Request) (crawl.CrawlOutcome, error) {
+	if f.cancel != nil {
+		f.cancel()
+	}
 	return crawl.CrawlOutcome{Pages: f.pages}, crawl.ErrCancelled
 }
 
@@ -889,7 +994,8 @@ func (f *cancelledCrawlWithPages) Extract(context.Context, crawl.ExtractRequest)
 func TestRunSearchCancelDrainsFetchedPages(t *testing.T) {
 	store := newMemJobs()
 	profiles := newMemProfiles()
-	crawlPort := &cancelledCrawlWithPages{pages: []crawl.Page{
+	ctx, cancel := context.WithCancel(context.Background())
+	crawlPort := &cancelledCrawlWithPages{cancel: cancel, pages: []crawl.Page{
 		{URL: "https://a.example.com", Markdown: "# Alpha Corp\n\nDesc a", Metadata: map[string]string{"description": "Desc a"}},
 		{URL: "https://b.example.com", Markdown: "# Beta LLC\n\nDesc b", Metadata: map[string]string{"description": "Desc b"}},
 	}}
@@ -904,7 +1010,7 @@ func TestRunSearchCancelDrainsFetchedPages(t *testing.T) {
 	}
 
 	id := mustEnqueue(t, r, "example")
-	err := r.Handle(context.Background(), jobs.Job{ID: id, Payload: []byte(`{"query":"example"}`)})
+	err := r.Handle(ctx, jobs.Job{ID: id, Payload: []byte(`{"query":"example"}`)})
 	if !errors.Is(err, jobs.ErrCancelled) {
 		t.Fatalf("Handle = %v, ожидалась ErrCancelled", err)
 	}
@@ -920,7 +1026,8 @@ func TestRunSearchCancelDrainsFetchedPages(t *testing.T) {
 func TestRunSearchCancelLogsInfoNotError(t *testing.T) {
 	var buf bytes.Buffer
 	store := newMemJobs()
-	crawlPort := &cancelledCrawlWithPages{pages: []crawl.Page{
+	ctx, cancel := context.WithCancel(context.Background())
+	crawlPort := &cancelledCrawlWithPages{cancel: cancel, pages: []crawl.Page{
 		{URL: "https://a.example.com", Markdown: "# Alpha Corp\n\nDesc a", Metadata: map[string]string{"description": "Desc a"}},
 	}}
 	r := &RunSearch{
@@ -932,7 +1039,7 @@ func TestRunSearchCancelLogsInfoNotError(t *testing.T) {
 	}
 
 	id := mustEnqueue(t, r, "example")
-	if err := r.Handle(context.Background(), jobs.Job{ID: id, Payload: []byte(`{"query":"example"}`)}); !errors.Is(err, jobs.ErrCancelled) {
+	if err := r.Handle(ctx, jobs.Job{ID: id, Payload: []byte(`{"query":"example"}`)}); !errors.Is(err, jobs.ErrCancelled) {
 		t.Fatalf("Handle = %v, ожидалась ErrCancelled", err)
 	}
 	if logged := buf.String(); strings.Contains(logged, "ERROR") || strings.Contains(logged, "задание упало") {
@@ -1013,12 +1120,17 @@ func testObservability() (observ.Logger, *observ.MemoryMetrics, observ.Tracer) {
 	return observ.NewLoggerWithWriter(io.Discard), observ.NewMetrics().(*observ.MemoryMetrics), observ.NewTracer("lead-management")
 }
 
-// adapterCancelledCrawl — фейк обхода, отдающий страницы вместе с crawl.ErrCancelled.
+// adapterCancelledCrawl — фейк обхода, отменяющий родительский контекст и
+// отдающий страницы вместе с crawl.ErrCancelled.
 type adapterCancelledCrawl struct {
-	pages map[string][]crawl.Page
+	pages  map[string][]crawl.Page
+	cancel context.CancelFunc
 }
 
 func (f *adapterCancelledCrawl) Crawl(_ context.Context, req crawl.Request) (crawl.CrawlOutcome, error) {
+	if f.cancel != nil {
+		f.cancel()
+	}
 	return crawl.CrawlOutcome{Pages: f.pages[req.StartURL]}, crawl.ErrCancelled
 }
 
@@ -1030,7 +1142,8 @@ func (f *adapterCancelledCrawl) Extract(context.Context, crawl.ExtractRequest) (
 // адаптера (страницы вместе с crawl.ErrCancelled) не теряет уже добытые страницы.
 func TestRunSearchProcessesPagesFromCancelledCrawl(t *testing.T) {
 	profiles := newMemProfiles()
-	fc := &adapterCancelledCrawl{pages: map[string][]crawl.Page{
+	ctx, cancel := context.WithCancel(context.Background())
+	fc := &adapterCancelledCrawl{cancel: cancel, pages: map[string][]crawl.Page{
 		"https://a.example.com": {{
 			URL:      "https://a.example.com",
 			Markdown: "# Alpha Corp\n\nDesc a",
@@ -1049,7 +1162,7 @@ func TestRunSearchProcessesPagesFromCancelledCrawl(t *testing.T) {
 	}
 
 	id := mustEnqueue(t, r, "example")
-	err := r.Handle(context.Background(), jobs.Job{ID: id, Payload: []byte(`{"query":"example"}`)})
+	err := r.Handle(ctx, jobs.Job{ID: id, Payload: []byte(`{"query":"example"}`)})
 	if !errors.Is(err, jobs.ErrCancelled) {
 		t.Fatalf("Handle = %v, ожидалась ErrCancelled", err)
 	}
@@ -1110,9 +1223,10 @@ func TestHandleRecordsJobMetricsOnSuccess(t *testing.T) {
 	}
 }
 
-// TestHandleRecordsJobMetricsOnFailure проверяет, что упавшее задание
-// инкрементирует jobs_total с исходом failed и пишет причину в лог.
-func TestHandleRecordsJobMetricsOnFailure(t *testing.T) {
+// TestHandleSearchFailureIsSkipped проверяет, что отказ поискового запроса не
+// роняет задание: запрос пропускается, метрика downstream_errors_total(search)
+// растёт, а задание завершается done, а не failed.
+func TestHandleSearchFailureIsSkipped(t *testing.T) {
 	fs := &fakeSearch{err: errors.New("search down")}
 	profiles := newMemProfiles()
 	contacts := newMemContacts()
@@ -1137,15 +1251,55 @@ func TestHandleRecordsJobMetricsOnFailure(t *testing.T) {
 	}
 
 	id := mustEnqueue(t, r, "example")
-	if err := r.Handle(context.Background(), jobs.Job{ID: id, Payload: []byte(`{"query":"example"}`)}); err == nil {
-		t.Fatal("Handle должен вернуть ошибку при отказе поиска")
+	if err := r.Handle(context.Background(), jobs.Job{ID: id, Payload: []byte(`{"query":"example"}`)}); err != nil {
+		t.Fatalf("отказ поиска не должен ронять задание: %v", err)
+	}
+
+	if got := metrics.Counter("jobs_total", map[string]string{"service": "lead-management", "outcome": "done"}); got != 1 {
+		t.Fatalf("jobs_total done = %d, ожидался 1", got)
+	}
+	if got := metrics.Counter("downstream_errors_total", map[string]string{"service": "lead-management", "engine": "search"}); got != 1 {
+		t.Fatalf("downstream_errors_total search = %d, ожидался 1", got)
+	}
+	if strings.Contains(buf.String(), "задание упало") {
+		t.Fatalf("отказ поиска не должен логироваться как падение: %s", buf.String())
+	}
+}
+
+// TestHandleRecordsJobMetricsOnFailure проверяет, что упавшее задание
+// инкрементирует jobs_total с исходом failed и пишет причину в лог. Фатальность
+// проверяется на некорректном payload — единственном отказе до обхода.
+func TestHandleRecordsJobMetricsOnFailure(t *testing.T) {
+	profiles := newMemProfiles()
+	contacts := newMemContacts()
+	store := newMemJobs()
+
+	var buf bytes.Buffer
+	logger := observ.NewLoggerWithWriter(&buf)
+	metrics := observ.NewMetrics().(*observ.MemoryMetrics)
+	tracer := observ.NewTracer("lead-management")
+
+	r := &RunSearch{
+		Jobs:        store,
+		Profiles:    profiles,
+		Contacts:    contacts,
+		Search:      &fakeSearch{},
+		Crawl:       &fakeCrawl{},
+		Clock:       fakeClock{t: testTime},
+		Logger:      logger,
+		Metrics:     metrics,
+		Tracer:      tracer,
+		ServiceName: "lead-management",
+	}
+
+	id := mustEnqueue(t, r, "example")
+	// Пустой запрос в payload — некорректное задание: фатальный отказ до обхода.
+	if err := r.Handle(context.Background(), jobs.Job{ID: id, Payload: []byte(`{"query":""}`)}); err == nil {
+		t.Fatal("Handle должен вернуть ошибку при некорректном payload")
 	}
 
 	if got := metrics.Counter("jobs_total", map[string]string{"service": "lead-management", "outcome": "failed"}); got != 1 {
 		t.Fatalf("jobs_total failed = %d, ожидался 1", got)
-	}
-	if got := metrics.Counter("downstream_errors_total", map[string]string{"service": "lead-management", "engine": "search"}); got != 1 {
-		t.Fatalf("downstream_errors_total search = %d, ожидался 1", got)
 	}
 	if !strings.Contains(buf.String(), "задание упало") {
 		t.Fatalf("лог не содержит «задание упало»: %s", buf.String())
@@ -1478,8 +1632,9 @@ func TestCrawlSentWithoutDepthOrTime(t *testing.T) {
 }
 
 // TestCrawlDeadlineStopsBlockingCrawl проверяет, что дедлайн времени ставит
-// app-слой: блокирующийся обход прерывается по ctx.Done, а задание завершается
-// отменённым, а не падает как crawl-ошибка.
+// app-слой и доходит до порта: блокирующийся обход прерывается по ctx.Done.
+// Истечение дедлайна одного сайта НЕ отменяет задание: цель считается
+// обработанной, а задание завершается успешно (дальше цикл идёт по другим целям).
 func TestCrawlDeadlineStopsBlockingCrawl(t *testing.T) {
 	fc := &blockingCrawl{}
 	r := &RunSearch{
@@ -1491,8 +1646,8 @@ func TestCrawlDeadlineStopsBlockingCrawl(t *testing.T) {
 	}
 	id := mustEnqueue(t, r, "example")
 	err := r.Handle(context.Background(), jobs.Job{ID: id, Payload: []byte(`{"query":"example"}`)})
-	if !errors.Is(err, jobs.ErrCancelled) {
-		t.Fatalf("Handle = %v, ожидалась ErrCancelled по дедлайну", err)
+	if err != nil {
+		t.Fatalf("дедлайн одного сайта не должен отменять задание: %v", err)
 	}
 	if fc.called != 1 {
 		t.Fatalf("обход вызван %d раз, ожидался 1", fc.called)

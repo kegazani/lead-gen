@@ -305,7 +305,7 @@ func (r *RunSearch) handle(ctx context.Context, job jobs.Job) error {
 	}
 	state := &assessmentState{jobID: job.ID, interpretation: interpretation, verdicts: make(map[string]domain.AssessmentVerdict)}
 
-	rep := newProgressReporter(r.Jobs, job.ID, r.now, task)
+	rep := newProgressReporter(r.Jobs, job.ID, r.now, task, r.Logger)
 	rep.target(targetCompanies)
 	rep.phase(ctx, PhasePlanning)
 
@@ -325,6 +325,9 @@ func (r *RunSearch) handle(ctx context.Context, job jobs.Job) error {
 	}
 
 	companyIDs := make(map[string]struct{})
+	// Результат фиксируется на границах flush вместе с прогрессом: список
+	// найденных компаний виден по ходу прогона, а не только после завершения.
+	rep.result(func() []string { return sortedCompanyIDs(companyIDs) })
 	// crawledURLs — множество нормализованных уже обойдённых URL: повторный обход
 	// того же адреса (в том числе из другой цели) пропускается и не тратит
 	// кредиты.
@@ -349,16 +352,14 @@ func (r *RunSearch) handle(ctx context.Context, job jobs.Job) error {
 	stopReason := ""
 	targetMet := func() bool { return targetReached(targetCompanies, companyIDs) }
 
-	// finishCancelled фиксирует итоговый прогресс (найденные компании) и ссылки на
-	// результат через отсоединённый контекст, затем завершает задание отменённым.
+	// finishCancelled фиксирует итоговый прогресс (найденные компании) через
+	// отсоединённый контекст и завершает задание отменённым. Снимок найденных
+	// компаний записывает сам репортер на границе flush.
 	finishCancelled := func() error {
 		ids := sortedCompanyIDs(companyIDs)
 		rep.found(len(ids))
 		rep.stop(stopReason, targetMet())
 		rep.flush(context.WithoutCancel(ctx))
-		if err := r.Jobs.RecordResult(context.WithoutCancel(ctx), job.ID, ids); err != nil {
-			r.Logger.Error("запись результата при отмене", err, observ.Fields{TaskID: job.ID})
-		}
 		return jobs.ErrCancelled
 	}
 
@@ -441,9 +442,6 @@ func (r *RunSearch) handle(ctx context.Context, job jobs.Job) error {
 	rep.found(len(ids))
 	rep.stop(stopReason, targetMet())
 	rep.flush(ctx)
-	if err := r.Jobs.RecordResult(ctx, job.ID, ids); err != nil {
-		return fmt.Errorf("app: запись результата задания %s: %w", job.ID, err)
-	}
 	return nil
 }
 
@@ -602,8 +600,15 @@ func (r *RunSearch) processTarget(ctx context.Context, target llm.Target, compan
 			if ctx.Err() != nil {
 				return jobs.ErrCancelled
 			}
+			// Неудачный поисковый запрос не должен ронять всё задание: остальные цели
+			// ещё могут дать компании. Сбой фиксируется в логе и метрике, а обход
+			// продолжается со следующей цели; повторной попытки по этому запросу нет.
 			r.Metrics.Incr("downstream_errors_total", map[string]string{"service": r.ServiceName, "engine": "search"})
-			return newSearchJobError(ErrorCodeSearchFailed, fmt.Errorf("app: поиск %q: %w", target.Query, err))
+			if r.Logger != nil {
+				r.Logger.Warn("поиск: запрос не удался", observ.Fields{},
+					"service", r.ServiceName, "query", target.Query, "error", err.Error())
+			}
+			return nil
 		}
 		rep.plannedURLs(len(results))
 		for _, res := range results {
@@ -648,20 +653,22 @@ func (r *RunSearch) crawlURL(ctx context.Context, startURL string, companyIDs, c
 		crawledURLs[key] = struct{}{}
 	}
 
-	// Дедлайн времени ставит app-слой только при заданном MaxTimeSeconds; без него
-	// обход не ограничивается по времени. Исчерпание дедлайна — не отказ обхода, а
-	// отмена/превышение времени: уже добытые страницы обрабатываются, задание
-	// завершается отменённым.
+	// Дедлайн времени ставится app-слоем только при заданном MaxTimeSeconds и
+	// ограничивает обход ОДНОГО сайта, а не всё задание: его истечение
+	// обрабатывает частично собранные страницы и переходит к следующей цели, не
+	// отменяя задание. Реальная отмена — только по родительскому контексту
+	// (оператор или остановка процесса).
+	crawlCtx := ctx
 	if limits.MaxTimeSeconds > 0 {
 		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, time.Duration(limits.MaxTimeSeconds)*time.Second)
+		crawlCtx, cancel = context.WithTimeout(ctx, time.Duration(limits.MaxTimeSeconds)*time.Second)
 		defer cancel()
 	}
 
-	rep.phase(ctx, PhaseCrawling)
-	rep.url(ctx, startURL)
+	rep.phase(crawlCtx, PhaseCrawling)
+	rep.url(crawlCtx, startURL)
 
-	outcome, err := c.Crawl(ctx, crawl.Request{
+	outcome, err := c.Crawl(crawlCtx, crawl.Request{
 		StartURL:       startURL,
 		MaxPages:       limits.MaxPages,
 		MaxDepth:       limits.MaxDepth,
@@ -685,12 +692,11 @@ func (r *RunSearch) crawlURL(ctx context.Context, startURL string, companyIDs, c
 		return nil
 	}
 
-	// Уже добытые страницы обрабатываются даже при отмене: карточки по ним
-	// сохраняются. При отмене запись идёт через отсоединённый контекст, чтобы
-	// сохранение не сорвалось из-за отменённого контекста задания, а число
-	// дренируемых страниц ограничено, чтобы отмена не оборачивалась долгим
-	// домечиванием снимка.
-	pageCtx := ctx
+	// Уже добытые страницы обрабатываются даже при исчерпании времени сайта или
+	// отмене: карточки по ним сохраняются. При этом запись идёт через отсоединённый
+	// контекст, чтобы сохранение не сорвалось из-за истёкшего дедлайна, а число
+	// дренируемых страниц ограничено, чтобы не оборачиваться долгим домечиванием.
+	pageCtx := crawlCtx
 	if cancelled {
 		pageCtx = context.WithoutCancel(ctx)
 	}
@@ -712,10 +718,12 @@ func (r *RunSearch) crawlURL(ctx context.Context, startURL string, companyIDs, c
 			return err
 		}
 	}
-	// Итоговый сброс прогресса (в том числе при отмене) — с отсоединённым
-	// контекстом, если задание отменяется.
+	// Итоговый сброс прогресса (в том числе при исчерпании времени сайта) — с
+	// отсоединённым контекстом.
 	rep.flush(pageCtx)
-	if cancelled || ctx.Err() != nil {
+	// Отмена — только по родительскому контексту. Истечение дедлайна одного сайта
+	// задание не отменяет: цикл задач обработает следующую цель.
+	if ctx.Err() != nil {
 		return jobs.ErrCancelled
 	}
 	return nil

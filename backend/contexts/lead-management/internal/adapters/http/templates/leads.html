@@ -1,0 +1,37 @@
+{{- define "content" -}}
+{{- with .View -}}
+<header class="page-head">
+  <h1>Лиды с email</h1>
+  <p class="hint">Все лиды, у которых найден адрес электронной почты: ссылка на сайт, название и адрес.</p>
+  <p>
+    <a class="button-secondary" href="/leads/export" download>Скачать HTML-файл</a>
+    <a class="button-secondary" href="/leads/export.csv" download>Скачать CSV</a>
+  </p>
+</header>
+
+<section class="panel">
+  {{- if .Rows }}
+  <table class="table">
+    <thead>
+      <tr>
+        <th scope="col">Сайт</th>
+        <th scope="col">Название</th>
+        <th scope="col">Email</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{- range .Rows }}
+      <tr>
+        <td><a class="link" href="{{.Site}}" target="_blank" rel="noopener noreferrer">{{.Site}}</a></td>
+        <td>{{.Name}}</td>
+        <td><a class="link" href="mailto:{{.Email}}">{{.Email}}</a></td>
+      </tr>
+      {{- end }}
+    </tbody>
+  </table>
+  {{- else }}
+  <p class="empty">Лидов с email пока нет</p>
+  {{- end }}
+</section>
+{{- end -}}
+{{- end -}}

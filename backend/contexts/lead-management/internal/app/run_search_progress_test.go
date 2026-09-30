@@ -82,7 +82,7 @@ func TestProgressCarriesVerdictDistribution(t *testing.T) {
 		t.Fatalf("CreateSearchJob: %v", err)
 	}
 
-	rep := newProgressReporter(store, job.ID, func() time.Time { return testTime }, nil)
+	rep := newProgressReporter(store, job.ID, func() time.Time { return testTime }, nil, nil)
 	rep.crawled(5)
 	rep.found(3)
 	rep.verdicts(ports.VerdictCounts{Fits: 1, Hypothesis: 1, Unsuitable: 1})
@@ -105,5 +105,46 @@ func TestProgressCarriesVerdictDistribution(t *testing.T) {
 	progress = store.byID[job.ID].Progress
 	if progress.VerdictFits != 1 || progress.VerdictHypothesis != 1 || progress.VerdictUnsuitable != 1 {
 		t.Fatalf("распределение потеряно на смене фазы: %+v", progress)
+	}
+}
+
+// TestProgressPersistsResultOnFlush проверяет, что репортер фиксирует снимок
+// найденных компаний на границе flush, но только когда набор изменился: повторный
+// flush с тем же набором не множит записи.
+func TestProgressPersistsResultOnFlush(t *testing.T) {
+	ctx := context.Background()
+	store := newMemJobs()
+	job, err := store.CreateSearchJob(ctx, "агентства b2b", 0)
+	if err != nil {
+		t.Fatalf("CreateSearchJob: %v", err)
+	}
+
+	var ids []string
+	rep := newProgressReporter(store, job.ID, func() time.Time { return testTime }, nil, nil)
+	rep.result(func() []string { return ids })
+
+	ids = []string{"a.example"}
+	rep.flush(ctx)
+	if got := store.byID[job.ID].ResultRef; len(got) != 1 || got[0] != "a.example" {
+		t.Fatalf("ResultRef после первого flush = %v, ожидалось [a.example]", got)
+	}
+	if store.resultWrites != 1 {
+		t.Fatalf("записей результата = %d, ожидалась 1", store.resultWrites)
+	}
+
+	// Тот же набор — записи нет.
+	rep.flush(ctx)
+	if store.resultWrites != 1 {
+		t.Fatalf("повторный flush с тем же набором записал результат (вызовов %d)", store.resultWrites)
+	}
+
+	// Набор вырос — запись есть.
+	ids = []string{"a.example", "b.example"}
+	rep.flush(ctx)
+	if got := store.byID[job.ID].ResultRef; len(got) != 2 || got[1] != "b.example" {
+		t.Fatalf("ResultRef после роста набора = %v", got)
+	}
+	if store.resultWrites != 2 {
+		t.Fatalf("записей результата = %d, ожидалось 2", store.resultWrites)
 	}
 }

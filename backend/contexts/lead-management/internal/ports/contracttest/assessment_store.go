@@ -175,6 +175,39 @@ func RunAssessmentStoreContract(t *testing.T, newStore AssessmentStoreFactory) {
 		}
 		assertAssessment(t, loadedSecond, second)
 	})
+
+	t.Run("LatestByCompany выбирает последнюю оценку по компании", func(t *testing.T) {
+		store := newStore(t)
+		first := mustAssessment(t, "job-1", "alpha.example.com", domain.VerdictFits, domain.SignalDirect, baseTime)
+		latest := mustAssessment(t, "job-2", "alpha.example.com", domain.VerdictUnsuitable, domain.SignalProfile, at(1))
+		other := mustAssessment(t, "job-1", "bravo.example.com", domain.VerdictHypothesis, domain.SignalProfile, baseTime)
+		for _, assessment := range []*domain.LeadAssessment{first, latest, other} {
+			if err := store.Save(ctx, assessment); err != nil {
+				t.Fatalf("Save %s/%s: %v", assessment.JobID(), assessment.CompanyID(), err)
+			}
+		}
+
+		byCompany, err := store.LatestByCompany(ctx, []string{"alpha.example.com", "bravo.example.com", "missing.example.com"})
+		if err != nil {
+			t.Fatalf("LatestByCompany: %v", err)
+		}
+		if len(byCompany) != 2 {
+			t.Fatalf("LatestByCompany вернул %d компаний, ожидалось 2", len(byCompany))
+		}
+		if got := byCompany["alpha.example.com"]; got == nil {
+			t.Fatal("alpha.example.com отсутствует в результате")
+		} else {
+			assertAssessment(t, got, latest)
+		}
+		if got := byCompany["bravo.example.com"]; got == nil {
+			t.Fatal("bravo.example.com отсутствует в результате")
+		} else {
+			assertAssessment(t, got, other)
+		}
+		if _, ok := byCompany["missing.example.com"]; ok {
+			t.Fatal("компания без оценок не должна попадать в результат")
+		}
+	})
 }
 
 // assertVerdictCounts сверяет распределение оценок с ожидаемым.

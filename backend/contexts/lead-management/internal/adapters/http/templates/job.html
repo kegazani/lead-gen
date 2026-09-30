@@ -36,7 +36,7 @@
   <h1>Задание</h1>
 </header>
 
-<article class="card job-detail">
+<article class="card job-detail"{{ if .AutoRefresh }} hx-get="/jobs/{{.ID}}" hx-trigger="every 2s" hx-swap="outerHTML"{{ end }}>
   <header class="card-head">
     <h2>Запрос</h2>
     <p class="job-query">{{.Query}}</p>
@@ -103,8 +103,9 @@
     <ul class="socials">
     {{- range .Companies }}
       {{- $verdict := .VerdictClass }}
-      <li>
+      <li class="job-company{{ if .NoEmail }} is-no-email{{ end }}"{{ if .NoEmail }} aria-label="{{.ID}} — нет email"{{ end }}>
         <a class="link" href="{{.Href}}">{{.ID}}</a>
+        <span class="card-email">{{ if .Email }}{{.Email}}{{ else }}<span class="card-no-email">нет email</span>{{ end }}</span>
         {{- with .VerdictLabel }} <span class="verdict verdict-{{$verdict}}">{{.}}</span>{{ end }}
       </li>
     {{- end }}

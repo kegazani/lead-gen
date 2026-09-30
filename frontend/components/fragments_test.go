@@ -69,6 +69,10 @@ func TestRenderNav(t *testing.T) {
     <li><a href="/funnel" class="is-active" aria-current="page">Воронка</a></li>
     <li><a href="/cards">Карточки</a></li>
   </ul>
+  <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Тема оформления">
+    <span class="theme-toggle-label">Тема</span>
+    <b class="theme-toggle-value" data-theme-name>Как в системе</b>
+  </button>
 </nav>`
 	if got := buffer.String(); got != want {
 		t.Fatalf("разметка навигации:\n got: %q\nwant: %q", got, want)

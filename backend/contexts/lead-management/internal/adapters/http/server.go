@@ -13,6 +13,7 @@ package httpapi
 import (
 	"bytes"
 	"context"
+	"encoding/csv"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -37,6 +38,8 @@ import (
 // никаких inline-скриптов/стилей. Директива connect-src нужна для HTMX и
 // fetch к своему источнику: без неё она падает до default-src 'none' и режет
 // авто-обновление журнала и перенос лида перетаскиванием (design.md, Решение 11).
+const leadsLimit = 200 // предел списка лидов с email на странице /leads
+
 const contentSecurityPolicy = "default-src 'none'; style-src 'self'; script-src 'self'; img-src 'self'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'"
 
 // journalLimit — единый предел числа заданий в журнале: и при начальной отрисовке
@@ -79,6 +82,7 @@ type Server struct {
 	account       budget.AccountReader
 	sessions      *sessionManager
 	pages         *components.Set
+	leadsExport   *template.Template
 	static        http.Handler
 	handler       http.Handler
 	logger        observ.Logger
@@ -93,6 +97,10 @@ func NewServer(deps Dependencies) *Server {
 	pages, err := parsePages()
 	if err != nil {
 		panic("httpapi: разбор шаблонов: " + err.Error())
+	}
+	leadsExport, err := parseLeadsExport()
+	if err != nil {
+		panic("httpapi: разбор шаблона выгрузки лидов: " + err.Error())
 	}
 	static, err := staticFiles()
 	if err != nil {
@@ -120,6 +128,7 @@ func NewServer(deps Dependencies) *Server {
 		account:       deps.Account,
 		sessions:      newSessionManager(deps.Auth),
 		pages:         pages,
+		leadsExport:   leadsExport,
 		static:        static,
 		logger:        deps.Logger,
 		interpreter:   interpreter,
@@ -146,6 +155,9 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST /jobs/cancel", s.handleBulkCancelJobs)
 	mux.HandleFunc("POST /search", s.handleSearch)
 	mux.HandleFunc("GET /cards", s.handleCards)
+	mux.HandleFunc("GET /leads", s.handleLeads)
+	mux.HandleFunc("GET /leads/export", s.handleLeadsExport)
+	mux.HandleFunc("GET /leads/export.csv", s.handleLeadsExportCSV)
 	mux.HandleFunc("GET /cards/{id}", s.handleCard)
 	mux.HandleFunc("POST /cards/{id}/hide", s.handleHide)
 	mux.HandleFunc("POST /cards/{id}/delete", s.handleDelete)
@@ -343,7 +355,25 @@ func (s *Server) handleJob(w http.ResponseWriter, r *http.Request) {
 		s.renderNotice(w, http.StatusInternalServerError, "Задание недоступно", "Не удалось загрузить задание.")
 		return
 	}
-	s.render(w, http.StatusOK, pageJob, pageViewSidebar("Задание", consoleSidebar(sidebarHome), jobFrom(detail, s.jobAssessments(r.Context(), detail.Job.ID))))
+	companies := s.resultCompanies(r.Context(), detail)
+	s.render(w, http.StatusOK, pageJob, pageViewSidebar("Задание", consoleSidebar(sidebarHome), jobFrom(detail, s.jobAssessments(r.Context(), detail.Job.ID), companies)))
+}
+
+// resultCompanies читает email найденных компаний одним пакетным запросом. Email —
+// дополнительный признак: при ошибке чтения карта пуста, и компании показываются
+// без подсветки «нет email», а не выдаются за компании без адреса.
+func (s *Server) resultCompanies(ctx context.Context, detail app.JobDetail) map[string]app.CompanyEmail {
+	if len(detail.Job.ResultRef) == 0 {
+		return nil
+	}
+	emails, err := s.showcase.CompanyEmails(ctx, detail.Job.ResultRef)
+	if err != nil {
+		if s.logger != nil {
+			s.logger.Error("httpapi: чтение email компаний задания", err, observ.Fields{}, "job", detail.Job.ID)
+		}
+		return nil
+	}
+	return emails
 }
 
 // jobAssessments читает оценки задания. Оценка — дополнительный результат: её
@@ -361,6 +391,28 @@ func (s *Server) jobAssessments(ctx context.Context, jobID string) []*domain.Lea
 		return nil
 	}
 	return assessments
+}
+
+// latestAssessments читает последнюю по времени оценку каждой из карточек
+// витрины по всем заданиям. Оценка — дополнительный результат: её отсутствие или
+// ошибка чтения дают пустую карту, поэтому компании показываются как «Не оценено»,
+// а не выдаются за «Подходит».
+func (s *Server) latestAssessments(ctx context.Context, cards []app.Card) map[string]*domain.LeadAssessment {
+	if s.runSearch == nil || s.runSearch.Assessments == nil {
+		return nil
+	}
+	companyIDs := make([]string, 0, len(cards))
+	for _, card := range cards {
+		companyIDs = append(companyIDs, card.ID)
+	}
+	byCompany, err := s.runSearch.Assessments.LatestByCompany(ctx, companyIDs)
+	if err != nil {
+		if s.logger != nil {
+			s.logger.Error("httpapi: чтение последних оценок компаний", err, observ.Fields{})
+		}
+		return nil
+	}
+	return byCompany
 }
 
 // handleCancelJob отменяет задание поиска и возвращает на главную.
@@ -478,7 +530,7 @@ func (s *Server) handleCards(w http.ResponseWriter, r *http.Request) {
 	jobID := strings.TrimSpace(r.URL.Query().Get("job"))
 	view := cardsView{}
 	if jobID == "" {
-		view.Fits, view.Other = splitCardRows(cardRows(cards))
+		view.Fits, view.Other = splitCardRows(cardRowsWithLatestAssessments(cards, s.latestAssessments(r.Context(), cards)))
 	} else {
 		detail, err := s.showcase.Job(r.Context(), jobID)
 		if errors.Is(err, app.ErrJobNotFound) {
@@ -498,6 +550,80 @@ func (s *Server) handleCards(w http.ResponseWriter, r *http.Request) {
 	}
 
 	s.render(w, http.StatusOK, pageCards, pageViewSidebar("Карточки", consoleSidebar(sidebarCards), view))
+}
+
+// handleLeads показывает список лидов с email: по строке на лида — ссылка на
+// сайт, название и адрес. Лиды без email в список не попадают.
+func (s *Server) handleLeads(w http.ResponseWriter, r *http.Request) {
+	cards, err := s.showcase.ListCards(r.Context(), leadsLimit)
+	if err != nil {
+		s.renderNotice(w, http.StatusInternalServerError, "Лиды недоступны", "Не удалось загрузить лидов.")
+		return
+	}
+	s.render(w, http.StatusOK, pageLeads, pageViewSidebar("Лиды", consoleSidebar(sidebarLeads), leadsView{
+		Rows: leadRows(cards),
+	}))
+}
+
+// handleLeadsExport отдаёт автономный HTML-файл со списком лидов с email. Это
+// полный документ со встроенными стилями — его можно сохранить и передать
+// человеку без доступа к консоли. Данные те же, что и на странице /leads.
+func (s *Server) handleLeadsExport(w http.ResponseWriter, r *http.Request) {
+	cards, err := s.showcase.ListCards(r.Context(), leadsLimit)
+	if err != nil {
+		s.renderNotice(w, http.StatusInternalServerError, "Выгрузка недоступна", "Не удалось загрузить лидов.")
+		return
+	}
+	var buffer bytes.Buffer
+	if err := s.leadsExport.ExecuteTemplate(&buffer, "leads-export", leadsView{Rows: leadRows(cards)}); err != nil {
+		if s.logger != nil {
+			s.logger.Error("httpapi: рендеринг выгрузки лидов", err, observ.Fields{})
+		}
+		http.Error(w, "внутренняя ошибка", http.StatusInternalServerError)
+		return
+	}
+	// Встроенные стили и небольшой инлайн-скрипт (поиск по таблице) требуют
+	// ослабленной CSP на этот ответ: файл открывают и прямо по ссылке. Внешних
+	// ресурсов в документе нет, разрешены только встроенные стили и скрипты.
+	w.Header().Set("Content-Security-Policy", "default-src 'none'; style-src 'unsafe-inline'; script-src 'unsafe-inline'")
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Header().Set("Content-Disposition", `attachment; filename="`+leadsFilename("html")+`"`)
+	_, _ = buffer.WriteTo(w)
+}
+
+// handleLeadsExportCSV отдаёт список лидов с email в CSV (RFC 4180) с BOM — файл
+// открывается в Excel с русскими заголовками без дополнительных настроек. Набор
+// данных тот же, что и у /leads.
+func (s *Server) handleLeadsExportCSV(w http.ResponseWriter, r *http.Request) {
+	cards, err := s.showcase.ListCards(r.Context(), leadsLimit)
+	if err != nil {
+		s.renderNotice(w, http.StatusInternalServerError, "Выгрузка недоступна", "Не удалось загрузить лидов.")
+		return
+	}
+
+	var buffer bytes.Buffer
+	buffer.WriteString("\ufeff") // BOM: Excel читает UTF-8 как UTF-8, а не как ANSI
+	writer := csv.NewWriter(&buffer)
+	rows := [][]string{{"Сайт", "Название", "Email"}}
+	for _, lead := range leadRows(cards) {
+		rows = append(rows, []string{lead.Site, lead.Name, lead.Email})
+	}
+	if err := writer.WriteAll(rows); err != nil {
+		if s.logger != nil {
+			s.logger.Error("httpapi: сборка выгрузки лидов в CSV", err, observ.Fields{})
+		}
+		http.Error(w, "внутренняя ошибка", http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
+	w.Header().Set("Content-Disposition", `attachment; filename="`+leadsFilename("csv")+`"`)
+	_, _ = buffer.WriteTo(w)
+}
+
+// leadsFilename собирает имя файла выгрузки с датой (UTC): leads-2026-09-29.html.
+func leadsFilename(ext string) string {
+	return "leads-" + time.Now().UTC().Format("2006-01-02") + "." + ext
 }
 
 // filterCardsToJob оставляет карточки, входящие в результаты задания (ResultRef),

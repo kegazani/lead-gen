@@ -168,6 +168,36 @@ func TestCardRowsComposition(t *testing.T) {
 	}
 }
 
+func TestCardRowsWithLatestAssessments(t *testing.T) {
+	fits := mustAssessment(t, "job-1", "fit.example", domain.VerdictFits, domain.SignalDirect, []domain.Evidence{{
+		Criterion: "к", Fact: "ф", SourceURL: "https://fit.example", Reasoning: "о", SignalKind: domain.SignalDirect,
+	}})
+	unsuitable := mustAssessment(t, "job-2", "unsuitable.example", domain.VerdictUnsuitable, domain.SignalProfile, []domain.Evidence{{
+		Criterion: "к", Fact: "ф", SourceURL: "https://unsuitable.example", Reasoning: "о", SignalKind: domain.SignalProfile, Mismatch: "не та отрасль",
+	}})
+	latest := assessmentsByCompany([]*domain.LeadAssessment{fits, unsuitable})
+
+	rows := cardRowsWithLatestAssessments([]app.Card{
+		{ID: "fit.example", Name: "Подходит"},
+		{ID: "unsuitable.example", Name: "Не подходит"},
+		{ID: "none.example", Name: "Без оценки"},
+	}, latest)
+	fitsRows, otherRows := splitCardRows(rows)
+
+	if len(fitsRows) != 1 || fitsRows[0].ID != "fit.example" {
+		t.Fatalf("группа «Подходящие» = %+v", fitsRows)
+	}
+	if len(otherRows) != 2 {
+		t.Fatalf("вторая группа должна хранить «Не подходит» и отсутствие оценки: %+v", otherRows)
+	}
+	if otherRows[0].VerdictLabel != "Не подходит" || otherRows[1].VerdictLabel != "Не оценено" {
+		t.Fatalf("подписи второй группы = %+v", otherRows)
+	}
+	if otherRows[1].VerdictClass != "unknown" {
+		t.Fatalf("класс неоценённой карточки = %q, ожидался unknown", otherRows[1].VerdictClass)
+	}
+}
+
 func mustAssessment(t *testing.T, jobID, companyID string, verdict domain.AssessmentVerdict, signal domain.SignalKind, evidence []domain.Evidence) *domain.LeadAssessment {
 	t.Helper()
 	a, err := domain.CreateLeadAssessment(domain.CreateLeadAssessmentParams{
@@ -266,7 +296,10 @@ func TestJobFrom(t *testing.T) {
 		},
 		Events: []ports.SearchJobEvent{{Type: ports.EventEnqueued, CreatedAt: viewTestTime}},
 	}
-	view := jobFrom(detail, []*domain.LeadAssessment{assessment})
+	view := jobFrom(detail, []*domain.LeadAssessment{assessment}, map[string]app.CompanyEmail{
+		"a.example": {Email: "a@a.example"},
+		"b.example": {NoEmail: true},
+	})
 	if view.ID != "j1" || view.Query != "пример запроса" {
 		t.Fatalf("jobFrom = %+v", view)
 	}
@@ -276,6 +309,13 @@ func TestJobFrom(t *testing.T) {
 	}
 	if view.Companies[0].VerdictLabel != "Подходит" || view.Companies[1].VerdictLabel != "" {
 		t.Fatalf("подписи оценок компаний = %+v", view.Companies)
+	}
+	// Email и признак «нет email» берутся из пакетной карты контактов.
+	if view.Companies[0].Email != "a@a.example" || view.Companies[0].NoEmail {
+		t.Fatalf("email компании a.example = %+v", view.Companies[0])
+	}
+	if !view.Companies[1].NoEmail || view.Companies[1].Email != "" {
+		t.Fatalf("компания b.example без email = %+v", view.Companies[1])
 	}
 	// Распределение и основания строятся только по оценкам этого задания.
 	if view.Distribution.Fits != 1 || view.Distribution.Total() != 1 {
@@ -297,7 +337,7 @@ func TestJobFrom(t *testing.T) {
 // заменяется выдуманной (lead-relevance).
 func TestJobFromWithoutAssessments(t *testing.T) {
 	detail := app.JobDetail{Job: ports.SearchJob{ID: "j1", Query: "запрос", ResultRef: []string{"a.example"}}}
-	view := jobFrom(detail, nil)
+	view := jobFrom(detail, nil, nil)
 	if view.Distribution.Total() != 0 || len(view.Fits) != 0 {
 		t.Fatalf("без оценок распределение должно быть пустым: %+v", view)
 	}

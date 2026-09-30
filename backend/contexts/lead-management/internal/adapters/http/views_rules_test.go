@@ -43,7 +43,10 @@ func TestViewsContainNoDomainRules(t *testing.T) {
 					t.Fatalf("%s: %s (найдено %q)", file, rule.reason, rule.needle)
 				}
 			}
-			if strings.HasSuffix(file, ".html") && strings.Contains(content, "<script") {
+			// leads-export.html — автономная выгрузка: скачивается и открывается вне
+			// консоли, где внешние /static не разрешаются, поэтому она намеренно несёт
+			// встроенные стили и скрипт. Остальные шаблоны рендерятся под CSP консоли.
+			if strings.HasSuffix(file, ".html") && filepath.Base(file) != "leads-export.html" && strings.Contains(content, "<script") {
 				t.Fatalf("%s: разметка не должна содержать inline-скриптов", file)
 			}
 		}

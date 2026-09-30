@@ -5,5 +5,9 @@
     <li><a href="{{.Href}}"{{if .Active}} class="is-active" aria-current="page"{{end}}>{{.Label}}</a></li>
   {{- end }}
   </ul>
+  <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Тема оформления">
+    <span class="theme-toggle-label">Тема</span>
+    <b class="theme-toggle-value" data-theme-name>Как в системе</b>
+  </button>
 </nav>
 {{- end -}}

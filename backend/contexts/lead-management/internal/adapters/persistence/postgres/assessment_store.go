@@ -98,6 +98,38 @@ func (s *AssessmentStore) ListByJob(ctx context.Context, jobID string) ([]*domai
 	return assessments, nil
 }
 
+// LatestByCompany возвращает последнюю по времени оценку каждой из переданных
+// компаний по всем заданиям. Для компании выбирается оценка с максимальным
+// updated_at, при равенстве — с максимальным created_at, затем с наибольшим
+// job_id (порядок DISTINCT ON). Компания без оценок в результат не попадает.
+func (s *AssessmentStore) LatestByCompany(ctx context.Context, companyIDs []string) (map[string]*domain.LeadAssessment, error) {
+	result := make(map[string]*domain.LeadAssessment, len(companyIDs))
+	if len(companyIDs) == 0 {
+		return result, nil
+	}
+	rows, err := s.pool.Query(ctx, selectLatestAssessmentsByCompany, companyIDs)
+	if err != nil {
+		return nil, fmt.Errorf("postgres: чтение последних оценок компаний: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		snapshot, err := scanLeadAssessment(rows)
+		if err != nil {
+			return nil, fmt.Errorf("postgres: разбор последней оценки компании: %w", err)
+		}
+		assessment, err := rehydrateLeadAssessment(snapshot)
+		if err != nil {
+			return nil, err
+		}
+		result[snapshot.CompanyID] = assessment
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("postgres: чтение последних оценок компаний: %w", err)
+	}
+	return result, nil
+}
+
 // VerdictDistribution считает распределение вердиктов по оценкам задания.
 // Задание без оценок даёт нулевые счётчики. Неизвестный вердикт в базе
 // пропускается: распределение знает только согласованный набор.
@@ -212,6 +244,13 @@ SELECT job_id, company_id, verdict, signal_kind, COALESCE(evidence::text, '[]'),
 FROM "lead-management".lead_assessment
 WHERE job_id = $1
 ORDER BY company_id`
+
+	selectLatestAssessmentsByCompany = `
+SELECT DISTINCT ON (company_id)
+    job_id, company_id, verdict, signal_kind, COALESCE(evidence::text, '[]'), created_at, updated_at
+FROM "lead-management".lead_assessment
+WHERE company_id = ANY($1::text[])
+ORDER BY company_id, updated_at DESC, created_at DESC, job_id DESC`
 
 	selectAssessmentVerdictDistribution = `
 SELECT verdict, COUNT(*)

@@ -47,3 +47,5 @@
 - [x] 7.3 Повторять транзиентные сбои транспорта (`IsTransient`: `unexpected EOF`, сброс соединения, сетевой таймаут, 5xx), не повторяя отмену и дедлайн; проверка: тест `errors_test.go` — `TestIsTransient`
 - [x] 7.4 Сбой обхода одного сайта не завершает задание: лог, метрика и продолжение со следующей цели; проверка: тест `run_search_test.go` — `TestHandleCrawlFailureDoesNotFailJob`
 - [x] 7.5 Обновить артефакты change (design D3/D8, дельты `firecrawl-credit-budget`, `search-strategy`) и прогнать `openspec validate ... --strict`; проверка: change валиден, `go -C tools/archlint run .` проходит
+- [x] 7.6 Дедлайн времени на один сайт не должен отменять всё задание: истечение дедлайна сайта обрабатывает частичные страницы и продолжает обход со следующей цели; отмена — только по родительскому контексту; проверка: тесты `run_search_test.go` — `TestHandleCrawlTimeoutDoesNotCancelJob`, `TestCrawlDeadlineStopsBlockingCrawl`
+- [x] 7.7 Отказ одного поискового запроса не завершает задание: запрос пропускается, лог+метрика, обработка продолжается; проверка: тест `run_search_test.go` — `TestHandleSearchFailureIsSkipped`

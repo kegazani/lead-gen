@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"embed"
+	"html/template"
 	"io/fs"
 	"net/http"
 
@@ -32,6 +33,11 @@ var consoleStylesheets = []string{"/static/console.css"}
 // же источника.
 var consoleScripts = []string{"/static/htmx.min.js", "/static/console.js", "/static/assistant.js"}
 
+// consoleBootstrapScripts — скрипты, подключаемые синхронно в <head> до
+// отрисовки страницы. theme.js ставит выбранную тему без вспышки, поэтому он не
+// может быть отложенным.
+var consoleBootstrapScripts = []string{"/static/theme.js"}
+
 // Имена страниц консоли. Каждый файл объявляет шаблон "content"; каркас "layout"
 // и общие фрагменты приходят из frontend/components.
 const (
@@ -39,6 +45,8 @@ const (
 	pageDashboard    = "templates/dashboard.html"
 	pageJob          = "templates/job.html"
 	pageCards        = "templates/cards.html"
+	pageLeads        = "templates/leads.html"
+	pageLeadsExport  = "templates/leads-export.html"
 	pageCard         = "templates/card.html"
 	pageFunnel       = "templates/funnel.html"
 	pageSend         = "templates/send.html"
@@ -67,6 +75,7 @@ func parsePages() (*components.Set, error) {
 		pageDashboard,
 		pageJob,
 		pageCards,
+		pageLeads,
 		pageCard,
 		pageFunnel,
 		pageSend,
@@ -75,6 +84,13 @@ func parsePages() (*components.Set, error) {
 		pageForumSignals,
 		pageNotice,
 	)
+}
+
+// parseLeadsExport разбирает автономный шаблон выгрузки лидов: полный HTML-документ
+// со встроенными стилями, без каркаса и статики консоли. Файл передают отдельно от
+// сервиса, поэтому он не должен ссылаться на /static.
+func parseLeadsExport() (*template.Template, error) {
+	return template.New("export-root").ParseFS(templateFS, pageLeadsExport)
 }
 
 // staticFiles раздаёт встроенные статические файлы консоли. Отдельный каталог, а

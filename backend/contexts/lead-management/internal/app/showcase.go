@@ -243,6 +243,42 @@ func contactEmail(contacts []*domain.Contact) (email string, noEmail bool) {
 	return "", true
 }
 
+// CompanyEmail — наличие адреса у компании: первый непустой email и признак его
+// отсутствия.
+type CompanyEmail struct {
+	Email   string
+	NoEmail bool
+}
+
+// CompanyEmails возвращает email и признак «нет email» для перечисленных компаний
+// одним пакетным чтением контактов: запрос на каждую компанию (список результатов
+// задания) — N+1 и здесь недопустим. Компания без контактов и компания без адреса
+// получают NoEmail = true, поэтому отсутствие письма не выдаётся за ошибку чтения.
+func (s *Showcase) CompanyEmails(ctx context.Context, companyIDs []string) (map[string]CompanyEmail, error) {
+	result := make(map[string]CompanyEmail, len(companyIDs))
+	if len(companyIDs) == 0 {
+		return result, nil
+	}
+	ids := make([]domain.CompanyID, 0, len(companyIDs))
+	for _, id := range companyIDs {
+		ids = append(ids, domain.CompanyID(id))
+	}
+	contacts, err := s.Contacts.ListByCompanies(ctx, ids)
+	if err != nil {
+		return nil, err
+	}
+	byCompany := make(map[string][]*domain.Contact, len(companyIDs))
+	for _, contact := range contacts {
+		key := string(contact.CompanyID())
+		byCompany[key] = append(byCompany[key], contact)
+	}
+	for _, id := range companyIDs {
+		email, noEmail := contactEmail(byCompany[id])
+		result[id] = CompanyEmail{Email: email, NoEmail: noEmail}
+	}
+	return result, nil
+}
+
 // Card возвращает карточку компании с контактами.
 func (s *Showcase) Card(ctx context.Context, id string) (Card, error) {
 	company, err := s.Profiles.FindByID(ctx, domain.CompanyID(id))

@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script src="/static/theme.js"></script>
   <title>Задание</title>
   <link rel="stylesheet" href="/static/console.css">
   <script src="/static/htmx.min.js" defer></script>
@@ -14,11 +15,16 @@
   <ul class="sidebar-list">
     <li><a href="/" class="is-active" aria-current="page">Главная</a></li>
     <li><a href="/cards">Карточки</a></li>
+    <li><a href="/leads">Лиды</a></li>
     <li><a href="/funnel">Воронка</a></li>
     <li><a href="/send">Отправка</a></li>
     <li><a href="/assistant">Ассистент</a></li>
     <li><a href="/forum-signals">Форумы</a></li>
   </ul>
+  <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Тема оформления">
+    <span class="theme-toggle-label">Тема</span>
+    <b class="theme-toggle-value" data-theme-name>Как в системе</b>
+  </button>
 </nav>
   <main class="page">
 <header class="page-head">
@@ -82,11 +88,13 @@
   <section class="card-section">
     <h3>Найденные компании</h3>
     <ul class="socials">
-      <li>
-        <a class="link" href="/cards/example.com?job=job-1">example.com</a> <span class="verdict verdict-fits">Подходит</span>
+      <li class="job-company is-no-email" aria-label="example.com — нет email">
+        <a class="link" href="/cards/example.com?job=job-1">example.com</a>
+        <span class="card-email"><span class="card-no-email">нет email</span></span> <span class="verdict verdict-fits">Подходит</span>
       </li>
-      <li>
-        <a class="link" href="/cards/alpha.example?job=job-1">alpha.example</a> <span class="verdict verdict-hypothesis">Гипотеза</span>
+      <li class="job-company is-no-email" aria-label="alpha.example — нет email">
+        <a class="link" href="/cards/alpha.example?job=job-1">alpha.example</a>
+        <span class="card-email"><span class="card-no-email">нет email</span></span> <span class="verdict verdict-hypothesis">Гипотеза</span>
       </li>
     </ul>
   </section>

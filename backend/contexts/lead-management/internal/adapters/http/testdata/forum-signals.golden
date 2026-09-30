@@ -3,6 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script src="/static/theme.js"></script>
   <title>Форумы</title>
   <link rel="stylesheet" href="/static/console.css">
   <script src="/static/htmx.min.js" defer></script>
@@ -14,11 +15,16 @@
   <ul class="sidebar-list">
     <li><a href="/">Главная</a></li>
     <li><a href="/cards">Карточки</a></li>
+    <li><a href="/leads">Лиды</a></li>
     <li><a href="/funnel">Воронка</a></li>
     <li><a href="/send">Отправка</a></li>
     <li><a href="/assistant">Ассистент</a></li>
     <li><a href="/forum-signals" class="is-active" aria-current="page">Форумы</a></li>
   </ul>
+  <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Тема оформления">
+    <span class="theme-toggle-label">Тема</span>
+    <b class="theme-toggle-value" data-theme-name>Как в системе</b>
+  </button>
 </nav>
   <main class="page">
 <header class="page-head">

@@ -33,6 +33,13 @@ type LeadAssessmentStore interface {
 	// ListByJob возвращает все оценки задания в стабильном порядке (по companyID).
 	// Задание без оценок даёт пустой список.
 	ListByJob(ctx context.Context, jobID string) ([]*domain.LeadAssessment, error)
+	// LatestByCompany возвращает последнюю по времени оценку каждой из переданных
+	// компаний по всем заданиям: для компании выбирается оценка с максимальным
+	// UpdatedAt, при равенстве — с максимальным CreatedAt, затем с наибольшим
+	// JobID (детерминированный выбор). Это проекция чтения для витрины, а не
+	// перенос оценки между заданиями: сама оценка остаётся привязанной к паре
+	// (job, company). Компания без оценок в результат не попадает.
+	LatestByCompany(ctx context.Context, companyIDs []string) (map[string]*domain.LeadAssessment, error)
 	// VerdictDistribution считает распределение вердиктов по оценкам задания.
 	// Задание без оценок даёт нулевые счётчики.
 	VerdictDistribution(ctx context.Context, jobID string) (VerdictCounts, error)

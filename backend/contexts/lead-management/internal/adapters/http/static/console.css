@@ -1,7 +1,9 @@
 /* Оформление консоли оператора lead-management. Направление — «термальная
-   прозрачность» (design.md, Решение 1): светлая воздушная поверхность, где
-   единственный насыщенный цветовой канал — температура лида, а стекло означает
-   слоистость, а не декор.
+   прозрачность» с хромом из выгрузки лидов (change console-theme-switcher):
+   градиентное полотно, стеклянные поверхности и кнопки, а температура лида
+   остаётся главным смысловым цветом. Тёмная тема — переопределение тех же
+   ролей под :root[data-theme="dark"]; режим «как в системе» разрешается до
+   отрисовки скриптом theme.js.
 
    Отдельный файл, а не встроенный стиль: CSP консоли запрещает inline-стили и
    скрипты. Ни один компонент не задаёт цвет напрямую — только через токен. */
@@ -9,31 +11,49 @@
 /* ============================================================= Токены */
 
 :root {
-  color-scheme: light dark;
+  color-scheme: light;
 
   /* Служебные роли поверхности и текста (почти бесцветны). */
-  --paper: #f7f8fa;
-  --paper-2: #eef1f6;
+  --paper: #eef1f9;
+  --paper-2: #e6eaf5;
   --surface: #ffffff;
-  --glass: rgba(255, 255, 255, 0.72);
+  --glass: rgba(255, 255, 255, 0.62);
   --glass-border: rgba(255, 255, 255, 0.6);
-  --ink: #16181d;
-  --ink-soft: #6a7080;
-  --line: rgba(20, 22, 30, 0.08);
-  --line-strong: rgba(20, 22, 30, 0.16);
+  --ink: #14161f;
+  --ink-soft: #5f6577;
+  --line: rgba(20, 22, 40, 0.10);
+  --line-strong: rgba(20, 22, 40, 0.20);
   --shadow: 0 10px 30px -22px rgba(20, 22, 30, 0.5);
 
-  /* Термо-рампа: единственный насыщенный канал. Красный — только сбой. */
-  --cold: #3b5bdb;
-  --warming: #e8a33d;
-  --sent: #2c8c7a;
-  --cooled: #56a15a;
-  --fail: #de3b3b;
-  --cold-soft: #e7ebfb;
-  --warming-soft: #fbf0dc;
-  --sent-soft: #e2f0ec;
-  --cooled-soft: #e6f2e7;
-  --fail-soft: #fbe5e5;
+  /* Градиент фона — «полотно» консоли. */
+  --bg-1: #eef1fb;
+  --bg-2: #f6f2fd;
+  --bg-3: #eaf0fb;
+
+  /* Акцент хрома: ссылки, активные пункты, кнопки. Не несёт доменного смысла. */
+  --accent: #5560ea;
+  --accent-2: #a04fe0;
+  --accent-soft: rgba(85, 96, 234, 0.14);
+
+  /* Стадии воронки — «температура» лида. Чем теплее стадия, тем насыщеннее. */
+  --stage-notwarmed: #576c80;
+  --stage-notwarmed-soft: rgba(87, 108, 128, 0.16);
+  --stage-email: #5a45d0;
+  --stage-email-soft: rgba(90, 69, 208, 0.14);
+  --stage-warming: #8f5f10;
+  --stage-warming-soft: rgba(143, 95, 16, 0.16);
+  --stage-cold: #2a63a3;
+  --stage-cold-soft: rgba(42, 99, 163, 0.14);
+
+  /* Светофор исходов письма и вердиктов оценки. */
+  --ok: #157a4b;
+  --ok-soft: rgba(21, 122, 75, 0.14);
+  --warn: #8f5f10;
+  --warn-soft: rgba(143, 95, 16, 0.16);
+  --bad: #b73636;
+  --bad-soft: rgba(183, 54, 54, 0.14);
+  --neutral: #616a7d;
+  --neutral-soft: rgba(97, 106, 125, 0.16);
 
   /* Геометрия и ритм. */
   --spacing: 1.25rem;
@@ -44,31 +64,62 @@
 }
 
 /* Тёмный режим — переопределение тех же ролей, а не инверсия значений: любой
-   новый компонент автоматически корректен в обеих темах (design.md, Решение 2). */
-@media (prefers-color-scheme: dark) {
-  :root {
-    --paper: #0e1014;
-    --paper-2: #07090c;
-    --surface: #161a21;
-    --glass: rgba(28, 32, 40, 0.72);
-    --glass-border: rgba(255, 255, 255, 0.08);
-    --ink: #e8eaf0;
-    --ink-soft: #9aa3b2;
-    --line: rgba(255, 255, 255, 0.09);
-    --line-strong: rgba(255, 255, 255, 0.18);
-    --shadow: 0 12px 34px -24px rgba(0, 0, 0, 0.9);
+   новый компонент автоматически корректен в обеих темах. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
 
-    --cold: #7d97ff;
-    --warming: #f0b65a;
-    --sent: #52b49c;
-    --cooled: #78c07c;
-    --fail: #f0625f;
-    --cold-soft: rgba(125, 151, 255, 0.16);
-    --warming-soft: rgba(240, 182, 90, 0.16);
-    --sent-soft: rgba(82, 180, 156, 0.16);
-    --cooled-soft: rgba(120, 192, 124, 0.16);
-    --fail-soft: rgba(240, 98, 95, 0.18);
-  }
+  --paper: #0b1024;
+  --paper-2: #070a18;
+  --surface: #141a2e;
+  --glass: rgba(28, 34, 58, 0.55);
+  --glass-border: rgba(255, 255, 255, 0.10);
+  --ink: #eef1ff;
+  --ink-soft: #9aa3bd;
+  --line: rgba(255, 255, 255, 0.10);
+  --line-strong: rgba(255, 255, 255, 0.22);
+  --shadow: 0 18px 48px -28px rgba(0, 0, 0, 0.9);
+
+  --bg-1: #0c1024;
+  --bg-2: #171233;
+  --bg-3: #0a1420;
+
+  --accent: #8b9cff;
+  --accent-2: #d79bff;
+  --accent-soft: rgba(139, 156, 255, 0.18);
+
+  --stage-notwarmed: #9fb2c6;
+  --stage-notwarmed-soft: rgba(159, 178, 198, 0.16);
+  --stage-email: #9a8cff;
+  --stage-email-soft: rgba(154, 140, 255, 0.16);
+  --stage-warming: #f0b65a;
+  --stage-warming-soft: rgba(240, 182, 90, 0.16);
+  --stage-cold: #5aa2e6;
+  --stage-cold-soft: rgba(90, 162, 230, 0.16);
+
+  --ok: #4fc98a;
+  --ok-soft: rgba(79, 201, 138, 0.16);
+  --warn: #f0b65a;
+  --warn-soft: rgba(240, 182, 90, 0.16);
+  --bad: #f0655f;
+  --bad-soft: rgba(240, 101, 95, 0.16);
+  --neutral: #8b95ad;
+  --neutral-soft: rgba(139, 149, 173, 0.16);
+}
+
+/* Совместимость: прежние имена указывают на новые роли (см. использование в
+   оформлении). Ссылки через var() разрешаются в контексте темы, поэтому
+   достаточно объявить их один раз. */
+:root {
+  --cold: var(--accent);
+  --warming: var(--warn);
+  --sent: var(--ok);
+  --cooled: var(--stage-cold);
+  --fail: var(--bad);
+  --cold-soft: var(--accent-soft);
+  --warming-soft: var(--warn-soft);
+  --sent-soft: var(--ok-soft);
+  --cooled-soft: var(--stage-cold-soft);
+  --fail-soft: var(--bad-soft);
 }
 
 /* ============================================================= База */
@@ -741,10 +792,15 @@ button:disabled {
 }
 
 /* Ожидание — полый круг. */
-.status-queued,
+.status-queued {
+  background: var(--neutral-soft);
+  color: var(--neutral);
+}
+
+/* Не прогрет — полый круг, бледный серо-голубой (тепла ещё нет). */
 .status-not-warmed {
-  background: var(--cold-soft);
-  color: var(--cold);
+  background: var(--stage-notwarmed-soft);
+  color: var(--stage-notwarmed);
 }
 
 .status-queued::before,
@@ -754,23 +810,33 @@ button:disabled {
 }
 
 /* Прогрев — заполненный круг. */
-.status-running,
+.status-running {
+  background: var(--warn-soft);
+  color: var(--warn);
+}
+
 .status-warming {
-  background: var(--warming-soft);
-  color: var(--warming);
+  background: var(--stage-warming-soft);
+  color: var(--stage-warming);
 }
 
-/* Отправлено / остыло — заполненный круг. */
+/* Отправлено — заполненный круг. */
 .status-done,
-.status-sent,
-.status-email-sent {
-  background: var(--sent-soft);
-  color: var(--sent);
+.status-sent {
+  background: var(--ok-soft);
+  color: var(--ok);
 }
 
+/* Письмо отправлено — фиалковый: действие, а не температура. */
+.status-email-sent {
+  background: var(--stage-email-soft);
+  color: var(--stage-email);
+}
+
+/* Остыл — заполненный круг, холодный синий. */
 .status-cold {
-  background: var(--cooled-soft);
-  color: var(--cooled);
+  background: var(--stage-cold-soft);
+  color: var(--stage-cold);
 }
 
 /* Сбой — ромб. Красный используется только здесь. */
@@ -847,20 +913,20 @@ button:disabled {
 }
 
 .timeline-point.is-done .timeline-dot {
-  border-color: var(--sent);
-  background: var(--sent);
+  border-color: var(--ok);
+  background: var(--ok);
 }
 
 .timeline-point.is-current .timeline-dot {
-  border-color: var(--warming);
-  background: var(--warming);
-  box-shadow: 0 0 0 4px var(--warming-soft);
+  border-color: var(--stage-warming);
+  background: var(--stage-warming);
+  box-shadow: 0 0 0 4px var(--stage-warming-soft);
   animation: heat 1.8s var(--ease) infinite;
 }
 
 .timeline-point.is-fail .timeline-dot {
-  border-color: var(--fail);
-  background: var(--fail);
+  border-color: var(--bad);
+  background: var(--bad);
   border-radius: 3px;
   transform: rotate(45deg);
 }
@@ -979,10 +1045,10 @@ button:disabled {
   background: var(--line-strong);
 }
 
-.stage-col[data-stage="not warmed"] .stage-dot { background: var(--cold); }
-.stage-col[data-stage="email sent"] .stage-dot { background: var(--sent); }
-.stage-col[data-stage="warming"] .stage-dot { background: var(--warming); }
-.stage-col[data-stage="cold"] .stage-dot { background: var(--cooled); }
+.stage-col[data-stage="not warmed"] .stage-dot { background: var(--stage-notwarmed); }
+.stage-col[data-stage="email sent"] .stage-dot { background: var(--stage-email); }
+.stage-col[data-stage="warming"] .stage-dot { background: var(--stage-warming); }
+.stage-col[data-stage="cold"] .stage-dot { background: var(--stage-cold); }
 
 .stage-count {
   font-size: 0.78rem;
@@ -1499,6 +1565,30 @@ button:disabled {
   color: var(--fail);
 }
 
+/* Строка найденной компании на экране задания: email рядом с идентификатором и
+   та же красная подсветка «нет email», что и в списке карточек. Отсутствие письма
+   — не только цвет: рядом стоит метка «нет email» и aria-label на строке. */
+.job-company {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.job-company.is-no-email {
+  border-color: var(--fail);
+  background: var(--fail-soft);
+}
+
+.job-company.is-no-email .link {
+  color: var(--fail);
+}
+
+.job-company .card-no-email {
+  color: var(--fail);
+  font-weight: 600;
+}
+
 @media (max-width: 52rem) {
   .cards[data-cards-view="rows"] .cards-item {
     grid-template-columns: 1fr;
@@ -1529,18 +1619,21 @@ button:disabled {
 }
 
 .verdict-fits {
-  background: var(--cold-soft);
-  border-color: var(--cold);
+  background: var(--ok-soft);
+  border-color: var(--ok);
+  color: var(--ok);
 }
 
 .verdict-hypothesis {
-  background: var(--paper-2);
+  background: var(--warn-soft);
+  border-color: var(--warn);
+  color: var(--warn);
 }
 
 .verdict-unsuitable {
-  background: var(--fail-soft);
-  border-color: var(--fail);
-  color: var(--fail);
+  background: var(--neutral-soft);
+  border-color: var(--line-strong);
+  color: var(--neutral);
 }
 
 .verdict-unknown {
@@ -1654,4 +1747,157 @@ button:disabled {
 
 .interpretation-list .empty {
   color: var(--ink-soft);
+}
+
+/* ============================================================= Хром консоли
+   Вид из выгрузки лидов (change console-theme-switcher): градиентное полотно,
+   стеклянные поверхности и кнопки, мягкие анимации по действию. */
+
+/* Цвет текста на акцентной кнопке различается по теме. */
+:root {
+  --btn-fg: #ffffff;
+}
+
+:root[data-theme="dark"] {
+  --btn-fg: #0b1024;
+}
+
+body {
+  background-color: var(--paper);
+  background-image:
+    radial-gradient(55vw 55vw at 8% -10%, var(--accent-soft), transparent 60%),
+    radial-gradient(50vw 50vw at 105% 4%, var(--accent-soft), transparent 55%),
+    linear-gradient(160deg, var(--bg-1), var(--bg-2) 55%, var(--bg-3));
+  background-attachment: fixed;
+}
+
+/* Меню — колонка, переключатель темы прижат к низу. */
+.sidebar {
+  display: flex;
+  flex-direction: column;
+}
+
+/* Активный пункт — акцент хрома, а не термо-рампа. */
+.sidebar-list a.is-active::before {
+  background: linear-gradient(var(--accent), var(--accent-2));
+}
+
+.panel,
+.stage-col {
+  background: var(--glass);
+  border: 1px solid var(--line);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  box-shadow: 0 24px 60px -36px rgba(3, 6, 20, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+}
+
+@supports not (backdrop-filter: blur(1px)) {
+  .panel,
+  .stage-col {
+    background: var(--surface);
+  }
+}
+
+button {
+  background: linear-gradient(120deg, var(--accent), var(--accent-2));
+  color: var(--btn-fg);
+  border: 1px solid transparent;
+  box-shadow: 0 10px 24px -16px var(--accent);
+  transition: transform 0.18s var(--ease), box-shadow 0.25s var(--ease), opacity 0.16s var(--ease);
+}
+
+button:hover {
+  opacity: 1;
+  transform: translateY(-1px);
+  box-shadow: 0 14px 30px -12px var(--accent);
+}
+
+button:active {
+  transform: translateY(1px) scale(0.99);
+}
+
+.button-secondary {
+  background: var(--glass);
+  color: var(--ink);
+  border: 1px solid var(--line-strong);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+}
+
+.button-secondary:hover {
+  border-color: var(--accent);
+  box-shadow: 0 10px 24px -12px var(--accent);
+}
+
+.button-danger {
+  background: transparent;
+  color: var(--bad);
+  border: 1px solid var(--bad);
+  box-shadow: none;
+}
+
+.button-danger:hover {
+  box-shadow: 0 10px 24px -12px var(--bad);
+}
+
+/* Переключатель темы в подвале меню. */
+.theme-toggle {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--radius-sm);
+  background: var(--glass);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  box-shadow: none;
+  transition: transform 0.18s var(--ease), border-color 0.18s var(--ease), box-shadow 0.25s var(--ease);
+}
+
+.theme-toggle:hover {
+  border-color: var(--accent);
+  transform: translateY(-1px);
+  box-shadow: 0 10px 24px -14px var(--accent);
+}
+
+.theme-toggle-label {
+  color: var(--ink-soft);
+}
+
+.theme-toggle-value {
+  margin-left: auto;
+  font-weight: 620;
+}
+
+/* Появление списков лент — короткое, по загрузке страницы. */
+@keyframes console-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.table tbody tr,
+.cards-item {
+  animation: console-rise 0.45s var(--ease) both;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+  }
 }

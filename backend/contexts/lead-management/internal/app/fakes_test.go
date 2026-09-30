@@ -50,13 +50,17 @@ func (f *fakeSearch) Search(_ context.Context, q search.Query) ([]search.Result,
 
 // fakeCrawl — фейк порта обхода со счётчиком вызовов Extract.
 type fakeCrawl struct {
-	pages         map[string][]crawl.Page
-	extract       map[string][]crawl.ContactCandidate
-	requests      []crawl.Request
-	crawlErr      error
-	crawlErrByURL map[string]error
-	extractErr    error
-	extractCalls  int
+	pages               map[string][]crawl.Page
+	extract             map[string][]crawl.ContactCandidate
+	requests            []crawl.Request
+	crawlErr            error
+	crawlErrByURL       map[string]error
+	crawlBlockUntilDone map[string]bool
+	extractErr          error
+	extractCalls        int
+	// onCrawl — необязательный наблюдатель, вызываемый в начале Crawl; тесты
+	// используют его, чтобы заглянуть в состояние задания между целями.
+	onCrawl func()
 }
 
 // testCrawlLimits — пределы обхода, зеркалящие конфигурацию сервиса: глубина и
@@ -67,10 +71,19 @@ func testCrawlLimits() CrawlLimits {
 		IncludePaths: []string{"contact", "team", "about"}}
 }
 
-func (f *fakeCrawl) Crawl(_ context.Context, req crawl.Request) (crawl.CrawlOutcome, error) {
+func (f *fakeCrawl) Crawl(ctx context.Context, req crawl.Request) (crawl.CrawlOutcome, error) {
 	f.requests = append(f.requests, req)
+	if f.onCrawl != nil {
+		f.onCrawl()
+	}
 	if err, ok := f.crawlErrByURL[req.StartURL]; ok {
 		return crawl.CrawlOutcome{}, err
+	}
+	if f.crawlBlockUntilDone[req.StartURL] {
+		// Имитация исчерпания дедлайна времени на один сайт: обход ждёт отмены
+		// контекста и возвращает уже собранные страницы вместе с ErrCancelled.
+		<-ctx.Done()
+		return crawl.CrawlOutcome{Pages: f.pages[req.StartURL]}, crawl.ErrCancelled
 	}
 	if f.crawlErr != nil {
 		return crawl.CrawlOutcome{}, f.crawlErr
@@ -475,6 +488,8 @@ type memJobs struct {
 	progressHistory map[string][]ports.SearchJobProgress
 	// events — записанные события жизненного цикла.
 	events []ports.SearchJobEvent
+	// resultWrites — число вызовов RecordResult (для проверки записи только при изменении набора).
+	resultWrites int
 }
 
 func newMemJobs() *memJobs {
@@ -522,6 +537,7 @@ func (m *memJobs) RecordResult(_ context.Context, id string, resultRef []string)
 	if !ok {
 		return fmt.Errorf("job %s not found", id)
 	}
+	m.resultWrites++
 	j.ResultRef = append([]string(nil), resultRef...)
 	return nil
 }
@@ -708,6 +724,24 @@ func (m *memAssessments) ListByJob(_ context.Context, jobID string) ([]*domain.L
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].CompanyID() < out[j].CompanyID() })
 	return out, nil
+}
+
+func (m *memAssessments) LatestByCompany(_ context.Context, companyIDs []string) (map[string]*domain.LeadAssessment, error) {
+	wanted := make(map[string]struct{}, len(companyIDs))
+	for _, id := range companyIDs {
+		wanted[id] = struct{}{}
+	}
+	latest := make(map[string]*domain.LeadAssessment, len(companyIDs))
+	for _, a := range m.byKey {
+		if _, ok := wanted[a.CompanyID()]; !ok {
+			continue
+		}
+		current, seen := latest[a.CompanyID()]
+		if !seen || a.UpdatedAt().After(current.UpdatedAt()) {
+			latest[a.CompanyID()] = a
+		}
+	}
+	return latest, nil
 }
 
 func (m *memAssessments) VerdictDistribution(_ context.Context, jobID string) (ports.VerdictCounts, error) {

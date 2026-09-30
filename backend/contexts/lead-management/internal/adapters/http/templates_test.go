@@ -279,3 +279,122 @@ func TestTemplateLibraryEndToEnd(t *testing.T) {
 		t.Fatalf("ссылка на шаблон = %q, ожидалась %q", history[0].Template(), want)
 	}
 }
+
+// TestConsolePagesCarryThemeBootstrap проверяет, что страницы консоли подключают
+// theme.js синхронно (до отрисовки) и несут переключатель темы в меню.
+func TestConsolePagesCarryThemeBootstrap(t *testing.T) {
+	env := newTestEnv()
+	ts := httptest.NewServer(env.server)
+	defer ts.Close()
+	client := newConsoleClient(ts)
+	client.login(t, "operator", "secret")
+
+	for _, path := range []string{"/", "/cards", "/leads"} {
+		html := readBody(t, client.get(t, path))
+		if !strings.Contains(html, `<script src="/static/theme.js"></script>`) {
+			t.Fatalf("%s: не подключён theme.js (тема не встанет без вспышки)", path)
+		}
+		if !strings.Contains(html, `id="theme-toggle"`) {
+			t.Fatalf("%s: нет переключателя темы в меню", path)
+		}
+	}
+}
+
+// TestLeadsPageShowsOnlyLeadsWithEmail проверяет страницу лидов: в список попадают
+// только лиды с email, и по каждому — ссылка на сайт, название и адрес.
+func TestLeadsPageShowsOnlyLeadsWithEmail(t *testing.T) {
+	env := newTestEnv()
+	seedCompany(t, env.profiles, "example.com", "Пример Компании", "Описание")
+	seedContact(t, env.contacts, "example.com", "hello@example.com", "+7 999 123-45-67", "основатель")
+	seedCompany(t, env.profiles, "phone.example.com", "Только Телефон", "Описание без email")
+
+	ts := httptest.NewServer(env.server)
+	defer ts.Close()
+	client := newConsoleClient(ts)
+	client.login(t, "operator", "secret")
+
+	resp := client.get(t, "/leads")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /leads = %d, ожидался 200", resp.StatusCode)
+	}
+	html := readBody(t, resp)
+	for _, want := range []string{"Пример Компании", "hello@example.com", "https://example.com"} {
+		if !strings.Contains(html, want) {
+			t.Fatalf("страница лидов не содержит %q:\n%s", want, html)
+		}
+	}
+	if strings.Contains(html, "Только Телефон") {
+		t.Fatalf("лид без email не должен попадать на страницу лидов:\n%s", html)
+	}
+}
+
+// TestLeadsExportStandaloneHTML проверяет выгрузку: автономный HTML-файл со
+// встроенными стилями, без ссылок на статику консоли, отдаётся как вложение.
+func TestLeadsExportStandaloneHTML(t *testing.T) {
+	env := newTestEnv()
+	seedCompany(t, env.profiles, "example.com", "Пример Компании", "Описание")
+	seedContact(t, env.contacts, "example.com", "hello@example.com", "+7 999 123-45-67", "основатель")
+	seedCompany(t, env.profiles, "phone.example.com", "Только Телефон", "Описание без email")
+
+	ts := httptest.NewServer(env.server)
+	defer ts.Close()
+	client := newConsoleClient(ts)
+	client.login(t, "operator", "secret")
+
+	resp := client.get(t, "/leads/export")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /leads/export = %d, ожидался 200", resp.StatusCode)
+	}
+	if got := resp.Header.Get("Content-Disposition"); !strings.Contains(got, "attachment") || !strings.Contains(got, "leads-") || !strings.Contains(got, ".html") {
+		t.Fatalf("Content-Disposition = %q, ожидалось вложение leads-<дата>.html", got)
+	}
+	html := readBody(t, resp)
+	for _, want := range []string{"<!DOCTYPE html>", "Пример Компании", "hello@example.com", "https://example.com", "<style>"} {
+		if !strings.Contains(html, want) {
+			t.Fatalf("выгрузка не содержит %q:\n%s", want, html)
+		}
+	}
+	if strings.Contains(html, "Только Телефон") {
+		t.Fatalf("лид без email не должен попадать в выгрузку:\n%s", html)
+	}
+	if strings.Contains(html, "/static/") {
+		t.Fatalf("автономный файл не должен ссылаться на статику сервера:\n%s", html)
+	}
+}
+
+// TestLeadsExportCSV проверяет выгрузку в CSV: BOM, русские заголовки, только
+// лиды с email, отдаётся как вложение с именем leads-<дата>.csv.
+func TestLeadsExportCSV(t *testing.T) {
+	env := newTestEnv()
+	seedCompany(t, env.profiles, "example.com", "Пример Компании", "Описание")
+	seedContact(t, env.contacts, "example.com", "hello@example.com", "+7 999 123-45-67", "основатель")
+	seedCompany(t, env.profiles, "phone.example.com", "Только Телефон", "Описание без email")
+
+	ts := httptest.NewServer(env.server)
+	defer ts.Close()
+	client := newConsoleClient(ts)
+	client.login(t, "operator", "secret")
+
+	resp := client.get(t, "/leads/export.csv")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET /leads/export.csv = %d, ожидался 200", resp.StatusCode)
+	}
+	if got := resp.Header.Get("Content-Type"); !strings.HasPrefix(got, "text/csv") {
+		t.Fatalf("Content-Type = %q, ожидался text/csv", got)
+	}
+	if got := resp.Header.Get("Content-Disposition"); !strings.Contains(got, "attachment") || !strings.Contains(got, "leads-") || !strings.Contains(got, ".csv") {
+		t.Fatalf("Content-Disposition = %q, ожидалось вложение leads-<дата>.csv", got)
+	}
+	body := readBody(t, resp)
+	if !strings.HasPrefix(body, "\ufeff") {
+		t.Fatalf("CSV должен начинаться с BOM для Excel")
+	}
+	for _, want := range []string{"Сайт,Название,Email", "https://example.com", "Пример Компании", "hello@example.com"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("CSV не содержит %q:\n%s", want, body)
+		}
+	}
+	if strings.Contains(body, "Только Телефон") {
+		t.Fatalf("лид без email не должен попадать в CSV:\n%s", body)
+	}
+}

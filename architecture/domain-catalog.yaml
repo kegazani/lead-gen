@@ -26,7 +26,7 @@
       "name": "Управление лидами",
       "classification": "core",
       "purpose": "Приём, нормализация, обогащение и проверка компаний и контактов в пуле клиента.",
-      "capabilities": ["osint-enrichment", "company-size-assessment", "email-verification", "lead-workflow", "lead-email", "email-template-library", "search-strategy", "company-quota-search", "forum-lead-signals", "lead-relevance", "search-job-control", "search-job-lifecycle", "search-job-progress", "search-job-error-codes", "search-job-events", "job-journal-console", "lead-cards-console"],
+      "capabilities": ["osint-enrichment", "company-size-assessment", "email-verification", "lead-workflow", "lead-email", "email-template-library", "search-strategy", "company-quota-search", "forum-lead-signals", "lead-relevance", "search-job-control", "search-job-lifecycle", "search-job-progress", "search-job-error-codes", "search-job-events", "job-journal-console", "lead-cards-console", "console-appearance"],
       "service": "lead-management",
       "roles": ["api", "worker"],
       "contracts": ["lead-profile", "lead-verified", "company-profile"]
@@ -136,7 +136,7 @@
       "name": "Интеграционная платформа",
       "classification": "generic",
       "purpose": "Vendor-neutral порты, адаптеры, нормализация ошибок и manifest возможностей поставщиков.",
-      "capabilities": ["provider-agnostic-integrations", "firecrawl-credit-budget"],
+      "capabilities": ["provider-agnostic-integrations", "firecrawl-credit-budget", "crawler-proxy-pool"],
       "service": "integration-platform",
       "roles": ["api", "ingest", "sender", "worker", "chains", "schedule"],
       "contracts": ["adapter-capability", "integration-error", "provider-port"]
