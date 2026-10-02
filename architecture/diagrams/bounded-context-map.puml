@@ -19,6 +19,7 @@ package "Core" {
   rectangle "Оркестрация исходящих\nдействий\n<<core>>" as Outreach
   rectangle "Доставка сообщений\n<<core>>" as Delivery
   rectangle "Продажи и сделки\n<<core>>" as Sales
+  rectangle "Исполнение заявок\nклиента\n<<core>>" as Requests
 }
 package "Supporting" {
   rectangle "Производство контента\n<<supporting>>" as Content
@@ -33,14 +34,20 @@ Governance --> Leads : data-zone-policy
 Governance --> Outreach : processing-authority
 Governance --> Delivery : suppression-policy
 Platform --> Outreach : access-decision
+Platform --> Requests : tenant-context
 Leads --> Audience : lead-profile
+Leads --> Requests : lead-profile
 Audience --> Outreach : audience-snapshot
+Audience --> Requests : audience-snapshot
 Content --> Outreach : content-version
 Outreach --> Delivery : approved-action
 Delivery --> Engagement : delivery-event
 Engagement --> Outreach : engagement-event
 Outreach --> Sales : outreach-outcome
 Sales --> Billing : attributed-result
+Outreach --> Requests : campaign-state
+Sales --> Requests : deal-state
+Billing --> Requests : billing-entitlement
 Community --> Publishing : community-digest
 Outreach --> Analytics
 Delivery --> Analytics
@@ -55,7 +62,7 @@ Integration ..> Publishing : ACL / provider-port
 
 legend bottom
   Границы сервисов совпадают с границами bounded contexts:
-  один контекст — один сервис (14 сервисов).
+  один контекст — один сервис (15 сервисов).
   Роли api / ingest / sender / worker / chains / schedule —
   режимы запуска внутри сервиса, а не единицы размещения.
   Консоль топологии — эксплуатационная проекция роли api
@@ -78,4 +85,5 @@ endlegend
 ' CTX:analytics
 ' CTX:billing
 ' CTX:integration-platform
+' CTX:request-fulfillment
 @enduml

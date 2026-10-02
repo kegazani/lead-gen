@@ -25,6 +25,7 @@ import (
 	"lead-gen/backend/platform/deployment"
 	"lead-gen/backend/platform/observability/observ"
 	"lead-gen/backend/platform/transport/amqp"
+	platformworkflow "lead-gen/backend/platform/workflow"
 )
 
 func main() {
@@ -33,6 +34,8 @@ func main() {
 	serviceFilter := flag.String("service", "", "сервисы через запятую (пусто — все выбранных групп)")
 	apiAddr := flag.String("addr", ":8080", "адрес внутреннего HTTP-сервера роли api")
 	ingestAddr := flag.String("ingest-addr", ":8081", "адрес публичного HTTP-сервера роли ingest")
+	requestIntentURL := flag.String("request-intent-url", "", "базовый адрес сервиса заявок request-fulfillment (пусто — in-proc адаптер)")
+	brokerURL := flag.String("broker-url", "", "адрес AMQP-брокера RabbitMQ, amqp://... (пусто — брокер в памяти)")
 	actor := flag.String("actor", "", "оператор, которому выдано право сборки")
 	tenant := flag.String("tenant", "", "тенант, в котором выдано право сборки")
 	brokerAttempts := flag.Int("broker-attempts", 3, "число попыток доставки в брокер до DLQ")
@@ -47,8 +50,8 @@ func main() {
 	llmBaseURL := flag.String("llm-base-url", "", "базовый адрес LLM API (DeepSeek; пусто — адрес по умолчанию)")
 	llmModel := flag.String("llm-model", "", "модель LLM (DeepSeek; пусто — модель по умолчанию)")
 	llmKey := flag.String("llm-key", "", "ключ доступа LLM (пусто — LLM-планирование отключено)")
-	consoleUser := flag.String("console-user", "operator", "логин оператора консоли")
-	consolePassword := flag.String("console-password", "secret", "пароль оператора консоли")
+	consoleUser := flag.String("console-user", "", "логин оператора консоли (пусто — вход с пустыми учётными данными, только dev)")
+	consolePassword := flag.String("console-password", "", "пароль оператора консоли (пусто — вход с пустыми учётными данными, только dev)")
 	leadMaxPages := flag.Int("lead-max-pages", 50, "верхний предел страниц обхода на один сайт (внутренний предохранитель; 0 — без предела)")
 	leadMaxDepth := flag.Int("lead-max-depth", 3, "максимальная глубина обхода lead-management")
 	leadMaxTimeSeconds := flag.Int("lead-max-time-seconds", 120, "предельное время обхода lead-management, с")
@@ -59,6 +62,14 @@ func main() {
 	smtpUsername := flag.String("smtp-username", "", "имя учётной записи SMTP (пусто — без аутентификации)")
 	smtpPassword := flag.String("smtp-password", "", "пароль учётной записи SMTP")
 	smtpFrom := flag.String("smtp-from", "leads@lead-gen.local", "адрес отправителя писем")
+
+	// Рантайм исполнения (Temporal). Пустой адрес отключает рантайм: воркер
+	// workflow не поднимается, заявка остаётся в текущем статусе.
+	temporalAddress := flag.String("temporal-address", "", "адрес Temporal, host:port (пусто — рантайм исполнения отключён)")
+	temporalNamespace := flag.String("temporal-namespace", "default", "пространство имён Temporal")
+	temporalAPIKey := flag.String("temporal-api-key", "", "ключ доступа Temporal Cloud (пусто — без TLS и ключа)")
+	temporalTaskQueue := flag.String("temporal-task-queue", "request-fulfillment", "очередь задач воркера workflow")
+	searchStubLeads := flag.Int("workflow-search-stub-leads", 0, "заглушка шага поиска: сколько лидов «находит» (0 — поиск не подключён)")
 	flag.Parse()
 
 	// Наблюдаемость строится один раз на процесс: логгер и метрики общие для
@@ -82,15 +93,54 @@ func main() {
 		os.Exit(1)
 	}
 
-	// В совмещённом деплое сервисы процесса делят брокер в памяти: он реализует
-	// и Publisher, и Consumer, поэтому публикация одного сервиса доходит до
-	// очередей другого без внешней сети.
-	broker := amqp.NewInMemoryBroker(*brokerAttempts)
+	// Брокер событий. При заданном -broker-url используется реальный RabbitMQ: и
+	// Publisher, и Consumer поверх amqp091-go, поэтому публикация одного сервиса
+	// доходит до подписки другого через сеть. Без адреса — прежний брокер в
+	// памяти (совмещённый процесс без внешней сети).
+	var publisher amqp.Publisher
+	var consumer amqp.Consumer
+	if strings.TrimSpace(*brokerURL) != "" {
+		rabbit, err := amqp.NewRabbitMQBroker(*brokerURL, *brokerAttempts)
+		if err != nil {
+			logger.Error("lead-gen: подключение к RabbitMQ", err, observ.Fields{}, "url", *brokerURL)
+			os.Exit(1)
+		}
+		defer func() { _ = rabbit.Close() }()
+		publisher, consumer = rabbit, rabbit
+		logger.Info("lead-gen: брокер RabbitMQ подключён", observ.Fields{}, "exchange", amqp.PlatformExchange)
+	} else {
+		memory := amqp.NewInMemoryBroker(*brokerAttempts)
+		publisher, consumer = memory, memory
+	}
 	stub := newPublicIngestStub(*ingestAddr, logger)
+
+	// Рантайм исполнения подключается один раз на процесс. Недоступность
+	// Temporal не валит процесс: рантайм честно помечается выключенным, а
+	// существующие ручные потоки смены статуса продолжают работать.
+	workflowConfig := platformworkflow.Config{
+		Address:   *temporalAddress,
+		Namespace: *temporalNamespace,
+		APIKey:    *temporalAPIKey,
+		TaskQueue: *temporalTaskQueue,
+	}
+	var workflowClient *platformworkflow.Client
+	if workflowConfig.Enabled() {
+		client, err := platformworkflow.Dial(context.Background(), workflowConfig, metrics)
+		if err != nil {
+			logger.Warn("lead-gen: рантайм исполнения недоступен, работаем без workflow", observ.Fields{}, "error", err.Error())
+		} else {
+			workflowClient = client
+			defer workflowClient.Close()
+			logger.Info("lead-gen: рантайм исполнения подключён", observ.Fields{}, "namespace", workflowClient.Namespace(), "task_queue", *temporalTaskQueue)
+		}
+	}
+
 	opts := buildOptions{
 		logger:              logger,
 		metrics:             metrics,
 		apiAddr:             *apiAddr,
+		requestIntentURL:    *requestIntentURL,
+		consumer:            consumer,
 		publishInterval:     *publishInterval,
 		actor:               *actor,
 		tenant:              *tenant,
@@ -113,6 +163,9 @@ func main() {
 		smtpUsername:        *smtpUsername,
 		smtpPassword:        *smtpPassword,
 		smtpFrom:            *smtpFrom,
+		workflowClient:      workflowClient,
+		workflowTaskQueue:   *temporalTaskQueue,
+		searchStubLeads:     *searchStubLeads,
 	}
 
 	signalCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -122,7 +175,7 @@ func main() {
 
 	var wg sync.WaitGroup
 	for _, sel := range selected {
-		service, err := buildService(sel.ID, sel.Mechanism, opts, broker, stub)
+		service, err := buildService(sel.ID, sel.Mechanism, opts, publisher, stub)
 		if err != nil {
 			logger.Error("lead-gen: сборка сервиса", err, observ.Fields{}, "service", sel.ID)
 			os.Exit(1)

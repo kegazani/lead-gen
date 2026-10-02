@@ -43,9 +43,6 @@ const (
 	MergeVariableContactEmail MergeVariableKey = "contact_email"
 	// MergeVariableContactPhone — телефон контакта.
 	MergeVariableContactPhone MergeVariableKey = "contact_phone"
-	// MergeVariableIndustry — отрасль компании (источника данных пока нет, значение
-	// всегда пусто и уходит в объявленный fallback).
-	MergeVariableIndustry MergeVariableKey = "industry"
 )
 
 // mergeVariableCatalog — канонический порядок ключей каталога.
@@ -56,7 +53,6 @@ var mergeVariableCatalog = []MergeVariableKey{
 	MergeVariableContact,
 	MergeVariableContactEmail,
 	MergeVariableContactPhone,
-	MergeVariableIndustry,
 }
 
 // MergeVariableKeys возвращает канонический набор ключей каталога в порядке

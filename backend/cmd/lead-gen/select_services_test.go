@@ -32,44 +32,41 @@ func TestSelectServicesFilters(t *testing.T) {
 		}
 	}
 
-	declarations := map[string][]string{}
-	order := make([]string, 0)
-	for _, process := range cfg.Processes {
-		for _, service := range process.Services {
-			if _, seen := declarations[service.ID]; !seen {
-				order = append(order, service.ID)
-			}
-			declarations[service.ID] = append(declarations[service.ID], process.Name)
-		}
-	}
-	multi := ""
-	for _, id := range order {
-		if len(declarations[id]) > 1 {
-			multi = id
-			break
-		}
-	}
-	if multi == "" {
-		t.Fatal("нет сервиса, объявленного более чем в одном процессе: тест не проверяет модель")
+	// Модель «сервис в нескольких процессах» проверяем на синтетической
+	// конфигурации: реальная топология сейчас не содержит сервиса, объявленного
+	// более чем в одном процессе (после снятия роли sender у integration-platform).
+	multiCfg, err := deployment.ParseDeployConfig([]byte(`
+processes:
+  - name: p1
+    mechanism: in-process
+    services:
+      - id: shared
+        roles: [api]
+  - name: p2
+    mechanism: in-process
+    services:
+      - id: shared
+        roles: [worker]
+`))
+	if err != nil {
+		t.Fatalf("разбор синтетической конфигурации: %v", err)
 	}
 
-	selected, err = selectServices(cfg, "", multi)
+	selected, err = selectServices(multiCfg, "", "shared")
 	if err != nil {
-		t.Fatalf("выбор сервиса %q: %v", multi, err)
+		t.Fatalf("выбор сервиса shared: %v", err)
 	}
-	if len(selected) != len(declarations[multi]) {
-		t.Fatalf("сервис %q выбран %d раз, ожидалось %d (по объявлению на процесс)",
-			multi, len(selected), len(declarations[multi]))
+	if len(selected) != 2 {
+		t.Fatalf("сервис shared выбран %d раз, ожидалось 2 (по объявлению на процесс)", len(selected))
 	}
 	groups := map[string]bool{}
 	for _, service := range selected {
-		if service.ID != multi {
-			t.Errorf("выбран сервис %q вместо %q", service.ID, multi)
+		if service.ID != "shared" {
+			t.Errorf("выбран сервис %q вместо shared", service.ID)
 		}
 		groups[service.Process] = true
 	}
-	if len(groups) != len(declarations[multi]) {
-		t.Errorf("сервис %q выбран из групп %v, ожидалось по одной на процесс %v",
-			multi, groups, declarations[multi])
+	if len(groups) != 2 {
+		t.Errorf("сервис shared выбран из групп %v, ожидалось по одной на процесс p1/p2", groups)
 	}
 }

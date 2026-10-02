@@ -53,6 +53,8 @@
 | Вызов интеграции | Единичный вызов внешней зависимости через provider port с нормализованным результатом | Конфигурация адаптера или сырой ответ SDK поставщика |
 | Статус лида | Текущая стадия воронки лида и срок отложенности (snooze), после которого лид возвращается в активную воронку | Пользователь платформы или история переходов между стадиями |
 | Исходящее сообщение | Неизменяемый журнал прямой отправки письма: получатель, шаблон, тело, исход доставки и причина отказа | Сообщение delivery-конвейера или переписка целиком |
+| Заявка | Верхнеуровневый запрос клиента на лидогенерацию с оффером, статусом обработки и ссылками на артефакты фулфилмента | Задание поиска, кампания или сделка |
+| Оффер | Описание того, что клиент предлагает и кому: исходный текст, из которого выводятся ICP и содержание обращений | Утверждённое действие, версия контента или сгенерированное письмо |
 
 В коде, API и событиях используются термины контекста-владельца. При пересечении границы получатель переводит published language в собственную модель и не импортирует внутренние Go-типы поставщика.
 
@@ -75,6 +77,7 @@
 | `publishing` | supporting | Публикация утверждённых материалов | Публикация |
 | `analytics` | supporting | Обезличенные read-модели и отчётность | Снимок отчёта |
 | `billing` | supporting | Подписки, лимиты, счета и success fee | Подписка и счёт, Вознаграждение за результат |
+| `request-fulfillment` | core | Жизненный цикл заявки клиента: оффер, статусная модель и связь с фулфилментом | Заявка, Оффер |
 | `integration-platform` | generic | Vendor-neutral порты, ACL и manifest возможностей | Регистрация адаптера, Вызов интеграции |
 
 Core-контексты выражают конкурентное преимущество продукта. Supporting-контексты реализуются ровно настолько глубоко, насколько требуется core-потокам. Generic-контексты не должны поглощать бизнес-решения core-контекстов.
@@ -98,8 +101,11 @@ Core-контексты выражают конкурентное преимущ
 |---|---|---|---|---|
 | `domain-architecture` | `platform-governance` | `platform-governance` | api, worker | Правила границ и аудируемая эволюция |
 | `platform-access` | `platform-governance` | `platform-governance` | api, worker | `access-decision`, `audit-recorded`, `tenant-context` |
+| `service-topology` | `platform-governance` | `platform-governance` | api, worker | Сервисная топология: один сервис на контекст, допустимый транспорт контрактов и надёжная синхронная граница |
 | `service-topology-console` | `platform-governance` | `platform-governance` | api | Эксплуатационная проекция топологии: граф сервисов и инфраструктуры, состояние узлов и метрики |
 | `deployment-topology` | `platform-governance` | `platform-governance` | api, worker | Модульный монолит, группы процессов и декларативная инфраструктура |
+| `observability` | `platform-governance` | `platform-governance` | api, worker | Наблюдаемость платформы: структурированные логи с корреляцией, RED-метрики и спаны на границах запроса и задания (технический примитив без доменных терминов) |
+| `client-portal` | `platform-governance` | `platform-governance` | api, worker | Самообслуживание клиента: регистрация тенанта с описанием компании, подача заявки с оффером и единое окно портала |
 | `data-handling` | `data-governance` | `data-governance` | api, worker, chains | `data-zone-policy` |
 | `contact-suppression` | `data-governance` | `data-governance` | api, worker, chains | `suppression-policy` |
 | `lead-pool-client-side` | `data-governance` | `data-governance` | api, worker, chains | `processing-authority` |
@@ -121,6 +127,7 @@ Core-контексты выражают конкурентное преимущ
 | `job-journal-console` | `lead-management` | `lead-management` | api | Эксплуатационная проекция журнала заданий поиска: компактные строки, раскрытие со сводкой и экран подробностей с ходом выполнения |
 | `lead-cards-console` | `lead-management` | `lead-management` | api | Эксплуатационная проекция витрины карточек: плитки и строки, краткое описание, email и подсветка компании без email |
 | `console-appearance` | `lead-management` | `lead-management` | api | Оформление и тема консоли: выбор светлой/тёмной/системной темы с сохранением и переключателем, осмысленная палитра статусов |
+| `semantic-lead-search` | `lead-management` | `lead-management` | api, worker | Векторный recall и rich-описание: эмбеддинг компании и оффера заявки, поиск кандидатов по близости (без вердикта релевантности), rich-описание из составляющих с источниками |
 | `lead-segmentation` | `audience` | `audience` | api, worker, schedule | `audience-snapshot` |
 | `linguistics` | `content-production` | `content-production` | api, worker | `content-version` |
 | `presentation-generator` | `content-production` | `content-production` | api, worker | `rendered-artifact` |
@@ -136,12 +143,18 @@ Core-контексты выражают конкурентное преимущ
 | `telegram-community-digest` | `community-intelligence` | `community-intelligence` | worker, schedule | `community-digest` |
 | `digest-publishing` | `publishing` | `publishing` | api, worker, schedule | `publication-result` |
 | `campaign-reporting` | `analytics` | `analytics` | api, worker, schedule | `campaign-report` |
+| `client-dashboard` | `analytics` | `analytics` | api, worker, schedule | Дашборд метрик клиента: real-time проекция счётчиков прогресса и операций |
 | `billing-subscription` | `billing` | `billing` | api, worker | `billing-entitlement` |
 | `billing-success-fee` | `billing` | `billing` | api, worker | `billing-result` |
+| `client-request` | `request-fulfillment` | `request-fulfillment` | api, worker | `request-status`: жизненный цикл заявки, оффер и ссылки на артефакты фулфилмента |
+| `request-validation` | `request-fulfillment` | `request-fulfillment` | api, worker | Валидация оффера админом: взятие в работу, звонок-уточнение через `call-intent`, правки оффера до `validated`, одобрение или отклонение с причиной; решение живёт в агрегате `request` |
 | `provider-agnostic-integrations` | `integration-platform` | `integration-platform` | api, ingest, sender, worker, chains, schedule | `provider-port`, `adapter-capability`, `integration-error` |
+| `firecrawl-credit-budget` | `integration-platform` | `integration-platform` | api, ingest, sender, worker, chains, schedule | Бюджет кредитов Firecrawl на задачу: атомарное резервирование, подтверждённый остаток аккаунта, лимиты частоты/параллелизма/размера обхода |
 | `crawler-proxy-pool` | `integration-platform` | `integration-platform` | api, ingest, sender, worker, chains, schedule | Пул прокси для обхода: источники (статический список, провайдер), уровни стоимости, ротация и привязка к домену, здоровье и карантин, эскалация на премиум при блокировке |
 
-**`service-topology-console` не добавляет модель.** Консоль — эксплуатационная проекция роли `api` сервиса `platform-governance`: она строит граф из объявлений каталога и `deploy/services.yaml` и читает метрики Prometheus через серверный прокси. Консоль **не владеет сущностями и не является bounded context**: она не вводит агрегатов, value objects, domain events, policies и межконтекстных контрактов, а её состояние узлов (`up`/`degraded`/`down`/`unknown`) и раскладка — результат наблюдения и состояние интерфейса, а не агрегат или событие. Узлы-сервисы — те же 14 bounded contexts, рёбра — те же 28 связей каталога; состав контекстов и связей не меняется, capability лишь назначена существующему владельцу как уточнение покрытия. Владение моделью остаётся у контекстов: владелец capability не получает ни новых сущностей, ни нового языка.
+**`service-topology-console` не добавляет модель.** Консоль — эксплуатационная проекция роли `api` сервиса `platform-governance`: она строит граф из объявлений каталога и `deploy/services.yaml` и читает метрики Prometheus через серверный прокси. Консоль **не владеет сущностями и не является bounded context**: она не вводит агрегатов, value objects, domain events, policies и межконтекстных контрактов, а её состояние узлов (`up`/`degraded`/`down`/`unknown`) и раскладка — результат наблюдения и состояние интерфейса, а не агрегат или событие. Узлы-сервисы — те же 15 bounded contexts, рёбра — те же 38 связей каталога; состав контекстов и связей не меняется, capability лишь назначена существующему владельцу как уточнение покрытия. Владение моделью остаётся у контекстов: владелец capability не получает ни новых сущностей, ни нового языка.
+
+**`client-portal` не добавляет модель.** Capability принадлежит `platform-governance` и описывает самообслуживание клиента — эксплуатационную проекцию роли `api` по образцу `service-topology-console`. Она **не владеет сущностями и не является bounded context**: не вводит агрегатов, value objects, domain events, policies и межконтекстных контрактов. Регистрация использует модель `platform-access` (агрегат `tenant-access`), подача заявки идёт опубликованным контрактом `request-intent` владельца `request-fulfillment`, а маскирование выполняется на сервере: клиент получает только агрегаты и состояние заявки (идентификатор, статус), без сырых лидов, карточек компаний, контактов и процесса краулинга. Владение моделью остаётся у контекстов.
 
 **`job-journal-console` и `lead-cards-console` не добавляют модель.** Эти capability принадлежат `lead-management` и описывают эксплуатационные проекции роли `api` — консольные экраны журнала заданий и витрины карточек. Они **не владеют сущностями и не являются bounded context**: не вводят агрегатов, value objects, domain events, policies и межконтекстных контрактов. Журнал показывает уже существующую операционную запись задания (`search_job`, `search_job_event`), витрина — уже существующие агрегаты `lead-profile` и `contact`; источники данных и их владельцы не меняются. Capability лишь назначена существующему контексту как уточнение покрытия, владение моделью остаётся у контекстов.
 
@@ -152,6 +165,8 @@ Core-контексты выражают конкурентное преимущ
 **`company-quota-search` не добавляет модель.** Capability принадлежит `lead-management` и описывает поведение задания поиска, а не доменный агрегат: целевое число компаний, добор целей обхода и причины остановки — свойства операционной записи задания (`search_job`, `search_job_event`). Capability не вводит агрегатов, value objects, domain events, policies и межконтекстных контрактов; владение моделью по-прежнему у контекстов `lead-management` и `integration-platform`, а само задание остаётся операционным примитивом, а не сущностью каталога.
 
 **`crawler-proxy-pool` не добавляет модель.** Capability принадлежит `integration-platform` и описывает адаптерный механизм обхода, а не доменный агрегат: пул прокси, уровни стоимости, ротация, привязка к домену, здоровье и карантин — политика адаптера за портом `provider-port`. Capability не вводит агрегатов, value objects, domain events, policies и межконтекстных контрактов; владение моделью остаётся у `integration-platform`.
+
+**`client-dashboard` не добавляет модель.** Capability принадлежит `analytics` и описывает real-time read-модель (проекцию) дашборда клиента — эксплуатационную витрину роли `api` по образцу `job-journal-console`. Она **не владеет сущностями и не является агрегатом**: не вводит агрегатов, value objects, domain events, policies и межконтекстных контрактов, а лишь проецирует нормализованные доменные события (`lead-workflow`, `engagement-observed`, `message-sent`, `delivery-event`) в счётчики в памяти процесса. `campaign-reporting` (снимки) не меняется: это второй режим того же контекста, снимки остаются источником исторической отчётности. Маскирование — в контуре клиента: отдаются только агрегаты и счётчики, текст ответов компаний не хранится и не передаётся (доступен лишь факт «ответили: N»), соблюдается порог минимальной группы (срез из одной записи не показывается), метрик открытий нет. Владение моделью остаётся у контекстов.
 
 ## Тактическая модель
 
@@ -177,6 +192,7 @@ Core-контексты выражают конкурентное преимущ
   - Инварианты: нормализованный идентификатор компании не меняется молча; профиль размера компании согласован с актуальными атрибутами компании.
   - События: `lead-profile-enriched`.
   - Политики: —.
+  - Атрибуты (capability `semantic-lead-search`): `embedding` — векторное представление компании вместе с watermark исходных данных; при изменении данных watermark меняется и вектор пересчитывается. `rich-description` — набор составляющих (продукты, приложения, трафик, сигналы, размер), каждая с источником; составляющая без источника не принимается. Эмбеддинг и rich-описание — атрибуты существующего агрегата, новых агрегатов, VO-идентификаторов и событий не вводят. Близость векторов — recall; вердикт «Подходит/Гипотеза/Не подходит» остаётся за `lead-relevance`.
 - **`contact`** (AR: `contact`): E: `contact`, `attribute-provenance`, `email-verification`; VO: `contact-address`.
   - Инварианты: каждое внешнее значение атрибута контакта имеет происхождение; результат проверки адреса имеет время и срок актуальности.
   - События: `lead-verified`.
@@ -301,6 +317,14 @@ Core-контексты выражают конкурентное преимущ
   - События: `integration-failed`, `integration-recovered`.
   - Политики: `error-normalization`.
 
+### `request-fulfillment`
+
+- **`request`** (AR: `request`): E: `request`, `offer`; VO: `request-status`, `offer-content`, `request-target`, `validation-decision`.
+  - Инварианты: заявка без непустого оффера не создаётся; заявка привязана ровно к одному тенанту и не переносится между тенантами; переход в `processing` разрешён только из `validated`; до `validated` оффер правится на месте, а после `validated` не редактируется на месте — любое изменение создаёт новую версию; решение валидации (`approved`/`rejected`) фиксируется внутри агрегата с актором, временем и причиной; статусы `fulfilled`, `rejected`, `cancelled` терминальны; ссылки на чужие агрегаты (включая `call`) — только идентификаторы.
+  - События: `request-submitted`, `request-validated`, `request-processing-started`, `request-fulfilled`, `request-rejected`, `request-cancelled`.
+  - Политики: —.
+  - Примечание: жизненный цикл — `submitted → validating → validated → processing → fulfilled`; терминальные — `rejected` и `cancelled`. `offer` версионируется (`revision`): прежняя версия остаётся неизменной. Фулфилмент-состояние ссылается на артефакты других контекстов (`audience-snapshot`, `campaign`, `deal`) по идентификаторам, а не по указателям. Workflow исполнения (движение по статусной машине) — application service этого контекста, а не отдельная граница (`temporal-execution-platform`, change №2). Валидация оффера админом (capability `request-validation`) — прикладной use case того же контекста: `submitted → validating` (взятие в работу), звонок-уточнение, правки оффера на месте, `validating → validated | rejected` с решением внутри агрегата; звонок принадлежит `outreach-orchestration` и вызывается командой `call-intent`, а заявка хранит его `call_id`. После валидации оффер получает эмбеддинг (контракт `vector`, capability `semantic-lead-search`) как вход recall; правка оффера сбрасывает устаревший вектор.
+
 ## Межконтекстные отношения и контракты
 
 `published-language` означает стабильный версионированный контракт владельца. `customer-supplier` означает, что upstream согласует контракт с потребностью downstream. `anticorruption-layer` означает обязательный перевод модели внешней системы в язык потребляющего контекста.
@@ -314,7 +338,8 @@ Core-контексты выражают конкурентное преимущ
 - `sales-workflow` публикует `attributed-result` для billing и `deal-state` для analytics.
 - `community-intelligence` передаёт `community-digest` в publishing по customer-supplier контракту.
 - `platform-governance` публикует `access-decision`; потребители не реализуют собственную RBAC-семантику.
-- `integration-platform` предоставляет `provider-port` через ACL для lead, content, delivery, sales, community, publishing и outreach. Он не владеет их workflow. Прямая отправка `lead-email` идёт за портом `mail` (`contracts/integration-platform`) — это внешний адаптер за `provider-port`, а не новый межконтекстный контракт.
+- `integration-platform` предоставляет `provider-port` через ACL для lead, content, delivery, sales, community, publishing и outreach. Он не владеет их workflow. Прямая отправка `lead-email` идёт за портом `mail` (`contracts/integration-platform`) — это внешний адаптер за `provider-port`, а не новый межконтекстный контракт. Тот же контекст публикует контракт `vector` (векторное представление и поиск по близости) за provider-port: `lead-management` использует его для эмбеддингов компаний и recall, `request-fulfillment` — для эмбеддинга оффера заявки. Доменных правил хранилище не содержит.
+- `request-fulfillment` — владелец заявки клиента; фулфилмент-состояние читает чужие агрегаты по `id` через синхронные `query`-контракты: `lead-profile` (`lead-management`), `audience-snapshot` (`audience`), `campaign-state` (`outreach-orchestration`), `deal-state` (`sales-workflow`). Право и лимиты приходят policy-контрактом `billing-entitlement` (`billing`), контекст тенанта — `tenant-context` (`platform-governance`). Заявка не владеет чужими агрегатами и не переносит их состояние: она хранит только ссылки. Звонок-уточнение валидации идёт командой `call-intent` в `outreach-orchestration` (владелец агрегата `call`); заявка хранит `call_id`, не владея звонком.
 
 Контракты имеют semantic version. Добавление опционального поля совместимо; изменение смысла, обязательности или типа требует новой major-версии и периода параллельного чтения. Команда принимается идемпотентно; event неизменяем и содержит `event_id`, `occurred_at`, `tenant_id`, `correlation_id`, `causation_id`, имя и версию схемы. Транспорт определяется видом интеграции: `command`/`query` идут синхронно (`sync`/`http-json`), `event`/`policy` — асинхронно (`async`/`amqp`); `policy` доставляется как подписка на изменение правила.
 

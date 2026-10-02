@@ -1,0 +1,13 @@
+{{- define "content" -}}
+<section class="register">
+  <h1>Регистрация клиента</h1>
+  {{- with .View.Notice }}
+  <p class="notice" role="status">{{.}}</p>
+  {{- end }}
+  <form method="post" action="/register">
+    {{ template "field" .View.CompanyField }}
+    {{ template "field" .View.DescriptionField }}
+    <button type="submit">Зарегистрироваться</button>
+  </form>
+</section>
+{{- end -}}

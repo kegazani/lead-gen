@@ -8,7 +8,7 @@
 # в каталог модуля (имя = последний сегмент пути пакета).
 /tools/archlint/archlint
 /tools/importlint/importlint
-/cmd/lead-gen/cmd
+/backend/cmd/lead-gen/lead-gen
 
 # Локальный скрап и разовые проверки: не часть репозитория
 /tmp/

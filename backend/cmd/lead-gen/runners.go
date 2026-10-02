@@ -11,23 +11,34 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	analytics "lead-gen/backend/contexts/analytics"
 	integrationplatform "lead-gen/backend/contexts/integration-platform"
 	leadmanagement "lead-gen/backend/contexts/lead-management"
 	outreachorchestration "lead-gen/backend/contexts/outreach-orchestration"
+	platformgovernance "lead-gen/backend/contexts/platform-governance"
+	requestfulfillment "lead-gen/backend/contexts/request-fulfillment"
 	composition "lead-gen/backend/platform/composition"
 	"lead-gen/backend/platform/migrate"
 	"lead-gen/backend/platform/observability/observ"
 	"lead-gen/backend/platform/transport/amqp"
+	platformworkflow "lead-gen/backend/platform/workflow"
 	"lead-gen/contracts/integration-platform/budget"
 	"lead-gen/contracts/integration-platform/llm"
+	"lead-gen/contracts/request-fulfillment/requestintent"
+	"lead-gen/contracts/request-fulfillment/requestintent/httpport"
 )
 
 // buildOptions — параметры, общие для сборки сервисов в одном процессе.
 type buildOptions struct {
-	apiAddr         string
-	publishInterval time.Duration
-	actor           string
-	tenant          string
+	apiAddr          string
+	requestIntentURL string
+	publishInterval  time.Duration
+	actor            string
+	tenant           string
+
+	// Брокер в памяти: реализует и Publisher, и Consumer, поэтому в совмещённом
+	// деплое публикация одного сервиса доходит до подписки другого.
+	consumer amqp.Consumer
 
 	// Наблюдаемость процесса: логгер и метрики общие для сервисов, трейсер
 	// строится на сервис (service.name).
@@ -54,6 +65,13 @@ type buildOptions struct {
 	smtpUsername        string // имя учётной записи SMTP
 	smtpPassword        string // пароль учётной записи SMTP
 	smtpFrom            string // адрес отправителя писем
+
+	// Рантайм исполнения заявок (Temporal). workflowClient равен nil, если
+	// рантайм отключён или недоступен: воркер workflow не поднимается, а
+	// заявка остаётся в текущем статусе.
+	workflowClient    *platformworkflow.Client
+	workflowTaskQueue string
+	searchStubLeads   int // заглушка шага поиска; 0 — поиск не подключён
 }
 
 // buildService собирает сервис по его идентификатору и механизму группы
@@ -73,6 +91,14 @@ func buildService(
 ) (composition.Service, error) {
 	tracer := observ.NewTracer(id)
 	switch id {
+	case analytics.ServiceID:
+		return analytics.New(analytics.Config{
+			APIAddr:  opts.apiAddr,
+			Consumer: opts.consumer,
+			Logger:   opts.logger,
+			Metrics:  opts.metrics,
+			Tracer:   tracer,
+		})
 	case outreachorchestration.ServiceID:
 		return outreachorchestration.New(outreachorchestration.Config{
 			APIAddr:   opts.apiAddr,
@@ -86,7 +112,21 @@ func buildService(
 			Tracer:    tracer,
 		})
 	case leadmanagement.ServiceID:
-		return buildLeadManagement(opts, tracer)
+		return buildLeadManagement(opts, tracer, broker)
+	case requestfulfillment.ServiceID:
+		return requestfulfillment.New(requestfulfillment.Config{
+			APIAddr:           opts.apiAddr,
+			Interval:          opts.publishInterval,
+			Publisher:         broker,
+			WorkflowClient:    opts.workflowClient,
+			WorkflowTaskQueue: opts.workflowTaskQueue,
+			SearchLeads:       opts.searchStubLeads,
+			Logger:            opts.logger,
+			Metrics:           opts.metrics,
+			Tracer:            tracer,
+		})
+	case platformgovernance.ServiceID:
+		return buildPlatformGovernance(opts, tracer)
 	case integrationplatform.ServiceID:
 		return integrationplatform.New(integrationplatform.Config{
 			Logger:  opts.logger,
@@ -98,10 +138,42 @@ func buildService(
 	}
 }
 
+// buildPlatformGovernance собирает сервис platform-governance. Портал вызывает
+// создание заявки не напрямую, а через опубликованный контракт request-intent:
+// in-proc адаптер при co-location, сетевой HTTP-адаптер при раздельном запуске.
+func buildPlatformGovernance(opts buildOptions, tracer observ.Tracer) (composition.Service, error) {
+	requests, err := requestIntentPort(opts)
+	if err != nil {
+		return nil, fmt.Errorf("platform-governance: порт заявок: %w", err)
+	}
+	return platformgovernance.New(platformgovernance.Config{
+		APIAddr:  opts.apiAddr,
+		Requests: requests,
+		Logger:   opts.logger,
+		Metrics:  opts.metrics,
+		Tracer:   tracer,
+	})
+}
+
+// requestIntentPort выбирает адаптер контракта request-intent по топологии:
+// задан адрес сервиса заявок — сетевой HTTP-адаптер; иначе in-proc (co-location).
+func requestIntentPort(opts buildOptions) (requestintent.Port, error) {
+	if addr := strings.TrimSpace(opts.requestIntentURL); addr != "" {
+		return httpport.New(addr)
+	}
+	requests, err := requestfulfillment.Build(requestfulfillment.Config{})
+	if err != nil {
+		return nil, fmt.Errorf("срез заявок: %w", err)
+	}
+	return requestfulfillment.NewRequestIntent(requests), nil
+}
+
 // buildLeadManagement собирает сервис lead-management и впрыскивает адаптеры.
 // Репозитории берутся из PostgreSQL по DSN зон либо из памяти (dev); поиск и
 // обход обслуживает Firecrawl, планирование — LLM (DeepSeek), если задан ключ.
-func buildLeadManagement(opts buildOptions, tracer observ.Tracer) (composition.Service, error) {
+// broker — издатель брокера: поверх него собирается публикация событий дашборда
+// (lead-workflow, message-sent) в контракте analytics-event.
+func buildLeadManagement(opts buildOptions, tracer observ.Tracer, broker amqp.Publisher) (composition.Service, error) {
 	if strings.TrimSpace(opts.firecrawlKey) == "" {
 		return nil, errors.New("lead-management: firecrawl-key обязателен для поиска и обхода")
 	}
@@ -143,11 +215,11 @@ func buildLeadManagement(opts buildOptions, tracer observ.Tracer) (composition.S
 		if err != nil {
 			return nil, err
 		}
-		redDSN := opts.leadRedDSN
-		if redDSN == "" {
-			redDSN = opts.leadGreenDSN
+		if opts.leadRedDSN == "" {
+			greenPool.Close()
+			return nil, errors.New("lead-management: lead-red-dsn обязателен, если задан lead-green-dsn: красная зона не должна сливаться с зелёной")
 		}
-		redPool, err := newLeadPool(redDSN, "red")
+		redPool, err := newLeadPool(opts.leadRedDSN, "red")
 		if err != nil {
 			greenPool.Close()
 			return nil, err
@@ -192,6 +264,13 @@ func buildLeadManagement(opts buildOptions, tracer observ.Tracer) (composition.S
 		return nil, fmt.Errorf("lead-management: SMTP: %w", err)
 	}
 
+	// Консоль с пустыми учётными данными — dev-режим без внешнего доступа. О
+	// нём честно сообщается, чтобы пустые дефолты флагов не выглядели тихой
+	// подменой секретов.
+	if opts.consoleUser == "" || opts.consolePassword == "" {
+		opts.logger.Warn("lead-management: консоль работает с пустыми учётными данными (только dev, без внешнего доступа)", observ.Fields{})
+	}
+
 	return leadmanagement.New(leadmanagement.Config{
 		APIAddr:          opts.apiAddr,
 		Profiles:         repos.Profiles,
@@ -201,6 +280,8 @@ func buildLeadManagement(opts buildOptions, tracer observ.Tracer) (composition.S
 		Templates:        repos.Templates,
 		Activity:         repos.Activity,
 		Assessments:      repos.Assessments,
+		Events:           leadmanagement.NewAnalyticsPublisher(broker, opts.tenant),
+		TenantID:         opts.tenant,
 		Search:           firecrawlClient,
 		Crawl:            firecrawlClient,
 		Budget:           firecrawlBudget,

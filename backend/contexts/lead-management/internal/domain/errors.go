@@ -53,4 +53,8 @@ var (
 	ErrUndeclaredPlaceholder = errors.New("domain: плейсхолдер не объявлен у шаблона")
 	// ErrInvalidTemplateReference — ссылка на редакцию шаблона вне формата.
 	ErrInvalidTemplateReference = errors.New("domain: некорректная ссылка на редакцию шаблона")
+	// ErrInvalidEmbedding — эмбеддинг без вектора, watermark или времени расчёта.
+	ErrInvalidEmbedding = errors.New("domain: некорректный эмбеддинг")
+	// ErrInvalidRichDescription — rich-описание с пустой или безымянной составляющей.
+	ErrInvalidRichDescription = errors.New("domain: некорректное rich-описание")
 )

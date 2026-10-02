@@ -1,0 +1,48 @@
+{{- define "content" -}}
+<section class="approval-screen" hx-boost="true">
+  <h1>Утверждение заявки {{.View.Request.RequestID}}</h1>
+  <p>Статус: <span class="status status-{{.View.Request.Status}}">{{.View.Request.Status}}</span></p>
+  {{- with .View.Notice }}
+  <p class="notice" role="status">{{.}}</p>
+  {{- end }}
+
+  <section id="workflow" hx-target="this" hx-swap="outerHTML">
+    {{ template "approval-status" .View }}
+  </section>
+
+  <article class="offer">
+    <h2>Оффер</h2>
+    <p class="offer-content">{{.View.Request.Offer.Content}}</p>
+    {{- with .View.Request.Offer.Target }}
+    <p class="offer-target">Цель: {{.}}</p>
+    {{- end }}
+    <p class="offer-revision">Версия оффера: {{.View.Request.Offer.Revision}}</p>
+  </article>
+
+  {{- if .View.CanDecide }}
+  <form method="post" action="/requests/{{.View.Request.RequestID}}/approval/approve">
+    <input type="hidden" name="tenant_id" value="{{.View.TenantID}}">
+    <input type="hidden" name="actor" value="{{.View.Actor}}">
+    <button type="submit">Утвердить</button>
+  </form>
+  <form method="post" action="/requests/{{.View.Request.RequestID}}/approval/reject">
+    <input type="hidden" name="tenant_id" value="{{.View.TenantID}}">
+    <input type="hidden" name="actor" value="{{.View.Actor}}">
+    <button type="submit">Отклонить</button>
+  </form>
+  {{- end }}
+</section>
+{{- end -}}
+
+{{- define "approval-status" -}}
+<article class="approval-status">
+  <h2>Исполнение</h2>
+  {{- if .Unavailable }}
+  <p class="watermark" role="status">Исполнение недоступно: рантайм workflow не подключён</p>
+  {{- else }}
+  <p class="phase">Фаза: <span class="status status-{{.Phase}}">{{.Phase}}</span></p>
+  <p class="execution">Состояние: {{.Execution}}</p>
+  <p class="found">Найдено лидов: {{.Found}}</p>
+  {{- end }}
+</article>
+{{- end -}}

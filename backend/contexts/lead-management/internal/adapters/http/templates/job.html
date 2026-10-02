@@ -103,9 +103,9 @@
     <ul class="socials">
     {{- range .Companies }}
       {{- $verdict := .VerdictClass }}
-      <li class="job-company{{ if .NoEmail }} is-no-email{{ end }}"{{ if .NoEmail }} aria-label="{{.ID}} — нет email"{{ end }}>
+      <li class="job-company{{ if .NoEmail }} is-no-email{{ end }}"{{ if .NoEmail }} aria-label="{{.ID}} — нет email"{{ else if .EmailUnavailable }} aria-label="{{.ID}} — email недоступен"{{ end }}>
         <a class="link" href="{{.Href}}">{{.ID}}</a>
-        <span class="card-email">{{ if .Email }}{{.Email}}{{ else }}<span class="card-no-email">нет email</span>{{ end }}</span>
+        <span class="card-email">{{ if .Email }}{{.Email}}{{ else if .EmailUnavailable }}email недоступен{{ else }}<span class="card-no-email">нет email</span>{{ end }}</span>
         {{- with .VerdictLabel }} <span class="verdict verdict-{{$verdict}}">{{.}}</span>{{ end }}
       </li>
     {{- end }}

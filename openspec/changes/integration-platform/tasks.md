@@ -21,6 +21,7 @@
 - [x] 3.3 Реализовать пакет `providerport`: контракт `provider-port` (command, `sync`/`http-json`) — интерфейс `Invoke(ctx, Request) (Result, error)`, типизированные DTO запроса и результата, envelope, имя и версия схемы, ключ идемпотентности. Проверка: пакет компилируется без импорта SDK и модулей контекста; тест round-trip и валидации запроса.
 - [x] 3.4 Реализовать in-process адаптер `providerport/inproc` (`Bind`, `WithTimeout`): дедлайн и отмена вызова, проверка контракта до вызова, дедупликация по ключу идемпотентности — как `approvedaction/inproc`. Проверка: тест отмены контекста, истечения бюджета и повтора ключа без повторного вызова владельца.
 - [x] 3.5 Определить порты контекста в `internal/ports`: `ProviderPort`, `AdapterRegistrationRepository`, `IntegrationInvocationRepository`; реэкспортировать контракты модуля `contracts/integration-platform` пакетом `internal/ports/contracts` со сверкой значений с доменными VO. Проверка: пакет компилируется без драйвера PostgreSQL и SDK; сверка отвергает значение контракта, недопустимое для домена.
+- [x] 3.6 Порт vector (эмбеддинг + поиск по близости) опубликован в `contracts/integration-platform/vector` (введён change `semantic-lead-search`); потребители — `lead-management` и `request-fulfillment`.
 
 ## 4. Адаптеры и contract suite
 

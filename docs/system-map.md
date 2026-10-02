@@ -54,6 +54,7 @@
 | `publishing` | `api`, `worker`, `schedule` |
 | `analytics` | `api`, `worker`, `schedule` |
 | `billing` | `api`, `worker` |
+| `request-fulfillment` | `api`, `worker` |
 | `integration-platform` | `api`, `ingest`, `sender`, `worker`, `chains`, `schedule` |
 
 ### 2.1 Роли запуска
@@ -156,10 +157,11 @@
 
 Группа процессов (`process`) — способ запуска: один процесс служебного образа поднимает один или несколько сервисов, каждый со своим подмножеством ролей. Роль — единица размещения: она встречается ровно один раз по всем группам, поэтому разнести её по процессам нельзя. Группа не вправе объявить роль или сервис, которых нет в каталоге.
 
-Текущее (совмещённое) состояние — шесть групп, объявленных в `deploy/services.yaml`; они описывают форму деплоя, а не готовность кода:
+Текущее (совмещённое) состояние — семь групп, объявленных в `deploy/services.yaml`; они описывают форму деплоя, а не готовность кода:
 
 | Группа | Сервисы и роли | Контур |
 |---|---|---|
+| `intake` | `request-fulfillment` (`api`, `worker`) | вход ценностной цепочки: заявка клиента |
 | `core` | `outreach-orchestration` (`api`, `worker`, `chains`, `schedule`); `analytics` (`api`, `worker`, `schedule`) | горячий путь кампании: оркестрация → аналитика |
 | `delivery` | `message-delivery` (`sender`, `worker`, `schedule`); `integration-platform` (`sender`) | изолированный контур отправки |
 | `demand` | `lead-management` (`api`, `worker`); `audience` (`api`, `worker`, `schedule`); `content-production` (`api`, `worker`) | подготовка аудитории: лиды → сегменты → контент |
@@ -209,7 +211,7 @@
 
 ### 3.3 Матрица связей
 
-**Межконтекстные связи (28, по каталогу).** Транспорт каждой связи объявлен в каталоге и не выводится из контекста рассуждения: `command`/`query` — `sync`/`http-json`, `event`/`policy` — `async`/`amqp`. `policy` доставляется как подписка на изменение правила, а не синхронным вызовом: потребитель хранит контрактный снимок и применяет его локально.
+**Межконтекстные связи (38, по каталогу).** Транспорт каждой связи объявлен в каталоге и не выводится из контекста рассуждения: `command`/`query` — `sync`/`http-json`, `event`/`policy` — `async`/`amqp`. `policy` доставляется как подписка на изменение правила, а не синхронным вызовом: потребитель хранит контрактный снимок и применяет его локально.
 
 | Upstream (сервис) | Downstream (сервис) | Тип | Транспорт | Механизм | Контракт |
 |---|---|---|---|---|---|
@@ -222,6 +224,10 @@
 | `integration-platform` | `community-intelligence` | command | sync | http-json | `provider-port` |
 | `integration-platform` | `publishing` | command | sync | http-json | `provider-port` |
 | `integration-platform` | `outreach-orchestration` | command | sync | http-json | `provider-port` |
+| `integration-platform` | `lead-management` | command | sync | http-json | `vector` |
+| `integration-platform` | `request-fulfillment` | command | sync | http-json | `vector` |
+| `outreach-orchestration` | `request-fulfillment` | command | sync | http-json | `call-intent` |
+| `request-fulfillment` | `platform-governance` | command | sync | http-json | `request-intent` |
 | `lead-management` | `audience` | query | sync | http-json | `lead-profile` |
 | `lead-management` | `sales-workflow` | query | sync | http-json | `company-profile` |
 | `audience` | `outreach-orchestration` | query | sync | http-json | `audience-snapshot` |
@@ -241,8 +247,14 @@
 | `data-governance` | `message-delivery` | policy | async | amqp | `suppression-policy` |
 | `data-governance` | `audience` | policy | async | amqp | `data-zone-policy` |
 | `platform-governance` | `outreach-orchestration` | policy | async | amqp | `access-decision` |
+| `platform-governance` | `request-fulfillment` | policy | async | amqp | `tenant-context` |
+| `lead-management` | `request-fulfillment` | query | sync | http-json | `lead-profile` |
+| `audience` | `request-fulfillment` | query | sync | http-json | `audience-snapshot` |
+| `outreach-orchestration` | `request-fulfillment` | query | sync | http-json | `campaign-state` |
+| `sales-workflow` | `request-fulfillment` | query | sync | http-json | `deal-state` |
+| `billing` | `request-fulfillment` | policy | async | amqp | `billing-entitlement` |
 
-Итого: 13 синхронных связей (9 `command`, 4 `query`) и 15 асинхронных (10 `event`, 5 `policy`).
+Итого: 21 синхронная связь (13 `command`, 8 `query`) и 17 асинхронных (10 `event`, 7 `policy`).
 
 **Операционные взаимодействия.** Строки ниже описывают потоки внутри платформы и к внешним системам; инициатор и адресат — сервисы и их роли.
 
@@ -318,6 +330,8 @@
 | Регистрация адаптера | `integration-platform` | зелёная | реляционное | зарегистрирован; прошёл контрактные тесты / не допущен к поставке |
 | Вызов интеграции | `integration-platform` | зелёная | реляционное | выполнен / нормализованная ошибка; тайм-аут; отменён |
 | Запись аудита | `platform-governance` | зелёная | реляционное | неизменяема; корректировка только новой записью |
+| Заявка | `request-fulfillment` | зелёная | реляционное | `submitted` → `validating` → `validated` → `processing` → `fulfilled`; терминальные `rejected`, `cancelled` |
+| Оффер | `request-fulfillment` | зелёная | реляционное | версия оффера (`revision`); прежняя версия остаётся неизменной |
 
 **Открытых владельцев нет.** Если при разборе новой capability окажется, что сущности не назначен владелец, это пробел требований: он выносится отдельным изменением, а не додумывается здесь.
 
@@ -352,6 +366,31 @@
 | `landing-page-generator` | `content-production` | — | `worker` | зелёная | `landing-page-generator/specs/landing-page-generator/spec.md` |
 | `call-orchestration` | `outreach-orchestration` | — | `chains`, `worker`, `ingest` | обе | `call-orchestration/specs/call-orchestration/spec.md` |
 | `provider-agnostic-integrations` | `integration-platform` | — | все роли | по порту | `migrate-platform-to-go/specs/provider-agnostic-integrations/spec.md` |
+| `client-request` | `request-fulfillment` | — (ядро) | `api`, `worker` | зелёная | `openspec/specs/client-request/spec.md` |
+| `request-validation` | `request-fulfillment` | — (ядро) | `api`, `worker` | зелёная | `openspec/specs/request-validation/spec.md` |
+| `service-topology` | `platform-governance` | — | — | — | `service-per-context/specs/service-topology/spec.md` |
+| `deployment-topology` | `platform-governance` | — | `api`, `worker` | — | `openspec/specs/deployment-topology/spec.md` |
+| `observability` | `platform-governance` | — | — | — | `openspec/specs/observability/spec.md` |
+| `client-portal` | `platform-governance` | — | `api`, `worker` | зелёная | `openspec/specs/client-portal/spec.md` |
+| `lead-workflow` | `lead-management` | — | `api`, `worker` | обе | `openspec/specs/lead-workflow/spec.md` |
+| `lead-email` | `lead-management` | 3.8 | `api`, `worker` | зелёная + контур клиента | `openspec/specs/lead-email/spec.md` |
+| `email-template-library` | `lead-management` | — | `api`, `worker` | зелёная | `openspec/specs/email-template-library/spec.md` |
+| `search-strategy` | `lead-management` | — | `api`, `worker` | зелёная | `openspec/specs/search-strategy/spec.md` |
+| `company-quota-search` | `lead-management` | 3.1 | `api`, `worker` | обе | `openspec/specs/company-quota-search/spec.md` |
+| `forum-lead-signals` | `lead-management` | — | `api`, `worker` | обе | `ai-lead-discovery/specs/forum-lead-signals/spec.md` |
+| `lead-relevance` | `lead-management` | — | `api`, `worker` | обе | `openspec/specs/lead-relevance/spec.md` |
+| `search-job-control` | `lead-management` | — | `api`, `worker` | зелёная | `openspec/specs/search-job-control/spec.md` |
+| `search-job-lifecycle` | `lead-management` | — | `api`, `worker` | зелёная | `openspec/specs/search-job-lifecycle/spec.md` |
+| `search-job-progress` | `lead-management` | — | `api`, `worker` | зелёная | `openspec/specs/search-job-progress/spec.md` |
+| `search-job-error-codes` | `lead-management` | — | `api`, `worker` | зелёная | `openspec/specs/search-job-error-codes/spec.md` |
+| `search-job-events` | `lead-management` | — | `api`, `worker` | зелёная | `openspec/specs/search-job-events/spec.md` |
+| `job-journal-console` | `lead-management` | — | `api` | зелёная | `openspec/specs/job-journal-console/spec.md` |
+| `lead-cards-console` | `lead-management` | — | `api` | обе | `openspec/specs/lead-cards-console/spec.md` |
+| `console-appearance` | `lead-management` | — | `api` | зелёная | `openspec/specs/console-appearance/spec.md` |
+| `semantic-lead-search` | `lead-management` | — | `api`, `worker` | обе | `openspec/specs/semantic-lead-search/spec.md` |
+| `client-dashboard` | `analytics` | 3.15 | `api`, `worker`, `schedule` | обезличенно | `openspec/specs/client-dashboard/spec.md` |
+| `firecrawl-credit-budget` | `integration-platform` | 3.1 | `worker` | зелёная | `openspec/specs/firecrawl-credit-budget/spec.md` |
+| `crawler-proxy-pool` | `integration-platform` | 3.1 | `api`, `ingest`, `sender`, `worker`, `chains`, `schedule` | зелёная | `self-hosted-crawler/specs/crawler-proxy-pool/spec.md` |
 
 **Движки BRD вне таблицы — исключены из объёма, возврату не подлежат без отдельного решения:** **3.11** (синхронизация почты менеджера) и **3.13** (LinkedIn) — рамка, Решения 1 и 9.
 

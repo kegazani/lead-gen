@@ -360,8 +360,8 @@ func (s *Server) handleJob(w http.ResponseWriter, r *http.Request) {
 }
 
 // resultCompanies читает email найденных компаний одним пакетным запросом. Email —
-// дополнительный признак: при ошибке чтения карта пуста, и компании показываются
-// без подсветки «нет email», а не выдаются за компании без адреса.
+// дополнительный признак: при ошибке чтения возвращается nil, и экран задания
+// помечает email компаний как «недоступен», а не выдаёт их за компании без адреса.
 func (s *Server) resultCompanies(ctx context.Context, detail app.JobDetail) map[string]app.CompanyEmail {
 	if len(detail.Job.ResultRef) == 0 {
 		return nil

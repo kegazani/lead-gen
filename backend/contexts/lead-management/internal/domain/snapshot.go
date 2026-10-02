@@ -14,27 +14,31 @@ import (
 
 // CompanySnapshot — сохранённое состояние aggregate root company.
 type CompanySnapshot struct {
-	ID          CompanyID
-	Name        AttributedValue
-	Description AttributedValue
-	Socials     []AttributedValue
-	Hidden      bool
-	Status      LeadStatus
-	CreatedAt   time.Time
-	UpdatedAt   time.Time
+	ID              CompanyID
+	Name            AttributedValue
+	Description     AttributedValue
+	Socials         []AttributedValue
+	Hidden          bool
+	Status          LeadStatus
+	Embedding       EmbeddingSnapshot
+	RichDescription RichDescriptionSnapshot
+	CreatedAt       time.Time
+	UpdatedAt       time.Time
 }
 
 // Snapshot возвращает состояние агрегата для сохранения.
 func (c *Company) Snapshot() CompanySnapshot {
 	return CompanySnapshot{
-		ID:          c.id,
-		Name:        c.name,
-		Description: c.description,
-		Socials:     append([]AttributedValue(nil), c.socials...),
-		Hidden:      c.hidden,
-		Status:      c.status.Snapshot(),
-		CreatedAt:   c.createdAt,
-		UpdatedAt:   c.updatedAt,
+		ID:              c.id,
+		Name:            c.name,
+		Description:     c.description,
+		Socials:         append([]AttributedValue(nil), c.socials...),
+		Hidden:          c.hidden,
+		Status:          c.status.Snapshot(),
+		Embedding:       c.embedding.snapshot(),
+		RichDescription: c.rich.snapshot(),
+		CreatedAt:       c.createdAt,
+		UpdatedAt:       c.updatedAt,
 	}
 }
 
@@ -63,6 +67,14 @@ func RehydrateCompany(s CompanySnapshot) (*Company, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%w: компания %s: %v", ErrInvalidSnapshot, s.ID, err)
 	}
+	embedding, err := rehydrateEmbedding(s.Embedding)
+	if err != nil {
+		return nil, fmt.Errorf("%w: эмбеддинг компании %s: %v", ErrInvalidSnapshot, s.ID, err)
+	}
+	rich, err := rehydrateRichDescription(s.RichDescription)
+	if err != nil {
+		return nil, fmt.Errorf("%w: rich-описание компании %s: %v", ErrInvalidSnapshot, s.ID, err)
+	}
 	return &Company{
 		id:          s.ID,
 		name:        s.Name,
@@ -70,6 +82,8 @@ func RehydrateCompany(s CompanySnapshot) (*Company, error) {
 		socials:     append([]AttributedValue(nil), s.Socials...),
 		hidden:      s.Hidden,
 		status:      *status,
+		embedding:   embedding,
+		rich:        rich,
 		createdAt:   s.CreatedAt,
 		updatedAt:   s.UpdatedAt,
 	}, nil

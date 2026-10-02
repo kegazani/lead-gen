@@ -36,6 +36,26 @@ services:
       timeout: 3s
       retries: 20
 
+  # --- Брокер событий (RabbitMQ) ---
+  # Транспорт границы сервисов: события дашборда (контракт analytics-event) идут
+  # через общий topic exchange, очереди — по конвенции <downstream>.<contract>.
+  # Адрес для клиентов — amqp://guest:guest@rabbitmq:5672/. Панель управления —
+  # http://localhost:15672/ (guest/guest, только локально).
+  rabbitmq:
+    image: rabbitmq:3-management
+    environment:
+      RABBITMQ_DEFAULT_USER: guest
+      RABBITMQ_DEFAULT_PASS: guest
+    ports:
+      - "${RABBITMQ_AMQP_PORT:-5672}:5672"
+      - "${RABBITMQ_MGMT_PORT:-15672}:15672"
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "-q", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 20s
+
   lead-management:
     build:
       context: .
@@ -44,6 +64,8 @@ services:
       postgres-green:
         condition: service_healthy
       postgres-red:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
     # Конфигурация групп процессов — источник истины deploy/services.yaml;
     # монтируется только на чтение, чтобы правки файла применялись без пересборки.
@@ -72,11 +94,153 @@ services:
       - ${CONSOLE_USER:-admin}
       - -console-password
       - ${CONSOLE_PASSWORD:-admin}
+      - -broker-url
+      - ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672/}
+      - -tenant
+      - ${TENANT:-demo}
       - -addr
       - :8080
     ports:
       - "${LEAD_HTTP_PORT:-8080}:8080"
 
+  # --- Self-hosted Temporal (durable-исполнение workflow) ---
+  # Сервер + web-интерфейс + собственная БД. Альтернатива Temporal Cloud из
+  # change temporal-execution-platform; адрес для клиентов — temporal:7233.
+  postgres-temporal:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: temporal
+      POSTGRES_PASSWORD: temporal
+      POSTGRES_DB: temporal
+    volumes:
+      - postgres-temporal-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U temporal -d temporal"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  temporal:
+    image: temporalio/auto-setup:1.26.2
+    depends_on:
+      postgres-temporal:
+        condition: service_healthy
+    environment:
+      DB: postgres12
+      DB_PORT: 5432
+      POSTGRES_USER: temporal
+      POSTGRES_PWD: temporal
+      POSTGRES_SEEDS: postgres-temporal
+      DYNAMIC_CONFIG_FILE_PATH: config/dynamicconfig/development.yaml
+      BIND_ON_IP: 0.0.0.0
+    volumes:
+      - ./deploy/temporal/dynamicconfig/development.yaml:/etc/temporal/config/dynamicconfig/development.yaml:ro
+    ports:
+      - "${TEMPORAL_GRPC_PORT:-7233}:7233"
+    healthcheck:
+      test: ["CMD-SHELL", "bash -c 'exec 3<>/dev/tcp/$(hostname -i)/7233'"]
+      interval: 5s
+      timeout: 3s
+      retries: 30
+      start_period: 20s
+
+  temporal-ui:
+    image: temporalio/ui:2.31.2
+    depends_on:
+      temporal:
+        condition: service_healthy
+    environment:
+      TEMPORAL_ADDRESS: temporal:7233
+      TEMPORAL_CORS_ORIGINS: http://localhost:3000
+    ports:
+      - "${TEMPORAL_UI_PORT:-8233}:8080"
+
+  # Сервис request-fulfillment: воркер workflow + внутренний API заявок.
+  # Тот же служебный образ, что и lead-management; роли задаёт конфигурация.
+  request-fulfillment:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      temporal:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    volumes:
+      - ./deploy/services.yaml:/etc/lead-gen/services.yaml:ro
+    command:
+      - -config
+      - /etc/lead-gen/services.yaml
+      - -service
+      - request-fulfillment
+      - -addr
+      - :8080
+      - -temporal-address
+      - temporal:7233
+      - -temporal-namespace
+      - default
+      - -temporal-task-queue
+      - request-fulfillment
+      - -workflow-search-stub-leads
+      - ${WORKFLOW_SEARCH_STUB_LEADS:-1}
+      - -broker-url
+      - ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672/}
+    ports:
+      - "${REQUEST_FULFILLMENT_HTTP_PORT:-8081}:8080"
+
+  # --- Два клиентских фронтенда (эпик client-request-domain) ---
+  # Портал клиента (platform-governance) и дашборд клиента (analytics) —
+  # серверный рендер (HTMX + html/template). Портал ходит в сервис заявок по
+  # портал ходит в сервис заявок по
+  # сети через сетевой адаптер контракта request-intent (флаг -request-intent-url),
+  # поэтому его заявки доходят до workflow. Дашборд подписан на очередь брокера
+  # (analytics.analytics-event), а lead-management публикует события дашборда
+  # (lead-workflow при смене стадии, message-sent при отправке письма) в RabbitMQ
+  # через контракт analytics-event. Приём POST /dashboard/events остаётся
+  # dev-путём для проверки проекции без брокера.
+  platform-governance:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      request-fulfillment:
+        condition: service_started
+    volumes:
+      - ./deploy/services.yaml:/etc/lead-gen/services.yaml:ro
+    command:
+      - -config
+      - /etc/lead-gen/services.yaml
+      - -service
+      - platform-governance
+      - -addr
+      - :8080
+      - -request-intent-url
+      - http://request-fulfillment:8080
+    ports:
+      - "${PORTAL_HTTP_PORT:-8082}:8080"
+
+  analytics:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    volumes:
+      - ./deploy/services.yaml:/etc/lead-gen/services.yaml:ro
+    command:
+      - -config
+      - /etc/lead-gen/services.yaml
+      - -service
+      - analytics
+      - -addr
+      - :8080
+      - -broker-url
+      - ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672/}
+    ports:
+      - "${DASHBOARD_HTTP_PORT:-8083}:8080"
+
 volumes:
   postgres-green-data:
   postgres-red-data:
+  postgres-temporal-data:

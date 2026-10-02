@@ -1,0 +1,16 @@
+{{- define "content" -}}
+<section class="validation-queue">
+  <h1>Очередь валидации</h1>
+  <p class="hint">Заявки в статусе submitted. Тенант: {{.View.TenantID}}</p>
+  <ul class="queue">
+  {{- range .View.Items }}
+    <li class="queue-item">
+      <a href="/requests/{{.RequestID}}/validation?tenant_id={{urlquery $.View.TenantID}}&amp;actor={{urlquery $.View.Actor}}">{{.Offer.Content}}</a>
+      <span class="status status-{{.Status}}">{{.Status}}</span>
+    </li>
+  {{- else }}
+    <li class="queue-empty">Заявок на валидацию нет</li>
+  {{- end }}
+  </ul>
+</section>
+{{- end -}}

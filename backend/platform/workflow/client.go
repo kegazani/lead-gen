@@ -1,0 +1,181 @@
+package workflow
+
+import (
+	"context"
+	"crypto/tls"
+	"errors"
+	"fmt"
+	"time"
+
+	"go.temporal.io/sdk/client"
+
+	"lead-gen/backend/platform/observability/observ"
+)
+
+// ErrNotConfigured — рантайм Temporal не сконфигурирован (пустой адрес).
+var ErrNotConfigured = errors.New("workflow: рантайм Temporal не сконфигурирован")
+
+// Client — обёртка клиента Temporal: соединение, namespace и очередь задач по
+// умолчанию. Держит метрики сервиса и увеличивает счётчики запусков, чтобы
+// состояние исполнения было видно в существующем контуре наблюдаемости.
+type Client struct {
+	inner     client.Client
+	namespace string
+	taskQueue string
+	metrics   observ.Metrics
+}
+
+// Dial подключается к Temporal и возвращает клиента. Ошибка подключения — отказ
+// вызывающему: сервис обязан деградировать явно, а не делать вид, что рантайм
+// доступен. Пустой Address возвращает ErrNotConfigured.
+func Dial(ctx context.Context, cfg Config, metrics observ.Metrics) (*Client, error) {
+	cfg = cfg.WithDefaults()
+	if !cfg.Enabled() {
+		return nil, ErrNotConfigured
+	}
+	options := client.Options{
+		HostPort:  cfg.Address,
+		Namespace: cfg.Namespace,
+		Identity:  cfg.Identity,
+	}
+	if cfg.Cloud() {
+		// Temporal Cloud: ключ доступа как credentials поверх TLS.
+		options.Credentials = client.NewAPIKeyStaticCredentials(cfg.APIKey)
+		options.ConnectionOptions = client.ConnectionOptions{TLS: &tls.Config{MinVersion: tls.VersionTLS12}}
+	}
+	inner, err := client.DialContext(ctx, options)
+	if err != nil {
+		return nil, fmt.Errorf("workflow: подключение к Temporal %q: %w", cfg.Address, err)
+	}
+	return &Client{inner: inner, namespace: cfg.Namespace, taskQueue: cfg.TaskQueue, metrics: metrics}, nil
+}
+
+// Namespace возвращает пространство имён клиента.
+func (c *Client) Namespace() string { return c.namespace }
+
+// TaskQueue возвращает очередь задач по умолчанию.
+func (c *Client) TaskQueue() string { return c.taskQueue }
+
+// Close закрывает соединение. Повторный вызов безопасен.
+func (c *Client) Close() {
+	if c == nil || c.inner == nil {
+		return
+	}
+	c.inner.Close()
+	c.inner = nil
+}
+
+// StartOptions — параметры запуска исполнения.
+type StartOptions struct {
+	// WorkflowID — идентификатор исполнения. Обязателен: он же ключ
+	// идемпотентности запуска (повторный старт с тем же id не создаёт второго
+	// исполнения).
+	WorkflowID string
+
+	// TaskQueue — очередь задач. Пусто — очередь клиента по умолчанию.
+	TaskQueue string
+}
+
+// Run — ссылка на запущенное исполнение.
+type Run struct {
+	WorkflowID string
+	RunID      string
+}
+
+// Start запускает workflow. Аргументы (args) — payload уровня идентификаторов.
+func (c *Client) Start(ctx context.Context, opts StartOptions, workflowFn any, args ...any) (Run, error) {
+	if c == nil || c.inner == nil {
+		return Run{}, ErrNotConfigured
+	}
+	queue := opts.TaskQueue
+	if queue == "" {
+		queue = c.taskQueue
+	}
+	run, err := c.inner.ExecuteWorkflow(ctx, client.StartWorkflowOptions{
+		ID:        opts.WorkflowID,
+		TaskQueue: queue,
+	}, workflowFn, args...)
+	if err != nil {
+		c.count("workflow_start_error", map[string]string{"workflow_id": opts.WorkflowID})
+		return Run{}, fmt.Errorf("workflow: запуск %q: %w", opts.WorkflowID, err)
+	}
+	c.count("workflow_started", map[string]string{"workflow_id": opts.WorkflowID})
+	return Run{WorkflowID: run.GetID(), RunID: run.GetRunID()}, nil
+}
+
+// Execution — наблюдаемое состояние исполнения workflow для консоли и API.
+type Execution struct {
+	WorkflowID string
+	RunID      string
+	Status     string
+	StartTime  time.Time
+	CloseTime  time.Time
+}
+
+// Describe возвращает состояние исполнения. Пустой runID означает текущее
+// (последнее) исполнение с этим workflow id.
+func (c *Client) Describe(ctx context.Context, workflowID, runID string) (Execution, error) {
+	if c == nil || c.inner == nil {
+		return Execution{}, ErrNotConfigured
+	}
+	response, err := c.inner.DescribeWorkflowExecution(ctx, workflowID, runID)
+	if err != nil {
+		return Execution{}, fmt.Errorf("workflow: описание %q: %w", workflowID, err)
+	}
+	info := response.GetWorkflowExecutionInfo()
+	execution := Execution{
+		WorkflowID: workflowID,
+		RunID:      runID,
+		Status:     info.GetStatus().String(),
+	}
+	if info.GetStartTime() != nil {
+		execution.StartTime = info.GetStartTime().AsTime()
+	}
+	if info.GetCloseTime() != nil {
+		execution.CloseTime = info.GetCloseTime().AsTime()
+	}
+	if execution.RunID == "" && info.GetExecution() != nil {
+		execution.RunID = info.GetExecution().GetRunId()
+	}
+	return execution, nil
+}
+
+// Signal подаёт сигнал бегущему исполнению. Пустой runID означает текущее
+// (последнее) исполнение. value сериализуется дата-конвертером Temporal; по
+// правилу payload-гигиены это должны быть только идентификаторы и коды.
+func (c *Client) Signal(ctx context.Context, workflowID, runID, signalName string, value any) error {
+	if c == nil || c.inner == nil {
+		return ErrNotConfigured
+	}
+	if err := c.inner.SignalWorkflow(ctx, workflowID, runID, signalName, value); err != nil {
+		return fmt.Errorf("workflow: сигнал %q к %q: %w", signalName, workflowID, err)
+	}
+	return nil
+}
+
+// Query отправляет запрос (query) бегущему исполнению и разбирает ответ в
+// result. Пустой runID означает текущее (последнее) исполнение.
+func (c *Client) Query(ctx context.Context, workflowID, runID, queryType string, result any) error {
+	if c == nil || c.inner == nil {
+		return ErrNotConfigured
+	}
+	encoded, err := c.inner.QueryWorkflow(ctx, workflowID, runID, queryType)
+	if err != nil {
+		return fmt.Errorf("workflow: запрос %q к %q: %w", queryType, workflowID, err)
+	}
+	if result == nil {
+		return nil
+	}
+	if err := encoded.Get(result); err != nil {
+		return fmt.Errorf("workflow: разбор ответа %q: %w", queryType, err)
+	}
+	return nil
+}
+
+// count увеличивает счётчик метрик, если приёмник задан.
+func (c *Client) count(name string, labels map[string]string) {
+	if c == nil || c.metrics == nil {
+		return
+	}
+	c.metrics.Incr(name, labels)
+}

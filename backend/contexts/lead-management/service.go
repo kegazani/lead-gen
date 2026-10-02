@@ -41,6 +41,15 @@ type Config struct {
 	// оценка отключена (дополнительный результат, а не условие поиска).
 	Assessments ports.LeadAssessmentStore
 
+	// Events — издатель нормализованных событий дашборда клиента (контракт
+	// analytics-event): lead-workflow при смене стадии и message-sent при
+	// отправке письма. nil — публикация не собрана, события дашборда не уходят.
+	Events ports.AnalyticsPublisher
+
+	// TenantID — тенант, в срезе которого учитываются события дашборда. Пусто —
+	// событие уходит без тенанта и проекцией игнорируется.
+	TenantID string
+
 	// Наблюдаемость сервиса: логгер, метрики и трейсер впрыскиваются
 	// composition root'ом; обязательны.
 	Logger  observ.Logger
@@ -172,7 +181,14 @@ func New(cfg Config) (*Service, error) {
 		Contacts: cfg.Contacts,
 		Messages: cfg.Messages,
 	}
-	changeStage := &app.ChangeLeadStage{Profiles: cfg.Profiles, Activity: cfg.Activity, Clock: cfg.Clock}
+	changeStage := &app.ChangeLeadStage{
+		Profiles: cfg.Profiles,
+		Activity: cfg.Activity,
+		Clock:    cfg.Clock,
+		Events:   cfg.Events,
+		TenantID: cfg.TenantID,
+		Logger:   cfg.Logger,
+	}
 	snooze := &app.SnoozeLead{Profiles: cfg.Profiles, Clock: cfg.Clock}
 	sendToLead := &app.SendToLead{
 		Profiles:    cfg.Profiles,
@@ -182,6 +198,9 @@ func New(cfg Config) (*Service, error) {
 		Mail:        cfg.Mail,
 		From:        cfg.MailFrom,
 		Clock:       cfg.Clock,
+		Events:      cfg.Events,
+		TenantID:    cfg.TenantID,
+		Logger:      cfg.Logger,
 		Metrics:     cfg.Metrics,
 		ServiceName: ServiceID,
 	}

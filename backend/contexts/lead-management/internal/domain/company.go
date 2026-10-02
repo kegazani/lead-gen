@@ -51,7 +51,15 @@ type Company struct {
 	status      LeadStatus
 	createdAt   time.Time
 	updatedAt   time.Time
-	events      []DomainEvent
+
+	// embedding — векторное представление (атрибут lead-profile, capability
+	// semantic-lead-search). Нулевое значение — вектор ещё не построен.
+	embedding Embedding
+	// rich — rich-описание из составляющих с источниками; служит основой
+	// эмбеддинга.
+	rich RichDescription
+
+	events []DomainEvent
 }
 
 // CreateCompanyParams — параметры создания карточки компании.
@@ -123,6 +131,42 @@ func (c *Company) CreatedAt() time.Time { return c.createdAt }
 
 // UpdatedAt возвращает момент последнего изменения.
 func (c *Company) UpdatedAt() time.Time { return c.updatedAt }
+
+// Embedding возвращает векторное представление компании (нулевое — не построено).
+func (c *Company) Embedding() Embedding { return c.embedding }
+
+// RichDescription возвращает rich-описание компании (пустое — не собрано).
+func (c *Company) RichDescription() RichDescription { return c.rich }
+
+// SetRichDescription фиксирует rich-описание компании и обновляет время изменения.
+// Описание проверяется на целостность составляющих до применения.
+func (c *Company) SetRichDescription(rich RichDescription, at time.Time) {
+	if at.IsZero() {
+		at = time.Now().UTC()
+	}
+	c.rich = rich
+	c.updatedAt = at
+}
+
+// SetEmbedding фиксирует векторное представление с watermark исходных данных.
+// Эмбеддинг без вектора или watermark отвергается.
+func (c *Company) SetEmbedding(vector []float32, sourceVersion string, at time.Time) error {
+	embedding, err := NewEmbedding(vector, sourceVersion, at)
+	if err != nil {
+		return err
+	}
+	c.embedding = embedding
+	if at.After(c.updatedAt) {
+		c.updatedAt = at
+	}
+	return nil
+}
+
+// EmbeddingOutdated сообщает, что эмбеддинг отсутствует или посчитан из другой
+// версии исходных данных — его следует пересчитать.
+func (c *Company) EmbeddingOutdated(sourceVersion string) bool {
+	return !c.embedding.MatchesSource(sourceVersion)
+}
 
 // Hidden сообщает, скрыта ли запись в витрине.
 func (c *Company) Hidden() bool { return c.hidden }

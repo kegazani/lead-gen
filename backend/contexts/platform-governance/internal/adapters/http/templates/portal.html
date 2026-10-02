@@ -1,0 +1,17 @@
+{{- define "content" -}}
+<section class="portal">
+  <h1>Портал клиента</h1>
+  {{- with .View.Notice }}
+  <p class="notice" role="status">{{.}}</p>
+  {{- end }}
+  {{- if .View.HasRequest }}
+  <article class="request-state">
+    <p class="request-id">Заявка: {{ .View.RequestID }}</p>
+    <p>Статус: <span class="status status-{{ .View.Status }}">{{ .View.Status }}</span></p>
+  </article>
+  {{- else }}
+  <p class="portal-empty">Заявка ещё не подана.</p>
+  {{- end }}
+  <p><a href="/portal/request?tenant_id={{ urlquery .View.TenantID }}">Подать заявку</a></p>
+</section>
+{{- end -}}

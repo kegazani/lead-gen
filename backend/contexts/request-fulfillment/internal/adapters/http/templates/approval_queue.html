@@ -1,0 +1,21 @@
+{{- define "content" -}}
+<section class="approval-queue">
+  <h1>Очередь утверждения</h1>
+  <p class="hint">Заявки, чьё исполнение стоит в фазе awaiting-approval. Тенант: {{.View.TenantID}}</p>
+  {{- if .View.Unavailable }}
+  <p class="watermark" role="status">Исполнение недоступно: рантайм workflow не подключён</p>
+  {{- else }}
+  <ul class="queue">
+  {{- range .View.Items }}
+    <li class="queue-item">
+      <a href="/requests/{{.RequestID}}/approval?tenant_id={{urlquery $.View.TenantID}}&amp;actor={{urlquery $.View.Actor}}">{{.Offer.Content}}</a>
+      <span class="status status-{{.Phase}}">{{.Phase}}</span>
+      <span class="found">Найдено лидов: {{.Found}}</span>
+    </li>
+  {{- else }}
+    <li class="queue-empty">Заявок, ожидающих утверждения, нет</li>
+  {{- end }}
+  </ul>
+  {{- end }}
+</section>
+{{- end -}}

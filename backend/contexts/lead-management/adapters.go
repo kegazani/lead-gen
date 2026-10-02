@@ -9,16 +9,23 @@ package leadmanagement
 import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	analyticsadapter "lead-gen/backend/contexts/lead-management/internal/adapters/analytics"
 	"lead-gen/backend/contexts/lead-management/internal/adapters/persistence/memory"
 	"lead-gen/backend/contexts/lead-management/internal/adapters/persistence/postgres"
 	"lead-gen/backend/contexts/lead-management/internal/app"
 	"lead-gen/backend/contexts/lead-management/internal/ports"
+	amqptransport "lead-gen/backend/platform/transport/amqp"
 )
 
 // CrawlLimits — пределы обхода, задаваемые composition root'ом. Псевдоним типа
 // прикладного слоя, чтобы cmd/lead-gen задавал пределы, не импортируя
 // internal/app.
 type CrawlLimits = app.CrawlLimits
+
+// AnalyticsEvent — нормализованное событие дашборда клиента (контракт
+// analytics-event). Псевдоним типа порта, чтобы composition root (и тесты)
+// строили событие, не импортируя internal/ports.
+type AnalyticsEvent = ports.AnalyticsEvent
 
 // Repositories — набор адаптеров хранилища, впрыскиваемых в Config. Зелёная
 // зона хранит карточки, журнал заданий и исходящие письма, красная — контакты.
@@ -59,4 +66,14 @@ func NewPostgresRepositories(greenPool, redPool *pgxpool.Pool) Repositories {
 		Activity:    postgres.NewLeadActivityStore(greenPool),
 		Assessments: postgres.NewAssessmentStore(greenPool),
 	}
+}
+
+// NewAnalyticsPublisher собирает издателя нормализованных событий дашборда
+// клиента (контракт analytics-event) поверх брокера. nil-брокер возвращает nil:
+// без брокера публикация не собирается, и сервис о ней честно не заявляет.
+func NewAnalyticsPublisher(publisher amqptransport.Publisher, tenant string) ports.AnalyticsPublisher {
+	if publisher == nil {
+		return nil
+	}
+	return analyticsadapter.NewPublisher(publisher, tenant)
 }

@@ -5,12 +5,14 @@ core», из каких изменений он состоит, в каком п
 подхватывать работу. Это план, а не спецификация: требования живут в
 `openspec/`, канонические границы — в `architecture/domain-catalog.yaml`.
 
-**Статус на 2026-09-22.** Реализован один core-контекст —
-`outreach-orchestration` (срез `outreach-approval` и пакетный путь).
-Остальные сервисы каталога поднимаются заглушкой `stubService` в
-`backend/cmd/lead-gen`. Веб-интерфейс существует только как дизайн
-(`web-frontend-architecture`, `service-topology-console`). Цель — полный core
-и фронт, без сокращений.
+**Статус на 2026-10-02.** Реализованы шесть сервисов каталога (сборка в
+`backend/cmd/lead-gen`, функция `buildService`): `outreach-orchestration`,
+`lead-management`, `analytics`, `request-fulfillment`, `platform-governance`,
+`integration-platform`. Остальные девять сервисов каталога поднимаются
+заглушкой `stubService` в `backend/cmd/lead-gen`. Веб-интерфейс существует
+частично (консоль оператора `lead-management`, публичный портал); остальной
+фронт — как дизайн (`web-frontend-architecture`, `service-topology-console`).
+Цель — полный core и фронт, без сокращений.
 
 ---
 
@@ -40,11 +42,12 @@ importlint, archlint, OpenSpec) зелёный, а контрактные suite 
 
 | Контекст | Агрегаты (каталог) | Capability | Статус |
 |---|---|---|---|
-| `lead-management` | `lead-profile`, `contact` | `osint-enrichment`, `company-size-assessment`, `email-verification` | заглушка |
+| `lead-management` | `lead-profile`, `contact` | `osint-enrichment`, `company-size-assessment`, `email-verification` | реализован (MVP-срез) |
 | `audience` | `audience-segment`, `audience-snapshot` | `lead-segmentation` | заглушка |
 | `outreach-orchestration` | `campaign` (есть), `call` | `outreach-approval` (есть), `outreach-sequences`, `call-orchestration`, `outreach-channel-form` | частично реализован |
 | `message-delivery` | `message`, `sender-reputation` | `outreach-channel-email`, `domain-deliverability` | заглушка |
 | `sales-workflow` | `deal`, `crm-sync` | `crm-workflow` | заглушка |
+| `request-fulfillment` | `request` | `client-request`, `request-validation` | реализован |
 
 ## 3. Контексты, без которых core не работает
 
@@ -100,6 +103,8 @@ Core не существует в вакууме. Полный цикл треб
 
 ## 5. Инвентарь изменений OpenSpec
 
+**Текущий факт (2026-10-02).** В коде собраны шесть сервисов: `outreach-orchestration`, `lead-management`, `analytics`, `request-fulfillment`, `platform-governance`, `integration-platform`; остальные девять — заглушка. Эпик `client-request-domain` (6 change'ов: `client-request-domain`, `temporal-execution-platform`, `request-validation-workflow`, `semantic-lead-search`, `client-portal`, `client-dashboard-metrics`) заархивирован 2026-09-30…2026-10-02 и дал сервис `request-fulfillment`; `lead-management` и `integration-platform` наполнены MVP-срезом `mvp-lead-search` и последующими change'ами. Таблица ниже — план; статусы задач уточняются в `tasks.md` соответствующих change'ей.
+
 ### Есть (в работе)
 
 | Change | Задачи | Отношение к программе |
@@ -149,6 +154,8 @@ Core не существует в вакууме. Полный цикл треб
   ЭТАП 4   фронт: web-frontend-architecture -> service-topology-console
            -> landing-page-generator.
 ```
+
+**Частично выполнено.** ЭТАП 0 закрыт наполовину: `platform-governance` и `integration-platform` собраны, `data-governance` остаётся заглушкой. ЭТАП 1 закрыт наполовину: `lead-management` реализован (MVP-срез), `audience` — ещё заглушка. Порядок остальных этапов не меняется.
 
 Обоснование порядка: foundation-first выбран сознательно — компромисс «демо
 раньше фундамента» отклонён, чтобы не оставлять заглушку аутентификации и не

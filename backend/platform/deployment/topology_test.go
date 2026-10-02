@@ -26,7 +26,7 @@ func writeTempFile(t *testing.T, name, content string) string {
 }
 
 // TestLoadRealSources проверяет сборку графа из настоящих источников:
-// четырнадцать узлов-сервисов, двадцать восемь рёбер с транспортом и контрактом,
+// пятнадцать узлов-сервисов, тридцать восемь рёбер с транспортом и контрактом,
 // группы deploy и инфраструктурные узлы.
 func TestLoadRealSources(t *testing.T) {
 	graph, err := Load(realCatalogPath, realServicesPath, realInfrastructurePath)
@@ -59,24 +59,25 @@ func TestLoadRealSources(t *testing.T) {
 			t.Errorf("узел %q: неизвестный kind %q", node.ID, node.Kind)
 		}
 	}
-	if services != 14 {
-		t.Errorf("узлов-сервисов: %d, ожидалось 14", services)
+	if services != 15 {
+		t.Errorf("узлов-сервисов: %d, ожидалось 15", services)
 	}
 	if infrastructure != 8 {
 		t.Errorf("инфраструктурных узлов: %d, ожидалось 8", infrastructure)
 	}
-	if len(graph.Edges) != 28 {
-		t.Errorf("рёбер: %d, ожидалось 28", len(graph.Edges))
+	if len(graph.Edges) != 38 {
+		t.Errorf("рёбер: %d, ожидалось 38", len(graph.Edges))
 	}
 	if !containsString(groups["outreach-orchestration"], "core") {
 		t.Errorf("группы outreach-orchestration = %v, ожидалась core", groups["outreach-orchestration"])
 	}
-	// Сервис MAY присутствовать в нескольких процессах: интеграционная
-	// платформа объявлена и в контуре отправки, и в общем фундаменте.
-	if !containsString(groups["integration-platform"], "delivery") ||
-		!containsString(groups["integration-platform"], "platform") {
-		t.Errorf("группы integration-platform = %v, ожидались delivery и platform",
-			groups["integration-platform"])
+	// integration-platform объявлена только в группе platform: роль sender снята
+	// как нереализованная (вернётся при реализации контура доставки).
+	if !containsString(groups["integration-platform"], "platform") {
+		t.Errorf("группы integration-platform = %v, ожидалась platform", groups["integration-platform"])
+	}
+	if !containsString(groups["request-fulfillment"], "intake") {
+		t.Errorf("группы request-fulfillment = %v, ожидалась intake", groups["request-fulfillment"])
 	}
 
 	nodeIDs := map[string]bool{}

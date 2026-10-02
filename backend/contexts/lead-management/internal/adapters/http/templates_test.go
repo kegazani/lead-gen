@@ -170,9 +170,9 @@ func TestCardSendPreviewShowsComposedEmail(t *testing.T) {
 	seedCompany(t, env.profiles, "example.com", "ООО Ромашка", "Описание")
 	seedContact(t, env.contacts, "example.com", "anna@example.com", "+7 999 000-00-00", "CEO")
 	seedTemplate(t, env.templates, "intro", "Приветствие", "Тема для {{company}}",
-		"Здравствуйте, {{company}}! Отрасль: {{industry}}.",
+		"Здравствуйте, {{company}}! Роль: {{contact}}.",
 		domain.MergeVariable{Key: domain.MergeVariableCompany, Fallback: "ваша компания"},
-		domain.MergeVariable{Key: domain.MergeVariableIndustry, Fallback: "ваша отрасль"},
+		domain.MergeVariable{Key: domain.MergeVariableContact, Fallback: "коллега"},
 	)
 
 	ts := httptest.NewServer(env.server)
@@ -182,7 +182,7 @@ func TestCardSendPreviewShowsComposedEmail(t *testing.T) {
 
 	resp := client.get(t, "/cards/example.com?template=intro")
 	html := readBody(t, resp)
-	for _, want := range []string{"Тема для ООО Ромашка", "Здравствуйте, ООО Ромашка! Отрасль: ваша отрасль."} {
+	for _, want := range []string{"Тема для ООО Ромашка", "Здравствуйте, ООО Ромашка! Роль: CEO."} {
 		if !strings.Contains(html, want) {
 			t.Fatalf("предпросмотр не содержит %q:\n%s", want, html)
 		}

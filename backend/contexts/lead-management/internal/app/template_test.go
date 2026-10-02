@@ -144,10 +144,10 @@ func TestTemplatesComposeUsesLeadValuesAndFallback(t *testing.T) {
 		ID:      "intro",
 		Name:    "Приветствие",
 		Subject: "Тема для {{company}}",
-		Body:    "Здравствуйте, {{company}}! Отрасль: {{industry}}.",
+		Body:    "Здравствуйте, {{company}}! Телефон: {{contact_phone}}.",
 		Variables: []TemplateVariable{
 			companyVariable(),
-			{Key: string(domain.MergeVariableIndustry), Fallback: "ваша отрасль"},
+			{Key: string(domain.MergeVariableContactPhone), Fallback: "нет телефона"},
 		},
 	}); err != nil {
 		t.Fatalf("CreateTemplate: %v", err)
@@ -160,7 +160,7 @@ func TestTemplatesComposeUsesLeadValuesAndFallback(t *testing.T) {
 	if preview.Subject != "Тема для ООО Ромашка" {
 		t.Fatalf("subject = %q", preview.Subject)
 	}
-	if preview.Body != "Здравствуйте, ООО Ромашка! Отрасль: ваша отрасль." {
+	if preview.Body != "Здравствуйте, ООО Ромашка! Телефон: нет телефона." {
 		t.Fatalf("body = %q", preview.Body)
 	}
 	if preview.Reference != "intro@1" {

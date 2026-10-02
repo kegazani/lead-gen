@@ -30,7 +30,9 @@ nodes:
     label: "S3-совместимое объектное хранилище"
   - id: temporal
     kind: workflow
-    label: "Temporal"
+    label: "Temporal (self-hosted; Temporal Cloud — альтернатива)"
+    zone: infra
+    addresses: ["temporal:7233"]
   - id: prometheus
     kind: metrics
     label: "Prometheus"

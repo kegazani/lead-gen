@@ -1,0 +1,12 @@
+# Dev-динамическая конфигурация self-hosted Temporal (локальный контур).
+# Монтируется в контейнер `temporal` как DYNAMIC_CONFIG_FILE_PATH.
+# Только для разработки: ослабляет проверки, которые не нужны в локальном рантайме.
+limit.maxIDLength:
+  - value: 255
+    constraints: {}
+system.forceSearchAttributesCacheRefreshOnRead:
+  - value: true # Только для разработки. В продакшене не включать.
+    constraints: {}
+frontend.enableClientVersionCheck:
+  - value: false # Только для разработки: не блокировать при расхождении версий SDK/сервера.
+    constraints: {}

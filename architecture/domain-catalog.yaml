@@ -6,7 +6,7 @@
       "name": "Управление платформой и доступом",
       "classification": "generic",
       "purpose": "Тенанты, пользователи, роли, аудит и правила эволюции доменной архитектуры.",
-      "capabilities": ["platform-access", "domain-architecture", "service-topology", "service-topology-console", "deployment-topology", "observability"],
+      "capabilities": ["platform-access", "domain-architecture", "service-topology", "service-topology-console", "deployment-topology", "observability", "client-portal"],
       "service": "platform-governance",
       "roles": ["api", "worker"],
       "contracts": ["access-decision", "audit-recorded", "tenant-context"]
@@ -26,7 +26,7 @@
       "name": "Управление лидами",
       "classification": "core",
       "purpose": "Приём, нормализация, обогащение и проверка компаний и контактов в пуле клиента.",
-      "capabilities": ["osint-enrichment", "company-size-assessment", "email-verification", "lead-workflow", "lead-email", "email-template-library", "search-strategy", "company-quota-search", "forum-lead-signals", "lead-relevance", "search-job-control", "search-job-lifecycle", "search-job-progress", "search-job-error-codes", "search-job-events", "job-journal-console", "lead-cards-console", "console-appearance"],
+      "capabilities": ["osint-enrichment", "company-size-assessment", "email-verification", "lead-workflow", "lead-email", "email-template-library", "search-strategy", "company-quota-search", "forum-lead-signals", "lead-relevance", "search-job-control", "search-job-lifecycle", "search-job-progress", "search-job-error-codes", "search-job-events", "job-journal-console", "lead-cards-console", "console-appearance", "semantic-lead-search"],
       "service": "lead-management",
       "roles": ["api", "worker"],
       "contracts": ["lead-profile", "lead-verified", "company-profile"]
@@ -59,7 +59,7 @@
       "capabilities": ["outreach-approval", "outreach-sequences", "call-orchestration", "outreach-channel-form"],
       "service": "outreach-orchestration",
       "roles": ["api", "worker", "chains", "schedule"],
-      "contracts": ["approved-action", "analytics-event", "campaign-command", "outreach-outcome"]
+          "contracts": ["approved-action", "analytics-event", "campaign-command", "campaign-state", "call-intent", "form-submission", "outreach-outcome"]
     },
     {
       "id": "message-delivery",
@@ -116,7 +116,7 @@
       "name": "Аналитика и отчётность",
       "classification": "supporting",
       "purpose": "Обезличенные read-модели и отчётность по кампаниям, источникам и воронке.",
-      "capabilities": ["campaign-reporting"],
+      "capabilities": ["campaign-reporting", "client-dashboard"],
       "service": "analytics",
       "roles": ["api", "worker", "schedule"],
       "contracts": ["analytics-event", "campaign-report"]
@@ -138,8 +138,18 @@
       "purpose": "Vendor-neutral порты, адаптеры, нормализация ошибок и manifest возможностей поставщиков.",
       "capabilities": ["provider-agnostic-integrations", "firecrawl-credit-budget", "crawler-proxy-pool"],
       "service": "integration-platform",
-      "roles": ["api", "ingest", "sender", "worker", "chains", "schedule"],
-      "contracts": ["adapter-capability", "integration-error", "provider-port"]
+      "roles": ["api", "ingest", "worker", "chains", "schedule"],
+    	  "contracts": ["adapter-capability", "integration-error", "provider-port", "vector"]
+    },
+    {
+      "id": "request-fulfillment",
+      "name": "Исполнение заявок клиента",
+      "classification": "core",
+      "purpose": "Жизненный цикл заявки клиента на лидогенерацию: оффер, статусная модель и связь с артефактами фулфилмента.",
+      "capabilities": ["client-request", "request-validation"],
+      "service": "request-fulfillment",
+      "roles": ["api", "worker"],
+      "contracts": ["request-intent"]
     }
   ],
   "entities": [
@@ -181,7 +191,9 @@
     {"id": "subscription-invoice", "name": "Подписка и счёт", "owner_context": "billing", "zone": "green", "storage": "relational"},
     {"id": "success-fee", "name": "Вознаграждение за результат", "owner_context": "billing", "zone": "green", "storage": "relational"},
     {"id": "adapter-registration", "name": "Регистрация адаптера", "owner_context": "integration-platform", "zone": "green", "storage": "relational"},
-    {"id": "integration-invocation", "name": "Вызов интеграции", "owner_context": "integration-platform", "zone": "green", "storage": "relational"}
+    {"id": "integration-invocation", "name": "Вызов интеграции", "owner_context": "integration-platform", "zone": "green", "storage": "relational"},
+    {"id": "request", "name": "Заявка клиента", "owner_context": "request-fulfillment", "zone": "green", "storage": "relational"},
+    {"id": "offer", "name": "Оффер", "owner_context": "request-fulfillment", "zone": "green", "storage": "relational"}
   ],
   "aggregates": [
     {
@@ -433,6 +445,16 @@
       "domain_events": ["integration-failed", "integration-recovered"],
       "policies": ["error-normalization"],
       "invariants": ["Вызов идёт через provider port, а не через SDK поставщика.", "Ответы и ошибки поставщика нормализуются до доменных значений."]
+    },
+    {
+      "id": "request",
+      "owner_context": "request-fulfillment",
+      "root_entity": "request",
+      "entities": ["request", "offer"],
+      "value_objects": ["request-status", "offer-content", "request-target", "validation-decision"],
+      "domain_events": ["request-submitted", "request-validated", "request-processing-started", "request-fulfilled", "request-rejected", "request-cancelled"],
+      "policies": [],
+      "invariants": ["Заявка без непустого оффера не создаётся.", "Заявка привязана ровно к одному тенанту и не переносится между тенантами.", "Переход в processing разрешён только из validated.", "После перехода в validated оффер не редактируется на месте: любое изменение создаёт новую версию оффера.", "Статусы fulfilled, rejected и cancelled терминальны.", "Ссылки на чужие агрегаты хранятся по идентификаторам, а не по указателям."]
     }
   ],
   "value_objects": [
@@ -476,7 +498,11 @@
     {"id": "tariff-limit", "owner_context": "billing", "owner_aggregate": "subscription-billing", "semantics": "Допустимый объём использования возможности в тарифном периоде."},
     {"id": "calculation-version", "owner_context": "billing", "owner_aggregate": "success-fee", "semantics": "Версия правила расчёта вознаграждения за результат."},
     {"id": "manifest-version", "owner_context": "integration-platform", "owner_aggregate": "adapter-registration", "semantics": "Версия manifest с объявленными возможностями адаптера."},
-    {"id": "correlation-ref", "owner_context": "integration-platform", "owner_aggregate": "integration-invocation", "semantics": "Идентификатор, связывающий вызов интеграции со сквозным сценарием."}
+    {"id": "correlation-ref", "owner_context": "integration-platform", "owner_aggregate": "integration-invocation", "semantics": "Идентификатор, связывающий вызов интеграции со сквозным сценарием."},
+    {"id": "request-status", "owner_context": "request-fulfillment", "owner_aggregate": "request", "semantics": "Статус заявки из согласованного набора: submitted, validating, validated, processing, fulfilled, rejected, cancelled."},
+    {"id": "offer-content", "owner_context": "request-fulfillment", "owner_aggregate": "request", "semantics": "Непустой текст оффера: что клиент предлагает и кому."},
+    {"id": "request-target", "owner_context": "request-fulfillment", "owner_aggregate": "request", "semantics": "Свободное описание цели заявки (кому и сколько нужно); структура полей уточняется в отдельном change."},
+    {"id": "validation-decision", "owner_context": "request-fulfillment", "owner_aggregate": "request", "semantics": "Решение валидации заявки: исход (approved/rejected), актор, время и причина отклонения; живёт внутри агрегата request."}
   ],
   "domain_events": [
     {"id": "tenant-access-changed", "owner_context": "platform-governance", "producing_aggregate": "tenant-access"},
@@ -510,7 +536,13 @@
     {"id": "success-fee-calculated", "owner_context": "billing", "producing_aggregate": "success-fee"},
     {"id": "adapter-registered", "owner_context": "integration-platform", "producing_aggregate": "adapter-registration"},
     {"id": "integration-failed", "owner_context": "integration-platform", "producing_aggregate": "integration-invocation"},
-    {"id": "integration-recovered", "owner_context": "integration-platform", "producing_aggregate": "integration-invocation"}
+    {"id": "integration-recovered", "owner_context": "integration-platform", "producing_aggregate": "integration-invocation"},
+    {"id": "request-submitted", "owner_context": "request-fulfillment", "producing_aggregate": "request"},
+    {"id": "request-validated", "owner_context": "request-fulfillment", "producing_aggregate": "request"},
+    {"id": "request-processing-started", "owner_context": "request-fulfillment", "producing_aggregate": "request"},
+    {"id": "request-fulfilled", "owner_context": "request-fulfillment", "producing_aggregate": "request"},
+    {"id": "request-rejected", "owner_context": "request-fulfillment", "producing_aggregate": "request"},
+    {"id": "request-cancelled", "owner_context": "request-fulfillment", "producing_aggregate": "request"}
   ],
   "policies": [
     {"id": "tenant-isolation", "owner_context": "platform-governance", "owner_aggregate": "tenant-access", "inputs": [{"kind": "contract", "id": "tenant-context"}], "action": {"kind": "domain-event", "id": "audit-recorded"}},
@@ -556,6 +588,8 @@
     {"id": "sales-to-analytics", "upstream": "sales-workflow", "downstream": "analytics", "pattern": "published-language", "integration": "event", "transport": "async", "mechanism": "amqp", "contract": "deal-state"},
     {"id": "platform-access-for-outreach", "upstream": "platform-governance", "downstream": "outreach-orchestration", "pattern": "published-language", "integration": "policy", "transport": "async", "mechanism": "amqp", "contract": "access-decision"},
     {"id": "integrations-for-leads", "upstream": "integration-platform", "downstream": "lead-management", "pattern": "anticorruption-layer", "integration": "command", "transport": "sync", "mechanism": "http-json", "contract": "provider-port"},
+    {"id": "vector-for-leads", "upstream": "integration-platform", "downstream": "lead-management", "pattern": "anticorruption-layer", "integration": "command", "transport": "sync", "mechanism": "http-json", "contract": "vector"},
+    {"id": "vector-for-requests", "upstream": "integration-platform", "downstream": "request-fulfillment", "pattern": "anticorruption-layer", "integration": "command", "transport": "sync", "mechanism": "http-json", "contract": "vector"},
     {"id": "integrations-for-content", "upstream": "integration-platform", "downstream": "content-production", "pattern": "anticorruption-layer", "integration": "command", "transport": "sync", "mechanism": "http-json", "contract": "provider-port"},
     {"id": "integrations-for-delivery", "upstream": "integration-platform", "downstream": "message-delivery", "pattern": "anticorruption-layer", "integration": "command", "transport": "sync", "mechanism": "http-json", "contract": "provider-port"},
     {"id": "integrations-for-sales", "upstream": "integration-platform", "downstream": "sales-workflow", "pattern": "anticorruption-layer", "integration": "command", "transport": "sync", "mechanism": "http-json", "contract": "provider-port"},
@@ -565,11 +599,19 @@
     {"id": "delivery-to-lead", "upstream": "message-delivery", "downstream": "lead-management", "pattern": "published-language", "integration": "event", "transport": "async", "mechanism": "amqp", "contract": "delivery-event"},
     {"id": "engagement-to-audience", "upstream": "engagement-observation", "downstream": "audience", "pattern": "published-language", "integration": "event", "transport": "async", "mechanism": "amqp", "contract": "engagement-event"},
     {"id": "governance-policy-for-audience", "upstream": "data-governance", "downstream": "audience", "pattern": "published-language", "integration": "policy", "transport": "async", "mechanism": "amqp", "contract": "data-zone-policy"},
-    {"id": "lead-to-sales", "upstream": "lead-management", "downstream": "sales-workflow", "pattern": "customer-supplier", "integration": "query", "transport": "sync", "mechanism": "http-json", "contract": "company-profile"}
+    {"id": "lead-to-sales", "upstream": "lead-management", "downstream": "sales-workflow", "pattern": "customer-supplier", "integration": "query", "transport": "sync", "mechanism": "http-json", "contract": "company-profile"},
+    {"id": "tenant-context-for-requests", "upstream": "platform-governance", "downstream": "request-fulfillment", "pattern": "published-language", "integration": "policy", "transport": "async", "mechanism": "amqp", "contract": "tenant-context"},
+    {"id": "leads-for-requests", "upstream": "lead-management", "downstream": "request-fulfillment", "pattern": "customer-supplier", "integration": "query", "transport": "sync", "mechanism": "http-json", "contract": "lead-profile"},
+    {"id": "audience-for-requests", "upstream": "audience", "downstream": "request-fulfillment", "pattern": "customer-supplier", "integration": "query", "transport": "sync", "mechanism": "http-json", "contract": "audience-snapshot"},
+    {"id": "campaign-status-for-requests", "upstream": "outreach-orchestration", "downstream": "request-fulfillment", "pattern": "published-language", "integration": "query", "transport": "sync", "mechanism": "http-json", "contract": "campaign-state"},
+    {"id": "call-intent-for-requests", "upstream": "outreach-orchestration", "downstream": "request-fulfillment", "pattern": "published-language", "integration": "command", "transport": "sync", "mechanism": "http-json", "contract": "call-intent"},
+    {"id": "request-intent-from-portal", "upstream": "request-fulfillment", "downstream": "platform-governance", "pattern": "published-language", "integration": "command", "transport": "sync", "mechanism": "http-json", "contract": "request-intent"},
+    {"id": "deals-for-requests", "upstream": "sales-workflow", "downstream": "request-fulfillment", "pattern": "customer-supplier", "integration": "query", "transport": "sync", "mechanism": "http-json", "contract": "deal-state"},
+    {"id": "billing-entitlement-for-requests", "upstream": "billing", "downstream": "request-fulfillment", "pattern": "published-language", "integration": "policy", "transport": "async", "mechanism": "amqp", "contract": "billing-entitlement"}
   ],
   "required_diagrams": [
-    {"id": "bounded-context-map", "path": "architecture/diagrams/bounded-context-map.puml", "contexts": ["platform-governance", "data-governance", "lead-management", "audience", "content-production", "outreach-orchestration", "message-delivery", "engagement-observation", "sales-workflow", "community-intelligence", "publishing", "analytics", "billing", "integration-platform"]},
-    {"id": "context-relationships", "path": "architecture/diagrams/context-relationships.puml", "contexts": ["platform-governance", "data-governance", "lead-management", "audience", "content-production", "outreach-orchestration", "message-delivery", "engagement-observation", "sales-workflow", "community-intelligence", "publishing", "analytics", "billing", "integration-platform"]},
+    {"id": "bounded-context-map", "path": "architecture/diagrams/bounded-context-map.puml", "contexts": ["platform-governance", "data-governance", "lead-management", "audience", "content-production", "outreach-orchestration", "message-delivery", "engagement-observation", "sales-workflow", "community-intelligence", "publishing", "analytics", "billing", "integration-platform", "request-fulfillment"]},
+    {"id": "context-relationships", "path": "architecture/diagrams/context-relationships.puml", "contexts": ["platform-governance", "data-governance", "lead-management", "audience", "content-production", "outreach-orchestration", "message-delivery", "engagement-observation", "sales-workflow", "community-intelligence", "publishing", "analytics", "billing", "integration-platform", "request-fulfillment"]},
     {"id": "outreach-flow", "path": "architecture/diagrams/outreach-flow.puml", "contexts": ["data-governance", "lead-management", "audience", "content-production", "outreach-orchestration", "message-delivery", "engagement-observation", "sales-workflow", "analytics"]},
     {"id": "data-ownership", "path": "architecture/diagrams/data-ownership.puml", "contexts": ["platform-governance", "data-governance", "lead-management", "audience", "content-production", "outreach-orchestration", "message-delivery", "engagement-observation", "sales-workflow", "community-intelligence", "publishing", "analytics", "billing"]}
   ]

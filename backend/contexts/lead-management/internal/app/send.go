@@ -30,6 +30,13 @@ type SendToLead struct {
 	From      string
 	Clock     ports.Clock
 
+	// Events — издатель нормализованных событий дашборда (message-sent). nil —
+	// публикация не собрана. TenantID — тенант, в срезе которого учитывается
+	// событие.
+	Events   ports.AnalyticsPublisher
+	TenantID string
+
+	Logger      observ.Logger
 	Metrics     observ.Metrics
 	ServiceName string
 }
@@ -102,7 +109,32 @@ func (u *SendToLead) Send(ctx context.Context, leadID, templateID string, overri
 	if err := u.Messages.Save(ctx, message); err != nil {
 		return SendResult{}, err
 	}
+	u.publishSent(ctx, company.ID().String(), message)
 	return SendResult{MessageID: message.ID().String(), Status: message.Status()}, nil
+}
+
+// publishSent публикует событие message-sent дашборда. Публикация — вторичный
+// эффект: письмо уже ушло, и её сбой не отменяет отправку. Ошибка фиксируется
+// метрикой и логом, а не возвращается вызывающему.
+func (u *SendToLead) publishSent(ctx context.Context, companyID string, message *domain.OutboundMessage) {
+	if u.Events == nil {
+		return
+	}
+	event := ports.AnalyticsEvent{
+		EventID:    message.ID().String(),
+		TenantID:   u.TenantID,
+		Kind:       ports.AnalyticsKindMessageSent,
+		CompanyID:  companyID,
+		Status:     string(domain.MessageStatusSent),
+		Outcome:    string(domain.MessageStatusSent),
+		OccurredAt: message.UpdatedAt(),
+	}
+	if err := u.Events.Publish(ctx, event); err != nil {
+		u.Metrics.Incr("downstream_errors_total", map[string]string{"service": u.ServiceName, "engine": "analytics"})
+		if u.Logger != nil {
+			u.Logger.Warn("send: публикация события дашборда не удалась", observ.Fields{}, "service", u.ServiceName, "event_id", event.EventID, "error", err.Error())
+		}
+	}
 }
 
 // SendToSegment — use case рассылки по сегменту лидов с исключением подавленных

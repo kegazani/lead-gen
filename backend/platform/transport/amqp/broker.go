@@ -325,6 +325,14 @@ func (b *InMemoryBroker) routes(queueName, exchange, routingKey string) bool {
 // backoff ждёт перед повтором номер attempt (1 — первый повтор), прерываясь по
 // отмене контекста.
 func (b *InMemoryBroker) backoff(ctx context.Context, attempt int) error {
+	return waitRetry(ctx, attempt)
+}
+
+// waitRetry ждёт перед повтором номер attempt (1 — первый повтор). Задержка
+// экспоненциальная с ограничением retryMaxDelay, прерывается по отмене
+// контекста. Общая для брокеров в памяти и поверх RabbitMQ, чтобы повторы вели
+// себя одинаково.
+func waitRetry(ctx context.Context, attempt int) error {
 	delay := retryBaseDelay
 	for i := 1; i < attempt; i++ {
 		if delay >= retryMaxDelay {

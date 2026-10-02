@@ -917,6 +917,43 @@ func TestJobScreenShowsEmails(t *testing.T) {
 	}
 }
 
+// failingContacts — контактный репозиторий, падающий при пакетном чтении: нужен,
+// чтобы проверить, что ошибка чтения email не выдаётся за «нет email».
+type failingContacts struct{ ports.ContactRepository }
+
+func (failingContacts) ListByCompanies(context.Context, []domain.CompanyID) ([]*domain.Contact, error) {
+	return nil, errors.New("чтение контактов недоступно")
+}
+
+// TestJobScreenShowsEmailUnavailable проверяет, что ошибка пакетного чтения email
+// показывается явной пометкой «email недоступен», а не выдаётся за «нет email».
+func TestJobScreenShowsEmailUnavailable(t *testing.T) {
+	store := goldenJobs{job: ports.SearchJob{
+		ID:        "job-fail",
+		Query:     "агентства",
+		Status:    jobs.StatusDone,
+		ResultRef: []string{"a.example"},
+		CreatedAt: testTime,
+		UpdatedAt: testTime,
+	}}
+	server := httpapi.NewServer(httpapi.Dependencies{
+		Showcase: &app.Showcase{Jobs: store, Contacts: failingContacts{}},
+		Auth:     httpapi.AuthConfig{Username: "operator", Password: "secret"},
+	})
+	ts := httptest.NewServer(server)
+	defer ts.Close()
+	client := newConsoleClient(ts)
+	client.login(t, "operator", "secret")
+
+	html := readBody(t, client.get(t, "/jobs/job-fail"))
+	if !strings.Contains(html, "email недоступен") {
+		t.Fatalf("экран задания не помечает email недоступным:\n%s", html)
+	}
+	if strings.Contains(html, "нет email") {
+		t.Fatalf("экран задания выдаёт ошибку чтения за «нет email»:\n%s", html)
+	}
+}
+
 // TestJobScreenWithoutEvents проверяет, что задание без событий показывает
 // состояние и пометку об отсутствии хода выполнения, не завершаясь ошибкой.
 // Хранилище задаётся фиксированным: memory-адаптер сам пишет событие enqueued,

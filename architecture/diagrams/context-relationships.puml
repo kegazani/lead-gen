@@ -18,6 +18,7 @@ rectangle "publishing" as Publishing
 rectangle "analytics" as Analytics
 rectangle "billing" as Billing
 rectangle "integration-platform" as Integration
+rectangle "request-fulfillment" as Requests
 
 Governance --> Leads : PL / policy\nasync · amqp\ndata-zone-policy
 Governance --> Outreach : PL / policy\nasync · amqp\nprocessing-authority
@@ -42,12 +43,23 @@ Sales --> Analytics : PL / event\nasync · amqp\ndeal-state
 Platform --> Outreach : PL / policy\nasync · amqp\naccess-decision
 
 Integration ..> Leads : ACL / command\nsync · http-json\nprovider-port
+Integration ..> Leads : ACL / command\nsync · http-json\nvector
 Integration ..> Content : ACL / command\nsync · http-json\nprovider-port
 Integration ..> Delivery : ACL / command\nsync · http-json\nprovider-port
 Integration ..> Sales : ACL / command\nsync · http-json\nprovider-port
 Integration ..> Community : ACL / command\nsync · http-json\nprovider-port
 Integration ..> Publishing : ACL / command\nsync · http-json\nprovider-port
 Integration ..> Outreach : ACL / command\nsync · http-json\nprovider-port
+
+Platform --> Requests : PL / policy\nasync · amqp\ntenant-context
+Leads --> Requests : C/S / query\nsync · http-json\nlead-profile
+Audience --> Requests : C/S / query\nsync · http-json\naudience-snapshot
+Outreach --> Requests : PL / query\nsync · http-json\ncampaign-state
+Outreach --> Requests : PL / command\nsync · http-json\ncall-intent
+Requests --> Platform : PL / command\nsync · http-json\nrequest-intent
+Sales --> Requests : C/S / query\nsync · http-json\ndeal-state
+Billing --> Requests : PL / policy\nasync · amqp\nbilling-entitlement
+Integration ..> Requests : ACL / command\nsync · http-json\nvector
 
 legend bottom
   PL = Published Language
@@ -71,4 +83,5 @@ endlegend
 ' CTX:analytics
 ' CTX:billing
 ' CTX:integration-platform
+' CTX:request-fulfillment
 @enduml

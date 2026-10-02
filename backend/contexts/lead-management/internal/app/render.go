@@ -16,21 +16,17 @@ type VariableOption struct {
 	Label string
 	// Source — описание поля-источника значения.
 	Source string
-	// HasSource сообщает, есть ли у переменной источник данных. Если источника
-	// нет, переменная всегда резолвится в пусто и уходит в fallback.
-	HasSource bool
 }
 
 // variableCatalog — каталог переменных прикладного слоя: для каждого ключа
 // домена — подпись и источник. Порядок совпадает с каноническим порядком домена.
 var variableCatalog = []VariableOption{
-	{Key: string(domain.MergeVariableCompany), Label: "Название компании", Source: "название карточки", HasSource: true},
-	{Key: string(domain.MergeVariableCompanyDomain), Label: "Домен компании", Source: "нормализованный идентификатор карточки", HasSource: true},
-	{Key: string(domain.MergeVariableCompanyDescription), Label: "Описание компании", Source: "описание карточки", HasSource: true},
-	{Key: string(domain.MergeVariableContact), Label: "Роль контакта", Source: "роль контакта", HasSource: true},
-	{Key: string(domain.MergeVariableContactEmail), Label: "Email контакта", Source: "адрес контакта", HasSource: true},
-	{Key: string(domain.MergeVariableContactPhone), Label: "Телефон контакта", Source: "телефон контакта", HasSource: true},
-	{Key: string(domain.MergeVariableIndustry), Label: "Отрасль", Source: "источника данных пока нет — уходит в fallback", HasSource: false},
+	{Key: string(domain.MergeVariableCompany), Label: "Название компании", Source: "название карточки"},
+	{Key: string(domain.MergeVariableCompanyDomain), Label: "Домен компании", Source: "нормализованный идентификатор карточки"},
+	{Key: string(domain.MergeVariableCompanyDescription), Label: "Описание компании", Source: "описание карточки"},
+	{Key: string(domain.MergeVariableContact), Label: "Роль контакта", Source: "роль контакта"},
+	{Key: string(domain.MergeVariableContactEmail), Label: "Email контакта", Source: "адрес контакта"},
+	{Key: string(domain.MergeVariableContactPhone), Label: "Телефон контакта", Source: "телефон контакта"},
 }
 
 // VariableCatalog возвращает каталог переменных в порядке объявления (копию).
@@ -39,8 +35,8 @@ func VariableCatalog() []VariableOption {
 }
 
 // resolveVariable возвращает значение переменной из карточки компании и контакта.
-// Переменная без источника данных (например, industry) резолвится в пусто — это
-// честное поведение, а не выдумка: пустое значение уходит в объявленный fallback.
+// Ключ без сопоставленного поля резолвится в пусто — это честное поведение, а не
+// выдумка: пустое значение уходит в объявленный fallback.
 func resolveVariable(key string, company *domain.Company, contact *domain.Contact) string {
 	switch domain.MergeVariableKey(key) {
 	case domain.MergeVariableCompany:

@@ -18,6 +18,8 @@
 
 ## Где мы остановились
 
+**2026-10-02 (эпик `client-request-domain` заархивирован).** Завершён и заархивирован эпик `client-request-domain` (6 change'ов: `client-request-domain`, `temporal-execution-platform`, `request-validation-workflow`, `semantic-lead-search`, `client-portal`, `client-dashboard-metrics`; архивация 2026-09-30…2026-10-02). Закрыт 15-й контекст `request-fulfillment`: сервис собран в `buildService` с воркером workflow поверх self-hosted Temporal; capability `client-request` и `request-validation`; связи `vector-for-requests`, `call-intent-for-requests`, `request-intent-from-portal`. В коде собраны 6 сервисов (`analytics`, `outreach-orchestration`, `lead-management`, `request-fulfillment`, `platform-governance`, `integration-platform`), остальные 9 — заглушка `stubService`. **Дальше:** по `docs/core-roadmap.md` — дозакрыть ЭТАП 0 (`data-governance`) и ЭТАП 1 (`audience`).
+
 **2026-09-28 (этап 1 закоммичен, начат свой краулер).** Первый этап закоммичен одним коммитом `7f186cd` (452 файла): MVP-срез `mvp-lead-search`, foundation (`platform-governance`, `data-governance`, `integration-platform`), `ai-lead-discovery`, `manual-crawl-params-and-company-target`, архивы срезов, спеки и документация. В `.gitignore` добавлены правила под артефакты `backend/tmp/` (бинарник сборки) и `.playwright-mcp/` (логи/скриншоты MCP) — в историю не попали. Создан change **`self-hosted-crawler`** (proposal → specs → design → tasks, все 4 артефакта, `validate --strict` зелёный): self-hosted движок **Crawl4AI** (Apache-2.0, контейнер) за существующим `crawl.Port`/`search.Port`, Firecrawl остаётся альтернативой (`crawl_engine=firecrawl|crawl4ai`). Решения: новая capability `crawler-proxy-pool` (источники-`Source`, уровни `cheap`/`premium`, sticky по домену, карантин, эскалация; комбинирование дешёвых списков с провайдером заложено сразу); robots.txt управляется конфигурацией `crawl_respect_robots`, **по умолчанию выключено** (обход без проверки robots) с фиксацией режима в журнале задания — это MODIFIED `osint-enrichment`; эскалация на LLM решается в Go, вызов — `LLMExtractionStrategy` внутри Crawl4AI к DeepSeek; кредитный бюджет остаётся только у Firecrawl. Задачи (9 групп: каталог/домен → spike → контейнер/конфиг → адаптер → прокси → robots/журнал → LLM/OCR → лимиты/режим → проверки) ещё не выполнены. **Зависимость:** MODIFIED-дельта `osint-enrichment` наложится только после архивации `mvp-lead-search` (там живёт основная спека); `validate` уже предупреждает (INFO), задача 9.6. **Дальше:** выход из explore-режима и apply по `tasks.md`, начиная с групп 1–3.
 
 **2026-09-25 (фикс поиска контактов).** Эскалация экстракции на LLM не работала: `firecrawl.Client.Extract` слал в `/v1/scrape` несуществующий формат `formats:["extract"]` и читал `data` как сам объект контактов. Firecrawl v1 такого формата не знает — структурированный результат запрашивается `formats:["json"]` с `jsonOptions{schema, systemPrompt}` и приходит под `data.json` (устаревшее — `data.llm_extraction`). Из-за этого контакты, извлекаемые только моделью (нестандартная вёрстка, «отдел продаж — Иван Петров», адрес не в явном виде), не находились, а ошибка глушилась в `processPage` (метрика `downstream_errors_total` и всё). Исправлено: корректный запрос `json`, разбор `extractionPayload` (json → llm_extraction → сам `data`). Добавлена диагностика в `RunSearch.processPage`: лог на каждую страницу (`cheap_emails`/`cheap_phones`, `escalated`, `extracted_contacts`, `contacts`) и `Warn` при провале эскалации — чтобы «email не ищется» отличалось от «на странице его нет». Тесты: `TestExtractRequestsJSONFormat` (форма запроса + разбор `data.json`), мок `/v1/scrape` приведён к v1-форме. `go build/vet/test` для `integration-platform` и `lead-management` зелёные. **Не подтверждено живьём** — прогон против реального Firecrawl не делался (ключа нет).
@@ -169,6 +171,34 @@ design → tasks), `openspec validate --all --strict` — 23 passed, 0 failed,
 ### `search-strategy-dialogue`
 
 - **2026-09-25:** срез реализован полностью (17/17 задач). Контракт: `contracts/integration-platform/llm` (`Converse` + DTO, `Usage`), адаптер `backend/contexts/integration-platform/internal/adapters/openai`. План задания: `ports.SearchJobPayload.plan` и типы `SearchPlan`/`PlanTarget`/`PlanLimits` с валидацией (regex include/exclude, неотрицательные лимиты); `SearchJobStore.CreateSearchJobWithPlan`; миграция `0007` (колонка `plan`); раннер (`RunSearch.handle`) использует план и `effectiveLimits`, `RunSearch.EnqueuePlanned` собирает финальный план через `Plan` перед постановкой. App-слой: `ConverseDialogue` (предел ходов, безопасные логи). Консоль: экран `assistant.html` — лента диалога, панель плана, редактируемые лимиты, единая форма с действиями `turn`/`launch`; `handleAssistantTurn`/`handleAssistantReply`/`handleAssistantLaunch`. Конфигурация: `-dialogue-max-turns`. Тесты: контрактные suite (llm, хранилище), unit-тесты план/диалог/раннер, HTTP-тесты (ход, запуск, отказ лимитов, stateless).
+
+## Эпик `client-request-domain` (request-fulfillment)
+
+Завершён и заархивирован 2026-09-30 … 2026-10-02. Шесть change'ов закрыли 15-й контекст `request-fulfillment` и смежные capability.
+
+### `client-request-domain`
+
+- **2026-09-30 (заархивирован):** capability `client-request` в `request-fulfillment` — жизненный цикл заявки (`submitted` → `validating` → `validated` → `processing` → `fulfilled`; терминальные `rejected`/`cancelled`), оффер и связь с артефактами фулфилмента; агрегат `request` (root) с сущностью `offer`. Спека — `openspec/specs/client-request/spec.md`.
+
+### `temporal-execution-platform`
+
+- **2026-10-01 (заархивирован):** self-hosted Temporal как рантайм исполнения заявок: воркер workflow сервиса `request-fulfillment` (поднимается тем же `docker compose up --build`).
+
+### `request-validation-workflow`
+
+- **2026-10-01 (заархивирован):** capability `request-validation` — валидация оффера админом: взятие в работу, звонок-уточнение через `call-intent`, правки оффера до `validated`, одобрение/отклонение с причиной; решение живёт в агрегате `request`. Спека — `openspec/specs/request-validation/spec.md`.
+
+### `semantic-lead-search`
+
+- **2026-10-01 (заархивирован):** capability `semantic-lead-search` — векторный recall и rich-описание: эмбеддинг компании и оффера заявки, поиск кандидатов по близости. Спека — `openspec/specs/semantic-lead-search/spec.md`.
+
+### `client-portal`
+
+- **2026-10-01 (заархивирован):** capability `client-portal` — самообслуживание клиента: регистрация тенанта, подача заявки с оффером и единое окно портала (роль `api` сервиса `platform-governance`). Спека — `openspec/specs/client-portal/spec.md`.
+
+### `client-dashboard-metrics`
+
+- **2026-10-02 (заархивирован):** capability `client-dashboard` — real-time дашборд метрик клиента (проекция счётчиков прогресса и операций, роль `api` сервиса `analytics`). Спека — `openspec/specs/client-dashboard/spec.md`.
 
 ## Решения и договорённости
 

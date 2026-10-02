@@ -99,14 +99,6 @@
       <input type="text" name="fallback_contact_phone" value="" placeholder="fallback">
       <button type="button" class="button-secondary" data-insert-placeholder="contact_phone">Вставить в текст</button>
     </li>
-    <li class="variable-row">
-      <label class="variable-toggle">
-        <input type="checkbox" name="var_industry" value="yes"> Отрасль
-      </label>
-      <span class="hint">источника данных пока нет — уходит в fallback</span>
-      <input type="text" name="fallback_industry" value="" placeholder="fallback">
-      <button type="button" class="button-secondary" data-insert-placeholder="industry">Вставить в текст</button>
-    </li>
   </ul>
 </fieldset>
     <p class="actions"><button type="submit">Создать</button></p>

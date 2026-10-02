@@ -52,17 +52,17 @@ func TestComposeEmailSubstitutesCatalogValues(t *testing.T) {
 
 func TestComposeEmailFallsBackOnEmptyField(t *testing.T) {
 	template := mustTemplate(t,
-		"{{company}} — {{industry}}",
-		"Отрасль: {{industry}}",
+		"{{company}} — {{contact_email}}",
+		"Email: {{contact_email}}",
 		domain.MergeVariable{Key: domain.MergeVariableCompany, Fallback: "ваша компания"},
-		domain.MergeVariable{Key: domain.MergeVariableIndustry, Fallback: "ваша отрасль"},
+		domain.MergeVariable{Key: domain.MergeVariableContactEmail, Fallback: "ваш email"},
 	)
 
 	subject, body := ComposeEmail(template, nil, nil)
-	if subject != "ваша компания — ваша отрасль" {
+	if subject != "ваша компания — ваш email" {
 		t.Fatalf("subject = %q", subject)
 	}
-	if body != "Отрасль: ваша отрасль" {
+	if body != "Email: ваш email" {
 		t.Fatalf("body = %q", body)
 	}
 }
@@ -103,17 +103,6 @@ func TestCatalogCoversDomainKeys(t *testing.T) {
 	for _, key := range domain.MergeVariableKeys() {
 		if !seen[string(key)] {
 			t.Fatalf("ключ домена %q не описан в каталоге приложения", key)
-		}
-	}
-}
-
-func TestCatalogKeyWithoutSourceResolvesEmpty(t *testing.T) {
-	for _, option := range VariableCatalog() {
-		if option.HasSource {
-			continue
-		}
-		if value := resolveVariable(option.Key, nil, nil); value != "" {
-			t.Fatalf("переменная %q без источника вернула %q, ожидалось пусто", option.Key, value)
 		}
 	}
 }

@@ -132,12 +132,11 @@ type templateListView struct {
 // templateVariableOption — переменная каталога в форме шаблона: подпись,
 // источник, признак объявления и текущий fallback.
 type templateVariableOption struct {
-	Key       string
-	Label     string
-	Source    string
-	HasSource bool
-	Declared  bool
-	Fallback  string
+	Key      string
+	Label    string
+	Source   string
+	Declared bool
+	Fallback string
 }
 
 // templateFormView — модель формы создания или правки шаблона.
@@ -194,12 +193,13 @@ type jobRow struct {
 // адрес карточки и подпись оценки в контексте этого задания. Оценка чужого
 // задания сюда не попадает: подпись берётся из оценок этого задания.
 type jobCompanyRow struct {
-	ID           string
-	Href         string
-	Email        string
-	NoEmail      bool
-	VerdictLabel string
-	VerdictClass string
+	ID               string
+	Href             string
+	Email            string
+	NoEmail          bool
+	EmailUnavailable bool
+	VerdictLabel     string
+	VerdictClass     string
 }
 
 // jobView — модель экрана подробностей задания: полный запрос, состояние, бюджет,
@@ -467,10 +467,19 @@ func jobFrom(detail app.JobDetail, assessments []*domain.LeadAssessment, emails 
 	j := detail.Job
 	byCompany := assessmentsByCompany(assessments)
 
+	// CompanyEmails в случае успеха всегда возвращает непустую карту с записью на
+	// каждую компанию; nil означает ошибку чтения — email помечается недоступным.
+	emailsUnavailable := emails == nil
 	companies := make([]jobCompanyRow, 0, len(j.ResultRef))
 	for _, id := range j.ResultRef {
 		contact := emails[id]
-		row := jobCompanyRow{ID: id, Href: cardHref(id, j.ID), Email: contact.Email, NoEmail: contact.NoEmail}
+		row := jobCompanyRow{
+			ID:               id,
+			Href:             cardHref(id, j.ID),
+			Email:            contact.Email,
+			NoEmail:          contact.NoEmail,
+			EmailUnavailable: emailsUnavailable,
+		}
 		if a := byCompany[id]; a != nil {
 			row.VerdictLabel = verdictLabel(a.Verdict())
 			row.VerdictClass = verdictClass(a.Verdict())
@@ -1341,12 +1350,11 @@ func templateFormOptions(catalog []app.VariableOption, declared []app.TemplateVa
 	for _, option := range catalog {
 		fallback, ok := fallbacks[option.Key]
 		options = append(options, templateVariableOption{
-			Key:       option.Key,
-			Label:     option.Label,
-			Source:    option.Source,
-			HasSource: option.HasSource,
-			Declared:  ok,
-			Fallback:  fallback,
+			Key:      option.Key,
+			Label:    option.Label,
+			Source:   option.Source,
+			Declared: ok,
+			Fallback: fallback,
 		})
 	}
 	return options

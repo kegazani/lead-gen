@@ -2,14 +2,18 @@ go 1.25
 
 use (
 	./backend/cmd/lead-gen
+	./backend/contexts/analytics
 	./backend/contexts/integration-platform
 	./backend/contexts/lead-management
 	./backend/contexts/outreach-orchestration
+	./backend/contexts/platform-governance
+	./backend/contexts/request-fulfillment
 	./backend/platform
 	./contracts/content-production
 	./contracts/engagement-observation
 	./contracts/integration-platform
 	./contracts/outreach-orchestration
+	./contracts/request-fulfillment
 	./frontend/components
 	./frontend/public
 	./tools/archlint

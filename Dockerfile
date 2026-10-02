@@ -29,7 +29,7 @@ COPY backend/ ./backend/
 COPY contracts/ ./contracts/
 COPY frontend/components/ ./frontend/components/
 
-RUN printf 'go 1.25\n\nuse (\n\t./backend/cmd/lead-gen\n\t./backend/contexts/outreach-orchestration\n\t./backend/contexts/lead-management\n\t./backend/contexts/integration-platform\n\t./backend/platform\n\t./contracts/outreach-orchestration\n\t./contracts/integration-platform\n\t./frontend/components\n)\n' > go.work
+RUN printf 'go 1.25\n\nuse (\n\t./backend/cmd/lead-gen\n\t./backend/contexts/analytics\n\t./backend/contexts/integration-platform\n\t./backend/contexts/lead-management\n\t./backend/contexts/outreach-orchestration\n\t./backend/contexts/platform-governance\n\t./backend/contexts/request-fulfillment\n\t./backend/platform\n\t./contracts/integration-platform\n\t./contracts/outreach-orchestration\n\t./contracts/request-fulfillment\n\t./frontend/components\n)\n' > go.work
 
 # Внешние зависимости появились (github.com/jackc/pgx/v5 и транзитивные):
 # скачиваем до сборки, чтобы слой кэшировался. Требует сети.
