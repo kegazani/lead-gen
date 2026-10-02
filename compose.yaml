@@ -240,6 +240,50 @@ services:
     ports:
       - "${DASHBOARD_HTTP_PORT:-8083}:8080"
 
+  # Сервисы с собственной ролью api, вынесенные в отдельные контейнеры: у
+  # каждого свой порт. Тот же служебный образ, роли задаёт конфигурация.
+  billing:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    volumes:
+      - ./deploy/services.yaml:/etc/lead-gen/services.yaml:ro
+    command:
+      - -config
+      - /etc/lead-gen/services.yaml
+      - -service
+      - billing
+      - -addr
+      - :8080
+      - -broker-url
+      - ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672/}
+    ports:
+      - "${BILLING_HTTP_PORT:-8084}:8080"
+
+  publishing:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    depends_on:
+      rabbitmq:
+        condition: service_healthy
+    volumes:
+      - ./deploy/services.yaml:/etc/lead-gen/services.yaml:ro
+    command:
+      - -config
+      - /etc/lead-gen/services.yaml
+      - -service
+      - publishing
+      - -addr
+      - :8080
+      - -broker-url
+      - ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672/}
+    ports:
+      - "${PUBLISHING_HTTP_PORT:-8085}:8080"
+
 volumes:
   postgres-green-data:
   postgres-red-data:

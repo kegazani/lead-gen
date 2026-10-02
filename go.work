@@ -3,17 +3,33 @@ go 1.25
 use (
 	./backend/cmd/lead-gen
 	./backend/contexts/analytics
+	./backend/contexts/audience
+	./backend/contexts/billing
+	./backend/contexts/community-intelligence
+	./backend/contexts/content-production
+	./backend/contexts/data-governance
+	./backend/contexts/engagement-observation
 	./backend/contexts/integration-platform
 	./backend/contexts/lead-management
+	./backend/contexts/message-delivery
 	./backend/contexts/outreach-orchestration
 	./backend/contexts/platform-governance
+	./backend/contexts/publishing
 	./backend/contexts/request-fulfillment
+	./backend/contexts/sales-workflow
 	./backend/platform
+	./contracts/audience
+	./contracts/billing
+	./contracts/community-intelligence
 	./contracts/content-production
+	./contracts/data-governance
 	./contracts/engagement-observation
 	./contracts/integration-platform
+	./contracts/message-delivery
 	./contracts/outreach-orchestration
+	./contracts/publishing
 	./contracts/request-fulfillment
+	./contracts/sales-workflow
 	./frontend/components
 	./frontend/public
 	./tools/archlint

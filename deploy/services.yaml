@@ -8,12 +8,14 @@
 # Переход между состояниями — правка только этого файла: ни код, ни доменная
 # модель, ни схема данных не меняются (design.md, Решения 5 и 11).
 #
-# Статус реализации. Реализованы шесть сервисов каталога — `analytics`,
-# `outreach-orchestration`, `lead-management`, `request-fulfillment`,
-# `platform-governance`, `integration-platform`; остальные девять сервисов пока
-# поднимаются заглушкой (`cmd/lead-gen`, тип `stubService`). Поэтому группы ниже
-# описывают форму деплоя, а не готовность кода: сервис может быть объявлен и
-# запущен, ещё не имея собственной реализации.
+# Статус реализации. Реализованы все пятнадцать сервисов каталога, включая
+# `analytics`, `outreach-orchestration`, `lead-management`, `request-fulfillment`,
+# `platform-governance`, `integration-platform` и добавленные волнами 0–1
+# `data-governance`, `audience`, `content-production`, `message-delivery`,
+# `engagement-observation`, `sales-workflow`, `community-intelligence`,
+# `publishing`, `billing`. Заглушек не осталось: каждая объявленная ниже роль
+# имеет собственную реализацию в `backend/contexts/<id>` (`cmd/lead-gen`). Тип
+# `stubService` сохранён как честный отказ для неизвестного сервиса.
 # Порядок и критерий выделения сервисов в собственные группы — `deploy/README.md`,
 # разделы «Задачи 4.2–4.5».
 #

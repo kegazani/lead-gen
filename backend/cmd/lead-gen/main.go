@@ -139,6 +139,7 @@ func main() {
 		logger:              logger,
 		metrics:             metrics,
 		apiAddr:             *apiAddr,
+		ingestAddr:          *ingestAddr,
 		requestIntentURL:    *requestIntentURL,
 		consumer:            consumer,
 		publishInterval:     *publishInterval,

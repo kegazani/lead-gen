@@ -2,7 +2,7 @@
 
 # Корневого go.mod больше нет: workspace связан go.work, поэтому цели обходят
 # модули по списку, а не через `go build ./...` из корня.
-MODULES := backend/cmd/lead-gen backend/contexts/analytics backend/contexts/integration-platform backend/contexts/lead-management backend/contexts/outreach-orchestration backend/contexts/platform-governance backend/contexts/request-fulfillment contracts/content-production contracts/engagement-observation contracts/integration-platform contracts/outreach-orchestration contracts/request-fulfillment frontend/components frontend/public backend/platform tools/archlint tools/importlint
+MODULES := backend/cmd/lead-gen backend/contexts/analytics backend/contexts/audience backend/contexts/billing backend/contexts/community-intelligence backend/contexts/content-production backend/contexts/data-governance backend/contexts/engagement-observation backend/contexts/integration-platform backend/contexts/lead-management backend/contexts/message-delivery backend/contexts/outreach-orchestration backend/contexts/platform-governance backend/contexts/publishing backend/contexts/request-fulfillment backend/contexts/sales-workflow contracts/audience contracts/billing contracts/community-intelligence contracts/content-production contracts/data-governance contracts/engagement-observation contracts/integration-platform contracts/message-delivery contracts/outreach-orchestration contracts/publishing contracts/request-fulfillment contracts/sales-workflow frontend/components frontend/public backend/platform tools/archlint tools/importlint
 
 # `go build ./...` для модуля с единственным main-пакетом пишет бинарник в
 # каталог модуля. Цель собирает без вывода (-o /dev/null) и проверяет

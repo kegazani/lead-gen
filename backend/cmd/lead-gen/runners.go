@@ -12,11 +12,20 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	analytics "lead-gen/backend/contexts/analytics"
+	audience "lead-gen/backend/contexts/audience"
+	billing "lead-gen/backend/contexts/billing"
+	communityintelligence "lead-gen/backend/contexts/community-intelligence"
+	contentproduction "lead-gen/backend/contexts/content-production"
+	datagovernance "lead-gen/backend/contexts/data-governance"
+	engagementobservation "lead-gen/backend/contexts/engagement-observation"
 	integrationplatform "lead-gen/backend/contexts/integration-platform"
 	leadmanagement "lead-gen/backend/contexts/lead-management"
+	messagedelivery "lead-gen/backend/contexts/message-delivery"
 	outreachorchestration "lead-gen/backend/contexts/outreach-orchestration"
 	platformgovernance "lead-gen/backend/contexts/platform-governance"
+	publishing "lead-gen/backend/contexts/publishing"
 	requestfulfillment "lead-gen/backend/contexts/request-fulfillment"
+	salesworkflow "lead-gen/backend/contexts/sales-workflow"
 	composition "lead-gen/backend/platform/composition"
 	"lead-gen/backend/platform/migrate"
 	"lead-gen/backend/platform/observability/observ"
@@ -31,6 +40,7 @@ import (
 // buildOptions — параметры, общие для сборки сервисов в одном процессе.
 type buildOptions struct {
 	apiAddr          string
+	ingestAddr       string
 	requestIntentURL string
 	publishInterval  time.Duration
 	actor            string
@@ -132,6 +142,90 @@ func buildService(
 			Logger:  opts.logger,
 			Metrics: opts.metrics,
 			Tracer:  tracer,
+		})
+	case datagovernance.ServiceID:
+		// Период фонового истечения полномочий оставляем доменному значению по
+		// умолчанию (defaultSweepInterval): -publish-interval задаёт публикацию, а
+		// не проход полномочий.
+		return datagovernance.New(datagovernance.Config{
+			APIAddr: opts.apiAddr,
+			Grants:  datagovernance.GrantsFromStrings(opts.actor, opts.tenant),
+			Logger:  opts.logger,
+			Metrics: opts.metrics,
+			Tracer:  tracer,
+		})
+	case audience.ServiceID:
+		return audience.New(audience.Config{
+			APIAddr:   opts.apiAddr,
+			Interval:  opts.publishInterval,
+			Publisher: broker,
+			Logger:    opts.logger,
+			Metrics:   opts.metrics,
+			Tracer:    tracer,
+		})
+	case contentproduction.ServiceID:
+		return contentproduction.New(contentproduction.Config{
+			APIAddr:   opts.apiAddr,
+			Interval:  opts.publishInterval,
+			Publisher: broker,
+			Logger:    opts.logger,
+			Metrics:   opts.metrics,
+			Tracer:    tracer,
+		})
+	case messagedelivery.ServiceID:
+		// У контекста нет роли api: адрес внутреннего сервера не задаётся.
+		return messagedelivery.New(messagedelivery.Config{
+			Interval:  opts.publishInterval,
+			Publisher: broker,
+			Logger:    opts.logger,
+			Metrics:   opts.metrics,
+			Tracer:    tracer,
+		})
+	case engagementobservation.ServiceID:
+		return engagementobservation.New(engagementobservation.Config{
+			IngestAddr: opts.ingestAddr,
+			Interval:   opts.publishInterval,
+			Publisher:  broker,
+			Consumer:   opts.consumer,
+			Logger:     opts.logger,
+			Metrics:    opts.metrics,
+			Tracer:     tracer,
+		})
+	case salesworkflow.ServiceID:
+		return salesworkflow.New(salesworkflow.Config{
+			APIAddr:    opts.apiAddr,
+			IngestAddr: opts.ingestAddr,
+			Interval:   opts.publishInterval,
+			Publisher:  broker,
+			Logger:     opts.logger,
+			Metrics:    opts.metrics,
+			Tracer:     tracer,
+		})
+	case communityintelligence.ServiceID:
+		// У контекста нет роли api, а период регулярного сбора оставляем
+		// доменному значению по умолчанию (defaultInterval = 1 мин).
+		return communityintelligence.New(communityintelligence.Config{
+			Logger:  opts.logger,
+			Metrics: opts.metrics,
+			Tracer:  tracer,
+		})
+	case publishing.ServiceID:
+		return publishing.New(publishing.Config{
+			APIAddr:   opts.apiAddr,
+			Interval:  opts.publishInterval,
+			Publisher: broker,
+			Logger:    opts.logger,
+			Metrics:   opts.metrics,
+			Tracer:    tracer,
+		})
+	case billing.ServiceID:
+		return billing.New(billing.Config{
+			APIAddr:   opts.apiAddr,
+			Interval:  opts.publishInterval,
+			Publisher: broker,
+			Logger:    opts.logger,
+			Metrics:   opts.metrics,
+			Tracer:    tracer,
 		})
 	default:
 		return &stubService{id: id, ingest: stub}, nil
