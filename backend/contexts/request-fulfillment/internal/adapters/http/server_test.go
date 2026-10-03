@@ -23,7 +23,11 @@ const (
 // query-контракта артефактов.
 func newTestServer(t *testing.T, query ports.FulfillmentQuery) *httptest.Server {
 	t.Helper()
-	slice, err := requestfulfillment.Build(requestfulfillment.Config{Query: query})
+	slice, err := requestfulfillment.Build(requestfulfillment.Config{
+		Query:           query,
+		ConsoleUser:     consoleUser,
+		ConsolePassword: consolePassword,
+	})
 	if err != nil {
 		t.Fatalf("сборка среза: %v", err)
 	}
@@ -56,10 +60,14 @@ func TestRootRedirectsToValidation(t *testing.T) {
 // общее оформление компонентов и оно реально раздаётся.
 func TestValidationLinksSharedStylesheet(t *testing.T) {
 	server := newTestServer(t, fulfillment.NewMemoryQuery())
-	page := readBody(t, do(t, server, http.MethodGet, "/validation", nil))
+	client := newConsoleClient(server)
+	client.login(t)
+
+	page := readBody(t, client.get(t, "/validation"))
 	if !strings.Contains(page, `<link rel="stylesheet" href="/static/console.css">`) {
 		t.Fatalf("экран не подключил общее оформление:\n%s", page)
 	}
+	// Статика публична: отдаётся без сессии.
 	if css := do(t, server, http.MethodGet, "/static/console.css", nil); css.StatusCode != http.StatusOK {
 		t.Fatalf("оформление не раздаётся: статус %d", css.StatusCode)
 	}

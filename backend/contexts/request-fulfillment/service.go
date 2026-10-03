@@ -19,6 +19,7 @@ import (
 	"lead-gen/backend/contexts/request-fulfillment/internal/app/query"
 	"lead-gen/backend/contexts/request-fulfillment/internal/ports"
 	composition "lead-gen/backend/platform/composition"
+	"lead-gen/backend/platform/consoleauth"
 	platformoutbox "lead-gen/backend/platform/messaging/outbox"
 	"lead-gen/backend/platform/observability/observ"
 	"lead-gen/backend/platform/transport/amqp"
@@ -27,6 +28,7 @@ import (
 	"lead-gen/contracts/lead-management/emailgeneration"
 	"lead-gen/contracts/lead-management/leadsearch"
 	"lead-gen/contracts/outreach-orchestration/callintent"
+	"lead-gen/frontend/components"
 )
 
 // ServiceID — идентификатор сервиса, равный идентификатору контекста из
@@ -168,6 +170,30 @@ type Config struct {
 	// lead-management). nil означает, что генерация писем не подключена: шаг
 	// генерации черновиков штатно пропускается и логируется, а заявка идёт дальше.
 	EmailGeneration emailgeneration.Port
+
+	// ConsoleUser / ConsolePassword — учётные данные оператора консоли заявок.
+	// Пустые значения означают вход с пустым логином и паролем (только для
+	// локального dev-прогона без внешнего доступа).
+	ConsoleUser     string
+	ConsolePassword string
+
+	// ConsoleStore — хранилище сессий оператора. nil — память процесса
+	// (поведение как раньше). Общий стор (PostgreSQL) делает сессию, выданную
+	// другой консолью, действительной и здесь.
+	ConsoleStore consoleauth.Store
+
+	// Console — базовые адреса сервисов консоли для общей навигации по разделам
+	// (Заявки, Исполнение, Лиды, Отчёты). Пустые адреса дают относительные пути.
+	Console components.ConsoleBases
+
+	// ConsoleIdleTimeout — период неактивности сессии оператора, после которого
+	// она истекает. Ноль означает период по умолчанию пакета consoleauth; на
+	// поведение по умолчанию не влияет.
+	ConsoleIdleTimeout time.Duration
+
+	// Now — часы проверки истечения сессии оператора консоли (тесты). nil —
+	// системное время. Рантайм-поведение по умолчанию не меняется.
+	Now func() time.Time
 
 	// Наблюдаемость сервиса: логгер, метрики и трейсер впрыскиваются
 	// composition root'ом; обязательны.
@@ -347,6 +373,14 @@ func Build(cfg Config) (*Slice, error) {
 		EmbedOffer:             embedOffer,
 		EmailDrafts:            emailDrafts,
 		Runtime:                cfg.Runtime,
+		Console:                cfg.Console,
+		Auth: consoleauth.Config{
+			Username:    cfg.ConsoleUser,
+			Password:    cfg.ConsolePassword,
+			IdleTimeout: cfg.ConsoleIdleTimeout,
+			Now:         cfg.Now,
+			Store:       cfg.ConsoleStore,
+		},
 	})
 
 	var relay *platformoutbox.Relay

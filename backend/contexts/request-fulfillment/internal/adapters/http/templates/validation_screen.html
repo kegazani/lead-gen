@@ -13,7 +13,7 @@
   {{- if .View.CanEditOffer }}
   <form method="post" action="/requests/{{.View.Request.RequestID}}/validation/offer">
     <input type="hidden" name="tenant_id" value="{{.View.TenantID}}">
-    <input type="hidden" name="actor" value="{{.View.Actor}}">
+    <input type="hidden" name="csrf" value="{{.View.CSRF}}">
     {{ template "field" .View.OfferField }}
     {{ template "field" .View.TargetField }}
     <button type="submit">Сохранить правку</button>
@@ -23,7 +23,7 @@
   {{- if .View.CanTake }}
   <form method="post" action="/requests/{{.View.Request.RequestID}}/validation/take">
     <input type="hidden" name="tenant_id" value="{{.View.TenantID}}">
-    <input type="hidden" name="actor" value="{{.View.Actor}}">
+    <input type="hidden" name="csrf" value="{{.View.CSRF}}">
     <button type="submit">Взять в работу</button>
   </form>
   {{- end }}
@@ -31,19 +31,20 @@
   {{- if .View.CanDecide }}
   <form method="post" action="/requests/{{.View.Request.RequestID}}/validation/call">
     <input type="hidden" name="tenant_id" value="{{.View.TenantID}}">
+    <input type="hidden" name="csrf" value="{{.View.CSRF}}">
     <input type="hidden" name="correlation_id" value="{{.View.Request.RequestID}}">
     <button type="submit">Инициировать звонок-уточнение</button>
   </form>
 
   <form method="post" action="/requests/{{.View.Request.RequestID}}/validation/approve">
     <input type="hidden" name="tenant_id" value="{{.View.TenantID}}">
-    <input type="hidden" name="actor" value="{{.View.Actor}}">
+    <input type="hidden" name="csrf" value="{{.View.CSRF}}">
     <button type="submit">Одобрить</button>
   </form>
 
   <form method="post" action="/requests/{{.View.Request.RequestID}}/validation/reject">
     <input type="hidden" name="tenant_id" value="{{.View.TenantID}}">
-    <input type="hidden" name="actor" value="{{.View.Actor}}">
+    <input type="hidden" name="csrf" value="{{.View.CSRF}}">
     {{ template "field" .View.ReasonField }}
     <button type="submit">Отклонить</button>
   </form>

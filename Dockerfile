@@ -51,6 +51,7 @@ COPY deploy/services.yaml /etc/lead-gen/services.yaml
 # Рабочий каталог ступени выполнения — /.
 COPY backend/contexts/lead-management/migrations/ /backend/contexts/lead-management/migrations/
 COPY backend/contexts/request-fulfillment/migrations/ /backend/contexts/request-fulfillment/migrations/
+COPY backend/platform/consoleauth/migrations/ /backend/platform/consoleauth/migrations/
 
 WORKDIR /
 

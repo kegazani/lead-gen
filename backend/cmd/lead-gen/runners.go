@@ -27,6 +27,7 @@ import (
 	requestfulfillment "lead-gen/backend/contexts/request-fulfillment"
 	salesworkflow "lead-gen/backend/contexts/sales-workflow"
 	composition "lead-gen/backend/platform/composition"
+	"lead-gen/backend/platform/consoleauth"
 	"lead-gen/backend/platform/migrate"
 	"lead-gen/backend/platform/observability/observ"
 	"lead-gen/backend/platform/transport/amqp"
@@ -39,6 +40,7 @@ import (
 	leadsearchhttp "lead-gen/contracts/lead-management/leadsearch/httpport"
 	"lead-gen/contracts/request-fulfillment/requestintent"
 	"lead-gen/contracts/request-fulfillment/requestintent/httpport"
+	"lead-gen/frontend/components"
 )
 
 // buildOptions — параметры, общие для сборки сервисов в одном процессе.
@@ -66,24 +68,25 @@ type buildOptions struct {
 	leadRedDSN   string // DSN красной зоны; пусто — DSN зелёной зоны
 
 	// Конфигурация хранилища сервиса request-fulfillment.
-	requestGreenDSN     string // DSN зелёной зоны; пусто — in-memory адаптеры
-	firecrawlKey        string // ключ Firecrawl; обязателен для поиска и обхода
-	firecrawlURL        string // базовый адрес Firecrawl; пусто — по умолчанию
-	llmBaseURL          string // базовый адрес LLM (DeepSeek); пусто — по умолчанию
-	llmModel            string // модель LLM; пусто — по умолчанию
-	llmKey              string // ключ LLM; пусто — LLM-планирование отключено
-	consoleUser         string // логин оператора консоли
-	consolePassword     string // пароль оператора консоли
-	leadMaxPages        int    // верхний предел страниц обхода на сайт; 0 — без предела
-	leadMaxDepth        int    // максимальная глубина обхода
-	leadMaxTimeSeconds  int    // предельное время обхода, с
-	dialogueMaxTurns    int    // предел числа ходов диалога ассистента
-	firecrawlMaxCredits int    // лимит кредитов Firecrawl на задачу; 0 — без бюджета
-	smtpHost            string // адрес SMTP-сервера отправки писем
-	smtpPort            int    // порт SMTP-сервера
-	smtpUsername        string // имя учётной записи SMTP
-	smtpPassword        string // пароль учётной записи SMTP
-	smtpFrom            string // адрес отправителя писем
+	requestGreenDSN     string                  // DSN зелёной зоны; пусто — in-memory адаптеры
+	firecrawlKey        string                  // ключ Firecrawl; обязателен для поиска и обхода
+	firecrawlURL        string                  // базовый адрес Firecrawl; пусто — по умолчанию
+	llmBaseURL          string                  // базовый адрес LLM (DeepSeek); пусто — по умолчанию
+	llmModel            string                  // модель LLM; пусто — по умолчанию
+	llmKey              string                  // ключ LLM; пусто — LLM-планирование отключено
+	consoleUser         string                  // логин оператора консоли
+	consolePassword     string                  // пароль оператора консоли
+	console             components.ConsoleBases // базовые адреса сервисов консоли
+	leadMaxPages        int                     // верхний предел страниц обхода на сайт; 0 — без предела
+	leadMaxDepth        int                     // максимальная глубина обхода
+	leadMaxTimeSeconds  int                     // предельное время обхода, с
+	dialogueMaxTurns    int                     // предел числа ходов диалога ассистента
+	firecrawlMaxCredits int                     // лимит кредитов Firecrawl на задачу; 0 — без бюджета
+	smtpHost            string                  // адрес SMTP-сервера отправки писем
+	smtpPort            int                     // порт SMTP-сервера
+	smtpUsername        string                  // имя учётной записи SMTP
+	smtpPassword        string                  // пароль учётной записи SMTP
+	smtpFrom            string                  // адрес отправителя писем
 
 	// Рантайм исполнения заявок (Temporal). workflowClient равен nil, если
 	// рантайм отключён или недоступен: воркер workflow не поднимается, а
@@ -132,6 +135,7 @@ func buildService(
 		return analytics.New(analytics.Config{
 			APIAddr:  opts.apiAddr,
 			Consumer: opts.consumer,
+			Console:  opts.console,
 			Logger:   opts.logger,
 			Metrics:  opts.metrics,
 			Tracer:   tracer,
@@ -164,6 +168,9 @@ func buildService(
 		// Durable-исполнение Temporal требует персистентного адаптера: состояние
 		// заявки и её outbox переживают рестарт процесса.
 		var persist requestfulfillment.Persistence
+		// Стор сессий консоли в общей (зелёной) базе: сессия, выданная другой
+		// консолью той же базы, принимается и здесь. Без DSN — память процесса.
+		var consoleStore consoleauth.Store
 		if strings.TrimSpace(opts.requestGreenDSN) != "" {
 			pool, err := newServicePool(opts.requestGreenDSN, requestfulfillment.ServiceID)
 			if err != nil {
@@ -173,7 +180,19 @@ func buildService(
 				pool.Close()
 				return nil, err
 			}
+			if err := applyMigrations(pool, "backend/platform/consoleauth/migrations/green", consoleauth.Schema); err != nil {
+				pool.Close()
+				return nil, err
+			}
 			persist = requestfulfillment.NewPostgresPersistence(pool)
+			consoleStore = consoleauth.NewPostgresStore(pool)
+		}
+
+		// Консоль заявок с пустыми учётными данными — dev-режим без внешнего
+		// доступа. О нём честно сообщается, чтобы пустые дефолты флагов не
+		// выглядели тихой подменой секретов.
+		if opts.consoleUser == "" || opts.consolePassword == "" {
+			opts.logger.Warn("request-fulfillment: консоль работает с пустыми учётными данными (только dev, без внешнего доступа)", observ.Fields{})
 		}
 
 		return requestfulfillment.New(requestfulfillment.Config{
@@ -200,6 +219,10 @@ func buildService(
 			SearchLeads:                   opts.searchStubLeads,
 			LeadSearch:                    leadSearch,
 			EmailGeneration:               emailGeneration,
+			ConsoleUser:                   opts.consoleUser,
+			ConsolePassword:               opts.consolePassword,
+			ConsoleStore:                  consoleStore,
+			Console:                       opts.console,
 			Logger:                        opts.logger,
 			Metrics:                       opts.metrics,
 			Tracer:                        tracer,
@@ -390,6 +413,9 @@ func buildLeadManagement(opts buildOptions, tracer observ.Tracer, broker amqp.Pu
 	forumClient := integrationplatform.NewForum(integrationplatform.ForumConfig{Search: firecrawlClient})
 
 	var repos leadmanagement.Repositories
+	// Стор сессий консоли в общей (зелёной) базе: сессия, выданная другой
+	// консолью той же базы, принимается и здесь. Без DSN — память процесса.
+	var consoleStore consoleauth.Store
 	if opts.leadGreenDSN == "" {
 		// Dev без внешней СУБД: состояние живёт в памяти процесса.
 		repos = leadmanagement.NewMemoryRepositories()
@@ -418,10 +444,17 @@ func buildLeadManagement(opts buildOptions, tracer observ.Tracer, broker amqp.Pu
 			redPool.Close()
 			return nil, err
 		}
+		// Миграция общей схемы сессий консоли (consoleauth) — в зелёной зоне.
+		if err := applyMigrations(greenPool, "backend/platform/consoleauth/migrations/green", consoleauth.Schema); err != nil {
+			greenPool.Close()
+			redPool.Close()
+			return nil, err
+		}
 
 		// Пулы живут столько же, сколько процесс: сервис не владеет их закрытием
 		// (нет shutdown-хука в composition.Service), поэтому закрываются на выходе.
 		repos = leadmanagement.NewPostgresRepositories(greenPool, redPool)
+		consoleStore = consoleauth.NewPostgresStore(greenPool)
 	}
 
 	var llmPort llm.Port
@@ -476,6 +509,8 @@ func buildLeadManagement(opts buildOptions, tracer observ.Tracer, broker amqp.Pu
 		MailFrom:         opts.smtpFrom,
 		ConsoleUser:      opts.consoleUser,
 		ConsolePassword:  opts.consolePassword,
+		ConsoleStore:     consoleStore,
+		Console:          opts.console,
 		Logger:           opts.logger,
 		Metrics:          opts.metrics,
 		Tracer:           tracer,

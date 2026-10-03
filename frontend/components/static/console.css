@@ -270,6 +270,20 @@ body:has(> .sidebar) .page {
   background: linear-gradient(var(--cold), var(--warming));
 }
 
+/* Вторичная группа под общим разделом: подпункты экранов сервиса. */
+.sidebar-group-label {
+  margin: 1rem 0 0.3rem;
+  padding: 0 0.7rem;
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ink-soft);
+}
+
+.sidebar-list-group a {
+  padding-left: 1.2rem;
+}
+
 /* ============================================================= Поверхности */
 
 /* Роли поверхностей различаются, а не сливаются в одинаковые плашки

@@ -61,6 +61,10 @@ type Dependencies struct {
 	// Access — решение о доступе (роль → ресурс). nil означает, что владелец
 	// политики не подключён: дашборд честно отвечает 503, а не открывает доступ.
 	Access ports.AccessDecider
+
+	// Console — базовые адреса сервисов консоли для общей навигации по разделам
+	// (Заявки, Исполнение, Лиды, Отчёты). Пустые адреса дают относительные пути.
+	Console components.ConsoleBases
 }
 
 // Server — HTTP-сервер среза. Нулевое значение непригодно: используйте
@@ -69,13 +73,14 @@ type Server struct {
 	deps    Dependencies
 	handler http.Handler
 	pages   *components.Set
+	console components.ConsoleBases
 }
 
 // NewServer собирает маршруты среза из переданных сценариев. Шаблоны дашборда
 // разбираются сразу: ошибка разметки видна при сборке сервиса. Если набор не
 // собрался, экран честно отвечает 500.
 func NewServer(deps Dependencies) *Server {
-	server := &Server{deps: deps}
+	server := &Server{deps: deps, console: deps.Console}
 	server.pages, _ = newPages()
 	server.handler = server.routes()
 	return server
@@ -137,8 +142,9 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		CompanyID: r.URL.Query().Get("company_id"),
 	})
 	s.render(w, http.StatusOK, pageDashboard, components.Page{
-		Layout: components.Layout{Title: "Дашборд метрик"},
-		View:   view,
+		Layout:  components.Layout{Title: "Дашборд метрик"},
+		Sidebar: components.ConsoleNav(s.console, components.ConsoleSectionReports),
+		View:    view,
 	})
 }
 

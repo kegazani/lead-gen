@@ -27,6 +27,7 @@ import (
 	"lead-gen/backend/contexts/lead-management/internal/app"
 	"lead-gen/backend/contexts/lead-management/internal/domain"
 	"lead-gen/backend/contexts/lead-management/internal/ports"
+	"lead-gen/backend/platform/consoleauth"
 	"lead-gen/backend/platform/observability/observ"
 	"lead-gen/contracts/integration-platform/budget"
 	"lead-gen/contracts/integration-platform/llm"
@@ -45,9 +46,6 @@ const contentSecurityPolicy = "default-src 'none'; style-src 'self'; script-src 
 // journalLimit — единый предел числа заданий в журнале: и при начальной отрисовке
 // главной, и при живом обновлении фрагмента /jobs (устраняет расхождение 10/50).
 const journalLimit = 100
-
-// ctxSessionKey — ключ контекста запроса с сессией оператора.
-type ctxSessionKey struct{}
 
 // Dependencies — зависимости HTTP-адаптера.
 type Dependencies struct {
@@ -70,6 +68,7 @@ type Dependencies struct {
 	// контракт не смонтирован: эндпоинт честно отвечает 503.
 	EmailGeneration *app.DraftEmailForLead
 	Account         budget.AccountReader // nil — остаток аккаунта не показывается
+	Console         components.ConsoleBases
 	Logger          observ.Logger
 	Auth            AuthConfig
 }
@@ -92,7 +91,8 @@ type Server struct {
 	// email-generation). nil — контракт не смонтирован.
 	emailGeneration *app.DraftEmailForLead
 	account         budget.AccountReader
-	sessions        *sessionManager
+	sessions        *consoleauth.Manager
+	console         components.ConsoleBases
 	pages           *components.Set
 	leadsExport     *template.Template
 	static          http.Handler
@@ -140,7 +140,8 @@ func NewServer(deps Dependencies) *Server {
 		searchLeads:     deps.SearchLeads,
 		emailGeneration: deps.EmailGeneration,
 		account:         deps.Account,
-		sessions:        newSessionManager(deps.Auth),
+		sessions:        consoleauth.New(deps.Auth),
+		console:         deps.Console,
 		pages:           pages,
 		leadsExport:     leadsExport,
 		static:          static,
@@ -200,54 +201,21 @@ func (s *Server) routes() http.Handler {
 	return mux
 }
 
-// authMiddleware требует сессию для всех маршрутов, кроме входа, пробы живости и
-// статики, и проверяет CSRF-токен на изменяющих запросах. Сессия кладётся в
-// контекст запроса, чтобы обработчики не аутентифицировали повторно.
+// authMiddleware требует сессию для всех маршрутов, кроме входа, пробы живости,
+// публичных эндпоинтов контрактов и статики, и проверяет CSRF-токен на изменяющих
+// запросах (кроме выхода). Проверку и раскладку сессии по контексту выполняет
+// общий пакет consoleauth; здесь задаются только правила консоли и отрисовка
+// отказа собственным уведомлением.
 func (s *Server) authMiddleware(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		path := r.URL.Path
-		if path == "/login" || path == "/healthz" || path == "/lead-search" || path == "/email-generation" || strings.HasPrefix(path, "/static/") {
-			next.ServeHTTP(w, r)
-			return
-		}
-		cookie, err := r.Cookie(cookieName)
-		if err != nil {
-			s.redirectLogin(w, r)
-			return
-		}
-		sess, ok := s.sessions.authenticate(cookie.Value)
-		if !ok {
-			s.redirectLogin(w, r)
-			return
-		}
-		if r.Method == http.MethodPost && path != "/logout" {
-			if r.FormValue("csrf") != sess.csrf {
-				s.renderNotice(w, http.StatusForbidden, "Недопустимый запрос", "Отсутствует или неверен CSRF-токен.")
-				return
-			}
-		}
-		ctx := context.WithValue(r.Context(), ctxSessionKey{}, sess)
-		next.ServeHTTP(w, r.WithContext(ctx))
-	})
-}
-
-// redirectLogin перенаправляет на страницу входа.
-func (s *Server) redirectLogin(w http.ResponseWriter, r *http.Request) {
-	http.Redirect(w, r, "/login", http.StatusSeeOther)
-}
-
-// currentSession возвращает сессию оператора из контекста запроса.
-func currentSession(r *http.Request) *session {
-	sess, _ := r.Context().Value(ctxSessionKey{}).(*session)
-	return sess
-}
-
-// csrfToken возвращает CSRF-токен сессии (пусто, если сессии нет).
-func csrfToken(r *http.Request) string {
-	if sess := currentSession(r); sess != nil {
-		return sess.csrf
-	}
-	return ""
+	return s.sessions.Middleware(consoleauth.Policy{
+		LoginPath:      "/login",
+		Public:         []string{"/login", "/healthz", "/lead-search", "/email-generation"},
+		PublicPrefixes: []string{"/static/"},
+		CSRFExempt:     []string{"/logout"},
+		OnCSRFError: func(w http.ResponseWriter, _ *http.Request) {
+			s.renderNotice(w, http.StatusForbidden, "Недопустимый запрос", "Отсутствует или неверен CSRF-токен.")
+		},
+	})(next)
 }
 
 // render отдаёт страницу целиком.
@@ -300,31 +268,16 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 		s.renderNotice(w, http.StatusInternalServerError, "Вход недоступен", "Не удалось создать сессию.")
 		return
 	}
-	http.SetCookie(w, &http.Cookie{
-		Name:     cookieName,
-		Value:    id,
-		Path:     "/",
-		HttpOnly: true,
-		Secure:   isSecure(r),
-		SameSite: http.SameSiteLaxMode,
-	})
+	consoleauth.SetSessionCookie(w, r, id)
 	http.Redirect(w, r, "/", http.StatusSeeOther)
 }
 
 // handleLogout удаляет сессию и перенаправляет на вход.
 func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
-	if cookie, err := r.Cookie(cookieName); err == nil {
+	if cookie, err := r.Cookie(consoleauth.CookieName); err == nil {
 		s.sessions.Logout(cookie.Value)
 	}
-	http.SetCookie(w, &http.Cookie{
-		Name:     cookieName,
-		Value:    "",
-		Path:     "/",
-		HttpOnly: true,
-		Secure:   isSecure(r),
-		SameSite: http.SameSiteLaxMode,
-		MaxAge:   -1,
-	})
+	consoleauth.ClearSessionCookie(w, r)
 	http.Redirect(w, r, "/login", http.StatusSeeOther)
 }
 
@@ -335,7 +288,7 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		s.renderNotice(w, http.StatusInternalServerError, "Главная недоступна", "Не удалось загрузить сводку.")
 		return
 	}
-	s.render(w, http.StatusOK, pageDashboard, pageViewSidebar("Главная", consoleSidebar(sidebarHome), dashboardView{
+	s.render(w, http.StatusOK, pageDashboard, pageViewSidebar("Главная", s.consoleSidebar(sidebarHome), dashboardView{
 		QueryField:           components.Field{ID: "query", Name: "query", Label: "Запрос", Required: true},
 		TargetCompaniesField: components.Field{ID: "targetCompanies", Name: "targetCompanies", Label: "Сколько найти компаний (необязательно)"},
 		MaxResultsField:      components.Field{ID: "maxResults", Name: "maxResults", Label: "Результатов на запрос (необязательно)"},
@@ -378,7 +331,7 @@ func (s *Server) handleJob(w http.ResponseWriter, r *http.Request) {
 	// Переоценка доступна только на терминальном задании с оценками: у running-задания
 	// компании ещё пополняются, а без оценок переоценивать нечего.
 	view.CanReassess = detail.Job.Status.Terminal() && view.Distribution.Total() > 0
-	s.render(w, http.StatusOK, pageJob, pageViewSidebar("Задание", consoleSidebar(sidebarHome), view))
+	s.render(w, http.StatusOK, pageJob, pageViewSidebar("Задание", s.consoleSidebar(sidebarHome), view))
 }
 
 // resultCompanies читает email найденных компаний одним пакетным запросом. Email —
@@ -588,7 +541,7 @@ func (s *Server) handleCards(w http.ResponseWriter, r *http.Request) {
 		view.JobScoped = true
 	}
 
-	s.render(w, http.StatusOK, pageCards, pageViewSidebar("Карточки", consoleSidebar(sidebarCards), view))
+	s.render(w, http.StatusOK, pageCards, pageViewSidebar("Карточки", s.consoleSidebar(sidebarCards), view))
 }
 
 // handleLeads показывает список лидов с email: по строке на лида — ссылка на
@@ -599,7 +552,7 @@ func (s *Server) handleLeads(w http.ResponseWriter, r *http.Request) {
 		s.renderNotice(w, http.StatusInternalServerError, "Лиды недоступны", "Не удалось загрузить лидов.")
 		return
 	}
-	s.render(w, http.StatusOK, pageLeads, pageViewSidebar("Лиды", consoleSidebar(sidebarLeads), leadsView{
+	s.render(w, http.StatusOK, pageLeads, pageViewSidebar("Лиды", s.consoleSidebar(sidebarLeads), leadsView{
 		Rows: leadRows(cards),
 	}))
 }
@@ -733,7 +686,7 @@ func (s *Server) handleCard(w http.ResponseWriter, r *http.Request) {
 		assessment = s.cardAssessment(r.Context(), jobID, card.ID)
 	}
 
-	s.render(w, http.StatusOK, pageCard, pageViewSidebar(card.Name, consoleSidebar(sidebarCards), cardView{
+	s.render(w, http.StatusOK, pageCard, pageViewSidebar(card.Name, s.consoleSidebar(sidebarCards), cardView{
 		Card:         cardDetailFrom(card, history),
 		CSRF:         csrfToken(r),
 		SendKey:      newIdempotencyKey(),
@@ -787,7 +740,7 @@ func (s *Server) handleFunnel(w http.ResponseWriter, r *http.Request) {
 		s.renderNotice(w, http.StatusInternalServerError, "Воронка недоступна", "Не удалось загрузить воронку.")
 		return
 	}
-	s.render(w, http.StatusOK, pageFunnel, pageViewSidebar("Воронка", consoleSidebar(sidebarFunnel), funnelView{
+	s.render(w, http.StatusOK, pageFunnel, pageViewSidebar("Воронка", s.consoleSidebar(sidebarFunnel), funnelView{
 		Stages: funnelStageRows(stages),
 		CSRF:   csrfToken(r),
 	}))
@@ -802,7 +755,7 @@ func (s *Server) handleChangeStage(w http.ResponseWriter, r *http.Request) {
 	stage := domain.Stage(strings.TrimSpace(r.FormValue("stage")))
 	author := ""
 	if sess := currentSession(r); sess != nil {
-		author = sess.username
+		author = sess.Username()
 	}
 	if err := s.changeStage.Change(r.Context(), r.PathValue("id"), stage, author); err != nil {
 		s.renderNotice(w, http.StatusBadRequest, "Не удалось перенести", err.Error())
@@ -871,7 +824,7 @@ func (s *Server) handleSendForm(w http.ResponseWriter, r *http.Request) {
 	selected := strings.TrimSpace(r.URL.Query().Get("template"))
 	valuesHTML, previewHTML := s.composeForScreen(r.Context(), selected, "")
 
-	s.render(w, http.StatusOK, pageSend, pageViewSidebar("Отправка", consoleSidebar(sidebarSend), sendView{
+	s.render(w, http.StatusOK, pageSend, pageViewSidebar("Отправка", s.consoleSidebar(sidebarSend), sendView{
 		CSRF:         csrfToken(r),
 		Sent:         sent,
 		Skipped:      skipped,
@@ -1008,7 +961,7 @@ func (s *Server) handleDeleteTemplate(w http.ResponseWriter, r *http.Request) {
 
 // renderTemplatesPage отдаёт страницу библиотеки с заданной формой и списком.
 func (s *Server) renderTemplatesPage(w http.ResponseWriter, r *http.Request, status int, form templateFormView, list templateListView, errText string) {
-	s.render(w, status, pageTemplates, pageViewSidebar("Библиотека шаблонов", consoleSidebar(sidebarSend), templatesView{
+	s.render(w, status, pageTemplates, pageViewSidebar("Библиотека шаблонов", s.consoleSidebar(sidebarSend), templatesView{
 		CSRF:  csrfToken(r),
 		Error: errText,
 		Form:  form,
@@ -1574,7 +1527,7 @@ func (s *Server) writeStreamError(w http.ResponseWriter, message, history string
 
 // renderAssistant отрисовывает экран ассистента.
 func (s *Server) renderAssistant(w http.ResponseWriter, r *http.Request, view assistantView) {
-	s.render(w, http.StatusOK, pageAssistant, pageViewSidebar("Ассистент", consoleSidebar(sidebarAssistant), view))
+	s.render(w, http.StatusOK, pageAssistant, pageViewSidebar("Ассистент", s.consoleSidebar(sidebarAssistant), view))
 }
 
 // defaultAssistantView собирает представление с операторскими лимитами
@@ -1745,7 +1698,7 @@ func (s *Server) handleForumSignals(w http.ResponseWriter, r *http.Request) {
 		}
 		view.Signals = forumSignalRows(signals)
 	}
-	s.render(w, http.StatusOK, pageForumSignals, pageViewSidebar("Форумы", consoleSidebar(sidebarForum), view))
+	s.render(w, http.StatusOK, pageForumSignals, pageViewSidebar("Форумы", s.consoleSidebar(sidebarForum), view))
 }
 
 // handleHealth — проба живости процесса.
@@ -1753,12 +1706,6 @@ func handleHealth(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	_, _ = w.Write([]byte("ok\n"))
-}
-
-// isSecure сообщает, что запрос пришёл по защищённому каналу (прямой TLS либо
-// обратный прокси).
-func isSecure(r *http.Request) bool {
-	return r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https"
 }
 
 // newIdempotencyKey генерирует ключ идемпотентности формы отправки.

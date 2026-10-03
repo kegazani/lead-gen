@@ -10,6 +10,7 @@ import (
 	"lead-gen/backend/contexts/request-fulfillment/internal/app/query"
 	"lead-gen/backend/contexts/request-fulfillment/internal/domain"
 	"lead-gen/backend/contexts/request-fulfillment/internal/ports"
+	"lead-gen/backend/platform/consoleauth"
 	"lead-gen/frontend/components"
 )
 
@@ -21,6 +22,7 @@ var templateFS embed.FS
 
 // Имена страниц и фрагментов набора шаблонов.
 const (
+	pageLogin            = "templates/login.html"
 	pageValidationQueue  = "templates/validation_queue.html"
 	pageValidationScreen = "templates/validation_screen.html"
 	pageApprovalQueue    = "templates/approval_queue.html"
@@ -29,13 +31,10 @@ const (
 	fragmentApproval     = "approval-status"
 )
 
-// defaultActor — актор перехода экрана, если он не передан (dev-контур без auth).
-const defaultActor = "operator"
-
 // newPages собирает набор шаблонов экрана валидации: каркас и общие фрагменты из
 // frontend/components плюс страницы экрана. Разбор идёт при сборке сервиса.
 func newPages() (*components.Set, error) {
-	return components.New(templateFS, pageValidationQueue, pageValidationScreen, pageApprovalQueue, pageApprovalScreen)
+	return components.New(templateFS, pageLogin, pageValidationQueue, pageValidationScreen, pageApprovalQueue, pageApprovalScreen)
 }
 
 // queueView — модель очереди валидации: заявки submitted текущего тенанта.
@@ -52,6 +51,7 @@ type screenView struct {
 	Actor        string
 	Request      query.RequestView
 	Notice       string
+	CSRF         string
 	CanTake      bool
 	CanEditOffer bool
 	CanDecide    bool
@@ -70,8 +70,9 @@ func (s *Server) handleValidationQueue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.render(w, http.StatusOK, pageValidationQueue, components.Page{
-		Layout: components.Layout{Title: "Очередь валидации"},
-		View:   queueView{TenantID: tenant, Actor: actor, Items: items},
+		Layout:  components.Layout{Title: "Очередь валидации"},
+		Sidebar: s.consoleNav(components.ConsoleSectionRequests),
+		View:    queueView{TenantID: tenant, Actor: actor, Items: items},
 	})
 }
 
@@ -195,7 +196,7 @@ func (s *Server) validationAction(w http.ResponseWriter, r *http.Request, action
 		s.renderFragment(w, http.StatusOK, fragmentOffer, model)
 		return
 	}
-	http.Redirect(w, r, validationScreenURL(r.PathValue("requestID"), tenant, actor), http.StatusSeeOther)
+	http.Redirect(w, r, validationScreenURL(r.PathValue("requestID"), tenant), http.StatusSeeOther)
 }
 
 // renderScreen загружает заявку и рисует экран валидации.
@@ -206,8 +207,9 @@ func (s *Server) renderScreen(w http.ResponseWriter, r *http.Request, status int
 		return
 	}
 	s.render(w, status, pageValidationScreen, components.Page{
-		Layout: components.Layout{Title: "Валидация заявки " + model.Request.RequestID},
-		View:   model,
+		Layout:  components.Layout{Title: "Валидация заявки " + model.Request.RequestID},
+		Sidebar: s.consoleNav(components.ConsoleSectionRequests),
+		View:    model,
 	})
 }
 
@@ -220,7 +222,11 @@ func (s *Server) loadScreen(r *http.Request, tenant, actor, notice string) (scre
 	if err != nil {
 		return screenView{}, err
 	}
-	return screenModel(tenant, actor, notice, view), nil
+	model := screenModel(tenant, actor, notice, view)
+	// CSRF-токен живёт в сессии: подставляем его в формы экрана, чтобы браузер
+	// отправлял его на изменяющих запросах.
+	model.CSRF = consoleauth.CSRF(r)
+	return model, nil
 }
 
 // screenModel собирает модель экрана: какие действия доступны и какие поля показать.
@@ -311,23 +317,21 @@ func lifecycleFromForm(r *http.Request) command.LifecycleFields {
 	}
 }
 
-// actorOf возвращает актора из формы или запроса, подставляя значение по
-// умолчанию. Контур без аутентификации: настоящие роли — platform-governance.
+// actorOf возвращает логин оператора из сессии. Консольные маршруты обёрнуты
+// middleware, поэтому сессия гарантированно есть; пустой актор без сессии честнее
+// выдуманного значения по умолчанию. Настоящие роли — platform-governance.
 func actorOf(r *http.Request) string {
-	for _, value := range []string{r.FormValue("actor"), r.URL.Query().Get("actor")} {
-		if value != "" {
-			return value
-		}
+	if sess := consoleauth.Current(r.Context()); sess != nil {
+		return sess.Username()
 	}
-	return defaultActor
+	return ""
 }
 
-// validationScreenURL собирает адрес экрана валидации заявки.
-func validationScreenURL(requestID, tenant, actor string) string {
+// validationScreenURL собирает адрес экрана валидации заявки. Тенант пока берётся
+// из query (известный пробел до срезов 5/10: тенант должен следовать из сессии);
+// актора в адресе нет — он берётся из сессии.
+func validationScreenURL(requestID, tenant string) string {
 	values := url.Values{}
 	values.Set("tenant_id", tenant)
-	if actor != "" {
-		values.Set("actor", actor)
-	}
 	return "/requests/" + url.PathEscape(requestID) + "/validation?" + values.Encode()
 }

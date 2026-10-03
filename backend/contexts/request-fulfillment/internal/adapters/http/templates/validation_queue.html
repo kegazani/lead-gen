@@ -5,7 +5,7 @@
   <ul class="queue">
   {{- range .View.Items }}
     <li class="queue-item">
-      <a href="/requests/{{.RequestID}}/validation?tenant_id={{urlquery $.View.TenantID}}&amp;actor={{urlquery $.View.Actor}}">{{.Offer.Content}}</a>
+      <a href="/requests/{{.RequestID}}/validation?tenant_id={{urlquery $.View.TenantID}}">{{.Offer.Content}}</a>
       <span class="status status-{{.Status}}">{{.Status}}</span>
     </li>
   {{- else }}

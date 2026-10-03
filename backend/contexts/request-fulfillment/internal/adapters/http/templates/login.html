@@ -1,0 +1,26 @@
+{{- define "content" -}}
+{{- with .View -}}
+<header class="page-head">
+  <h1>Вход</h1>
+</header>
+
+{{- if .Error }}
+<p class="error-text">{{.Error}}</p>
+{{- end }}
+
+<section class="panel">
+  <form method="post" action="/login">
+    <p class="field">
+      <label for="username">Имя пользователя</label>
+      <input id="username" name="username" type="text" autocomplete="username" required>
+    </p>
+    <p class="field">
+      <label for="password">Пароль</label>
+      <input id="password" name="password" type="password" autocomplete="current-password" required>
+    </p>
+    <p class="actions"><button type="submit">Войти</button></p>
+  </form>
+</section>
+{{- end -}}
+{{- end -}}
+</h1>

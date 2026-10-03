@@ -22,12 +22,12 @@
   {{- if .View.CanDecide }}
   <form method="post" action="/requests/{{.View.Request.RequestID}}/approval/approve">
     <input type="hidden" name="tenant_id" value="{{.View.TenantID}}">
-    <input type="hidden" name="actor" value="{{.View.Actor}}">
+    <input type="hidden" name="csrf" value="{{.View.CSRF}}">
     <button type="submit">Утвердить</button>
   </form>
   <form method="post" action="/requests/{{.View.Request.RequestID}}/approval/reject">
     <input type="hidden" name="tenant_id" value="{{.View.TenantID}}">
-    <input type="hidden" name="actor" value="{{.View.Actor}}">
+    <input type="hidden" name="csrf" value="{{.View.CSRF}}">
     <button type="submit">Отклонить</button>
   </form>
   {{- end }}

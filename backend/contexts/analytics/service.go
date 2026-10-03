@@ -18,6 +18,7 @@ import (
 	"lead-gen/backend/platform/messaging/inbox"
 	"lead-gen/backend/platform/observability/observ"
 	"lead-gen/backend/platform/transport/amqp"
+	"lead-gen/frontend/components"
 )
 
 // ServiceID — идентификатор сервиса, равный идентификатору контекста из
@@ -62,6 +63,10 @@ type Config struct {
 	// умолчанию транспортного адаптера.
 	EventQueue string
 
+	// Console — базовые адреса сервисов консоли для общей навигации по разделам
+	// (Заявки, Исполнение, Лиды, Отчёты). Пустые адреса дают относительные пути.
+	Console components.ConsoleBases
+
 	// Наблюдаемость сервиса: логгер, метрики и трейсер впрыскиваются
 	// composition root'ом; обязательны.
 	Logger  observ.Logger
@@ -105,6 +110,7 @@ func Build(cfg Config) (*Slice, error) {
 		Dashboard: dashboard,
 		Events:    events,
 		Access:    access,
+		Console:   cfg.Console,
 	})
 
 	return &Slice{

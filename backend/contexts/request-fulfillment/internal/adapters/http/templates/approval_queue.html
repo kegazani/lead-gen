@@ -8,7 +8,7 @@
   <ul class="queue">
   {{- range .View.Items }}
     <li class="queue-item">
-      <a href="/requests/{{.RequestID}}/approval?tenant_id={{urlquery $.View.TenantID}}&amp;actor={{urlquery $.View.Actor}}">{{.Offer.Content}}</a>
+      <a href="/requests/{{.RequestID}}/approval?tenant_id={{urlquery $.View.TenantID}}">{{.Offer.Content}}</a>
       <span class="status status-{{.Phase}}">{{.Phase}}</span>
       <span class="found">Найдено лидов: {{.Found}}</span>
     </li>

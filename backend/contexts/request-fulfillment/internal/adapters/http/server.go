@@ -16,6 +16,7 @@ import (
 	"lead-gen/backend/contexts/request-fulfillment/internal/app/query"
 	"lead-gen/backend/contexts/request-fulfillment/internal/domain"
 	"lead-gen/backend/contexts/request-fulfillment/internal/ports"
+	"lead-gen/backend/platform/consoleauth"
 	"lead-gen/frontend/components"
 )
 
@@ -26,6 +27,11 @@ const (
 
 	contentTypeJSON = "application/json; charset=utf-8"
 	contentTypeHTML = "text/html; charset=utf-8"
+
+	// contentSecurityPolicy — политика безопасности консольных HTML-экранов
+	// заявок. Повторяет политику консоли lead-management: без неё разметка
+	// остаётся без ограничений на источники стилей, скриптов и форм.
+	contentSecurityPolicy = "default-src 'none'; style-src 'self'; script-src 'self'; img-src 'self'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'"
 )
 
 // Dependencies — внешние зависимости HTTP-адаптера: прикладные сценарии
@@ -86,6 +92,15 @@ type Dependencies struct {
 	// готовности (/readyz). nil означает, что рантайм не подключён: готовность не
 	// зависит от отсутствующей зависимости, и проба отвечает «готов».
 	Runtime RuntimeProbe
+
+	// Console — базовые адреса сервисов консоли для общей навигации по разделам
+	// (Заявки, Исполнение, Лиды, Отчёты). Пустые адреса дают относительные пути.
+	Console components.ConsoleBases
+
+	// Auth — учётные данные оператора консоли заявок и общий стор сессий. Пустое
+	// CookieName означает общее имя cookie "session": вход в консоль заявок
+	// действителен и в консоли lead-management, когда обе делят стор сессий.
+	Auth consoleauth.Config
 }
 
 // RuntimeProbe — признак доступности рантайма исполнения. Реализуется
@@ -98,19 +113,28 @@ type RuntimeProbe interface {
 // Server — HTTP-сервер среза. Нулевое значение непригодно: используйте
 // NewServer.
 type Server struct {
-	deps    Dependencies
-	handler http.Handler
-	pages   *components.Set
+	deps     Dependencies
+	handler  http.Handler
+	pages    *components.Set
+	sessions *consoleauth.Manager
+	console  components.ConsoleBases
 }
 
 // NewServer собирает маршруты среза из переданных сценариев. Шаблоны экрана
 // разбираются сразу: ошибка разметки видна при сборке сервиса. Если набор не
 // собрался, HTTP-часть с данными продолжает работать, а экран честно отвечает 500.
 func NewServer(deps Dependencies) *Server {
-	server := &Server{deps: deps}
+	server := &Server{deps: deps, sessions: consoleauth.New(deps.Auth), console: deps.Console}
 	server.pages, _ = newPages()
 	server.handler = server.routes()
 	return server
+}
+
+// consoleNav собирает общую навигацию консоли с активным разделом. Сервис
+// заявок владеет разделами «Заявки» и «Исполнение»: их пункты относительны,
+// остальные ведут в свои сервисы по базовым адресам.
+func (s *Server) consoleNav(active string) components.Nav {
+	return components.ConsoleNav(s.console, active)
 }
 
 // ServeHTTP реализует http.Handler.
@@ -125,8 +149,18 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 }
 
 // routes объявляет маршруты среза.
+//
+// Маршруты оборачиваются поштучно, а не общим middleware по префиксу: пути
+// контрактных JSON-эндпоинтов и консольных экранов переплетены (например,
+// /requests/{id}/validation/*), а контрактные обязаны оставаться анонимными.
 func (s *Server) routes() http.Handler {
 	mux := http.NewServeMux()
+
+	// Вход и выход консоли: публичные HTML-страницы под теми же заголовками
+	// безопасности, что и остальные экраны.
+	mux.Handle("GET /login", s.publicHTML(s.handleLoginForm))
+	mux.Handle("POST /login", s.publicHTML(s.handleLogin))
+	mux.Handle("GET /logout", s.publicHTML(s.handleLogout))
 
 	// Корень сервиса ведёт на очередь валидации, а не отвечает 404.
 	mux.HandleFunc("GET /{$}", s.handleRoot)
@@ -156,23 +190,90 @@ func (s *Server) routes() http.Handler {
 
 	// Экран валидации (HTMX + серверный рендеринг) — эксплуатационная проекция
 	// роли api. Действия — POST/redirect/GET; частичные ответы — для HTMX.
-	mux.HandleFunc("GET /validation", s.handleValidationQueue)
-	mux.HandleFunc("GET /requests/{requestID}/validation", s.handleValidationScreen)
-	mux.HandleFunc("POST /requests/{requestID}/validation/take", s.handleValidationTake)
-	mux.HandleFunc("POST /requests/{requestID}/validation/offer", s.handleValidationOffer)
-	mux.HandleFunc("POST /requests/{requestID}/validation/approve", s.handleValidationApprove)
-	mux.HandleFunc("POST /requests/{requestID}/validation/reject", s.handleValidationReject)
-	mux.HandleFunc("POST /requests/{requestID}/validation/call", s.handleValidationCall)
+	// Консольные маршруты требуют сессию оператора, а изменяющие — CSRF-токен.
+	mux.Handle("GET /validation", s.consoleHandler(s.handleValidationQueue))
+	mux.Handle("GET /requests/{requestID}/validation", s.consoleHandler(s.handleValidationScreen))
+	mux.Handle("POST /requests/{requestID}/validation/take", s.consoleHandler(s.handleValidationTake))
+	mux.Handle("POST /requests/{requestID}/validation/offer", s.consoleHandler(s.handleValidationOffer))
+	mux.Handle("POST /requests/{requestID}/validation/approve", s.consoleHandler(s.handleValidationApprove))
+	mux.Handle("POST /requests/{requestID}/validation/reject", s.consoleHandler(s.handleValidationReject))
+	mux.Handle("POST /requests/{requestID}/validation/call", s.consoleHandler(s.handleValidationCall))
 
 	// Экран утверждения результата фулфилмента (HTMX + серверный рендеринг):
 	// очередь ожидающих решения, экран заявки и кнопки решения. Действия —
 	// POST/redirect/GET; частичные ответы — для HTMX.
-	mux.HandleFunc("GET /approvals", s.handleApprovalQueue)
-	mux.HandleFunc("GET /requests/{requestID}/approval", s.handleApprovalScreen)
-	mux.HandleFunc("POST /requests/{requestID}/approval/approve", s.handleApprovalApprove)
-	mux.HandleFunc("POST /requests/{requestID}/approval/reject", s.handleApprovalReject)
+	mux.Handle("GET /approvals", s.consoleHandler(s.handleApprovalQueue))
+	mux.Handle("GET /requests/{requestID}/approval", s.consoleHandler(s.handleApprovalScreen))
+	mux.Handle("POST /requests/{requestID}/approval/approve", s.consoleHandler(s.handleApprovalApprove))
+	mux.Handle("POST /requests/{requestID}/approval/reject", s.consoleHandler(s.handleApprovalReject))
 
 	return mux
+}
+
+// publicHTML навешивает заголовки безопасности на публичную HTML-страницу
+// консоли (вход, выход): сессия на них не требуется.
+func (s *Server) publicHTML(next http.HandlerFunc) http.Handler {
+	return components.SecurityHeaders(contentSecurityPolicy)(next)
+}
+
+// consoleHandler оборачивает консольный экран заголовками безопасности и
+// требованием сессии: без валидной cookie запрос редиректится на вход, а
+// изменяющий — без верного CSRF — отклоняется.
+func (s *Server) consoleHandler(next http.HandlerFunc) http.Handler {
+	return components.SecurityHeaders(contentSecurityPolicy)(s.authMiddleware(next))
+}
+
+// authMiddleware требует сессию для обёрнутых консольных маршрутов и проверяет
+// CSRF-токен на изменяющих запросах. Правила задаёт общий пакет consoleauth; здесь
+// только путь входа. Отказ по CSRF — стандартный 403 пакета: разметка отказа на
+// экранах заявок не отличается от остальных ошибок транспорта.
+func (s *Server) authMiddleware(next http.Handler) http.Handler {
+	return s.sessions.Middleware(consoleauth.Policy{LoginPath: "/login"})(next)
+}
+
+// loginView — модель страницы входа.
+type loginView struct {
+	Error string
+}
+
+// handleLoginForm показывает форму входа оператора.
+func (s *Server) handleLoginForm(w http.ResponseWriter, r *http.Request) {
+	s.render(w, http.StatusOK, pageLogin, components.Page{
+		Layout: components.Layout{Title: "Вход"},
+		View:   loginView{},
+	})
+}
+
+// handleLogin проверяет учётные данные и ставит cookie сессии консоли заявок.
+func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
+	if err := r.ParseForm(); err != nil {
+		s.renderPlainError(w, http.StatusBadRequest, "разбор формы: "+err.Error())
+		return
+	}
+	id, err := s.sessions.Login(r.FormValue("username"), r.FormValue("password"))
+	if errors.Is(err, consoleauth.ErrInvalidCredentials) {
+		s.render(w, http.StatusUnauthorized, pageLogin, components.Page{
+			Layout: components.Layout{Title: "Вход"},
+			View:   loginView{Error: "Неверный логин или пароль."},
+		})
+		return
+	}
+	if err != nil {
+		s.renderPlainError(w, http.StatusInternalServerError, "не удалось создать сессию")
+		return
+	}
+	s.sessions.SetSessionCookie(w, r, id)
+	http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
+// handleLogout удаляет сессию консоли заявок и ведёт на вход. Выход доступен без
+// сессии и идемпотентен.
+func (s *Server) handleLogout(w http.ResponseWriter, r *http.Request) {
+	if cookie, err := r.Cookie(s.sessions.CookieName()); err == nil {
+		s.sessions.Logout(cookie.Value)
+	}
+	s.sessions.ClearSessionCookie(w, r)
+	http.Redirect(w, r, "/login", http.StatusSeeOther)
 }
 
 // errorResponse — единая форма ошибки HTTP-слоя.

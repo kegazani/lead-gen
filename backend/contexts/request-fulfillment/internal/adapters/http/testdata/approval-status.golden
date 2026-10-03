@@ -1,0 +1,6 @@
+<article class="approval-status">
+  <h2>Исполнение</h2>
+  <p class="phase">Фаза: <span class="status status-awaiting-approval">awaiting-approval</span></p>
+  <p class="execution">Состояние: RUNNING</p>
+  <p class="found">Найдено лидов: 4</p>
+</article>

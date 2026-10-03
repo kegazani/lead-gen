@@ -33,18 +33,26 @@ const (
 // provenance (frontend/components): источник и дата — одна единица разметки.
 const dateFormat = "2006-01-02"
 
-// consoleSidebar собирает боковую навигацию консоли. Активный раздел подсвечивается
-// по ключу; подписи и адреса — данные представления, не доменные термины.
-func consoleSidebar(active string) components.Nav {
-	return components.Nav{Items: []components.NavItem{
-		{Label: "Главная", Href: "/", Active: active == sidebarHome},
-		{Label: "Карточки", Href: "/cards", Active: active == sidebarCards},
-		{Label: "Лиды", Href: "/leads", Active: active == sidebarLeads},
-		{Label: "Воронка", Href: "/funnel", Active: active == sidebarFunnel},
-		{Label: "Отправка", Href: "/send", Active: active == sidebarSend},
-		{Label: "Ассистент", Href: "/assistant", Active: active == sidebarAssistant},
-		{Label: "Форумы", Href: "/forum-signals", Active: active == sidebarForum},
+// consoleSidebar собирает общую навигацию консоли: канонические разделы
+// (Заявки, Исполнение, Лиды, Отчёты) и вторичный список экранов lead-management
+// под разделом «Лиды». Активный общий раздел — «Лиды»; конкретный подпункт
+// подсвечивается по ключу экрана. Подписи и адреса — данные представления, не
+// доменные термины.
+func (s *Server) consoleSidebar(active string) components.Nav {
+	nav := components.ConsoleNav(s.console, components.ConsoleSectionLeads)
+	nav.Groups = []components.NavGroup{{
+		Label: "Экраны лидов",
+		Items: []components.NavItem{
+			{Label: "Главная", Href: "/", Active: active == sidebarHome},
+			{Label: "Карточки", Href: "/cards", Active: active == sidebarCards},
+			{Label: "Лиды", Href: "/leads", Active: active == sidebarLeads},
+			{Label: "Воронка", Href: "/funnel", Active: active == sidebarFunnel},
+			{Label: "Отправка", Href: "/send", Active: active == sidebarSend},
+			{Label: "Ассистент", Href: "/assistant", Active: active == sidebarAssistant},
+			{Label: "Форумы", Href: "/forum-signals", Active: active == sidebarForum},
+		},
 	}}
+	return nav
 }
 
 // pageView собирает страницу без боковой навигации (вход, уведомление).

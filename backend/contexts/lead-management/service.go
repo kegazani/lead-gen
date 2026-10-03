@@ -11,6 +11,7 @@ import (
 	"lead-gen/backend/contexts/lead-management/internal/app"
 	"lead-gen/backend/contexts/lead-management/internal/ports"
 	composition "lead-gen/backend/platform/composition"
+	"lead-gen/backend/platform/consoleauth"
 	"lead-gen/backend/platform/jobs"
 	"lead-gen/backend/platform/observability/observ"
 	"lead-gen/contracts/integration-platform/budget"
@@ -19,6 +20,7 @@ import (
 	"lead-gen/contracts/integration-platform/llm"
 	"lead-gen/contracts/integration-platform/mail"
 	"lead-gen/contracts/integration-platform/search"
+	"lead-gen/frontend/components"
 )
 
 // ServiceID — идентификатор сервиса, равный идентификатору контекста из каталога.
@@ -77,6 +79,15 @@ type Config struct {
 	// dev-прогона без внешнего доступа).
 	ConsoleUser     string
 	ConsolePassword string
+
+	// ConsoleStore — хранилище сессий оператора. nil — память процесса
+	// (поведение как раньше). Общий стор (PostgreSQL) делает сессию, выданную
+	// другой консолью, действительной и здесь.
+	ConsoleStore consoleauth.Store
+
+	// Console — базовые адреса сервисов консоли для общей навигации по разделам
+	// (Заявки, Исполнение, Лиды, Отчёты). Пустые адреса дают относительные пути.
+	Console components.ConsoleBases
 
 	// Clock — часы; nil — системное время.
 	Clock ports.Clock
@@ -264,10 +275,12 @@ func New(cfg Config) (*Service, error) {
 		SearchLeads:     searchLeads,
 		EmailGeneration: draftEmail,
 		Account:         cfg.Account,
+		Console:         cfg.Console,
 		Logger:          cfg.Logger,
 		Auth: httpapi.AuthConfig{
 			Username: cfg.ConsoleUser,
 			Password: cfg.ConsolePassword,
+			Store:    cfg.ConsoleStore,
 		},
 	})
 	runner := &jobs.Runner{

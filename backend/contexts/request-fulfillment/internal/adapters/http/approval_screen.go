@@ -8,6 +8,7 @@ import (
 	"lead-gen/backend/contexts/request-fulfillment/internal/app/query"
 	"lead-gen/backend/contexts/request-fulfillment/internal/domain"
 	"lead-gen/backend/contexts/request-fulfillment/internal/ports"
+	"lead-gen/backend/platform/consoleauth"
 	"lead-gen/frontend/components"
 )
 
@@ -29,6 +30,7 @@ type approvalView struct {
 	Actor       string
 	Request     query.RequestView
 	Notice      string
+	CSRF        string
 	Phase       string
 	Execution   string
 	Found       int
@@ -58,8 +60,9 @@ func (s *Server) handleApprovalQueue(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 	s.render(w, http.StatusOK, pageApprovalQueue, components.Page{
-		Layout: components.Layout{Title: "Очередь утверждения"},
-		View:   view,
+		Layout:  components.Layout{Title: "Очередь утверждения"},
+		Sidebar: s.consoleNav(components.ConsoleSectionExecution),
+		View:    view,
 	})
 }
 
@@ -112,7 +115,7 @@ func (s *Server) approvalDecision(w http.ResponseWriter, r *http.Request, approv
 		s.renderPageFragment(w, http.StatusOK, pageApprovalScreen, fragmentApproval, model)
 		return
 	}
-	http.Redirect(w, r, approvalScreenURL(r.PathValue("requestID"), tenant, actor), http.StatusSeeOther)
+	http.Redirect(w, r, approvalScreenURL(r.PathValue("requestID"), tenant), http.StatusSeeOther)
 }
 
 // renderApprovalScreen загружает заявку и состояние исполнения и рисует экран.
@@ -123,8 +126,9 @@ func (s *Server) renderApprovalScreen(w http.ResponseWriter, r *http.Request, st
 		return
 	}
 	s.render(w, status, pageApprovalScreen, components.Page{
-		Layout: components.Layout{Title: "Утверждение заявки " + model.Request.RequestID},
-		View:   model,
+		Layout:  components.Layout{Title: "Утверждение заявки " + model.Request.RequestID},
+		Sidebar: s.consoleNav(components.ConsoleSectionExecution),
+		View:    model,
 	})
 }
 
@@ -139,7 +143,7 @@ func (s *Server) loadApproval(r *http.Request, tenant, actor, notice string) (ap
 	if err != nil {
 		return approvalView{}, err
 	}
-	model := approvalView{TenantID: tenant, Actor: actor, Request: view, Notice: notice}
+	model := approvalView{TenantID: tenant, Actor: actor, Request: view, Notice: notice, CSRF: consoleauth.CSRF(r)}
 	if s.deps.WorkflowStatus == nil {
 		model.Unavailable = true
 		return model, nil
@@ -163,12 +167,11 @@ func (s *Server) loadApproval(r *http.Request, tenant, actor, notice string) (ap
 	return model, nil
 }
 
-// approvalScreenURL собирает адрес экрана утверждения заявки.
-func approvalScreenURL(requestID, tenant, actor string) string {
+// approvalScreenURL собирает адрес экрана утверждения заявки. Тенант пока берётся
+// из query (известный пробел до срезов 5/10: тенант должен следовать из сессии);
+// актора в адресе нет — он берётся из сессии.
+func approvalScreenURL(requestID, tenant string) string {
 	values := url.Values{}
 	values.Set("tenant_id", tenant)
-	if actor != "" {
-		values.Set("actor", actor)
-	}
 	return "/requests/" + url.PathEscape(requestID) + "/approval?" + values.Encode()
 }

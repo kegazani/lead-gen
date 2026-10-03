@@ -26,7 +26,18 @@ import (
 	"lead-gen/backend/platform/observability/observ"
 	"lead-gen/backend/platform/transport/amqp"
 	platformworkflow "lead-gen/backend/platform/workflow"
+	"lead-gen/frontend/components"
 )
+
+// envOr возвращает значение переменной окружения или значение по умолчанию,
+// если переменная пуста. Позволяет задавать адреса консолей и ENV, и флагом:
+// ENV становится значением по умолчанию, а явный флаг его перекрывает.
+func envOr(name, fallback string) string {
+	if value := strings.TrimSpace(os.Getenv(name)); value != "" {
+		return value
+	}
+	return fallback
+}
 
 func main() {
 	configPath := flag.String("config", "deploy/services.yaml", "путь к конфигурации развёртывания")
@@ -55,6 +66,13 @@ func main() {
 	llmKey := flag.String("llm-key", "", "ключ доступа LLM (пусто — LLM-планирование отключено)")
 	consoleUser := flag.String("console-user", "", "логин оператора консоли (пусто — вход с пустыми учётными данными, только dev)")
 	consolePassword := flag.String("console-password", "", "пароль оператора консоли (пусто — вход с пустыми учётными данными, только dev)")
+
+	// Базовые адреса сервисов консоли для общей навигации по разделам. Каждый
+	// задаётся ENV или флагом (флаг перекрывает ENV), по умолчанию — порты
+	// консолей из compose на локальной машине.
+	consoleLeadsURL := flag.String("console-leads-url", envOr("CONSOLE_LEADS_URL", "http://localhost:8080"), "базовый адрес консоли lead-management (раздел «Лиды»)")
+	consoleRequestsURL := flag.String("console-requests-url", envOr("CONSOLE_REQUESTS_URL", "http://localhost:8081"), "базовый адрес консоли request-fulfillment (разделы «Заявки» и «Исполнение»)")
+	consoleReportsURL := flag.String("console-reports-url", envOr("CONSOLE_REPORTS_URL", "http://localhost:8083"), "базовый адрес консоли analytics (раздел «Отчёты»)")
 	leadMaxPages := flag.Int("lead-max-pages", 50, "верхний предел страниц обхода на один сайт (внутренний предохранитель; 0 — без предела)")
 	leadMaxDepth := flag.Int("lead-max-depth", 3, "максимальная глубина обхода lead-management")
 	leadMaxTimeSeconds := flag.Int("lead-max-time-seconds", 120, "предельное время обхода lead-management, с")
@@ -164,27 +182,32 @@ func main() {
 	}
 
 	opts := buildOptions{
-		logger:              logger,
-		metrics:             metrics,
-		apiAddr:             *apiAddr,
-		ingestAddr:          *ingestAddr,
-		requestIntentURL:    *requestIntentURL,
-		leadSearchURL:       *leadSearchURL,
-		emailGenerationURL:  *emailGenerationURL,
-		consumer:            consumer,
-		publishInterval:     *publishInterval,
-		actor:               *actor,
-		tenant:              *tenant,
-		leadGreenDSN:        *leadGreenDSN,
-		leadRedDSN:          *leadRedDSN,
-		requestGreenDSN:     *requestGreenDSN,
-		firecrawlKey:        *firecrawlKey,
-		firecrawlURL:        *firecrawlURL,
-		llmBaseURL:          *llmBaseURL,
-		llmModel:            *llmModel,
-		llmKey:              *llmKey,
-		consoleUser:         *consoleUser,
-		consolePassword:     *consolePassword,
+		logger:             logger,
+		metrics:            metrics,
+		apiAddr:            *apiAddr,
+		ingestAddr:         *ingestAddr,
+		requestIntentURL:   *requestIntentURL,
+		leadSearchURL:      *leadSearchURL,
+		emailGenerationURL: *emailGenerationURL,
+		consumer:           consumer,
+		publishInterval:    *publishInterval,
+		actor:              *actor,
+		tenant:             *tenant,
+		leadGreenDSN:       *leadGreenDSN,
+		leadRedDSN:         *leadRedDSN,
+		requestGreenDSN:    *requestGreenDSN,
+		firecrawlKey:       *firecrawlKey,
+		firecrawlURL:       *firecrawlURL,
+		llmBaseURL:         *llmBaseURL,
+		llmModel:           *llmModel,
+		llmKey:             *llmKey,
+		consoleUser:        *consoleUser,
+		consolePassword:    *consolePassword,
+		console: components.ConsoleBases{
+			components.ConsoleServiceLeads:    *consoleLeadsURL,
+			components.ConsoleServiceRequests: *consoleRequestsURL,
+			components.ConsoleServiceReports:  *consoleReportsURL,
+		},
 		leadMaxPages:        *leadMaxPages,
 		leadMaxDepth:        *leadMaxDepth,
 		leadMaxTimeSeconds:  *leadMaxTimeSeconds,

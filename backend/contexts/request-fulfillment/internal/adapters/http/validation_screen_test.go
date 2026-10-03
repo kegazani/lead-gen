@@ -23,7 +23,11 @@ func newScreenServer(t *testing.T) *httptest.Server {
 // портом запуска workflow (nil — рантайм не подключён) и поданной заявкой.
 func newScreenServerWithStarter(t *testing.T, starter ports.WorkflowStarter) *httptest.Server {
 	t.Helper()
-	slice, err := requestfulfillment.Build(requestfulfillment.Config{WorkflowStarter: starter})
+	slice, err := requestfulfillment.Build(requestfulfillment.Config{
+		WorkflowStarter: starter,
+		ConsoleUser:     consoleUser,
+		ConsolePassword: consolePassword,
+	})
 	if err != nil {
 		t.Fatalf("сборка среза: %v", err)
 	}
@@ -56,26 +60,19 @@ func (r *recordingStarter) StartFulfillment(_ context.Context, in ports.StartFul
 	return ports.WorkflowRun{WorkflowID: "fulfillment-" + in.RequestID, RunID: "run-1"}, nil
 }
 
-// postForm отправляет форму экрана и возвращает ответ без автоматического
-// следования за перенаправлением.
-func postForm(t *testing.T, server *httptest.Server, path string, form url.Values) *http.Response {
-	t.Helper()
-	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error {
-		return http.ErrUseLastResponse
-	}}
-	resp, err := client.PostForm(server.URL+path, form)
-	if err != nil {
-		t.Fatalf("отправка формы %s: %v", path, err)
-	}
-	return resp
+// validationScreenPath — адрес экрана валидации заявки.
+func validationScreenPath() string {
+	return "/requests/" + requestID + "/validation?tenant_id=" + tenantID
 }
 
 // TestValidationQueueScreen проверяет очередь валидации: поданная заявка видна на
 // экране, а чужой тенант её не видит.
 func TestValidationQueueScreen(t *testing.T) {
 	server := newScreenServer(t)
+	client := newConsoleClient(server)
+	client.login(t)
 
-	body := readBody(t, do(t, server, http.MethodGet, "/validation?tenant_id="+tenantID, nil))
+	body := readBody(t, client.get(t, "/validation?tenant_id="+tenantID))
 	if !strings.Contains(body, "Предлагаем автоматизацию найма") {
 		t.Fatalf("очередь валидации не показала заявку: %s", body)
 	}
@@ -83,7 +80,7 @@ func TestValidationQueueScreen(t *testing.T) {
 		t.Fatalf("ответ не является полной HTML-страницей: %s", body)
 	}
 
-	other := readBody(t, do(t, server, http.MethodGet, "/validation?tenant_id=tenant-2", nil))
+	other := readBody(t, client.get(t, "/validation?tenant_id=tenant-2"))
 	if strings.Contains(other, "Предлагаем автоматизацию найма") {
 		t.Fatal("очередь показала заявку чужого тенанта")
 	}
@@ -93,16 +90,22 @@ func TestValidationQueueScreen(t *testing.T) {
 // работу, правку оффера, одобрение.
 func TestValidationScreenLifecycle(t *testing.T) {
 	server := newScreenServer(t)
+	client := newConsoleClient(server)
+	client.login(t)
 
 	// Экран просит взять заявку в работу.
-	screen := readBody(t, do(t, server, http.MethodGet, "/requests/"+requestID+"/validation?tenant_id="+tenantID+"&actor=admin", nil))
+	screen := readBody(t, client.get(t, validationScreenPath()))
 	if !strings.Contains(screen, "Взять в работу") {
 		t.Fatalf("экран не предложил взять заявку в работу: %s", screen)
 	}
+	csrf := csrfFromHTML(screen)
+	if csrf == "" {
+		t.Fatalf("экран не содержит CSRF-токена: %s", screen)
+	}
 
 	// Взятие в работу: POST/redirect/GET.
-	resp := postForm(t, server, "/requests/"+requestID+"/validation/take", url.Values{
-		"tenant_id": {tenantID}, "actor": {"admin"},
+	resp := client.postForm(t, "/requests/"+requestID+"/validation/take", url.Values{
+		"tenant_id": {tenantID}, "csrf": {csrf},
 	})
 	if resp.StatusCode != http.StatusSeeOther {
 		t.Fatalf("взятие в работу = %d, ожидался 303: %s", resp.StatusCode, readBody(t, resp))
@@ -110,8 +113,8 @@ func TestValidationScreenLifecycle(t *testing.T) {
 	resp.Body.Close()
 
 	// Правка оффера на месте.
-	resp = postForm(t, server, "/requests/"+requestID+"/validation/offer", url.Values{
-		"tenant_id": {tenantID}, "actor": {"admin"},
+	resp = client.postForm(t, "/requests/"+requestID+"/validation/offer", url.Values{
+		"tenant_id": {tenantID}, "csrf": {csrf},
 		"content": {"Уточнённый оффер"}, "target": {"SaaS-компании"},
 	})
 	if resp.StatusCode != http.StatusSeeOther {
@@ -119,21 +122,21 @@ func TestValidationScreenLifecycle(t *testing.T) {
 	}
 	resp.Body.Close()
 
-	screen = readBody(t, do(t, server, http.MethodGet, "/requests/"+requestID+"/validation?tenant_id="+tenantID+"&actor=admin", nil))
+	screen = readBody(t, client.get(t, validationScreenPath()))
 	if !strings.Contains(screen, "Уточнённый оффер") || !strings.Contains(screen, "Одобрить") {
 		t.Fatalf("экран не отразил правку и решения: %s", screen)
 	}
 
 	// Одобрение.
-	resp = postForm(t, server, "/requests/"+requestID+"/validation/approve", url.Values{
-		"tenant_id": {tenantID}, "actor": {"admin"},
+	resp = client.postForm(t, "/requests/"+requestID+"/validation/approve", url.Values{
+		"tenant_id": {tenantID}, "csrf": {csrf},
 	})
 	if resp.StatusCode != http.StatusSeeOther {
 		t.Fatalf("одобрение = %d, ожидался 303: %s", resp.StatusCode, readBody(t, resp))
 	}
 	resp.Body.Close()
 
-	screen = readBody(t, do(t, server, http.MethodGet, "/requests/"+requestID+"/validation?tenant_id="+tenantID, nil))
+	screen = readBody(t, client.get(t, validationScreenPath()))
 	if !strings.Contains(screen, "Решение валидации") || !strings.Contains(screen, "approved") {
 		t.Fatalf("экран не показал решение валидации: %s", screen)
 	}
@@ -143,12 +146,16 @@ func TestValidationScreenLifecycle(t *testing.T) {
 // без причины и показывает ошибку.
 func TestValidationRejectRequiresReason(t *testing.T) {
 	server := newScreenServer(t)
-	postForm(t, server, "/requests/"+requestID+"/validation/take", url.Values{
-		"tenant_id": {tenantID}, "actor": {"admin"},
+	client := newConsoleClient(server)
+	client.login(t)
+	csrf := client.csrfForPage(t, validationScreenPath())
+
+	client.postForm(t, "/requests/"+requestID+"/validation/take", url.Values{
+		"tenant_id": {tenantID}, "csrf": {csrf},
 	}).Body.Close()
 
-	resp := postForm(t, server, "/requests/"+requestID+"/validation/reject", url.Values{
-		"tenant_id": {tenantID}, "actor": {"admin"},
+	resp := client.postForm(t, "/requests/"+requestID+"/validation/reject", url.Values{
+		"tenant_id": {tenantID}, "csrf": {csrf},
 	})
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("отклонение без причины = %d, ожидался 400: %s", resp.StatusCode, readBody(t, resp))
@@ -163,12 +170,16 @@ func TestValidationRejectRequiresReason(t *testing.T) {
 // экране и не выдаётся за успех.
 func TestValidationCallUnavailable(t *testing.T) {
 	server := newScreenServer(t)
-	postForm(t, server, "/requests/"+requestID+"/validation/take", url.Values{
-		"tenant_id": {tenantID}, "actor": {"admin"},
+	client := newConsoleClient(server)
+	client.login(t)
+	csrf := client.csrfForPage(t, validationScreenPath())
+
+	client.postForm(t, "/requests/"+requestID+"/validation/take", url.Values{
+		"tenant_id": {tenantID}, "csrf": {csrf},
 	}).Body.Close()
 
-	resp := postForm(t, server, "/requests/"+requestID+"/validation/call", url.Values{
-		"tenant_id": {tenantID}, "actor": {"admin"},
+	resp := client.postForm(t, "/requests/"+requestID+"/validation/call", url.Values{
+		"tenant_id": {tenantID}, "csrf": {csrf},
 	})
 	defer resp.Body.Close()
 	if resp.StatusCode != http.StatusServiceUnavailable {
@@ -185,13 +196,16 @@ func TestValidationCallUnavailable(t *testing.T) {
 func TestValidationApproveStartsWorkflow(t *testing.T) {
 	starter := &recordingStarter{}
 	server := newScreenServerWithStarter(t, starter)
+	client := newConsoleClient(server)
+	client.login(t)
+	csrf := client.csrfForPage(t, validationScreenPath())
 
-	postForm(t, server, "/requests/"+requestID+"/validation/take", url.Values{
-		"tenant_id": {tenantID}, "actor": {"admin"},
+	client.postForm(t, "/requests/"+requestID+"/validation/take", url.Values{
+		"tenant_id": {tenantID}, "csrf": {csrf},
 	}).Body.Close()
 
-	resp := postForm(t, server, "/requests/"+requestID+"/validation/approve", url.Values{
-		"tenant_id": {tenantID}, "actor": {"admin"},
+	resp := client.postForm(t, "/requests/"+requestID+"/validation/approve", url.Values{
+		"tenant_id": {tenantID}, "csrf": {csrf},
 	})
 	if resp.StatusCode != http.StatusSeeOther {
 		t.Fatalf("одобрение = %d, ожидался 303: %s", resp.StatusCode, readBody(t, resp))
@@ -218,12 +232,15 @@ func TestValidationApproveStartsWorkflow(t *testing.T) {
 func TestValidationApproveWithoutWorkflowRuntime(t *testing.T) {
 	t.Run("nil-порт", func(t *testing.T) {
 		server := newScreenServer(t)
-		postForm(t, server, "/requests/"+requestID+"/validation/take", url.Values{
-			"tenant_id": {tenantID}, "actor": {"admin"},
+		client := newConsoleClient(server)
+		client.login(t)
+		csrf := client.csrfForPage(t, validationScreenPath())
+		client.postForm(t, "/requests/"+requestID+"/validation/take", url.Values{
+			"tenant_id": {tenantID}, "csrf": {csrf},
 		}).Body.Close()
 
-		resp := postForm(t, server, "/requests/"+requestID+"/validation/approve", url.Values{
-			"tenant_id": {tenantID}, "actor": {"admin"},
+		resp := client.postForm(t, "/requests/"+requestID+"/validation/approve", url.Values{
+			"tenant_id": {tenantID}, "csrf": {csrf},
 		})
 		if resp.StatusCode != http.StatusSeeOther {
 			t.Fatalf("одобрение без рантайма = %d, ожидался 303: %s", resp.StatusCode, readBody(t, resp))
@@ -234,12 +251,15 @@ func TestValidationApproveWithoutWorkflowRuntime(t *testing.T) {
 	t.Run("ErrWorkflowUnavailable", func(t *testing.T) {
 		starter := &recordingStarter{err: ports.ErrWorkflowUnavailable}
 		server := newScreenServerWithStarter(t, starter)
-		postForm(t, server, "/requests/"+requestID+"/validation/take", url.Values{
-			"tenant_id": {tenantID}, "actor": {"admin"},
+		client := newConsoleClient(server)
+		client.login(t)
+		csrf := client.csrfForPage(t, validationScreenPath())
+		client.postForm(t, "/requests/"+requestID+"/validation/take", url.Values{
+			"tenant_id": {tenantID}, "csrf": {csrf},
 		}).Body.Close()
 
-		resp := postForm(t, server, "/requests/"+requestID+"/validation/approve", url.Values{
-			"tenant_id": {tenantID}, "actor": {"admin"},
+		resp := client.postForm(t, "/requests/"+requestID+"/validation/approve", url.Values{
+			"tenant_id": {tenantID}, "csrf": {csrf},
 		})
 		if resp.StatusCode != http.StatusSeeOther {
 			t.Fatalf("одобрение при недоступном рантайме = %d, ожидался 303: %s", resp.StatusCode, readBody(t, resp))
