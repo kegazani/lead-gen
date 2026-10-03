@@ -2,6 +2,7 @@ package httpapi
 
 import (
 	"embed"
+	"errors"
 	"html/template"
 	"io/fs"
 	"net/http"
@@ -23,8 +24,9 @@ var (
 )
 
 // consoleStylesheets — внешние таблицы стилей консоли, подключаемые каркасом
-// страницы. Оформление — отдельный файл: CSP консоли запрещает inline-стили.
-var consoleStylesheets = []string{"/static/console.css"}
+// страницы. Оформление общее для серверных экранов и живёт в frontend/components
+// (CSP консоли запрещает inline-стили); здесь — только ссылка на него.
+var consoleStylesheets = components.ConsoleStylesheets
 
 // consoleScripts — внешние скрипты консоли. HTMX даёт гипермедиа-частичные
 // обновления (живой журнал заданий без перезагрузки), console.js сохраняет выбор
@@ -35,8 +37,9 @@ var consoleScripts = []string{"/static/htmx.min.js", "/static/console.js", "/sta
 
 // consoleBootstrapScripts — скрипты, подключаемые синхронно в <head> до
 // отрисовки страницы. theme.js ставит выбранную тему без вспышки, поэтому он не
-// может быть отложенным.
-var consoleBootstrapScripts = []string{"/static/theme.js"}
+// может быть отложенным. Скрипт общий для серверных экранов и лежит в
+// frontend/components.
+var consoleBootstrapScripts = components.ConsoleBootstrapScripts
 
 // Имена страниц консоли. Каждый файл объявляет шаблон "content"; каркас "layout"
 // и общие фрагменты приходят из frontend/components.
@@ -93,12 +96,31 @@ func parseLeadsExport() (*template.Template, error) {
 	return template.New("export-root").ParseFS(templateFS, pageLeadsExport)
 }
 
-// staticFiles раздаёт встроенные статические файлы консоли. Отдельный каталог, а
-// не раздача исходников: наружу уходит только оформление.
+// staticFiles раздаёт встроенные статические файлы консоли вместе с общим
+// оформлением компонентов одним деревом: адрес /static/* не зависит от того,
+// чей файл отдаётся — общий console.css/theme.js или скрипты самой консоли.
 func staticFiles() (http.Handler, error) {
-	static, err := fs.Sub(staticFS, "static")
+	local, err := fs.Sub(staticFS, "static")
 	if err != nil {
 		return nil, err
 	}
-	return http.FileServerFS(static), nil
+	return http.FileServerFS(staticLayers{layers: []fs.FS{components.StaticFS(), local}}), nil
+}
+
+// staticLayers объединяет несколько встроенных каталогов в одно дерево: имя
+// ищется по слоям по порядку, первый найденный файл побеждает. Отсутствие файла
+// во всех слоях — несуществующий путь, а не ошибка чтения.
+type staticLayers struct{ layers []fs.FS }
+
+func (s staticLayers) Open(name string) (fs.File, error) {
+	for _, layer := range s.layers {
+		file, err := layer.Open(name)
+		if err == nil {
+			return file, nil
+		}
+		if !errors.Is(err, fs.ErrNotExist) {
+			return nil, err
+		}
+	}
+	return nil, &fs.PathError{Op: "open", Path: name, Err: fs.ErrNotExist}
 }

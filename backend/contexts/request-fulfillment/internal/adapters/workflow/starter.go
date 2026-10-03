@@ -23,12 +23,14 @@ func WorkflowID(requestID string) string { return WorkflowIDPrefix + requestID }
 type Client struct {
 	client    *platformworkflow.Client
 	taskQueue string
+	policy    ExecutionPolicy
 }
 
 // NewClient собирает адаптер из клиента platform/workflow. nil-клиент допустим:
-// тогда порты честно отвечают «рантайм недоступен».
-func NewClient(client *platformworkflow.Client, taskQueue string) *Client {
-	return &Client{client: client, taskQueue: taskQueue}
+// тогда порты честно отвечают «рантайм недоступен». policy задаёт таймауты и
+// сроки исполнения (нулевые поля заполняются значениями по умолчанию).
+func NewClient(client *platformworkflow.Client, taskQueue string, policy ExecutionPolicy) *Client {
+	return &Client{client: client, taskQueue: taskQueue, policy: policy}
 }
 
 // Register регистрирует workflow и activities фулфилмента в реестре воркера.
@@ -38,28 +40,34 @@ func Register(registry *platformworkflow.Registry, activities *Activities) {
 	registry.RegisterActivityNamed(ActivityFulfillRequest, activities.HandleFulfillRequest)
 	registry.RegisterActivityNamed(ActivityCancelRequest, activities.HandleCancelRequest)
 	registry.RegisterActivityNamed(ActivitySearchLeads, activities.SearchLeads)
+	registry.RegisterActivityNamed(ActivityDraftEmails, activities.DraftEmails)
 }
 
 // StartFulfillment запускает workflow исполнения заявки. Реализует
 // ports.WorkflowStarter. При недоступности рантайма возвращает
 // ports.ErrWorkflowUnavailable: заявка при этом остаётся в текущем статусе.
+// Повторный запуск для той же заявки идемпотентен: возвращается ссылка на
+// существующее исполнение с признаком AlreadyStarted, а не ошибка.
 func (c *Client) StartFulfillment(ctx context.Context, in ports.StartFulfillment) (ports.WorkflowRun, error) {
 	if c == nil || c.client == nil {
 		return ports.WorkflowRun{}, ports.ErrWorkflowUnavailable
 	}
+	policy := c.policy.withDefaults()
 	run, err := c.client.Start(ctx, platformworkflow.StartOptions{
-		WorkflowID: WorkflowID(in.RequestID),
-		TaskQueue:  c.taskQueue,
+		WorkflowID:       WorkflowID(in.RequestID),
+		TaskQueue:        c.taskQueue,
+		ExecutionTimeout: policy.ExecutionTimeout,
 	}, Fulfillment, Params{
 		RequestID:     in.RequestID,
 		TenantID:      in.TenantID,
 		CorrelationID: in.CorrelationID,
 		LeadTarget:    in.LeadTarget,
+		Policy:        policy,
 	})
 	if err != nil {
 		return ports.WorkflowRun{}, fmt.Errorf("%w: %v", ports.ErrWorkflowUnavailable, err)
 	}
-	return ports.WorkflowRun{WorkflowID: run.WorkflowID, RunID: run.RunID}, nil
+	return ports.WorkflowRun{WorkflowID: run.WorkflowID, RunID: run.RunID, AlreadyStarted: run.AlreadyStarted}, nil
 }
 
 // WorkflowStatus читает наблюдаемое состояние исполнения заявки. Реализует
@@ -82,6 +90,8 @@ func (c *Client) WorkflowStatus(ctx context.Context, requestID string) (ports.Wo
 		WorkflowID: workflowID,
 		Phase:      status.Phase,
 		Found:      status.Found,
+		Drafted:    status.Drafted,
+		NoLeads:    status.NoLeads,
 	}
 	if execution, err := c.client.Describe(ctx, workflowID, ""); err == nil {
 		result.Execution = execution.Status

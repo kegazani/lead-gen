@@ -8,6 +8,7 @@ import (
 
 	requestfulfillment "lead-gen/backend/contexts/request-fulfillment"
 	"lead-gen/backend/contexts/request-fulfillment/internal/ports"
+	platformworkflow "lead-gen/backend/platform/workflow"
 )
 
 // stubWorkflow — заглушка портов запуска, чтения состояния и сигналов workflow:
@@ -108,6 +109,83 @@ func TestHTTPWorkflowStart(t *testing.T) {
 	view := decodeView(t, resp)
 	if view["workflow_id"] != "fulfillment-"+requestID {
 		t.Fatalf("workflow_id = %v", view["workflow_id"])
+	}
+}
+
+// newRuntimeServer собирает сервер среза с заданным признаком доступности
+// рантайма исполнения.
+func newRuntimeServer(t *testing.T, availability *platformworkflow.Availability) *httptest.Server {
+	t.Helper()
+	slice, err := requestfulfillment.Build(requestfulfillment.Config{Runtime: availability})
+	if err != nil {
+		t.Fatalf("сборка среза: %v", err)
+	}
+	server := httptest.NewServer(slice.Server)
+	t.Cleanup(server.Close)
+	return server
+}
+
+// TestHTTPReadyzTracksRuntime проверяет, что /readyz отражает доступность
+// рантайма, а /healthz остаётся пробой живости.
+func TestHTTPReadyzTracksRuntime(t *testing.T) {
+	availability := platformworkflow.NewAvailability()
+	server := newRuntimeServer(t, availability)
+
+	ready := do(t, server, http.MethodGet, "/readyz", nil)
+	if ready.StatusCode != http.StatusServiceUnavailable {
+		t.Fatalf("GET /readyz при недоступном рантайме = %d, ожидался 503", ready.StatusCode)
+	}
+	ready.Body.Close()
+
+	health := do(t, server, http.MethodGet, "/healthz", nil)
+	if health.StatusCode != http.StatusOK {
+		t.Fatalf("GET /healthz = %d, ожидался 200", health.StatusCode)
+	}
+	health.Body.Close()
+
+	availability.MarkReady()
+	ready = do(t, server, http.MethodGet, "/readyz", nil)
+	if ready.StatusCode != http.StatusOK {
+		t.Fatalf("GET /readyz при доступном рантайме = %d, ожидался 200", ready.StatusCode)
+	}
+	ready.Body.Close()
+}
+
+// TestHTTPWorkflowStartAlreadyStarted проверяет, что повторный старт исполнения
+// отвечает явным исходом «уже запущено» (200), а не 503.
+func TestHTTPWorkflowStartAlreadyStarted(t *testing.T) {
+	stub := stubWorkflow{run: ports.WorkflowRun{
+		WorkflowID:     "fulfillment-" + requestID,
+		RunID:          "run-existing",
+		AlreadyStarted: true,
+	}}
+	server := newWorkflowServer(t, stub)
+
+	resp := do(t, server, http.MethodPost, "/requests/"+requestID+"/workflow",
+		map[string]any{"tenant_id": tenantID})
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("повторный старт = %d, ожидался 200: %s", resp.StatusCode, readBody(t, resp))
+	}
+	view := decodeView(t, resp)
+	if view["already_started"] != true || view["run_id"] != "run-existing" {
+		t.Fatalf("ответ повторного старта = %v", view)
+	}
+}
+
+// TestHTTPWorkflowStatusNoLeads проверяет, что исход «0 лидов» наблюдаем в API.
+func TestHTTPWorkflowStatusNoLeads(t *testing.T) {
+	stub := stubWorkflow{status: ports.WorkflowStatus{
+		RequestID:  requestID,
+		WorkflowID: "fulfillment-" + requestID,
+		Phase:      "no-leads",
+		Found:      0,
+		NoLeads:    true,
+	}}
+	server := newWorkflowServer(t, stub)
+
+	view := decodeView(t, do(t, server, http.MethodGet, "/requests/"+requestID+"/workflow", nil))
+	if view["no_leads"] != true {
+		t.Fatalf("признак no_leads = %v, ожидался true", view["no_leads"])
 	}
 }
 

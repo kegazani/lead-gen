@@ -119,6 +119,10 @@
 
   <footer class="card-actions">
     <a class="link" href="/">← К журналу</a>
+    <form method="post" action="/jobs/job-1/reassess">
+      <input type="hidden" name="csrf" value="TOKEN">
+      <button class="button-secondary" type="submit">Переоценить компании</button>
+    </form>
   </footer>
 </article>
   </main>

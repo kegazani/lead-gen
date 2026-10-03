@@ -118,3 +118,27 @@ func TestHTTPRejectsUnknownFields(t *testing.T) {
 		t.Fatalf("статус = %d, ожидался 400", resp.StatusCode)
 	}
 }
+
+// TestRootRespondsWithDescriptor проверяет, что корень сервиса отвечает
+// дескриптором, а не 404: HTML-экрана у API нет.
+func TestRootRespondsWithDescriptor(t *testing.T) {
+	slice := newSlice(t, platformadapter.NewDeterministic())
+	server := httptest.NewServer(slice.Server)
+	defer server.Close()
+
+	resp, err := server.Client().Get(server.URL + "/")
+	if err != nil {
+		t.Fatalf("GET /: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET / = %d, ожидался 200", resp.StatusCode)
+	}
+	body := map[string]string{}
+	if err := json.NewDecoder(resp.Body).Decode(&body); err != nil {
+		t.Fatalf("разбор тела: %v", err)
+	}
+	if body["service"] != "publishing" {
+		t.Fatalf("service = %q, ожидался publishing", body["service"])
+	}
+}

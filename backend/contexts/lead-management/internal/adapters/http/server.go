@@ -61,9 +61,17 @@ type Dependencies struct {
 	SuggestNiches *app.SuggestNiches
 	Dialogue      *app.ConverseDialogue
 	ForumSignals  *app.SearchForumSignals
-	Account       budget.AccountReader // nil — остаток аккаунта не показывается
-	Logger        observ.Logger
-	Auth          AuthConfig
+	// SearchLeads — сценарий поиска лидов под заявку (контракт lead-search),
+	// отдаваемый эндпоинтом POST /lead-search. nil — контракт не смонтирован:
+	// эндпоинт честно отвечает 503.
+	SearchLeads *app.SearchLeadsForRequest
+	// EmailGeneration — сценарий генерации письма под лида и оффер (контракт
+	// email-generation), отдаваемый эндпоинтом POST /email-generation. nil —
+	// контракт не смонтирован: эндпоинт честно отвечает 503.
+	EmailGeneration *app.DraftEmailForLead
+	Account         budget.AccountReader // nil — остаток аккаунта не показывается
+	Logger          observ.Logger
+	Auth            AuthConfig
 }
 
 // Server — HTTP-сервер роли api. Нулевое значение непригодно: используйте
@@ -79,13 +87,17 @@ type Server struct {
 	suggestNiches *app.SuggestNiches
 	dialogue      *app.ConverseDialogue
 	forumSignals  *app.SearchForumSignals
-	account       budget.AccountReader
-	sessions      *sessionManager
-	pages         *components.Set
-	leadsExport   *template.Template
-	static        http.Handler
-	handler       http.Handler
-	logger        observ.Logger
+	searchLeads   *app.SearchLeadsForRequest
+	// emailGeneration — сценарий генерации письма под лида и оффер (контракт
+	// email-generation). nil — контракт не смонтирован.
+	emailGeneration *app.DraftEmailForLead
+	account         budget.AccountReader
+	sessions        *sessionManager
+	pages           *components.Set
+	leadsExport     *template.Template
+	static          http.Handler
+	handler         http.Handler
+	logger          observ.Logger
 	// interpreter — use case интерпретации запроса для экрана ассистента. nil —
 	// интерпретация недоступна: экран показывает явное «не определена».
 	interpreter *app.InterpretQuery
@@ -115,23 +127,25 @@ func NewServer(deps Dependencies) *Server {
 	}
 
 	server := &Server{
-		runSearch:     deps.RunSearch,
-		showcase:      deps.Showcase,
-		changeStage:   deps.ChangeStage,
-		snooze:        deps.Snooze,
-		sendToLead:    deps.SendToLead,
-		sendToSegment: deps.SendToSegment,
-		templates:     deps.Templates,
-		suggestNiches: deps.SuggestNiches,
-		dialogue:      deps.Dialogue,
-		forumSignals:  deps.ForumSignals,
-		account:       deps.Account,
-		sessions:      newSessionManager(deps.Auth),
-		pages:         pages,
-		leadsExport:   leadsExport,
-		static:        static,
-		logger:        deps.Logger,
-		interpreter:   interpreter,
+		runSearch:       deps.RunSearch,
+		showcase:        deps.Showcase,
+		changeStage:     deps.ChangeStage,
+		snooze:          deps.Snooze,
+		sendToLead:      deps.SendToLead,
+		sendToSegment:   deps.SendToSegment,
+		templates:       deps.Templates,
+		suggestNiches:   deps.SuggestNiches,
+		dialogue:        deps.Dialogue,
+		forumSignals:    deps.ForumSignals,
+		searchLeads:     deps.SearchLeads,
+		emailGeneration: deps.EmailGeneration,
+		account:         deps.Account,
+		sessions:        newSessionManager(deps.Auth),
+		pages:           pages,
+		leadsExport:     leadsExport,
+		static:          static,
+		logger:          deps.Logger,
+		interpreter:     interpreter,
 	}
 	server.handler = components.SecurityHeaders(contentSecurityPolicy)(server.authMiddleware(server.routes()))
 	return server
@@ -152,6 +166,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /jobs", s.handleJobs)
 	mux.HandleFunc("GET /jobs/{id}", s.handleJob)
 	mux.HandleFunc("POST /jobs/{id}/cancel", s.handleCancelJob)
+	mux.HandleFunc("POST /jobs/{id}/reassess", s.handleReassessJob)
 	mux.HandleFunc("POST /jobs/cancel", s.handleBulkCancelJobs)
 	mux.HandleFunc("POST /search", s.handleSearch)
 	mux.HandleFunc("GET /cards", s.handleCards)
@@ -178,6 +193,8 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST /assistant", s.handleAssistantTurn)
 	mux.HandleFunc("POST /assistant/stream", s.handleAssistantStream)
 	mux.HandleFunc("GET /forum-signals", s.handleForumSignals)
+	mux.HandleFunc("POST /lead-search", s.handleLeadSearch)
+	mux.HandleFunc("POST /email-generation", s.handleEmailGeneration)
 	mux.HandleFunc("GET /healthz", handleHealth)
 	mux.Handle("GET /static/", http.StripPrefix("/static/", s.static))
 	return mux
@@ -189,7 +206,7 @@ func (s *Server) routes() http.Handler {
 func (s *Server) authMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path := r.URL.Path
-		if path == "/login" || path == "/healthz" || strings.HasPrefix(path, "/static/") {
+		if path == "/login" || path == "/healthz" || path == "/lead-search" || path == "/email-generation" || strings.HasPrefix(path, "/static/") {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -356,7 +373,12 @@ func (s *Server) handleJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	companies := s.resultCompanies(r.Context(), detail)
-	s.render(w, http.StatusOK, pageJob, pageViewSidebar("Задание", consoleSidebar(sidebarHome), jobFrom(detail, s.jobAssessments(r.Context(), detail.Job.ID), companies)))
+	view := jobFrom(detail, s.jobAssessments(r.Context(), detail.Job.ID), companies)
+	view.CSRF = csrfToken(r)
+	// Переоценка доступна только на терминальном задании с оценками: у running-задания
+	// компании ещё пополняются, а без оценок переоценивать нечего.
+	view.CanReassess = detail.Job.Status.Terminal() && view.Distribution.Total() > 0
+	s.render(w, http.StatusOK, pageJob, pageViewSidebar("Задание", consoleSidebar(sidebarHome), view))
 }
 
 // resultCompanies читает email найденных компаний одним пакетным запросом. Email —
@@ -422,6 +444,23 @@ func (s *Server) handleCancelJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
+// handleReassessJob переоценивает уже найденные компании задания по актуальным
+// критериям релевантности (выведенным заново из запроса) без повторного обхода
+// сайтов и возвращает на экран задания. Отказ (нет сценария, неизвестное задание)
+// показывается оператору, а не глотается.
+func (s *Server) handleReassessJob(w http.ResponseWriter, r *http.Request) {
+	if s.runSearch == nil {
+		s.renderNotice(w, http.StatusServiceUnavailable, "Переоценка недоступна", "Сценарий поиска не сконфигурирован.")
+		return
+	}
+	id := r.PathValue("id")
+	if _, err := s.runSearch.ReassessJob(r.Context(), id); err != nil {
+		s.renderNotice(w, http.StatusBadRequest, "Не удалось переоценить", err.Error())
+		return
+	}
+	http.Redirect(w, r, "/jobs/"+url.PathEscape(id), http.StatusSeeOther)
 }
 
 // handleBulkCancelJobs отменяет выбранные в журнале задания одной операцией и

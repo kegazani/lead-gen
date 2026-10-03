@@ -6,6 +6,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	requestfulfillment "lead-gen/backend/contexts/request-fulfillment"
@@ -29,6 +30,39 @@ func newTestServer(t *testing.T, query ports.FulfillmentQuery) *httptest.Server 
 	server := httptest.NewServer(slice.Server)
 	t.Cleanup(server.Close)
 	return server
+}
+
+// TestRootRedirectsToValidation проверяет, что корень сервиса ведёт на очередь
+// валидации, а не отвечает 404.
+func TestRootRedirectsToValidation(t *testing.T) {
+	server := newTestServer(t, fulfillment.NewMemoryQuery())
+	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}}
+	resp, err := client.Get(server.URL + "/")
+	if err != nil {
+		t.Fatalf("GET /: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusSeeOther {
+		t.Fatalf("GET / = %d, ожидался 303", resp.StatusCode)
+	}
+	if location := resp.Header.Get("Location"); location != "/validation" {
+		t.Fatalf("Location = %q, ожидался /validation", location)
+	}
+}
+
+// TestValidationLinksSharedStylesheet проверяет, что экран заявок подключает
+// общее оформление компонентов и оно реально раздаётся.
+func TestValidationLinksSharedStylesheet(t *testing.T) {
+	server := newTestServer(t, fulfillment.NewMemoryQuery())
+	page := readBody(t, do(t, server, http.MethodGet, "/validation", nil))
+	if !strings.Contains(page, `<link rel="stylesheet" href="/static/console.css">`) {
+		t.Fatalf("экран не подключил общее оформление:\n%s", page)
+	}
+	if css := do(t, server, http.MethodGet, "/static/console.css", nil); css.StatusCode != http.StatusOK {
+		t.Fatalf("оформление не раздаётся: статус %d", css.StatusCode)
+	}
 }
 
 // TestHTTPLifecycle — интеграционная проверка обработчиков: создание заявки,

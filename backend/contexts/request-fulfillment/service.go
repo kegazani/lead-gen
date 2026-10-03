@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"sync"
 	"time"
 
 	call "lead-gen/backend/contexts/request-fulfillment/internal/adapters/call"
@@ -23,6 +24,8 @@ import (
 	"lead-gen/backend/platform/transport/amqp"
 	platformworkflow "lead-gen/backend/platform/workflow"
 	"lead-gen/contracts/integration-platform/vector"
+	"lead-gen/contracts/lead-management/emailgeneration"
+	"lead-gen/contracts/lead-management/leadsearch"
 	"lead-gen/contracts/outreach-orchestration/callintent"
 )
 
@@ -48,11 +51,20 @@ type Config struct {
 	// Interval — интервал прохода relay публикации событий заявки.
 	Interval time.Duration
 
-	// Repository — репозиторий заявок. nil → новый in-memory репозиторий.
-	Repository *persistence.Repository
+	// Repository — репозиторий заявок. nil → новый in-memory репозиторий
+	// (dev-реализация); durable-исполнение требует PostgreSQL-адаптера.
+	Repository ports.RequestRepository
+
+	// UnitOfWork — транзакционный порт заявок. nil → in-memory unit-of-work над
+	// Repository и Journal; PostgreSQL-репозиторий требует явного unit-of-work.
+	UnitOfWork ports.UnitOfWork
 
 	// Journal — журнал outbox событий заявки. nil → новый журнал в памяти.
 	Journal platformoutbox.Journal
+
+	// DraftStore — хранилище черновиков писем оператора. nil → in-memory
+	// хранилище (dev-реализация).
+	DraftStore ports.EmailDraftStore
 
 	// Query — синхронный query-контракт чтения статусов артефактов фулфилмента.
 	// nil → запрос, честно отвечающий отказом (контракт не подключён).
@@ -89,6 +101,46 @@ type Config struct {
 	// workflow (тесты). nil — адаптер поверх WorkflowClient.
 	WorkflowSignaler ports.WorkflowSignaler
 
+	// ExecutionPolicy — таймауты и сроки исполнения заявки задаются отдельными
+	// полями ниже; нулевые поля заполняются осмысленными значениями по умолчанию.
+
+	// ApprovalTTL — срок паузы утверждения результата. По истечении заявка
+	// переводится в cancelled.
+	ApprovalTTL time.Duration
+
+	// WorkflowExecutionTimeout — предельное время исполнения заявки; согласовано
+	// со сроком паузы (не меньше ApprovalTTL).
+	WorkflowExecutionTimeout time.Duration
+
+	// TransitionActivityTimeout — StartToCloseTimeout коротких переходов.
+	TransitionActivityTimeout time.Duration
+
+	// TransitionActivityAttempts — число попыток коротких переходов.
+	TransitionActivityAttempts int
+
+	// LongActivityTimeout — StartToCloseTimeout длинных activities (минуты).
+	LongActivityTimeout time.Duration
+
+	// LongActivityHeartbeat — HeartbeatTimeout длинных activities.
+	LongActivityHeartbeat time.Duration
+
+	// LongActivityAttempts — число попыток длинных внешних шагов (ограничено).
+	LongActivityAttempts int
+
+	// WorkerStopTimeout — время graceful drain воркера workflow при остановке.
+	WorkerStopTimeout time.Duration
+
+	// WorkerMaxConcurrentActivities — предел одновременных activities воркера.
+	WorkerMaxConcurrentActivities int
+
+	// WorkerMaxConcurrentWorkflows — предел одновременных задач workflow воркера.
+	WorkerMaxConcurrentWorkflows int
+
+	// Runtime — признак доступности рантайма durable-исполнения для пробы
+	// готовности /readyz. nil — рантайм не подключён: отсутствие зависимости не
+	// считается неготовностью.
+	Runtime *platformworkflow.Availability
+
 	// CallContract — порт опубликованного контракта call-intent (владелец —
 	// outreach-orchestration). nil означает, что провайдер звонков не подключён:
 	// порт честно отвечает «недоступен».
@@ -102,10 +154,20 @@ type Config struct {
 	// эмбеддинг недоступен: порт честно отвечает отказом.
 	Vector vector.Port
 
-	// SearchLeads — заглушка шага поиска: сколько лидов «находит» activity. 0 —
-	// поиск не подключён (ноль найденных лидов). Реальный вызов lead-management
-	// придёт адаптером контракта в change №4 (semantic-lead-search).
+	// SearchLeads — заглушка шага поиска: сколько лидов «находит» activity, когда
+	// контракт lead-search не подключён. 0 — заглушка не находит лидов. Если задан
+	// LeadSearch, значение игнорируется: шаг идёт через контракт.
 	SearchLeads int
+
+	// LeadSearch — порт опубликованного контракта lead-search (владелец —
+	// lead-management). nil означает, что поиск не подключён: шаг падает на
+	// прежнюю заглушку (SearchLeads).
+	LeadSearch leadsearch.Port
+
+	// EmailGeneration — порт опубликованного контракта email-generation (владелец —
+	// lead-management). nil означает, что генерация писем не подключена: шаг
+	// генерации черновиков штатно пропускается и логируется, а заявка идёт дальше.
+	EmailGeneration emailgeneration.Port
 
 	// Наблюдаемость сервиса: логгер, метрики и трейсер впрыскиваются
 	// composition root'ом; обязательны.
@@ -116,9 +178,9 @@ type Config struct {
 
 // Slice — собранный контекст среза: порты, адаптеры и use cases.
 type Slice struct {
-	Repository *persistence.Repository
+	Repository ports.RequestRepository
 	Journal    platformoutbox.Journal
-	UnitOfWork *inmemory.UnitOfWork
+	UnitOfWork ports.UnitOfWork
 
 	// Relay не равен nil только если при сборке задан Publisher.
 	Relay *platformoutbox.Relay
@@ -144,10 +206,14 @@ type Slice struct {
 	WorkflowStatus   ports.WorkflowStatusReader
 	WorkflowSignaler ports.WorkflowSignaler
 
+	// DraftStore — хранилище черновиков писем оператора.
+	DraftStore ports.EmailDraftStore
+
 	ValidationQueue *query.ValidationQueueHandler
 	InitiateCall    *command.InitiateCallHandler
 	RecordCall      *command.RecordCallHandler
 	EmbedOffer      *command.EmbedOfferHandler
+	EmailDrafts     *query.EmailDraftsHandler
 }
 
 // Build собирает контекст среза из адаптеров и переданных зависимостей.
@@ -171,7 +237,17 @@ func Build(cfg Config) (*Slice, error) {
 		ids = idgen.NewRandom()
 	}
 
-	unitOfWork := inmemory.NewUnitOfWorkWith(repository, journal)
+	unitOfWork := cfg.UnitOfWork
+	if unitOfWork == nil {
+		// Dev-режим: in-memory unit-of-work работает только с in-memory
+		// репозиторием. Для PostgreSQL адаптер и unit-of-work задаются вместе, и
+		// подмена одного из них молчаливым in-memory была бы ложью.
+		memoryRepo, ok := repository.(*persistence.Repository)
+		if !ok {
+			return nil, errors.New("request-fulfillment: unit-of-work обязателен для не in-memory репозитория")
+		}
+		unitOfWork = inmemory.NewUnitOfWorkWith(memoryRepo, journal)
+	}
 
 	submit := command.NewSubmitRequestHandler(unitOfWork, clock, ids)
 	startValidation := command.NewStartValidationHandler(unitOfWork, clock, ids)
@@ -188,6 +264,16 @@ func Build(cfg Config) (*Slice, error) {
 	getRequest := query.NewGetRequestHandler(repository)
 	fulfillmentStatus := query.NewFulfillmentStatusHandler(repository, queryPort(cfg.Query))
 	validationQueue := query.NewValidationQueueHandler(repository)
+
+	// Черновики писем: хранилище оператора. nil → in-memory (dev); PostgreSQL
+	// задаёт хранилище при заданном DSN. Оно есть всегда: шаг генерации просто
+	// не наполняется, если контракт email-generation не подключён, а чтение честно
+	// отдаёт пустой список.
+	draftStore := cfg.DraftStore
+	if draftStore == nil {
+		draftStore = persistence.NewDraftStore()
+	}
+	emailDrafts := query.NewEmailDraftsHandler(repository, draftStore)
 
 	// Порт звонков: явное переопределение (тесты) либо адаптер поверх контракта.
 	// Без провайдера порт честно отвечает «недоступен».
@@ -216,7 +302,16 @@ func Build(cfg Config) (*Slice, error) {
 	workflowStatus := cfg.WorkflowStatus
 	workflowSignaler := cfg.WorkflowSignaler
 	if cfg.WorkflowClient != nil {
-		adapter := workflowadapter.NewClient(cfg.WorkflowClient, cfg.WorkflowTaskQueue)
+		policy := workflowadapter.ExecutionPolicy{
+			ApprovalTTL:            cfg.ApprovalTTL,
+			ExecutionTimeout:       cfg.WorkflowExecutionTimeout,
+			TransitionStartToClose: cfg.TransitionActivityTimeout,
+			TransitionMaxAttempts:  cfg.TransitionActivityAttempts,
+			LongStartToClose:       cfg.LongActivityTimeout,
+			LongHeartbeat:          cfg.LongActivityHeartbeat,
+			LongMaxAttempts:        cfg.LongActivityAttempts,
+		}
+		adapter := workflowadapter.NewClient(cfg.WorkflowClient, cfg.WorkflowTaskQueue, policy)
 		if workflowStarter == nil {
 			workflowStarter = adapter
 		}
@@ -250,6 +345,8 @@ func Build(cfg Config) (*Slice, error) {
 		InitiateCall:           initiateCall,
 		RecordCall:             recordCall,
 		EmbedOffer:             embedOffer,
+		EmailDrafts:            emailDrafts,
+		Runtime:                cfg.Runtime,
 	})
 
 	var relay *platformoutbox.Relay
@@ -282,10 +379,13 @@ func Build(cfg Config) (*Slice, error) {
 		WorkflowStatus:   workflowStatus,
 		WorkflowSignaler: workflowSignaler,
 
+		DraftStore: draftStore,
+
 		ValidationQueue: validationQueue,
 		InitiateCall:    initiateCall,
 		RecordCall:      recordCall,
 		EmbedOffer:      embedOffer,
+		EmailDrafts:     emailDrafts,
 	}, nil
 }
 
@@ -300,6 +400,10 @@ type Service struct {
 
 	// workflowWorker не равен nil, только если подключён рантайм Temporal.
 	workflowWorker *platformworkflow.Worker
+
+	// availabilityMonitor следит за доступностью рантайма и переключает признак
+	// готовности /readyz. nil, если рантайм или признак не подключены.
+	availabilityMonitor *platformworkflow.AvailabilityMonitor
 }
 
 // New собирает сервис из адаптеров и переданных зависимостей.
@@ -327,22 +431,36 @@ func New(cfg Config) (*Service, error) {
 		registry := platformworkflow.NewRegistry()
 		workflowadapter.Register(registry, newActivities(slice, cfg))
 		workflowWorker, err = platformworkflow.NewWorker(cfg.WorkflowClient, registry, platformworkflow.WorkerOptions{
-			TaskQueue: cfg.WorkflowTaskQueue,
-			Logger:    cfg.Logger,
+			TaskQueue:                          cfg.WorkflowTaskQueue,
+			Logger:                             cfg.Logger,
+			WorkerStopTimeout:                  cfg.WorkerStopTimeout,
+			MaxConcurrentActivityExecution:     cfg.WorkerMaxConcurrentActivities,
+			MaxConcurrentWorkflowTaskExecution: cfg.WorkerMaxConcurrentWorkflows,
 		})
 		if err != nil {
 			return nil, fmt.Errorf("request-fulfillment: воркер workflow: %w", err)
 		}
 	}
 
-	return &Service{
+	service := &Service{
 		slice:          slice,
 		apiAddr:        cfg.APIAddr,
 		logger:         cfg.Logger,
 		metrics:        cfg.Metrics,
 		tracer:         cfg.Tracer,
 		workflowWorker: workflowWorker,
-	}, nil
+	}
+	// Монитор доступности живёт вместе с ролью, владеющей клиентом: она же
+	// запускает воркер. Без подключённого рантайма и без пробы готовности монитор
+	// не нужен.
+	if cfg.WorkflowClient != nil && cfg.Runtime != nil {
+		service.availabilityMonitor = &platformworkflow.AvailabilityMonitor{
+			Checker:      cfg.WorkflowClient,
+			Availability: cfg.Runtime,
+			Logger:       cfg.Logger,
+		}
+	}
+	return service, nil
 }
 
 // newActivities собирает activities фулфилмента как тонкие адаптеры к
@@ -352,14 +470,32 @@ func newActivities(slice *Slice, cfg Config) *workflowadapter.Activities {
 	if cfg.SearchLeads > 0 {
 		search = workflowadapter.FixedSearch{Leads: cfg.SearchLeads}
 	}
+	if cfg.LeadSearch != nil {
+		search = workflowadapter.ContractSearch{Requests: slice.Repository, Contract: cfg.LeadSearch}
+	}
+
+	// Шаг генерации черновиков собирается только при подключённом контракте
+	// email-generation: без него activity честно пропускает шаг, а не выдумывает
+	// письма.
+	var drafts workflowadapter.DraftGenerator
+	if cfg.EmailGeneration != nil {
+		drafts = workflowadapter.ContractDrafts{
+			Requests: slice.Repository,
+			Contract: cfg.EmailGeneration,
+			Drafts:   slice.DraftStore,
+			Logger:   cfg.Logger,
+		}
+	}
 	return &workflowadapter.Activities{
-		StartProcessing: slice.StartProcessing,
-		Fulfill:         slice.FulfillRequest,
-		Cancel:          slice.CancelRequest,
-		Search:          search,
-		Clock:           cfg.Clock,
-		IDs:             cfg.IDs,
-		Logger:          cfg.Logger,
+		StartProcessing:   slice.StartProcessing,
+		Fulfill:           slice.FulfillRequest,
+		Cancel:            slice.CancelRequest,
+		Search:            search,
+		Drafts:            drafts,
+		Clock:             cfg.Clock,
+		IDs:               cfg.IDs,
+		HeartbeatInterval: cfg.LongActivityHeartbeat,
+		Logger:            cfg.Logger,
 	}
 }
 
@@ -406,15 +542,17 @@ func (s *Service) runAPI(ctx context.Context) error {
 }
 
 // runWorker запускает фоновые контуры роли worker: публикацию событий заявки
-// (relay outbox) и воркер workflow фулфилмента. Контуры независимы и работают
-// до отмены контекста; падение любого из них останавливает роль.
+// (relay outbox), воркер workflow фулфилмента и монитор доступности рантайма
+// (для пробы готовности). Падение любого контура останавливает роль: ошибка
+// отменяет общий контекст, и остальные контуры завершаются, а не ждут друг
+// друга.
 //
 // Транспортный relay публикует подтверждённые записи outbox в брокер. Событие,
 // не прошедшее подтверждение, остаётся в журнале и будет опубликовано повторно:
 // доставка at-least-once, а потребитель дедуплицирует по event_id. Потребителей
 // очередей брокера в срезе нет — это не скрывается, а логируется.
 func (s *Service) runWorker(ctx context.Context) error {
-	if s.slice.Relay == nil && s.workflowWorker == nil {
+	if s.slice.Relay == nil && s.workflowWorker == nil && s.availabilityMonitor == nil {
 		return fmt.Errorf("worker: ни публикация событий заявки, ни воркер workflow не собраны")
 	}
 	if s.slice.Relay != nil {
@@ -425,23 +563,52 @@ func (s *Service) runWorker(ctx context.Context) error {
 	}
 	s.logger.Warn("worker: обработчики очередей брокера не зарегистрированы", observ.Fields{}, "service", ServiceID)
 
-	errCh := make(chan error, 2)
+	// Контекст контуров отменяется при падении любого из них: роль не должна
+	// зависать на долгоживущем контуре (например, relay), пока сбойный уже упал.
+	workerCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	errCh := make(chan error, 3)
+	var wg sync.WaitGroup
+	run := func(name string, fn func(context.Context) error) {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if err := fn(workerCtx); err != nil {
+				errCh <- fmt.Errorf("%s: %w", name, err)
+			}
+		}()
+	}
 	if s.slice.Relay != nil {
-		go func() { errCh <- s.slice.Relay.Run(ctx) }()
+		run("relay", s.slice.Relay.Run)
 	}
 	if s.workflowWorker != nil {
-		go func() { errCh <- s.workflowWorker.Run(ctx) }()
+		run("workflow", s.workflowWorker.Run)
+	}
+	if s.availabilityMonitor != nil {
+		run("runtime-monitor", s.availabilityMonitor.Run)
 	}
 
+	// Ждём первого исхода: отмены контекста или ошибки контура. Ошибка отменяет
+	// контекст — остальные контуры получают отмену и завершаются, а не ждут друг
+	// друга. При штатной отмене не выходим сразу: дожидаемся graceful drain
+	// воркера (он завершает взятые задачи в пределах WorkerStopTimeout).
+	var firstErr error
 	select {
 	case <-ctx.Done():
-		return nil
 	case err := <-errCh:
-		if err != nil {
-			return fmt.Errorf("worker: %w", err)
-		}
-		return nil
+		firstErr = err
+		cancel()
 	}
+	wg.Wait()
+	select {
+	case err := <-errCh:
+		if firstErr == nil {
+			firstErr = err
+		}
+	default:
+	}
+	return firstErr
 }
 
 // queryPort возвращает переданный query-контракт либо запрос, честно отвечающий

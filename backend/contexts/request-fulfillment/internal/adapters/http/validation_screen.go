@@ -254,6 +254,14 @@ func (s *Server) render(w http.ResponseWriter, status int, page string, model co
 		s.renderPlainError(w, http.StatusInternalServerError, "шаблоны экрана не собраны")
 		return
 	}
+	// Экран без собственных таблиц стилей получает общее оформление компонентов:
+	// внешний вид экранов заявок не расходится с другими серверными экранами.
+	if len(model.Layout.Stylesheets) == 0 {
+		model.Layout.Stylesheets = components.ConsoleStylesheets
+	}
+	if len(model.Layout.BootstrapScripts) == 0 {
+		model.Layout.BootstrapScripts = components.ConsoleBootstrapScripts
+	}
 	var buf bytes.Buffer
 	if err := s.pages.Render(&buf, page, model); err != nil {
 		s.renderPlainError(w, http.StatusInternalServerError, "ошибка рендеринга экрана")

@@ -35,6 +35,8 @@ func main() {
 	apiAddr := flag.String("addr", ":8080", "адрес внутреннего HTTP-сервера роли api")
 	ingestAddr := flag.String("ingest-addr", ":8081", "адрес публичного HTTP-сервера роли ingest")
 	requestIntentURL := flag.String("request-intent-url", "", "базовый адрес сервиса заявок request-fulfillment (пусто — in-proc адаптер)")
+	leadSearchURL := flag.String("lead-search-url", "", "базовый адрес сервиса поиска lead-management (пусто — прежняя заглушка поиска)")
+	emailGenerationURL := flag.String("email-generation-url", "", "базовый адрес сервиса генерации писем lead-management (пусто — шаг генерации пропускается)")
 	brokerURL := flag.String("broker-url", "", "адрес AMQP-брокера RabbitMQ, amqp://... (пусто — брокер в памяти)")
 	actor := flag.String("actor", "", "оператор, которому выдано право сборки")
 	tenant := flag.String("tenant", "", "тенант, в котором выдано право сборки")
@@ -45,6 +47,7 @@ func main() {
 	// репозитория (env/флаги на деплое), значения по умолчанию — пустые.
 	leadGreenDSN := flag.String("lead-green-dsn", "", "DSN зелёной зоны lead-management (пусто — in-memory адаптеры)")
 	leadRedDSN := flag.String("lead-red-dsn", "", "DSN красной зоны lead-management (пусто — DSN зелёной зоны)")
+	requestGreenDSN := flag.String("request-green-dsn", "", "DSN зелёной зоны request-fulfillment (пусто — in-memory адаптеры)")
 	firecrawlKey := flag.String("firecrawl-key", "", "ключ доступа Firecrawl (поиск и обход)")
 	firecrawlURL := flag.String("firecrawl-url", "", "базовый адрес Firecrawl API (пусто — адрес по умолчанию)")
 	llmBaseURL := flag.String("llm-base-url", "", "базовый адрес LLM API (DeepSeek; пусто — адрес по умолчанию)")
@@ -69,7 +72,23 @@ func main() {
 	temporalNamespace := flag.String("temporal-namespace", "default", "пространство имён Temporal")
 	temporalAPIKey := flag.String("temporal-api-key", "", "ключ доступа Temporal Cloud (пусто — без TLS и ключа)")
 	temporalTaskQueue := flag.String("temporal-task-queue", "request-fulfillment", "очередь задач воркера workflow")
+	temporalConnectAttempts := flag.Int("temporal-connect-attempts", platformworkflow.DefaultConnectAttempts, "число попыток подключения к Temporal при старте")
+	temporalConnectBackoff := flag.Duration("temporal-connect-backoff", platformworkflow.DefaultConnectInitialBackoff, "начальная задержка между попытками подключения к Temporal")
 	searchStubLeads := flag.Int("workflow-search-stub-leads", 0, "заглушка шага поиска: сколько лидов «находит» (0 — поиск не подключён)")
+
+	// Политики исполнения заявки: сроки паузы утверждения, таймауты и heartbeat
+	// длинных activities, устойчивость воркера.
+	workflowApprovalTTL := flag.Duration("workflow-approval-ttl", 168*time.Hour, "срок паузы утверждения результата (по умолчанию 7 дней)")
+	workflowExecutionTimeout := flag.Duration("workflow-execution-timeout", 720*time.Hour, "предельное время исполнения заявки (по умолчанию 30 дней)")
+	workflowTransitionTimeout := flag.Duration("workflow-transition-timeout", 30*time.Second, "StartToCloseTimeout коротких activities-переходов")
+	workflowTransitionAttempts := flag.Int("workflow-transition-attempts", 3, "число попыток коротких activities-переходов")
+	workflowLongTimeout := flag.Duration("workflow-long-timeout", 10*time.Minute, "StartToCloseTimeout длинных activities (поиск, письма)")
+	workflowHeartbeatTimeout := flag.Duration("workflow-heartbeat-timeout", time.Minute, "HeartbeatTimeout длинных activities")
+	workflowLongAttempts := flag.Int("workflow-long-attempts", 2, "число попыток длинных внешних шагов")
+	workerStopTimeout := flag.Duration("worker-stop-timeout", 30*time.Second, "время graceful drain воркера workflow при остановке")
+	workerMaxActivities := flag.Int("worker-max-concurrent-activities", 10, "предел одновременных activities воркера")
+	workerMaxWorkflows := flag.Int("worker-max-concurrent-workflows", 10, "предел одновременных задач workflow воркера")
+	shutdownTimeout := flag.Duration("shutdown-timeout", 60*time.Second, "предельное время ожидания остановки ролей (graceful drain)")
 	flag.Parse()
 
 	// Наблюдаемость строится один раз на процесс: логгер и метрики общие для
@@ -114,25 +133,34 @@ func main() {
 	}
 	stub := newPublicIngestStub(*ingestAddr, logger)
 
-	// Рантайм исполнения подключается один раз на процесс. Недоступность
-	// Temporal не валит процесс: рантайм честно помечается выключенным, а
-	// существующие ручные потоки смены статуса продолжают работать.
+	// Рантайм исполнения подключается один раз на процесс. Подключение ретраится
+	// с backoff: транзиентный сбой не помечает рантайм выключенным навсегда, а
+	// после исчерпания попыток сервис работает в режиме деградации с неготовой
+	// пробой /readyz. Существующие ручные потоки смены статуса продолжают работать.
 	workflowConfig := platformworkflow.Config{
 		Address:   *temporalAddress,
 		Namespace: *temporalNamespace,
 		APIKey:    *temporalAPIKey,
 		TaskQueue: *temporalTaskQueue,
 	}
+	availability := platformworkflow.NewAvailability()
 	var workflowClient *platformworkflow.Client
 	if workflowConfig.Enabled() {
-		client, err := platformworkflow.Dial(context.Background(), workflowConfig, metrics)
+		client, err := platformworkflow.DialWithRetry(context.Background(), workflowConfig, metrics, platformworkflow.RetryConfig{
+			Attempts:       *temporalConnectAttempts,
+			InitialBackoff: *temporalConnectBackoff,
+		})
 		if err != nil {
-			logger.Warn("lead-gen: рантайм исполнения недоступен, работаем без workflow", observ.Fields{}, "error", err.Error())
+			logger.Warn("lead-gen: рантайм исполнения недоступен, режим деградации", observ.Fields{}, "error", err.Error())
 		} else {
 			workflowClient = client
 			defer workflowClient.Close()
+			availability.MarkReady()
 			logger.Info("lead-gen: рантайм исполнения подключён", observ.Fields{}, "namespace", workflowClient.Namespace(), "task_queue", *temporalTaskQueue)
 		}
+	} else {
+		// Рантайм отключён конфигурацией: зависимости нет — сервис готов.
+		availability.MarkReady()
 	}
 
 	opts := buildOptions{
@@ -141,12 +169,15 @@ func main() {
 		apiAddr:             *apiAddr,
 		ingestAddr:          *ingestAddr,
 		requestIntentURL:    *requestIntentURL,
+		leadSearchURL:       *leadSearchURL,
+		emailGenerationURL:  *emailGenerationURL,
 		consumer:            consumer,
 		publishInterval:     *publishInterval,
 		actor:               *actor,
 		tenant:              *tenant,
 		leadGreenDSN:        *leadGreenDSN,
 		leadRedDSN:          *leadRedDSN,
+		requestGreenDSN:     *requestGreenDSN,
 		firecrawlKey:        *firecrawlKey,
 		firecrawlURL:        *firecrawlURL,
 		llmBaseURL:          *llmBaseURL,
@@ -166,7 +197,18 @@ func main() {
 		smtpFrom:            *smtpFrom,
 		workflowClient:      workflowClient,
 		workflowTaskQueue:   *temporalTaskQueue,
+		runtime:             availability,
 		searchStubLeads:     *searchStubLeads,
+		approvalTTL:         *workflowApprovalTTL,
+		executionTimeout:    *workflowExecutionTimeout,
+		transitionTimeout:   *workflowTransitionTimeout,
+		transitionAttempts:  *workflowTransitionAttempts,
+		longTimeout:         *workflowLongTimeout,
+		heartbeatTimeout:    *workflowHeartbeatTimeout,
+		longAttempts:        *workflowLongAttempts,
+		workerStopTimeout:   *workerStopTimeout,
+		workerMaxActivities: *workerMaxActivities,
+		workerMaxWorkflows:  *workerMaxWorkflows,
 	}
 
 	signalCtx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
@@ -197,8 +239,8 @@ func main() {
 	}()
 	select {
 	case <-done:
-	case <-time.After(15 * time.Second):
-		logger.Warn("lead-gen: роли не завершились за 15с, выход", observ.Fields{})
+	case <-time.After(*shutdownTimeout):
+		logger.Warn("lead-gen: роли не завершились за отведённое время, выход", observ.Fields{}, "timeout", *shutdownTimeout)
 	}
 }
 

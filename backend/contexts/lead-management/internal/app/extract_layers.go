@@ -142,7 +142,13 @@ func contactCandidatesFromExtract(candidates []crawl.ContactCandidate, sourceURL
 // extractLayer1 — слой 1: название из метаданных (title) либо markdown H1,
 // описание из метаданных либо первого абзаца, соцсети из markdown.
 func (r *RunSearch) extractLayer1(page crawl.Page) (name, description domain.AttributedValue, socials []domain.AttributedValue) {
-	at := r.now()
+	return extractCard(page, r.now())
+}
+
+// extractCard — слой 1 как свободная функция: собирает название, описание и
+// соцсети страницы на указанный момент. Общий код планового обхода (RunSearch) и
+// синхронного поиска под заявку (SearchLeadsForRequest).
+func extractCard(page crawl.Page, at time.Time) (name, description domain.AttributedValue, socials []domain.AttributedValue) {
 	prov := domain.Provenance{SourceURL: page.URL, ExtractedAt: at}
 
 	// Приоритет у title: первый H1 в markdown часто — заголовок секции страницы,
@@ -172,7 +178,13 @@ func (r *RunSearch) extractLayer1(page crawl.Page) (name, description domain.Att
 // extractLayer2 — слой 2: email и телефон regex-нормализацией, деобфускация
 // Cloudflare-адресов из markdown.
 func (r *RunSearch) extractLayer2(page crawl.Page) []contactCandidate {
-	at := r.now()
+	return extractContacts(page, r.now())
+}
+
+// extractContacts — слой 2 как свободная функция: email и телефон
+// regex-нормализацией, деобфускация Cloudflare-адресов из markdown. Общий код
+// планового обхода (RunSearch) и синхронного поиска под заявку.
+func extractContacts(page crawl.Page, at time.Time) []contactCandidate {
 	seen := make(map[string]struct{})
 
 	var contacts []contactCandidate

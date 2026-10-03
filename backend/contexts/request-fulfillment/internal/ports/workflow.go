@@ -14,10 +14,13 @@ type StartFulfillment struct {
 	LeadTarget    int
 }
 
-// WorkflowRun — ссылка на запущенное исполнение workflow.
+// WorkflowRun — ссылка на запущенное исполнение workflow. AlreadyStarted
+// отличает повторный старт уже существующего исполнения от только что
+// созданного: повтор — не ошибка, а идемпотентный исход.
 type WorkflowRun struct {
-	WorkflowID string
-	RunID      string
+	WorkflowID     string
+	RunID          string
+	AlreadyStarted bool
 }
 
 // WorkflowStatus — наблюдаемое состояние исполнения заявки для API и консоли.
@@ -28,6 +31,9 @@ type WorkflowStatus struct {
 	Phase      string
 	Execution  string
 	Found      int
+	Drafted    int
+	// NoLeads — отдельный наблюдаемый исход «0 уникальных лидов».
+	NoLeads bool
 }
 
 // WorkflowStarter — порт запуска workflow исполнения заявки. Реализуется

@@ -217,11 +217,17 @@ type jobView struct {
 	Error    string
 	// AutoRefresh — задание не терминально: экран опрашивается через htmx, пока
 	// результат ещё пополняется.
-	AutoRefresh  bool
-	Companies    []jobCompanyRow
+	AutoRefresh bool
+	Companies   []jobCompanyRow
+	// Distribution, Fits — оценки в контексте этого задания.
 	Distribution verdictDistribution
 	Fits         []jobFitRow
 	Points       []timelinePoint
+	// CSRF — токен формы переоценки. Пусто, если форма не показывается.
+	CSRF string
+	// CanReassess — задание терминально и у него есть оценки: доступна переоценка
+	// найденных компаний по актуальным критериям без повторного обхода.
+	CanReassess bool
 }
 
 // verdictDistribution — распределение компаний задания по оценкам. Это

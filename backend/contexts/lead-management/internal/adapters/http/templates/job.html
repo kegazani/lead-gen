@@ -126,6 +126,12 @@
 
   <footer class="card-actions">
     <a class="link" href="/">← К журналу</a>
+    {{- if .CanReassess }}
+    <form method="post" action="/jobs/{{.ID}}/reassess">
+      <input type="hidden" name="csrf" value="{{.CSRF}}">
+      <button class="button-secondary" type="submit">Переоценить компании</button>
+    </form>
+    {{- end }}
   </footer>
 </article>
 {{- end -}}

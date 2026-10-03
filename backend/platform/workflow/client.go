@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	"go.temporal.io/api/serviceerror"
 	"go.temporal.io/sdk/client"
 
 	"lead-gen/backend/platform/observability/observ"
@@ -50,6 +51,19 @@ func Dial(ctx context.Context, cfg Config, metrics observ.Metrics) (*Client, err
 	return &Client{inner: inner, namespace: cfg.Namespace, taskQueue: cfg.TaskQueue, metrics: metrics}, nil
 }
 
+// CheckHealth проверяет соединение с Temporal: доступен ли рантайм прямо сейчас.
+// Используется фоновым монитором доступности и, через признак готовности, пробой
+// /readyz — доступность отражает фактическое состояние, а не отметку при старте.
+func (c *Client) CheckHealth(ctx context.Context) error {
+	if c == nil || c.inner == nil {
+		return ErrNotConfigured
+	}
+	if _, err := c.inner.CheckHealth(ctx, &client.CheckHealthRequest{}); err != nil {
+		return fmt.Errorf("workflow: проверка здоровья Temporal: %w", err)
+	}
+	return nil
+}
+
 // Namespace возвращает пространство имён клиента.
 func (c *Client) Namespace() string { return c.namespace }
 
@@ -74,15 +88,27 @@ type StartOptions struct {
 
 	// TaskQueue — очередь задач. Пусто — очередь клиента по умолчанию.
 	TaskQueue string
+
+	// ExecutionTimeout — предельное время исполнения. Ноль — без предела (не
+	// рекомендуется для заявок с человеческой паузой: исполнение не должно жить
+	// вечно).
+	ExecutionTimeout time.Duration
 }
 
-// Run — ссылка на запущенное исполнение.
+// Run — ссылка на запущенное исполнение. AlreadyStarted отличает повторный старт
+// уже существующего исполнения от только что созданного.
 type Run struct {
-	WorkflowID string
-	RunID      string
+	WorkflowID     string
+	RunID          string
+	AlreadyStarted bool
 }
 
 // Start запускает workflow. Аргументы (args) — payload уровня идентификаторов.
+//
+// Повторный старт с тем же WorkflowID трактуется идемпотентно: Temporal отвечает
+// WorkflowExecutionAlreadyStarted, и клиент возвращает ссылку на существующее
+// исполнение с признаком AlreadyStarted, а не ошибку. Ошибка остаётся только для
+// настоящей недоступности рантайма.
 func (c *Client) Start(ctx context.Context, opts StartOptions, workflowFn any, args ...any) (Run, error) {
 	if c == nil || c.inner == nil {
 		return Run{}, ErrNotConfigured
@@ -92,15 +118,31 @@ func (c *Client) Start(ctx context.Context, opts StartOptions, workflowFn any, a
 		queue = c.taskQueue
 	}
 	run, err := c.inner.ExecuteWorkflow(ctx, client.StartWorkflowOptions{
-		ID:        opts.WorkflowID,
-		TaskQueue: queue,
+		ID:                       opts.WorkflowID,
+		TaskQueue:                queue,
+		WorkflowExecutionTimeout: opts.ExecutionTimeout,
 	}, workflowFn, args...)
 	if err != nil {
+		if existing, ok := startedRun(err, opts.WorkflowID); ok {
+			c.count("workflow_start_already_started", map[string]string{"workflow_id": opts.WorkflowID})
+			return existing, nil
+		}
 		c.count("workflow_start_error", map[string]string{"workflow_id": opts.WorkflowID})
 		return Run{}, fmt.Errorf("workflow: запуск %q: %w", opts.WorkflowID, err)
 	}
 	c.count("workflow_started", map[string]string{"workflow_id": opts.WorkflowID})
 	return Run{WorkflowID: run.GetID(), RunID: run.GetRunID()}, nil
+}
+
+// startedRun распознаёт повторный старт исполнения. Temporal сообщает
+// WorkflowExecutionAlreadyStarted с run id существующего исполнения; это не сбой,
+// поэтому клиент возвращает ссылку на него и признак «уже запущено».
+func startedRun(err error, workflowID string) (Run, bool) {
+	var alreadyStarted *serviceerror.WorkflowExecutionAlreadyStarted
+	if !errors.As(err, &alreadyStarted) {
+		return Run{}, false
+	}
+	return Run{WorkflowID: workflowID, RunID: alreadyStarted.RunId, AlreadyStarted: true}, true
 }
 
 // Execution — наблюдаемое состояние исполнения workflow для консоли и API.

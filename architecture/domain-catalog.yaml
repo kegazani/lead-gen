@@ -136,7 +136,7 @@
       "name": "Интеграционная платформа",
       "classification": "generic",
       "purpose": "Vendor-neutral порты, адаптеры, нормализация ошибок и manifest возможностей поставщиков.",
-      "capabilities": ["provider-agnostic-integrations", "firecrawl-credit-budget", "crawler-proxy-pool"],
+      "capabilities": ["provider-agnostic-integrations", "firecrawl-credit-budget", "crawler-proxy-pool", "integration-call-resilience"],
       "service": "integration-platform",
       "roles": ["api", "ingest", "worker", "chains", "schedule"],
     	  "contracts": ["adapter-capability", "integration-error", "provider-port", "vector"]
@@ -146,7 +146,7 @@
       "name": "Исполнение заявок клиента",
       "classification": "core",
       "purpose": "Жизненный цикл заявки клиента на лидогенерацию: оффер, статусная модель и связь с артефактами фулфилмента.",
-      "capabilities": ["client-request", "request-validation"],
+      "capabilities": ["client-request", "request-validation", "request-fulfillment-execution"],
       "service": "request-fulfillment",
       "roles": ["api", "worker"],
       "contracts": ["request-intent"]

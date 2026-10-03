@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 )
@@ -23,6 +24,22 @@ func NewOfferContent(text string) (OfferContent, error) {
 
 // Text возвращает нормализованный текст оффера.
 func (c OfferContent) Text() string { return c.text }
+
+// MarshalJSON сохраняет VO как JSON-строку. Снимок состояния (RequestSnapshot)
+// сериализуется целиком, а у VO поле закрыто; без явного метода текст оффера
+// потерялся бы при записи снимка в хранилище.
+func (c OfferContent) MarshalJSON() ([]byte, error) { return json.Marshal(c.text) }
+
+// UnmarshalJSON читает VO из строки. Непустоту текста проверяет восстановление
+// оффера (rehydrateOffer), а не сам разбор.
+func (c *OfferContent) UnmarshalJSON(data []byte) error {
+	var text string
+	if err := json.Unmarshal(data, &text); err != nil {
+		return err
+	}
+	c.text = text
+	return nil
+}
 
 // IsZero сообщает, что текст оффера пуст.
 func (c OfferContent) IsZero() bool { return strings.TrimSpace(c.text) == "" }
@@ -53,6 +70,20 @@ func NewRequestTarget(description string) RequestTarget {
 
 // Description возвращает описание цели.
 func (t RequestTarget) Description() string { return t.description }
+
+// MarshalJSON сохраняет VO как JSON-строку: у цели закрытое поле, и при записи
+// снимка агрегата её описание иначе потерялось бы.
+func (t RequestTarget) MarshalJSON() ([]byte, error) { return json.Marshal(t.description) }
+
+// UnmarshalJSON читает VO из строки. Пустая цель допустима.
+func (t *RequestTarget) UnmarshalJSON(data []byte) error {
+	var description string
+	if err := json.Unmarshal(data, &description); err != nil {
+		return err
+	}
+	t.description = description
+	return nil
+}
 
 // IsZero сообщает, что цель не задана.
 func (t RequestTarget) IsZero() bool { return t.description == "" }

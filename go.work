@@ -25,6 +25,7 @@ use (
 	./contracts/data-governance
 	./contracts/engagement-observation
 	./contracts/integration-platform
+	./contracts/lead-management
 	./contracts/message-delivery
 	./contracts/outreach-orchestration
 	./contracts/publishing

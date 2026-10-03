@@ -80,11 +80,16 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (s *Server) routes() http.Handler {
 	mux := http.NewServeMux()
 
+	// Корень сервиса ведёт на регистрацию, а не отвечает 404: новый клиент
+	// начинает работу с регистрации.
+	mux.HandleFunc("GET /{$}", s.handleRoot)
 	mux.HandleFunc("GET /register", s.handleRegisterForm)
 	mux.HandleFunc("POST /register", s.handleRegisterSubmit)
 	mux.HandleFunc("GET /portal", s.handlePortal)
 	mux.HandleFunc("GET /portal/request", s.handleOfferForm)
 	mux.HandleFunc("POST /portal/request", s.handleOfferSubmit)
+	// Общее оформление экранов раздаётся из frontend/components.
+	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(components.StaticFS())))
 	mux.HandleFunc("GET /healthz", s.handleHealth)
 
 	return mux
@@ -119,6 +124,12 @@ type offerView struct {
 	Notice       string
 	ContentField components.Field
 	TargetField  components.Field
+}
+
+// handleRoot обслуживает GET /{$}: корень портала ведёт на регистрацию, а не
+// отвечает 404.
+func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
+	http.Redirect(w, r, "/register", http.StatusSeeOther)
 }
 
 // handleHealth обслуживает GET /healthz: сервис запущен и принимает запросы.
@@ -379,6 +390,14 @@ func (s *Server) render(w http.ResponseWriter, status int, page string, model co
 	if s.pages == nil {
 		s.renderPlainError(w, http.StatusInternalServerError, "шаблоны портала не собраны")
 		return
+	}
+	// Экран без собственных таблиц стилей получает общее оформление компонентов:
+	// внешний вид портала не расходится с другими серверными экранами.
+	if len(model.Layout.Stylesheets) == 0 {
+		model.Layout.Stylesheets = components.ConsoleStylesheets
+	}
+	if len(model.Layout.BootstrapScripts) == 0 {
+		model.Layout.BootstrapScripts = components.ConsoleBootstrapScripts
 	}
 	var buf bytes.Buffer
 	if err := s.pages.Render(&buf, page, model); err != nil {

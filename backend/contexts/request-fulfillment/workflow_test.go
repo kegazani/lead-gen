@@ -42,7 +42,7 @@ func TestWorkflowUnavailableKeepsRequestValidated(t *testing.T) {
 	}
 
 	// Клиент Temporal не подключён: адаптер обязан честно сообщить о недоступности.
-	starter := workflowadapter.NewClient(nil, "")
+	starter := workflowadapter.NewClient(nil, "", workflowadapter.ExecutionPolicy{})
 	if _, err := starter.StartFulfillment(ctx, ports.StartFulfillment{RequestID: "req-1", TenantID: "tenant-1"}); !errors.Is(err, ports.ErrWorkflowUnavailable) {
 		t.Fatalf("ошибка = %v, ожидалась ErrWorkflowUnavailable", err)
 	}

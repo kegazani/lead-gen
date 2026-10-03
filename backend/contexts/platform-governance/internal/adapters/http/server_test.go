@@ -113,6 +113,41 @@ func TestHealthz(t *testing.T) {
 	}
 }
 
+// TestRootRedirectsToRegister проверяет, что корень сервиса ведёт на регистрацию,
+// а не отвечает 404.
+func TestRootRedirectsToRegister(t *testing.T) {
+	server := newServer(t, newFakeRequests())
+	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}}
+	resp, err := client.Get(server.URL + "/")
+	if err != nil {
+		t.Fatalf("GET /: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusSeeOther {
+		t.Fatalf("GET / = %d, ожидался 303", resp.StatusCode)
+	}
+	if location := resp.Header.Get("Location"); location != "/register" {
+		t.Fatalf("Location = %q, ожидался /register", location)
+	}
+}
+
+// TestRegisterLinksSharedStylesheet проверяет, что экран портала подключает общее
+// оформление компонентов и оно реально раздаётся.
+func TestRegisterLinksSharedStylesheet(t *testing.T) {
+	server := newServer(t, newFakeRequests())
+	page := body(t, get(t, server, "/register"))
+	if !strings.Contains(page, `<link rel="stylesheet" href="/static/console.css">`) {
+		t.Fatalf("экран не подключил общее оформление:\n%s", page)
+	}
+	resp := get(t, server, "/static/console.css")
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("оформление не раздаётся: статус %d", resp.StatusCode)
+	}
+}
+
 // TestRegisterScreen проверяет рендеринг формы регистрации.
 func TestRegisterScreen(t *testing.T) {
 	server := newServer(t, newFakeRequests())

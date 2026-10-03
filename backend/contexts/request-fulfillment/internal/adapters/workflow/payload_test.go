@@ -13,11 +13,14 @@ import (
 func TestPayloadsCarryIdentifiersOnly(t *testing.T) {
 	payloads := map[string]any{
 		"Params":                 Params{},
+		"ExecutionPolicy":        ExecutionPolicy{},
 		"ApprovalDecision":       ApprovalDecision{},
 		"Status":                 Status{},
 		"transitionInput":        transitionInput{},
 		"searchInput":            searchInput{},
 		"searchResult":           searchResult{},
+		"draftInput":             draftInput{},
+		"draftResult":            draftResult{},
 		"SearchInput":            SearchInput{},
 		"ports.StartFulfillment": ports.StartFulfillment{},
 		"ports.WorkflowRun":      ports.WorkflowRun{},

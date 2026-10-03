@@ -44,6 +44,14 @@ const pollInterval = 500 * time.Millisecond
 // отменённого задания обхода.
 const finalSnapshotTimeout = 5 * time.Second
 
+// defaultHTTPTimeout — верхняя граница одного HTTP-запроса к Firecrawl, когда
+// Config.HTTPClient не задан. Один вызов (search, scrape, шаг опроса crawl) —
+// синхронная операция движка, где рендер страниц обычно укладывается в десятки
+// секунд; минута даёт запас на медленный рендер и при этом не позволяет зависшему
+// соединению держать activity до её серверного таймаута. Сам обход это значение не
+// ограничивает: crawl асинхронен, а таймаут покрывает каждый запрос по отдельности.
+const defaultHTTPTimeout = 60 * time.Second
+
 // Config — настройки адаптера Firecrawl.
 type Config struct {
 	// APIKey — ключ доступа Firecrawl. Пустой ключ допустим для тестов с
@@ -51,7 +59,8 @@ type Config struct {
 	APIKey string
 	// BaseURL — базовый адрес API. Пустое значение заменяется на defaultBaseURL.
 	BaseURL string
-	// HTTPClient — клиент для исходящих запросов. nil означает http.DefaultClient.
+	// HTTPClient — клиент для исходящих запросов. nil означает клиент адаптера с
+	// конечным таймаутом (defaultHTTPTimeout), а не http.DefaultClient без таймаута.
 	HTTPClient *http.Client
 	// Logger — опциональный структурированный логгер безопасных параметров
 	// запроса. nil означает «без логов».
@@ -82,7 +91,7 @@ func New(cfg Config) *Client {
 	}
 	client := cfg.HTTPClient
 	if client == nil {
-		client = http.DefaultClient
+		client = &http.Client{Timeout: defaultHTTPTimeout}
 	}
 	return &Client{
 		apiKey:     cfg.APIKey,

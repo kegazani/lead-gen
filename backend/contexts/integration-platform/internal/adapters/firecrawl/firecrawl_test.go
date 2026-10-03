@@ -10,6 +10,7 @@ import (
 	"reflect"
 	"sync"
 	"testing"
+	"time"
 
 	"lead-gen/contracts/integration-platform/contracttest"
 	"lead-gen/contracts/integration-platform/crawl"
@@ -498,5 +499,53 @@ func TestCrawlCancellationStopsRemoteJob(t *testing.T) {
 	mu.Unlock()
 	if !got {
 		t.Fatal("при отмене адаптер должен отправить DELETE /v1/crawl/{id} для остановки удалённого обхода")
+	}
+}
+
+// TestNewDefaultHTTPClientHasTimeout проверяет, что при HTTPClient == nil адаптер
+// собирает собственный клиент с конечным таймаутом вместо http.DefaultClient без
+// таймаута: зависший сетевой вызов не должен держать activity бесконечно.
+func TestNewDefaultHTTPClientHasTimeout(t *testing.T) {
+	client := New(Config{BaseURL: "https://api.firecrawl.dev"})
+	if client.httpClient == nil {
+		t.Fatal("HTTPClient не задан, но адаптер вернул nil-клиент")
+	}
+	if client.httpClient.Timeout <= 0 {
+		t.Fatalf("таймаут клиента по умолчанию = %v, ожидался положительный", client.httpClient.Timeout)
+	}
+}
+
+// TestSearchExpiredContextReturnsError проверяет, что дедлайн контекста доходит до
+// HTTP-запроса: поиск против «зависшего» сервера завершается ошибкой по дедлайну, а
+// не висит до клиентского таймаута.
+func TestSearchExpiredContextReturnsError(t *testing.T) {
+	// Сервер держит соединение открытым, пока тест его не отпустит: клиент
+	// обязан завершиться по дедлайну контекста, не дожидаясь ответа.
+	release := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+		<-release
+	}))
+	defer func() {
+		close(release)
+		srv.Close()
+	}()
+
+	client := New(Config{BaseURL: srv.URL})
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	done := make(chan error, 1)
+	go func() {
+		_, err := client.Search(ctx, search.Query{Text: "тест"})
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("Search с истёкшим контекстом вернул nil-ошибку")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Search завис: дедлайн контекста не проброшен в HTTP-запрос")
 	}
 }

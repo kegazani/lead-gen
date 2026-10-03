@@ -286,6 +286,48 @@ func (s *Server) handleFulfillmentStatus(w http.ResponseWriter, r *http.Request)
 	writeJSON(w, http.StatusOK, view)
 }
 
+// emailDraftResponse — форма черновика письма для консоли оператора.
+type emailDraftResponse struct {
+	LeadID   string `json:"lead_id"`
+	Subject  string `json:"subject"`
+	Body     string `json:"body"`
+	Language string `json:"language,omitempty"`
+}
+
+// emailDraftsResponse — форма ответа чтения черновиков писем заявки.
+type emailDraftsResponse struct {
+	RequestID string               `json:"request_id"`
+	Drafts    []emailDraftResponse `json:"drafts"`
+}
+
+// handleEmailDrafts обслуживает GET .../email-drafts: оператор видит письма,
+// сгенерированные под найденных лидов. Текст писем остаётся в контексте и не
+// поднимается в payload workflow.
+func (s *Server) handleEmailDrafts(w http.ResponseWriter, r *http.Request) {
+	if s.deps.EmailDrafts == nil {
+		writeErrorMessage(w, http.StatusServiceUnavailable, "черновики писем: хранилище не подключено")
+		return
+	}
+	views, err := s.deps.EmailDrafts.Handle(r.Context(), query.EmailDrafts{
+		RequestID: domain.RequestID(r.PathValue("requestID")),
+		TenantID:  domain.TenantID(r.URL.Query().Get("tenant_id")),
+	})
+	if err != nil {
+		writeDomainError(w, err)
+		return
+	}
+	drafts := make([]emailDraftResponse, 0, len(views))
+	for _, view := range views {
+		drafts = append(drafts, emailDraftResponse{
+			LeadID:   view.LeadID,
+			Subject:  view.Subject,
+			Body:     view.Body,
+			Language: view.Language,
+		})
+	}
+	writeJSON(w, http.StatusOK, emailDraftsResponse{RequestID: r.PathValue("requestID"), Drafts: drafts})
+}
+
 // workflowStatusResponse — форма наблюдаемого состояния исполнения заявки.
 // Отражает только идентификаторы и фазу — никаких данных оффера.
 type workflowStatusResponse struct {
@@ -295,6 +337,8 @@ type workflowStatusResponse struct {
 	Phase      string `json:"phase"`
 	Execution  string `json:"execution,omitempty"`
 	Found      int    `json:"found"`
+	Drafted    int    `json:"drafted"`
+	NoLeads    bool   `json:"no_leads"`
 }
 
 // handleWorkflowStatus обслуживает GET .../workflow: состояние бегущего
@@ -316,6 +360,8 @@ func (s *Server) handleWorkflowStatus(w http.ResponseWriter, r *http.Request) {
 		Phase:      status.Phase,
 		Execution:  status.Execution,
 		Found:      status.Found,
+		Drafted:    status.Drafted,
+		NoLeads:    status.NoLeads,
 	})
 }
 
@@ -329,7 +375,8 @@ type startWorkflowBody struct {
 
 // handleStartWorkflow обслуживает POST .../workflow: запускает durable-исполнение
 // заявки. При недоступности рантайма честно отвечает 503, и заявка остаётся в
-// текущем статусе.
+// текущем статусе. Повторный старт уже бегущего исполнения — не 503, а явный
+// идемпотентный исход «уже запущено» (200).
 func (s *Server) handleStartWorkflow(w http.ResponseWriter, r *http.Request) {
 	if s.deps.WorkflowStarter == nil {
 		writeErrorMessage(w, http.StatusServiceUnavailable, "исполнение: рантайм workflow не подключён")
@@ -350,13 +397,20 @@ func (s *Server) handleStartWorkflow(w http.ResponseWriter, r *http.Request) {
 		writeDomainError(w, err)
 		return
 	}
-	writeJSON(w, http.StatusAccepted, workflowRunResponse{WorkflowID: run.WorkflowID, RunID: run.RunID})
+	response := workflowRunResponse{WorkflowID: run.WorkflowID, RunID: run.RunID, AlreadyStarted: run.AlreadyStarted}
+	if run.AlreadyStarted {
+		writeJSON(w, http.StatusOK, response)
+		return
+	}
+	writeJSON(w, http.StatusAccepted, response)
 }
 
-// workflowRunResponse — форма ссылки на запущенное исполнение.
+// workflowRunResponse — форма ссылки на запущенное исполнение. AlreadyStarted
+// отличает повторный старт от только что созданного исполнения.
 type workflowRunResponse struct {
-	WorkflowID string `json:"workflow_id"`
-	RunID      string `json:"run_id"`
+	WorkflowID     string `json:"workflow_id"`
+	RunID          string `json:"run_id"`
+	AlreadyStarted bool   `json:"already_started,omitempty"`
 }
 
 // workflowDecisionBody — тело сигнала человеческой паузы workflow. Только
@@ -389,9 +443,21 @@ func (s *Server) handleWorkflowApprovalDecision(w http.ResponseWriter, r *http.R
 	writeJSON(w, http.StatusAccepted, map[string]string{"status": "accepted"})
 }
 
-// handleHealth обслуживает GET /healthz: сервис запущен и принимает запросы.
+// handleHealth обслуживает GET /healthz: сервис запущен и принимает запросы
+// (проба живости, не зависит от рантайма исполнения).
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]string{"status": "ok"})
+}
+
+// handleReadyz обслуживает GET /readyz: готовность обслуживать работу с учётом
+// доступности рантайма durable-исполнения. Недоступный рантайм — неготовность
+// (503), тогда как /healthz продолжает отвечать как проба живости.
+func (s *Server) handleReadyz(w http.ResponseWriter, _ *http.Request) {
+	if s.deps.Runtime != nil && !s.deps.Runtime.Ready() {
+		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"status": "not-ready"})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
 }
 
 // decodeTransition разбирает общее тело команды перехода.

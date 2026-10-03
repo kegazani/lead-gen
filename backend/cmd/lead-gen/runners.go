@@ -33,18 +33,24 @@ import (
 	platformworkflow "lead-gen/backend/platform/workflow"
 	"lead-gen/contracts/integration-platform/budget"
 	"lead-gen/contracts/integration-platform/llm"
+	"lead-gen/contracts/lead-management/emailgeneration"
+	emailgenerationhttp "lead-gen/contracts/lead-management/emailgeneration/httpport"
+	"lead-gen/contracts/lead-management/leadsearch"
+	leadsearchhttp "lead-gen/contracts/lead-management/leadsearch/httpport"
 	"lead-gen/contracts/request-fulfillment/requestintent"
 	"lead-gen/contracts/request-fulfillment/requestintent/httpport"
 )
 
 // buildOptions — параметры, общие для сборки сервисов в одном процессе.
 type buildOptions struct {
-	apiAddr          string
-	ingestAddr       string
-	requestIntentURL string
-	publishInterval  time.Duration
-	actor            string
-	tenant           string
+	apiAddr            string
+	ingestAddr         string
+	requestIntentURL   string
+	leadSearchURL      string
+	emailGenerationURL string
+	publishInterval    time.Duration
+	actor              string
+	tenant             string
 
 	// Брокер в памяти: реализует и Publisher, и Consumer, поэтому в совмещённом
 	// деплое публикация одного сервиса доходит до подписки другого.
@@ -56,8 +62,11 @@ type buildOptions struct {
 	metrics observ.Metrics
 
 	// Конфигурация сервиса lead-management.
-	leadGreenDSN        string // DSN зелёной зоны; пусто — in-memory адаптеры
-	leadRedDSN          string // DSN красной зоны; пусто — DSN зелёной зоны
+	leadGreenDSN string // DSN зелёной зоны; пусто — in-memory адаптеры
+	leadRedDSN   string // DSN красной зоны; пусто — DSN зелёной зоны
+
+	// Конфигурация хранилища сервиса request-fulfillment.
+	requestGreenDSN     string // DSN зелёной зоны; пусто — in-memory адаптеры
 	firecrawlKey        string // ключ Firecrawl; обязателен для поиска и обхода
 	firecrawlURL        string // базовый адрес Firecrawl; пусто — по умолчанию
 	llmBaseURL          string // базовый адрес LLM (DeepSeek); пусто — по умолчанию
@@ -82,6 +91,24 @@ type buildOptions struct {
 	workflowClient    *platformworkflow.Client
 	workflowTaskQueue string
 	searchStubLeads   int // заглушка шага поиска; 0 — поиск не подключён
+
+	// runtime — признак доступности рантайма для пробы готовности /readyz.
+	runtime *platformworkflow.Availability
+
+	// Политики исполнения заявки: срок паузы утверждения, предельное время
+	// исполнения, таймауты и heartbeat длинных activities.
+	approvalTTL        time.Duration
+	executionTimeout   time.Duration
+	transitionTimeout  time.Duration
+	transitionAttempts int
+	longTimeout        time.Duration
+	heartbeatTimeout   time.Duration
+	longAttempts       int
+
+	// Устойчивость воркера workflow: graceful drain и лимиты конкурентности.
+	workerStopTimeout   time.Duration
+	workerMaxActivities int
+	workerMaxWorkflows  int
 }
 
 // buildService собирает сервис по его идентификатору и механизму группы
@@ -124,16 +151,58 @@ func buildService(
 	case leadmanagement.ServiceID:
 		return buildLeadManagement(opts, tracer, broker)
 	case requestfulfillment.ServiceID:
+		leadSearch, err := leadSearchPort(opts)
+		if err != nil {
+			return nil, fmt.Errorf("request-fulfillment: порт поиска: %w", err)
+		}
+		emailGeneration, err := emailGenerationPort(opts)
+		if err != nil {
+			return nil, fmt.Errorf("request-fulfillment: порт генерации писем: %w", err)
+		}
+
+		// Хранилище заявок: PostgreSQL по DSN зелёной зоны либо in-memory (dev).
+		// Durable-исполнение Temporal требует персистентного адаптера: состояние
+		// заявки и её outbox переживают рестарт процесса.
+		var persist requestfulfillment.Persistence
+		if strings.TrimSpace(opts.requestGreenDSN) != "" {
+			pool, err := newServicePool(opts.requestGreenDSN, requestfulfillment.ServiceID)
+			if err != nil {
+				return nil, err
+			}
+			if err := applyMigrations(pool, "backend/contexts/request-fulfillment/migrations/green", requestfulfillment.ServiceID); err != nil {
+				pool.Close()
+				return nil, err
+			}
+			persist = requestfulfillment.NewPostgresPersistence(pool)
+		}
+
 		return requestfulfillment.New(requestfulfillment.Config{
-			APIAddr:           opts.apiAddr,
-			Interval:          opts.publishInterval,
-			Publisher:         broker,
-			WorkflowClient:    opts.workflowClient,
-			WorkflowTaskQueue: opts.workflowTaskQueue,
-			SearchLeads:       opts.searchStubLeads,
-			Logger:            opts.logger,
-			Metrics:           opts.metrics,
-			Tracer:            tracer,
+			APIAddr:                       opts.apiAddr,
+			Interval:                      opts.publishInterval,
+			Repository:                    persist.Repository,
+			UnitOfWork:                    persist.UnitOfWork,
+			Journal:                       persist.Journal,
+			DraftStore:                    persist.DraftStore,
+			Publisher:                     broker,
+			WorkflowClient:                opts.workflowClient,
+			WorkflowTaskQueue:             opts.workflowTaskQueue,
+			Runtime:                       opts.runtime,
+			ApprovalTTL:                   opts.approvalTTL,
+			WorkflowExecutionTimeout:      opts.executionTimeout,
+			TransitionActivityTimeout:     opts.transitionTimeout,
+			TransitionActivityAttempts:    opts.transitionAttempts,
+			LongActivityTimeout:           opts.longTimeout,
+			LongActivityHeartbeat:         opts.heartbeatTimeout,
+			LongActivityAttempts:          opts.longAttempts,
+			WorkerStopTimeout:             opts.workerStopTimeout,
+			WorkerMaxConcurrentActivities: opts.workerMaxActivities,
+			WorkerMaxConcurrentWorkflows:  opts.workerMaxWorkflows,
+			SearchLeads:                   opts.searchStubLeads,
+			LeadSearch:                    leadSearch,
+			EmailGeneration:               emailGeneration,
+			Logger:                        opts.logger,
+			Metrics:                       opts.metrics,
+			Tracer:                        tracer,
 		})
 	case platformgovernance.ServiceID:
 		return buildPlatformGovernance(opts, tracer)
@@ -262,6 +331,26 @@ func requestIntentPort(opts buildOptions) (requestintent.Port, error) {
 	return requestfulfillment.NewRequestIntent(requests), nil
 }
 
+// leadSearchPort выбирает адаптер контракта lead-search по топологии: задан
+// адрес сервиса поиска — сетевой HTTP-адаптер; иначе nil, и шаг поиска падает на
+// прежнюю заглушку (SearchLeads).
+func leadSearchPort(opts buildOptions) (leadsearch.Port, error) {
+	if addr := strings.TrimSpace(opts.leadSearchURL); addr != "" {
+		return leadsearchhttp.New(addr)
+	}
+	return nil, nil
+}
+
+// emailGenerationPort выбирает адаптер контракта email-generation по топологии:
+// задан адрес сервиса генерации — сетевой HTTP-адаптер; иначе nil, и шаг
+// генерации черновиков штатно пропускается.
+func emailGenerationPort(opts buildOptions) (emailgeneration.Port, error) {
+	if addr := strings.TrimSpace(opts.emailGenerationURL); addr != "" {
+		return emailgenerationhttp.New(addr)
+	}
+	return nil, nil
+}
+
 // buildLeadManagement собирает сервис lead-management и впрыскивает адаптеры.
 // Репозитории берутся из PostgreSQL по DSN зон либо из памяти (dev); поиск и
 // обход обслуживает Firecrawl, планирование — LLM (DeepSeek), если задан ключ.
@@ -319,12 +408,12 @@ func buildLeadManagement(opts buildOptions, tracer observ.Tracer, broker amqp.Pu
 			return nil, err
 		}
 
-		if err := applyMigrations(greenPool, "backend/contexts/lead-management/migrations/green"); err != nil {
+		if err := applyMigrations(greenPool, "backend/contexts/lead-management/migrations/green", leadmanagement.ServiceID); err != nil {
 			greenPool.Close()
 			redPool.Close()
 			return nil, err
 		}
-		if err := applyMigrations(redPool, "backend/contexts/lead-management/migrations/red"); err != nil {
+		if err := applyMigrations(redPool, "backend/contexts/lead-management/migrations/red", leadmanagement.ServiceID); err != nil {
 			greenPool.Close()
 			redPool.Close()
 			return nil, err
@@ -409,16 +498,26 @@ func newLeadPool(dsn, zone string) (*pgxpool.Pool, error) {
 	return pool, nil
 }
 
+// newServicePool собирает пул соединений PostgreSQL для сервиса. Пул живёт
+// столько же, сколько процесс: сервис не владеет его закрытием.
+func newServicePool(dsn, service string) (*pgxpool.Pool, error) {
+	pool, err := pgxpool.New(context.Background(), dsn)
+	if err != nil {
+		return nil, fmt.Errorf("%s: пул соединений: %w", service, err)
+	}
+	return pool, nil
+}
+
 // applyMigrations загружает миграции схемы сервиса из каталога и применяет их к
 // пулу. Принадлежность схеме проверяет migrate.Load до выполнения.
-func applyMigrations(pool *pgxpool.Pool, dir string) error {
-	migrations, err := migrate.Load(dir, migrate.OwnSchema(leadmanagement.ServiceID))
+func applyMigrations(pool *pgxpool.Pool, dir, service string) error {
+	migrations, err := migrate.Load(dir, migrate.OwnSchema(service))
 	if err != nil {
 		return err
 	}
 	for _, m := range migrations {
 		if _, err := pool.Exec(context.Background(), m.SQL); err != nil {
-			return fmt.Errorf("lead-management: миграция %s: %w", m.Name, err)
+			return fmt.Errorf("%s: миграция %s: %w", service, m.Name, err)
 		}
 	}
 	return nil

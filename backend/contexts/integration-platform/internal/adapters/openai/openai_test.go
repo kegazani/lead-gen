@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 	"unicode/utf8"
 
 	"lead-gen/contracts/integration-platform/contracttest"
@@ -784,5 +785,140 @@ func TestAssessFailsAfterRepair(t *testing.T) {
 	}
 	if calls != 2 {
 		t.Fatalf("вызовов модели %d, ожидалось 2 (ровно одна повторная попытка)", calls)
+	}
+}
+
+// TestNewDefaultHTTPClientHasTimeout проверяет, что при HTTPClient == nil адаптер
+// собирает собственный клиент с конечным таймаутом вместо http.DefaultClient без
+// таймаута: зависший вызов модели не должен держать activity бесконечно.
+func TestNewDefaultHTTPClientHasTimeout(t *testing.T) {
+	client := New(Config{BaseURL: "https://api.deepseek.com"})
+	if client.httpClient == nil {
+		t.Fatal("HTTPClient не задан, но адаптер вернул nil-клиент")
+	}
+	if client.httpClient.Timeout <= 0 {
+		t.Fatalf("таймаут клиента по умолчанию = %v, ожидался положительный", client.httpClient.Timeout)
+	}
+}
+
+// TestInterpretSendsZeroTemperature проверяет, что интерпретация запрашивает
+// детерминированный вывод: одинаковый запрос обязан давать одинаковые критерии,
+// иначе одинаковые компании получают разные вердикты.
+func TestInterpretSendsZeroTemperature(t *testing.T) {
+	var captured chatRequest
+	mux := http.NewServeMux()
+	mux.HandleFunc("/chat/completions", func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&captured); err != nil {
+			t.Errorf("чтение тела запроса: %v", err)
+		}
+		writeJSON(t, w, map[string]any{
+			"choices": []map[string]any{
+				{"message": map[string]any{"role": "assistant", "content": `{"target_lead":"инженерные компании","need_signals":["услуги на сайте"],"uncertainty":false}`}},
+			},
+		})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	client := New(Config{BaseURL: srv.URL})
+	if _, _, err := client.Interpret(context.Background(), llm.InterpretRequest{Query: "инженерные системы"}); err != nil {
+		t.Fatalf("Interpret: %v", err)
+	}
+	if captured.Temperature == nil || *captured.Temperature != 0 {
+		t.Fatalf("temperature = %v, ожидался явный ноль", captured.Temperature)
+	}
+}
+
+// TestAssessSendsZeroTemperature проверяет, что оценка компании запрашивает
+// детерминированный вывод: одинаковые компании должны получать один вердикт.
+func TestAssessSendsZeroTemperature(t *testing.T) {
+	var captured chatRequest
+	mux := http.NewServeMux()
+	mux.HandleFunc("/chat/completions", func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&captured); err != nil {
+			t.Errorf("чтение тела запроса: %v", err)
+		}
+		writeJSON(t, w, map[string]any{
+			"choices": []map[string]any{
+				{"message": map[string]any{"role": "assistant", "content": `{"verdict":"fits","signal_kind":"direct","evidence":[{"criterion":"c","fact":"f","source_url":"https://example.com/x","reasoning":"r","signal_kind":"direct"}]}`}},
+			},
+		})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	client := New(Config{BaseURL: srv.URL})
+	if _, _, err := client.Assess(context.Background(), llm.AssessRequest{
+		JobID:    "job-1",
+		Material: []llm.AssessMaterial{{URL: "https://example.com/x", Text: "текст"}},
+	}); err != nil {
+		t.Fatalf("Assess: %v", err)
+	}
+	if captured.Temperature == nil || *captured.Temperature != 0 {
+		t.Fatalf("temperature = %v, ожидался явный ноль", captured.Temperature)
+	}
+}
+
+// TestPlanKeepsProviderTemperature проверяет, что планирование не фиксирует
+// температуру: добор целей опирается на разброс вариантов плана, и жёсткий ноль
+// лишил бы повторные итерации новых целей.
+func TestPlanKeepsProviderTemperature(t *testing.T) {
+	var captured chatRequest
+	mux := http.NewServeMux()
+	mux.HandleFunc("/chat/completions", func(w http.ResponseWriter, r *http.Request) {
+		if err := json.NewDecoder(r.Body).Decode(&captured); err != nil {
+			t.Errorf("чтение тела запроса: %v", err)
+		}
+		writeJSON(t, w, map[string]any{
+			"choices": []map[string]any{
+				{"message": map[string]any{"role": "assistant", "content": `{"targets":[{"query":"компании"}]}`}},
+			},
+		})
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+
+	client := New(Config{BaseURL: srv.URL})
+	if _, _, err := client.Plan(context.Background(), llm.PlanRequest{Query: "компании"}); err != nil {
+		t.Fatalf("Plan: %v", err)
+	}
+	if captured.Temperature != nil {
+		t.Fatalf("plan temperature = %v, ожидалось отсутствие поля", *captured.Temperature)
+	}
+}
+
+// TestConverseExpiredContextReturnsError проверяет, что дедлайн контекста доходит
+// до HTTP-запроса: ход диалога против «зависшего» сервера завершается ошибкой по
+// дедлайну, а не висит до клиентского таймаута.
+func TestConverseExpiredContextReturnsError(t *testing.T) {
+	// Сервер держит соединение открытым, пока тест его не отпустит: клиент
+	// обязан завершиться по дедлайну контекста, не дожидаясь ответа.
+	release := make(chan struct{})
+	srv := httptest.NewServer(http.HandlerFunc(func(_ http.ResponseWriter, _ *http.Request) {
+		<-release
+	}))
+	defer func() {
+		close(release)
+		srv.Close()
+	}()
+
+	client := New(Config{BaseURL: srv.URL})
+	ctx, cancel := context.WithTimeout(context.Background(), 50*time.Millisecond)
+	defer cancel()
+
+	history := []llm.Message{{Role: llm.RoleUser, Content: "ищем логистов"}}
+	done := make(chan error, 1)
+	go func() {
+		_, _, err := client.Converse(ctx, llm.ConverseRequest{History: history})
+		done <- err
+	}()
+
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("Converse с истёкшим контекстом вернул nil-ошибку")
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Converse завис: дедлайн контекста не проброшен в HTTP-запрос")
 	}
 }

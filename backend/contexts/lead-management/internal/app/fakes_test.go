@@ -112,7 +112,10 @@ type fakeLLM struct {
 	assessIdx     int
 	converseIdx   int
 	converseCalls int
-	planCalls     int
+	// converseRequests — зафиксированные запросы диалога: позволяют проверить,
+	// что промпт построен из оффера и данных лида.
+	converseRequests []llm.ConverseRequest
+	planCalls        int
 	// planRequests — зафиксированные запросы планирования: позволяют проверить,
 	// что интерпретация задания дошла до llm.Port.Plan.
 	planRequests []llm.PlanRequest
@@ -192,8 +195,9 @@ func (f *fakeLLM) Assess(_ context.Context, _ llm.AssessRequest) (llm.Assessment
 
 // Converse отдаёт заготовленные реплики по порядку, а когда они кончились —
 // повторяет последнюю. Без заготовок возвращает нейтральный уточняющий вопрос.
-func (f *fakeLLM) Converse(_ context.Context, _ llm.ConverseRequest) (llm.ConverseReply, llm.Usage, error) {
+func (f *fakeLLM) Converse(_ context.Context, req llm.ConverseRequest) (llm.ConverseReply, llm.Usage, error) {
 	f.converseCalls++
+	f.converseRequests = append(f.converseRequests, req)
 	if f.err != nil {
 		return llm.ConverseReply{}, llm.Usage{}, f.err
 	}

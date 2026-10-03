@@ -91,11 +91,16 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (s *Server) routes() http.Handler {
 	mux := http.NewServeMux()
 
+	// Корень сервиса ведёт на дашборд, а не отвечает 404: адрес сервиса —
+	// точка входа в его экран.
+	mux.HandleFunc("GET /{$}", s.handleRoot)
 	mux.HandleFunc("GET /dashboard", s.handleDashboard)
 	mux.HandleFunc("GET /dashboard/stream", s.handleStream)
 	// Приём событий — write-путь dev- и тест-контура, а не клиентский read-путь:
 	// в рабочем контуре события приходят воркером из брокера.
 	mux.HandleFunc("POST /dashboard/events", s.handleEvents)
+	// Общее оформление экранов раздаётся из frontend/components.
+	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(components.StaticFS())))
 	mux.HandleFunc("GET /healthz", s.handleHealth)
 
 	return mux
@@ -105,6 +110,12 @@ func (s *Server) routes() http.Handler {
 // frontend/components плюс страницу экрана.
 func newPages() (*components.Set, error) {
 	return components.New(templateFS, pageDashboard)
+}
+
+// handleRoot обслуживает GET /{$}: корень сервиса ведёт на дашборд, а не
+// отвечает 404.
+func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
+	http.Redirect(w, r, "/dashboard", http.StatusSeeOther)
 }
 
 // handleHealth обслуживает GET /healthz: сервис запущен и принимает запросы.
@@ -294,6 +305,14 @@ func (s *Server) render(w http.ResponseWriter, status int, page string, model co
 	if s.pages == nil {
 		http.Error(w, "шаблоны дашборда не собраны", http.StatusInternalServerError)
 		return
+	}
+	// Экран без собственных таблиц стилей получает общее оформление компонентов:
+	// внешний вид дашборда не расходится с другими серверными экранами.
+	if len(model.Layout.Stylesheets) == 0 {
+		model.Layout.Stylesheets = components.ConsoleStylesheets
+	}
+	if len(model.Layout.BootstrapScripts) == 0 {
+		model.Layout.BootstrapScripts = components.ConsoleBootstrapScripts
 	}
 	var buf bytes.Buffer
 	if err := s.pages.Render(&buf, page, model); err != nil {

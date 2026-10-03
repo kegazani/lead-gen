@@ -84,6 +84,14 @@ type Config struct {
 	// Limits — пределы обхода.
 	Limits app.CrawlLimits
 
+	// LeadSearchMaxResults — верхняя граница результатов Firecrawl-поиска (топ-N
+	// сайтов) в синхронном поиске под заявку (контракт lead-search). 0 — значение
+	// по умолчанию.
+	LeadSearchMaxResults int
+	// LeadSearchDeadline — предельное время фазы краулинга синхронного поиска под
+	// заявку. 0 — значение по умолчанию.
+	LeadSearchDeadline time.Duration
+
 	// DialogueMaxTurns — предел числа ходов диалога ассистента (0 — значение по
 	// умолчанию). Предохранитель от бесконечных уточнений: бюджета на токены LLM нет.
 	DialogueMaxTurns int
@@ -224,19 +232,39 @@ func New(cfg Config) (*Service, error) {
 	suggestNiches := &app.SuggestNiches{LLM: cfg.LLM}
 	dialogue := &app.ConverseDialogue{LLM: cfg.LLM, MaxTurns: cfg.DialogueMaxTurns, Logger: cfg.Logger}
 	forumSignals := &app.SearchForumSignals{Forum: cfg.Forum}
+	searchLeads := &app.SearchLeadsForRequest{
+		Profiles:    cfg.Profiles,
+		Contacts:    cfg.Contacts,
+		Search:      cfg.Search,
+		Crawl:       cfg.Crawl,
+		Clock:       cfg.Clock,
+		Limits:      cfg.Limits,
+		MaxResults:  cfg.LeadSearchMaxResults,
+		Deadline:    cfg.LeadSearchDeadline,
+		Logger:      cfg.Logger,
+		Tracer:      cfg.Tracer,
+		ServiceName: ServiceID,
+	}
+	draftEmail := &app.DraftEmailForLead{
+		Profiles: cfg.Profiles,
+		Contacts: cfg.Contacts,
+		LLM:      cfg.LLM,
+	}
 	server := httpapi.NewServer(httpapi.Dependencies{
-		RunSearch:     runSearch,
-		Showcase:      showcase,
-		ChangeStage:   changeStage,
-		Snooze:        snooze,
-		SendToLead:    sendToLead,
-		SendToSegment: sendToSegment,
-		Templates:     templateLibrary,
-		SuggestNiches: suggestNiches,
-		Dialogue:      dialogue,
-		ForumSignals:  forumSignals,
-		Account:       cfg.Account,
-		Logger:        cfg.Logger,
+		RunSearch:       runSearch,
+		Showcase:        showcase,
+		ChangeStage:     changeStage,
+		Snooze:          snooze,
+		SendToLead:      sendToLead,
+		SendToSegment:   sendToSegment,
+		Templates:       templateLibrary,
+		SuggestNiches:   suggestNiches,
+		Dialogue:        dialogue,
+		ForumSignals:    forumSignals,
+		SearchLeads:     searchLeads,
+		EmailGeneration: draftEmail,
+		Account:         cfg.Account,
+		Logger:          cfg.Logger,
 		Auth: httpapi.AuthConfig{
 			Username: cfg.ConsoleUser,
 			Password: cfg.ConsolePassword,

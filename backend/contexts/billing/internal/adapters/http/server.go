@@ -64,6 +64,8 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (s *Server) routes() http.Handler {
 	mux := http.NewServeMux()
 
+	// Корень сервиса отдаёт дескриптор, а не 404: HTML-экрана у API нет.
+	mux.HandleFunc("GET /{$}", s.handleRoot)
 	mux.HandleFunc("POST /subscriptions", s.handleActivate)
 	mux.HandleFunc("GET /subscriptions/{subscriptionID}", s.handleGetSubscription)
 	mux.HandleFunc("GET /subscriptions/{subscriptionID}/entitlement", s.handleGetEntitlement)
@@ -78,6 +80,12 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /healthz", s.handleHealth)
 
 	return mux
+}
+
+// handleRoot обслуживает GET /{$}: корень сервиса отдаёт краткий дескриптор, а
+// не 404 — HTML-экрана у API нет.
+func (s *Server) handleRoot(w http.ResponseWriter, _ *http.Request) {
+	writeJSON(w, http.StatusOK, map[string]string{"service": "billing"})
 }
 
 // errorResponse — единая форма ошибки HTTP-слоя.

@@ -162,10 +162,14 @@ services:
       context: .
       dockerfile: Dockerfile
     depends_on:
+      postgres-green:
+        condition: service_healthy
       temporal:
         condition: service_healthy
       rabbitmq:
         condition: service_healthy
+      lead-management:
+        condition: service_started
     volumes:
       - ./deploy/services.yaml:/etc/lead-gen/services.yaml:ro
     command:
@@ -175,6 +179,12 @@ services:
       - request-fulfillment
       - -addr
       - :8080
+      - -request-green-dsn
+      - postgres://lead_gen:${POSTGRES_PASSWORD}@postgres-green:5432/lead_gen?sslmode=disable
+      - -lead-search-url
+      - http://lead-management:8080
+      - -email-generation-url
+      - http://lead-management:8080
       - -temporal-address
       - temporal:7233
       - -temporal-namespace

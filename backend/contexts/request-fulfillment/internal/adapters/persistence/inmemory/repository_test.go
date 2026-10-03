@@ -9,9 +9,20 @@ import (
 	"lead-gen/backend/contexts/request-fulfillment/internal/adapters/persistence/inmemory"
 	"lead-gen/backend/contexts/request-fulfillment/internal/domain"
 	"lead-gen/backend/contexts/request-fulfillment/internal/ports"
+	"lead-gen/backend/contexts/request-fulfillment/internal/ports/contracttest"
 )
 
 var ctx = context.Background()
+
+// TestRequestRepositoryContract прогоняет общий contract suite порта
+// RequestRepository против in-memory-реализации. Тот же suite проходит и против
+// PostgreSQL-реализации.
+func TestRequestRepositoryContract(t *testing.T) {
+	contracttest.RunRequestRepositoryContract(t, func(t *testing.T) ports.RequestRepository {
+		t.Helper()
+		return inmemory.New()
+	})
+}
 
 func newRequest(t *testing.T) *domain.Request {
 	t.Helper()

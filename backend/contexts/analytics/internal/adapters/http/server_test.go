@@ -95,6 +95,42 @@ func TestHealthz(t *testing.T) {
 	}
 }
 
+// TestRootRedirectsToDashboard проверяет, что корень сервиса ведёт на дашборд, а
+// не отвечает 404.
+func TestRootRedirectsToDashboard(t *testing.T) {
+	server := newServer(t, day(10))
+	client := &http.Client{CheckRedirect: func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}}
+	resp, err := client.Get(server.URL + "/")
+	if err != nil {
+		t.Fatalf("GET /: %v", err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusSeeOther {
+		t.Fatalf("GET / = %d, ожидался 303", resp.StatusCode)
+	}
+	if location := resp.Header.Get("Location"); location != "/dashboard" {
+		t.Fatalf("Location = %q, ожидался /dashboard", location)
+	}
+}
+
+// TestDashboardLinksSharedStylesheet проверяет, что экран подключает общее
+// оформление компонентов и оно реально раздаётся.
+func TestDashboardLinksSharedStylesheet(t *testing.T) {
+	server := newServer(t, day(10))
+	seed(t, server)
+
+	_, page := getPage(t, server, "/dashboard?tenant_id=t1")
+	if !strings.Contains(page, `<link rel="stylesheet" href="/static/console.css">`) {
+		t.Fatalf("экран не подключил общее оформление:\n%s", page)
+	}
+	status, css := getPage(t, server, "/static/console.css")
+	if status != http.StatusOK || !strings.Contains(css, ".page") {
+		t.Fatalf("оформление не раздаётся: статус %d", status)
+	}
+}
+
 // TestDashboardRendersLayers проверяет рендеринг обоих слоёв дашборда: ведущего
 // (метрики прогресса) и операционного.
 func TestDashboardRendersLayers(t *testing.T) {

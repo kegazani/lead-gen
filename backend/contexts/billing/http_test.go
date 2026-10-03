@@ -97,3 +97,16 @@ func TestHTTPHealthz(t *testing.T) {
 		t.Fatalf("healthz: статус %d, тело %+v", response.StatusCode, body)
 	}
 }
+
+// TestHTTPRootDescriptor проверяет, что корень сервиса отвечает дескриптором, а
+// не 404: HTML-экрана у API нет.
+func TestHTTPRootDescriptor(t *testing.T) {
+	slice, _ := newSlice(t, &fixedClock{now: testNow})
+	server := httptest.NewServer(slice.Server)
+	defer server.Close()
+
+	response, body := doJSON(t, server.Client(), http.MethodGet, server.URL+"/", nil)
+	if response.StatusCode != http.StatusOK || body["service"] != "billing" {
+		t.Fatalf("корень: статус %d, тело %+v", response.StatusCode, body)
+	}
+}

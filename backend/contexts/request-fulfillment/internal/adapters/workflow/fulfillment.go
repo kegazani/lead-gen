@@ -1,6 +1,7 @@
 package workflowadapter
 
 import (
+	"strings"
 	"time"
 
 	"go.temporal.io/sdk/temporal"
@@ -23,8 +24,12 @@ const (
 	// ActivityCancelRequest — activity перехода в cancelled.
 	ActivityCancelRequest = "CancelRequest"
 
-	// ActivitySearchLeads — activity шага поиска лидов (заглушка).
+	// ActivitySearchLeads — activity шага поиска лидов.
 	ActivitySearchLeads = "SearchLeads"
+
+	// ActivityDraftEmails — activity шага генерации черновиков писем под найденных
+	// лидов.
+	ActivityDraftEmails = "DraftEmails"
 
 	// SignalApprovalDecision — сигнал утверждения результата.
 	SignalApprovalDecision = "approval-decision"
@@ -37,20 +42,33 @@ const (
 const (
 	PhaseStartingProcessing = "starting-processing"
 	PhaseSearching          = "searching"
-	PhaseAwaitingApproval   = "awaiting-approval"
-	PhaseFulfilling         = "fulfilling"
-	PhaseFulfilled          = "fulfilled"
-	PhaseCancelled          = "cancelled"
+	PhaseDrafting           = "drafting"
+	// PhaseNoLeads — исход «0 уникальных лидов»: заявка не может стать fulfilled
+	// молча, без явного одобрения оператора.
+	PhaseNoLeads          = "no-leads"
+	PhaseAwaitingApproval = "awaiting-approval"
+	PhaseFulfilling       = "fulfilling"
+	PhaseFulfilled        = "fulfilled"
+	PhaseCancelled        = "cancelled"
 )
 
 // Идентификаторы версионирования: по ним workflow отличает структуру графа при
-// деплое, чтобы бегущие заявки не ломались (design.md, Решение 5).
+// деплое, чтобы бегущие заявки не ломались.
 const (
-	changeTopUpLoop    = "top-up-loop"
-	changeApprovalGate = "approval-gate"
+	changeTopUpLoop     = "top-up-loop"
+	changeApprovalGate  = "approval-gate"
+	changeApprovalTimer = "approval-timer"
+	changeEmailDrafts   = "email-drafts"
 )
 
-// Параметры графа фулфилмента.
+// Коды причин терминальных исходов человеческой паузы.
+const (
+	approvalRefusedReason = "утверждение: отказ"
+	approvalExpiredReason = "утверждение: срок истёк"
+)
+
+// Параметры графа фулфилмента (значения по умолчанию; конкретное исполнение
+// может задать свои через Params.Policy).
 const (
 	// defaultLeadTarget — целевое число лидов, если заявка его не задала.
 	defaultLeadTarget = 1
@@ -58,11 +76,29 @@ const (
 	// maxTopUpRounds — предел добора лидов: цикл обязан завершаться.
 	maxTopUpRounds = 3
 
-	// activityStartToCloseTimeout — предельное время одной activity.
-	activityStartToCloseTimeout = 30 * time.Second
+	// defaultTransitionStartToClose — таймаут коротких activities-переходов.
+	defaultTransitionStartToClose = 30 * time.Second
 
-	// activityMaxAttempts — число попыток activity до отказа.
-	activityMaxAttempts = 3
+	// defaultTransitionMaxAttempts — число попыток коротких переходов.
+	defaultTransitionMaxAttempts = 3
+
+	// defaultLongStartToClose — таймаут длинных activities (поиск, генерация
+	// писем): минуты, а не секунды.
+	defaultLongStartToClose = 10 * time.Minute
+
+	// defaultLongHeartbeat — период контроля жизни длинной activity.
+	defaultLongHeartbeat = time.Minute
+
+	// defaultLongMaxAttempts — число попыток длинных внешних шагов. Ограничено,
+	// чтобы таймаут не приводил к каскаду повторных краулов и LLM-вызовов.
+	defaultLongMaxAttempts = 2
+
+	// defaultApprovalTTL — срок паузы утверждения (7 дней).
+	defaultApprovalTTL = 7 * 24 * time.Hour
+
+	// defaultExecutionTimeout — предельное время исполнения заявки; покрывает
+	// срок паузы, чтобы таймер успел сработать.
+	defaultExecutionTimeout = 30 * 24 * time.Hour
 )
 
 // Fulfillment — workflow исполнения заявки: двигает её по статусной машине,
@@ -71,25 +107,27 @@ const (
 //
 // Граф:
 //
-//	validated → processing → поиск → (добор) →
-//	пауза утверждения → fulfilled
+//	validated → processing → поиск (уникальные лиды, добор) →
+//	черновики писем → пауза утверждения (сигнал или таймер) → fulfilled
 //
 // Валидация выполняется вне workflow (экран валидации), поэтому исполнение
-// стартует сразу с перехода validated → processing. Отказ на паузе утверждения
-// переводит заявку в cancelled.
+// стартует сразу с перехода validated → processing. Отказ или истечение срока на
+// паузе утверждения переводит заявку в cancelled. Нуль уникальных лидов наблюдаем
+// отдельным признаком и не завершает заявку успехом без решения оператора.
 func Fulfillment(ctx workflow.Context, params Params) (Status, error) {
 	logger := workflow.GetLogger(ctx)
+	policy := params.Policy.withDefaults()
 	state := Status{RequestID: params.RequestID, Phase: PhaseStartingProcessing}
 
 	if err := workflow.SetQueryHandler(ctx, QueryStatus, func() (Status, error) { return state, nil }); err != nil {
 		return state, err
 	}
 
-	ao := workflow.ActivityOptions{
-		StartToCloseTimeout: activityStartToCloseTimeout,
-		RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: activityMaxAttempts},
-	}
-	actx := workflow.WithActivityOptions(ctx, ao)
+	// Раздельные опции activities: короткие переходы — малый таймаут без
+	// heartbeat; длинные поиск/письма — таймаут в минутах и HeartbeatTimeout.
+	transitionOpts, longOpts := activityOptions(policy)
+	transitionCtx := workflow.WithActivityOptions(ctx, transitionOpts)
+	longCtx := workflow.WithActivityOptions(ctx, longOpts)
 
 	base := transitionInput{
 		RequestID:     params.RequestID,
@@ -99,29 +137,43 @@ func Fulfillment(ctx workflow.Context, params Params) (Status, error) {
 
 	// 1. Запуск исполнения: validated → processing. Актор перехода —
 	// автоматический (workflow), так как решение валидации принято вне workflow.
-	if err := workflow.ExecuteActivity(actx, ActivityStartProcessing, base).Get(actx, nil); err != nil {
+	if err := workflow.ExecuteActivity(transitionCtx, ActivityStartProcessing, base).Get(transitionCtx, nil); err != nil {
 		return state, err
 	}
 
-	// 2. Поиск с ветвлением «достаточно лидов / добор». Цикл версионируется:
-	// прежние бегущие исполнения без добора воспроизводятся детерминированно.
+	// 2. Поиск с ветвлением «достаточно лидов / добор». Считаются уникальные лиды
+	// (дедуп по идентификатору), а не сумма сырых счётчиков по раундам. Цикл
+	// версионируется: прежние бегущие исполнения без добора воспроизводятся
+	// детерминированно.
 	target := params.LeadTarget
 	if target <= 0 {
 		target = defaultLeadTarget
 	}
 	state.Phase = PhaseSearching
 	topUpVersion := workflow.GetVersion(ctx, changeTopUpLoop, workflow.DefaultVersion, 1)
+	seen := make(map[string]struct{})
+	leadIDs := make([]string, 0, target)
 	for round := 0; ; round++ {
 		var result searchResult
-		if err := workflow.ExecuteActivity(actx, ActivitySearchLeads, searchInput{
+		if err := workflow.ExecuteActivity(longCtx, ActivitySearchLeads, searchInput{
 			RequestID: params.RequestID,
 			TenantID:  params.TenantID,
 			Target:    target,
 			Round:     round,
-		}).Get(actx, &result); err != nil {
+		}).Get(longCtx, &result); err != nil {
 			return state, err
 		}
-		state.Found += result.Found
+		for _, id := range result.LeadIDs {
+			if strings.TrimSpace(id) == "" {
+				continue
+			}
+			if _, ok := seen[id]; ok {
+				continue
+			}
+			seen[id] = struct{}{}
+			leadIDs = append(leadIDs, id)
+		}
+		state.Found = len(seen)
 		if state.Found >= target {
 			break
 		}
@@ -130,30 +182,155 @@ func Fulfillment(ctx workflow.Context, params Params) (Status, error) {
 		}
 	}
 
+	// 2.1. Нуль уникальных лидов — наблюдаемый исход: заявка не может быть
+	// завершена успехом молча, без явного одобрения оператора.
+	if topUpVersion >= 1 && state.Found == 0 {
+		state.NoLeads = true
+		state.Phase = PhaseNoLeads
+	}
+
+	// 2.5. Черновики писем под найденных лидов. Генерация идёт до человеческой
+	// паузы: оператор утверждает результат вместе с готовыми письмами. Шаг
+	// версионируется, чтобы бегущие исполнения без него воспроизводились
+	// детерминированно. Текст писем в payload не поднимается — он оседает в
+	// хранилище черновиков, а workflow получает только счётчик.
+	draftsVersion := workflow.GetVersion(ctx, changeEmailDrafts, workflow.DefaultVersion, 1)
+	if draftsVersion >= 1 && len(leadIDs) > 0 {
+		state.Phase = PhaseDrafting
+		var drafted draftResult
+		if err := workflow.ExecuteActivity(longCtx, ActivityDraftEmails, draftInput{
+			RequestID: params.RequestID,
+			TenantID:  params.TenantID,
+			LeadIDs:   leadIDs,
+		}).Get(longCtx, &drafted); err != nil {
+			return state, err
+		}
+		state.Drafted = drafted.Drafted
+	}
+
 	// 3. Человеческая пауза: утверждение результата перед выпуском. Гейт
-	// версионируется, чтобы бегущие исполнения без паузы не ломались.
+	// версионируется, чтобы бегущие исполнения без паузы не ломались. Новая ветка
+	// с таймером версионируется отдельно: старые исполнения воспроизводят прежнее
+	// бесконечное ожидание сигнала.
 	if workflow.GetVersion(ctx, changeApprovalGate, workflow.DefaultVersion, 1) >= 1 {
 		state.Phase = PhaseAwaitingApproval
-		var approval ApprovalDecision
-		workflow.GetSignalChannel(ctx, SignalApprovalDecision).Receive(ctx, &approval)
-		if !approval.Approved {
-			state.Phase = PhaseCancelled
-			in := base
-			in.Actor = approval.Actor
-			in.ReasonCode = "утверждение: отказ"
-			if err := workflow.ExecuteActivity(actx, ActivityCancelRequest, in).Get(actx, nil); err != nil {
-				return state, err
+		if workflow.GetVersion(ctx, changeApprovalTimer, workflow.DefaultVersion, 1) >= 1 {
+			approval, decided := awaitApproval(ctx, policy.ApprovalTTL)
+			if !decided {
+				return cancelRequest(transitionCtx, base, string(defaultActor), approvalExpiredReason, &state)
 			}
-			return state, nil
+			if !approval.Approved {
+				return cancelRequest(transitionCtx, base, approval.Actor, approvalRefusedReason, &state)
+			}
+		} else {
+			var approval ApprovalDecision
+			workflow.GetSignalChannel(ctx, SignalApprovalDecision).Receive(ctx, &approval)
+			if !approval.Approved {
+				return cancelRequest(transitionCtx, base, approval.Actor, approvalRefusedReason, &state)
+			}
 		}
 	}
 
 	// 4. Завершение: processing → fulfilled.
 	state.Phase = PhaseFulfilling
-	if err := workflow.ExecuteActivity(actx, ActivityFulfillRequest, base).Get(actx, nil); err != nil {
+	if err := workflow.ExecuteActivity(transitionCtx, ActivityFulfillRequest, base).Get(transitionCtx, nil); err != nil {
 		return state, err
 	}
 	state.Phase = PhaseFulfilled
 	logger.Info("фулфилмент заявки завершён", "request_id", params.RequestID)
 	return state, nil
+}
+
+// awaitApproval ждёт решение оператора не дольше срока паузы. Возвращает решение
+// и признак его получения: false — срок истёк, решение не пришло. Реализовано
+// selector'ом с таймером, поэтому ожидание ограничено сроком, а не бесконечно.
+func awaitApproval(ctx workflow.Context, ttl time.Duration) (ApprovalDecision, bool) {
+	var approval ApprovalDecision
+	decided := false
+	signal := workflow.GetSignalChannel(ctx, SignalApprovalDecision)
+	selector := workflow.NewSelector(ctx)
+	selector.AddReceive(signal, func(channel workflow.ReceiveChannel, _ bool) {
+		channel.Receive(ctx, &approval)
+		decided = true
+	})
+	selector.AddFuture(workflow.NewTimer(ctx, ttl), func(workflow.Future) {})
+	selector.Select(ctx)
+	return approval, decided
+}
+
+// cancelRequest переводит заявку в cancelled с указанной причиной и завершает
+// workflow нормальным исходом (без ошибки): терминальный статус достигнут.
+//
+// state принимается указателем: фазу видит не только результат workflow, но и
+// query-обработчик, замкнутый на ту же переменную. Иначе после отмены query
+// отдавал бы прежнюю фазу (awaiting-approval), пока исполнение уже завершено.
+func cancelRequest(
+	activityCtx workflow.Context,
+	base transitionInput,
+	actor string,
+	reason string,
+	state *Status,
+) (Status, error) {
+	state.Phase = PhaseCancelled
+	in := base
+	in.Actor = actor
+	in.ReasonCode = reason
+	if err := workflow.ExecuteActivity(activityCtx, ActivityCancelRequest, in).Get(activityCtx, nil); err != nil {
+		return *state, err
+	}
+	return *state, nil
+}
+
+// activityOptions строит раздельные опции activities: короткие переходы статуса —
+// малый StartToCloseTimeout без heartbeat; длинные внешние шаги (поиск, письма) —
+// StartToCloseTimeout в минутах и HeartbeatTimeout. Чистая функция от политики:
+// тот же вход — те же опции, что делает их воспроизводимыми при реплее и
+// проверяемыми без живого сервера.
+func activityOptions(policy ExecutionPolicy) (workflow.ActivityOptions, workflow.ActivityOptions) {
+	transition := workflow.ActivityOptions{
+		StartToCloseTimeout: policy.TransitionStartToClose,
+		RetryPolicy:         &temporal.RetryPolicy{MaximumAttempts: int32(policy.TransitionMaxAttempts)},
+	}
+	long := workflow.ActivityOptions{
+		StartToCloseTimeout: policy.LongStartToClose,
+		HeartbeatTimeout:    policy.LongHeartbeat,
+		RetryPolicy: &temporal.RetryPolicy{
+			MaximumAttempts:    int32(policy.LongMaxAttempts),
+			InitialInterval:    time.Second,
+			BackoffCoefficient: 2,
+			MaximumInterval:    policy.LongStartToClose,
+		},
+	}
+	return transition, long
+}
+
+// withDefaults заполняет нулевые поля политики осмысленными значениями и
+// согласует предел исполнения со сроком паузы: предел не меньше срока, чтобы
+// таймер паузы успевал сработать.
+func (p ExecutionPolicy) withDefaults() ExecutionPolicy {
+	if p.ApprovalTTL <= 0 {
+		p.ApprovalTTL = defaultApprovalTTL
+	}
+	if p.ExecutionTimeout <= 0 {
+		p.ExecutionTimeout = defaultExecutionTimeout
+	}
+	if p.TransitionStartToClose <= 0 {
+		p.TransitionStartToClose = defaultTransitionStartToClose
+	}
+	if p.TransitionMaxAttempts <= 0 {
+		p.TransitionMaxAttempts = defaultTransitionMaxAttempts
+	}
+	if p.LongStartToClose <= 0 {
+		p.LongStartToClose = defaultLongStartToClose
+	}
+	if p.LongHeartbeat <= 0 {
+		p.LongHeartbeat = defaultLongHeartbeat
+	}
+	if p.LongMaxAttempts <= 0 {
+		p.LongMaxAttempts = defaultLongMaxAttempts
+	}
+	if p.ExecutionTimeout < p.ApprovalTTL {
+		p.ExecutionTimeout = p.ApprovalTTL
+	}
+	return p
 }

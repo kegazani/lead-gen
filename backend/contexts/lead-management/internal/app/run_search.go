@@ -915,13 +915,21 @@ func (r *RunSearch) logAssessmentError(jobID string, err error) {
 // saveCompany создаёт карточку компании либо дополняет существующую (дедупликация
 // по нормализованному домену), затем сохраняет её контакты.
 func (r *RunSearch) saveCompany(ctx context.Context, identity string, name, description domain.AttributedValue, socials []domain.AttributedValue, contacts []contactCandidate, at time.Time) error {
+	return persistCompany(ctx, r.Profiles, r.Contacts, identity, name, description, socials, contacts, at)
+}
+
+// persistCompany создаёт карточку компании либо дополняет существующую
+// (дедупликация по нормализованному домену), затем сохраняет её контакты. Общий
+// код планового обхода (RunSearch) и синхронного поиска под заявку
+// (SearchLeadsForRequest).
+func persistCompany(ctx context.Context, profiles ports.LeadProfileRepository, contactsRepo ports.ContactRepository, identity string, name, description domain.AttributedValue, socials []domain.AttributedValue, contacts []contactCandidate, at time.Time) error {
 	companyID := domain.CompanyID(identity)
 
-	existing, err := r.Profiles.FindByID(ctx, companyID)
+	existing, err := profiles.FindByID(ctx, companyID)
 	switch {
 	case err == nil:
 		existing.Enrich(name, description, socials, at)
-		if err := r.Profiles.Save(ctx, existing); err != nil {
+		if err := profiles.Save(ctx, existing); err != nil {
 			return err
 		}
 	case errors.Is(err, ports.ErrProfileNotFound):
@@ -935,20 +943,20 @@ func (r *RunSearch) saveCompany(ctx context.Context, identity string, name, desc
 		if err != nil {
 			return err
 		}
-		if err := r.Profiles.Save(ctx, company); err != nil {
+		if err := profiles.Save(ctx, company); err != nil {
 			return err
 		}
 	default:
 		return err
 	}
 
-	return r.saveContacts(ctx, companyID, contacts, at)
+	return persistContacts(ctx, contactsRepo, companyID, contacts, at)
 }
 
-// saveContacts сохраняет контакты компании, пропуская уже существующие
+// persistContacts сохраняет контакты компании, пропуская уже существующие
 // (дедупликация по нормализованному email либо телефону в пределах компании).
-func (r *RunSearch) saveContacts(ctx context.Context, companyID domain.CompanyID, contacts []contactCandidate, at time.Time) error {
-	existing, err := r.Contacts.ListByCompany(ctx, companyID)
+func persistContacts(ctx context.Context, repo ports.ContactRepository, companyID domain.CompanyID, contacts []contactCandidate, at time.Time) error {
+	existing, err := repo.ListByCompany(ctx, companyID)
 	if err != nil {
 		return err
 	}
@@ -971,7 +979,7 @@ func (r *RunSearch) saveContacts(ctx context.Context, companyID domain.CompanyID
 		if err != nil {
 			return err
 		}
-		if err := r.Contacts.Save(ctx, contact); err != nil {
+		if err := repo.Save(ctx, contact); err != nil {
 			return err
 		}
 	}

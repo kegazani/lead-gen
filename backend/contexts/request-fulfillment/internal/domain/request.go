@@ -235,19 +235,24 @@ func (r *Request) PullDomainEvents() []DomainEvent {
 
 // StartValidation переводит заявку из submitted в validating. Отдельного
 // события у этого перехода нет: согласованный набор событий заявки начинается
-// с request-validated.
+// с request-validated. Повторное применение к заявке в validating — no-op.
 func (r *Request) StartValidation(in TransitionInput) ([]DomainEvent, error) {
-	if _, err := r.applyTransition(StatusValidating, in); err != nil {
+	if _, _, err := r.applyTransition(StatusValidating, in, false); err != nil {
 		return nil, err
 	}
 	return nil, nil
 }
 
 // Validate переводит заявку из validating в validated и фиксирует одобрение.
+// Повторное применение к заявке в validated — no-op: решение не создаётся
+// повторно, событие не эмитится.
 func (r *Request) Validate(in TransitionInput) ([]DomainEvent, error) {
-	from, err := r.applyTransition(StatusValidated, in)
+	from, changed, err := r.applyTransition(StatusValidated, in, false)
 	if err != nil {
 		return nil, err
+	}
+	if !changed {
+		return nil, nil
 	}
 	decision, err := newValidationDecision(ValidationApproved, in.Actor, in.At, "")
 	if err != nil {
@@ -266,10 +271,14 @@ func (r *Request) Validate(in TransitionInput) ([]DomainEvent, error) {
 
 // StartProcessing переводит заявку из validated в processing. Это единственный
 // путь запуска исполнения: из других статусов переход отвергается (I3).
+// Повторное применение к заявке в processing — no-op.
 func (r *Request) StartProcessing(in TransitionInput) ([]DomainEvent, error) {
-	from, err := r.applyTransition(StatusProcessing, in)
+	from, changed, err := r.applyTransition(StatusProcessing, in, false)
 	if err != nil {
 		return nil, err
+	}
+	if !changed {
+		return nil, nil
 	}
 	return r.emit(RequestProcessingStarted{
 		EventHeader:   r.header(in),
@@ -282,10 +291,14 @@ func (r *Request) StartProcessing(in TransitionInput) ([]DomainEvent, error) {
 }
 
 // Fulfill переводит заявку из processing в fulfilled (терминальный статус).
+// Повторное применение к уже fulfilled заявке — no-op.
 func (r *Request) Fulfill(in TransitionInput) ([]DomainEvent, error) {
-	from, err := r.applyTransition(StatusFulfilled, in)
+	from, changed, err := r.applyTransition(StatusFulfilled, in, false)
 	if err != nil {
 		return nil, err
+	}
+	if !changed {
+		return nil, nil
 	}
 	return r.emit(RequestFulfilled{
 		EventHeader:        r.header(in),
@@ -300,14 +313,15 @@ func (r *Request) Fulfill(in TransitionInput) ([]DomainEvent, error) {
 }
 
 // Reject отклоняет заявку по итогам валидации (validating → rejected) и
-// фиксирует решение с причиной. Причина обязательна.
+// фиксирует решение с причиной. Причина обязательна. Повторное применение к уже
+// rejected заявке — no-op: решение не создаётся повторно.
 func (r *Request) Reject(in TransitionInput) ([]DomainEvent, error) {
-	if strings.TrimSpace(in.Reason) == "" {
-		return nil, ErrReasonRequired
-	}
-	from, err := r.applyTransition(StatusRejected, in)
+	from, changed, err := r.applyTransition(StatusRejected, in, true)
 	if err != nil {
 		return nil, err
+	}
+	if !changed {
+		return nil, nil
 	}
 	decision, err := newValidationDecision(ValidationRejected, in.Actor, in.At, in.Reason)
 	if err != nil {
@@ -325,13 +339,15 @@ func (r *Request) Reject(in TransitionInput) ([]DomainEvent, error) {
 }
 
 // Cancel отменяет заявку из любого активного статуса. Причина обязательна.
+// Повторное применение к уже cancelled заявке — no-op: повторное решение не
+// создаётся.
 func (r *Request) Cancel(in TransitionInput) ([]DomainEvent, error) {
-	if strings.TrimSpace(in.Reason) == "" {
-		return nil, ErrReasonRequired
-	}
-	from, err := r.applyTransition(StatusCancelled, in)
+	from, changed, err := r.applyTransition(StatusCancelled, in, true)
 	if err != nil {
 		return nil, err
+	}
+	if !changed {
+		return nil, nil
 	}
 	return r.emit(RequestCancelled{
 		EventHeader: r.header(in),
@@ -445,18 +461,35 @@ func (r *Request) RecordDeal(id DealID) error {
 
 // applyTransition проверяет допустимость перехода и фиксирует его. При отказе
 // состояние и версия не меняются.
-func (r *Request) applyTransition(to RequestStatus, in TransitionInput) (RequestStatus, error) {
+//
+// Повторное применение перехода к заявке, уже находящейся в целевом статусе, —
+// идемпотентный no-op: успех без приращения версии, без записи перехода и без
+// эмиссии события. Это делает повторную доставку activity (потеря ack) безопасной
+// и не ослабляет домен: переход в другой статус, как и переход из терминального
+// состояния, по-прежнему отвергается. changed сообщает вызывающему, что перехода
+// не было, — он не эмитит событие и не создаёт доменное решение повторно.
+//
+// reasonRequired требует непустую причину для перехода, но только когда переход
+// действительно совершается: повтор в уже достигнутый статус остаётся no-op
+// независимо от причины.
+func (r *Request) applyTransition(to RequestStatus, in TransitionInput, reasonRequired bool) (RequestStatus, bool, error) {
 	if err := in.validate(); err != nil {
-		return "", err
+		return "", false, err
 	}
 	if err := to.validate(); err != nil {
-		return "", err
+		return "", false, err
+	}
+	if r.status == to {
+		return r.status, false, nil
+	}
+	if reasonRequired && strings.TrimSpace(in.Reason) == "" {
+		return "", false, ErrReasonRequired
 	}
 	if r.status.IsTerminal() {
-		return "", fmt.Errorf("%w: заявка %s в статусе %s", ErrTerminalState, r.id, r.status)
+		return "", false, fmt.Errorf("%w: заявка %s в статусе %s", ErrTerminalState, r.id, r.status)
 	}
 	if !r.status.canTransitionTo(to) {
-		return "", fmt.Errorf("%w: заявка %s: %s → %s", ErrInvalidTransition, r.id, r.status, to)
+		return "", false, fmt.Errorf("%w: заявка %s: %s → %s", ErrInvalidTransition, r.id, r.status, to)
 	}
 	from := r.status
 	r.status = to
@@ -468,7 +501,7 @@ func (r *Request) applyTransition(to RequestStatus, in TransitionInput) (Request
 		at:     in.At,
 		reason: strings.TrimSpace(in.Reason),
 	})
-	return from, nil
+	return from, true, nil
 }
 
 // header собирает конверт события перехода. Тенант берётся у агрегата: событие

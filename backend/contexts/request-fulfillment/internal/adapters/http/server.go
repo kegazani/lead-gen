@@ -76,6 +76,23 @@ type Dependencies struct {
 	// EmbedOffer — формирование эмбеддинга оффера после валидации. nil означает,
 	// что векторное хранилище не подключено: шаг пропускается.
 	EmbedOffer *command.EmbedOfferHandler
+
+	// EmailDrafts — чтение черновиков писем заявки (для консоли оператора). nil
+	// означает, что хранилище черновиков не подключено: обработчик честно
+	// отвечает 503.
+	EmailDrafts *query.EmailDraftsHandler
+
+	// Runtime — признак доступности рантайма durable-исполнения для пробы
+	// готовности (/readyz). nil означает, что рантайм не подключён: готовность не
+	// зависит от отсутствующей зависимости, и проба отвечает «готов».
+	Runtime RuntimeProbe
+}
+
+// RuntimeProbe — признак доступности рантайма исполнения. Реализуется
+// platform/workflow.Availability; HTTP-адаптер зависит от узкого интерфейса, а не
+// от платформенного пакета целиком.
+type RuntimeProbe interface {
+	Ready() bool
 }
 
 // Server — HTTP-сервер среза. Нулевое значение непригодно: используйте
@@ -101,10 +118,18 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	s.handler.ServeHTTP(w, r)
 }
 
+// handleRoot обслуживает GET /{$}: корень сервиса ведёт на очередь валидации, а
+// не отвечает 404 — это первый экран оператора в контуре заявок.
+func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
+	http.Redirect(w, r, "/validation", http.StatusSeeOther)
+}
+
 // routes объявляет маршруты среза.
 func (s *Server) routes() http.Handler {
 	mux := http.NewServeMux()
 
+	// Корень сервиса ведёт на очередь валидации, а не отвечает 404.
+	mux.HandleFunc("GET /{$}", s.handleRoot)
 	mux.HandleFunc("POST /requests", s.handleSubmit)
 	mux.HandleFunc("GET /requests/{requestID}", s.handleGet)
 	mux.HandleFunc("POST /requests/{requestID}/validation/start", s.handleStartValidation)
@@ -118,10 +143,16 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST /requests/{requestID}/artifacts/campaign", s.handleRecordCampaign)
 	mux.HandleFunc("POST /requests/{requestID}/artifacts/deal", s.handleRecordDeal)
 	mux.HandleFunc("GET /requests/{requestID}/fulfillment-status", s.handleFulfillmentStatus)
+	mux.HandleFunc("GET /requests/{requestID}/email-drafts", s.handleEmailDrafts)
 	mux.HandleFunc("GET /requests/{requestID}/workflow", s.handleWorkflowStatus)
 	mux.HandleFunc("POST /requests/{requestID}/workflow", s.handleStartWorkflow)
 	mux.HandleFunc("POST /requests/{requestID}/workflow/approval-decision", s.handleWorkflowApprovalDecision)
 	mux.HandleFunc("GET /healthz", s.handleHealth)
+	// /readyz отражает готовность обслуживать работу с учётом доступности
+	// рантайма durable-исполнения; /healthz остаётся пробой живости.
+	mux.HandleFunc("GET /readyz", s.handleReadyz)
+	// Общее оформление экранов раздаётся из frontend/components.
+	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(components.StaticFS())))
 
 	// Экран валидации (HTMX + серверный рендеринг) — эксплуатационная проекция
 	// роли api. Действия — POST/redirect/GET; частичные ответы — для HTMX.
@@ -210,6 +241,8 @@ func statusForError(err error) int {
 	case errors.Is(err, ports.ErrCallRejected):
 		return http.StatusConflict
 	case errors.Is(err, ports.ErrVectorUnavailable):
+		return http.StatusServiceUnavailable
+	case errors.Is(err, ports.ErrDraftStoreUnavailable):
 		return http.StatusServiceUnavailable
 	case errors.Is(err, domain.ErrEmptyID),
 		errors.Is(err, domain.ErrMissingActor),
