@@ -19,7 +19,9 @@ import (
 	"lead-gen/backend/contexts/outreach-orchestration/internal/domain"
 	"lead-gen/backend/contexts/outreach-orchestration/internal/ports"
 	"lead-gen/backend/contexts/outreach-orchestration/internal/ports/contracts"
+	"lead-gen/backend/platform/consoleauth"
 	"lead-gen/contracts/outreach-orchestration/approvedaction"
+	"lead-gen/frontend/components"
 )
 
 // Сборка сервиса outreach-orchestration для его ролей (api, worker и др.).
@@ -144,6 +146,15 @@ type Params struct {
 	// период и объём неутверждённых черновиков). Нулевое значение означает
 	// ограничения по умолчанию; частично заданная конфигурация отвергается.
 	SequenceLimits domain.ParticipationLimits
+
+	// ConsoleAuth — учётные данные оператора консольных экранов рассылок.
+	// Пустое значение означает, что консоль не настроена: экраны честно
+	// отвечают 503, а вход закрыт. Значение задаёт точка входа.
+	ConsoleAuth consoleauth.Config
+
+	// Console — базовые адреса сервисов консоли для общей навигации по разделам.
+	// Пустая карта даёт относительные пути.
+	Console components.ConsoleBases
 }
 
 // Slice — собранный контекст среза: порты, use cases, HTTP-обработчики и
@@ -177,6 +188,11 @@ type Slice struct {
 	BatchQueue     *query.BatchQueueHandler
 	BuildBatch     *command.BuildBatchHandler
 	ApproveBatch   *command.ApproveBatchHandler
+
+	// Консоль очереди утверждения рассылок (срез 4).
+	PostponeDraft *command.PostponeDraftHandler
+	DraftQueue    *query.DraftQueueHandler
+	StalledDrafts *query.StalledDraftsHandler
 
 	DefineSequence  *command.DefineSequenceHandler
 	EnrollLead      *command.EnrollLeadHandler
@@ -299,7 +315,7 @@ func Build(params Params) (*Slice, error) {
 	draftAction := command.NewDraftActionHandler(decider, clock, unitOfWork)
 	approveDraft := command.NewApproveDraftHandler(decider, clock, unitOfWork)
 	rejectDraft := command.NewRejectDraftHandler(decider, clock, unitOfWork)
-	reviseDraft := command.NewReviseDraftHandler(decider, unitOfWork)
+	reviseDraft := command.NewReviseDraftHandler(decider, clock, unitOfWork)
 	expireApproval := command.NewExpireApprovalHandler(decider, clock, unitOfWork)
 	approvalQueue := query.NewApprovalQueueHandler(repository, decider)
 	draftDecision := query.NewDraftDecisionHandler(repository, decider)
@@ -311,6 +327,15 @@ func Build(params Params) (*Slice, error) {
 	buildBatch := command.NewBuildBatchHandler(repository, decider, params.Risk)
 	approveBatch := command.NewApproveBatchHandler(decider, clock, unitOfWork, params.Risk)
 	batchQueue := query.NewBatchQueueHandler(repository, params.Risk, decider)
+
+	// Консоль очереди утверждения рассылок (web-frontend-architecture, срез 4):
+	// чтение очереди с проверками риска, срез зависших и отложение решения.
+	// Читающие запросы используют тот же репозиторий и как перечислитель
+	// кампаний, и тот же предикат риска, что пакетный путь, поэтому решение
+	// отвергает то, что исключил состав.
+	postponeDraft := command.NewPostponeDraftHandler(decider, unitOfWork)
+	draftQueue := query.NewDraftQueueHandler(repository, repository, params.Risk, decider)
+	stalledDrafts := query.NewStalledDraftsHandler(repository, repository, decider)
 
 	// Ограничения участия — конфигурация сборки. Нулевое значение означает
 	// ограничения по умолчанию; частично заданная конфигурация — ошибка сборки.
@@ -377,6 +402,12 @@ func Build(params Params) (*Slice, error) {
 		CommandKeys:    keys,
 		BatchLimits:    limits,
 
+		PostponeDraft: postponeDraft,
+		DraftQueue:    draftQueue,
+		StalledDrafts: stalledDrafts,
+		Auth:          params.ConsoleAuth,
+		Console:       params.Console,
+
 		DefineSequence:  defineSequence,
 		EnrollLead:      enrollLead,
 		RemoveLead:      removeLead,
@@ -406,6 +437,10 @@ func Build(params Params) (*Slice, error) {
 		BuildBatch:     buildBatch,
 		ApproveBatch:   approveBatch,
 		BatchLimits:    limits,
+
+		PostponeDraft: postponeDraft,
+		DraftQueue:    draftQueue,
+		StalledDrafts: stalledDrafts,
 
 		DefineSequence:  defineSequence,
 		EnrollLead:      enrollLead,

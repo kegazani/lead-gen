@@ -194,12 +194,25 @@ func buildService(
 		// Кампании и цепочки: PostgreSQL при заданном DSN зелёной зоны, иначе
 		// in-memory dev. Движок последовательностей переживает рестарт только с
 		// хранилищем.
+		// Консоль рассылок: общие учётные данные и общая навигация, как у консолей
+		// lead-management/request-fulfillment. Сессии — в общей зелёной базе, чтобы
+		// вход в одну консоль действовал в другой; без DSN — память процесса.
+		cfg.Console = opts.console
+		cfg.ConsoleAuth = consoleauth.Config{Username: opts.consoleUser, Password: opts.consolePassword}
+		if opts.consoleUser == "" || opts.consolePassword == "" {
+			opts.logger.Warn("outreach-orchestration: консоль рассылок работает с пустыми учётными данными (только dev)", observ.Fields{})
+		}
 		if dsn := strings.TrimSpace(opts.supportGreenDSN); dsn != "" {
 			pool, err := supportPool(dsn, outreachorchestration.ServiceID, "backend/contexts/outreach-orchestration/migrations")
 			if err != nil {
 				return nil, err
 			}
+			if err := applyMigrations(pool, "backend/platform/consoleauth/migrations/green", consoleauth.Schema); err != nil {
+				pool.Close()
+				return nil, err
+			}
 			cfg.Persistence = outreachorchestration.NewPostgresPersistence(pool)
+			cfg.ConsoleAuth.Store = consoleauth.NewPostgresStore(pool)
 		}
 		return outreachorchestration.New(cfg)
 	case leadmanagement.ServiceID:
@@ -341,6 +354,7 @@ func buildService(
 			RendererWSURL:    opts.rendererWSURL,
 			RendererTimeout:  opts.rendererTimeout,
 			Publisher:        broker,
+			LLM:              llmPortFromOpts(opts),
 			Logger:           opts.logger,
 			Metrics:          opts.metrics,
 			Tracer:           tracer,
@@ -419,6 +433,20 @@ func leadSearchPort(opts buildOptions) (leadsearch.Port, error) {
 		return leadsearchhttp.New(addr)
 	}
 	return nil, nil
+}
+
+// llmPortFromOpts собирает порт LLM владельца integration-platform, если задан
+// ключ. Без ключа порт не собирается (nil): потребители честно сообщают о
+// недоступности, детерминированная подмена не ставится.
+func llmPortFromOpts(opts buildOptions) llm.Port {
+	if strings.TrimSpace(opts.llmKey) == "" {
+		return nil
+	}
+	return integrationplatform.NewOpenAI(integrationplatform.OpenAIConfig{
+		BaseURL: opts.llmBaseURL,
+		Model:   opts.llmModel,
+		APIKey:  opts.llmKey,
+	})
 }
 
 // emailGenerationPort выбирает адаптер контракта email-generation по топологии:

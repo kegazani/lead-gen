@@ -164,7 +164,40 @@ func (c *Campaign) RejectDraft(params DecisionParams) (OperatorDecision, []Domai
 // ReviseDraft применяет доработку черновика, повышает его версию и возвращает
 // на утверждение. Ожидаемая версия защищает от правки по устаревшему чтению;
 // прежнее решение к новой версии не относится (инвариант I2).
+//
+// Запись правки с автором здесь не ведётся: метод сохраняет прежнее поведение
+// для служебных путей. Операторская правка идёт через ReviseDraftRecorded.
 func (c *Campaign) ReviseDraft(draftID DraftID, expectedVersion int, spec DraftSpec) (*ActionDraft, error) {
+	return c.reviseDraft(draftID, expectedVersion, spec, nil)
+}
+
+// ReviseDraftRecorded применяет правку оператора и сохраняет отдельную запись
+// правки: автор, время, прежний и новый состав. Прежний (сгенерированный)
+// состав фиксируется до замены, поэтому остаётся доступен и после правки.
+func (c *Campaign) ReviseDraftRecorded(
+	draftID DraftID,
+	expectedVersion int,
+	spec DraftSpec,
+	actor ActorID,
+	at time.Time,
+) (*ActionDraft, error) {
+	return c.reviseDraft(draftID, expectedVersion, spec, &revisionRecord{actor: actor, at: at})
+}
+
+// revisionRecord — данные правки оператора для записи в историю черновика.
+type revisionRecord struct {
+	actor ActorID
+	at    time.Time
+}
+
+// reviseDraft — общий путь доработки. Необязательная запись правки требует
+// актора и времени: незаполненная запись не создаётся.
+func (c *Campaign) reviseDraft(
+	draftID DraftID,
+	expectedVersion int,
+	spec DraftSpec,
+	record *revisionRecord,
+) (*ActionDraft, error) {
 	if c.state == CampaignStateCompleted {
 		return nil, fmt.Errorf("%w: кампания %s", ErrCampaignCompleted, c.id)
 	}
@@ -175,10 +208,45 @@ func (c *Campaign) ReviseDraft(draftID DraftID, expectedVersion int, spec DraftS
 	if err := draft.checkVersion(expectedVersion); err != nil {
 		return nil, err
 	}
-	if err := draft.revise(spec); err != nil {
+	if record == nil {
+		if err := draft.revise(spec); err != nil {
+			return nil, err
+		}
+		return draft, nil
+	}
+	if err := record.actor.validate(); err != nil {
+		return nil, err
+	}
+	if record.at.IsZero() {
+		return nil, fmt.Errorf("%w: черновик %s", ErrDecisionTimeRequired, draftID)
+	}
+	edit := DraftEdit{
+		Actor: record.actor,
+		At:    record.at.UTC(),
+		From:  draft.Spec(),
+		To:    spec,
+	}
+	if err := draft.reviseRecorded(spec, edit); err != nil {
 		return nil, err
 	}
 	return draft, nil
+}
+
+// PostponeDraft откладывает решение по черновику до указанного момента.
+// Черновик остаётся «ожидает утверждения» и не исполняется: отложение не
+// является решением или автоутверждением (инвариант I1 сохраняется).
+func (c *Campaign) PostponeDraft(draftID DraftID, expectedVersion int, until time.Time) error {
+	if c.state == CampaignStateCompleted {
+		return fmt.Errorf("%w: кампания %s", ErrCampaignCompleted, c.id)
+	}
+	draft, err := c.draft(draftID)
+	if err != nil {
+		return err
+	}
+	if err := draft.checkVersion(expectedVersion); err != nil {
+		return err
+	}
+	return draft.postpone(until)
 }
 
 // ExecuteDraft переводит утверждённый черновик в состояние «исполнено».

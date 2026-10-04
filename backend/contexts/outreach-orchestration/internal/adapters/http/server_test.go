@@ -21,6 +21,7 @@ import (
 	"lead-gen/backend/contexts/outreach-orchestration/internal/app/query"
 	"lead-gen/backend/contexts/outreach-orchestration/internal/domain"
 	"lead-gen/backend/contexts/outreach-orchestration/internal/ports"
+	"lead-gen/backend/platform/consoleauth"
 )
 
 const (
@@ -42,6 +43,7 @@ func (c fixedClock) Now() time.Time { return c.now }
 // testFixture — собранный срез: HTTP-сервер и наблюдаемые зависимости.
 type testFixture struct {
 	server  *httptest.Server
+	api     *Server
 	repo    *persistence.Repository
 	journal *outboxinmemory.Journal
 	keys    *idempotency.Store
@@ -82,19 +84,23 @@ func newFixtureWithRisk(t *testing.T, risk domain.CanBeDecidedInPackage) *testFi
 		DraftAction:    command.NewDraftActionHandler(decider, clock, uow),
 		ApproveDraft:   command.NewApproveDraftHandler(decider, clock, uow),
 		RejectDraft:    command.NewRejectDraftHandler(decider, clock, uow),
-		ReviseDraft:    command.NewReviseDraftHandler(decider, uow),
+		ReviseDraft:    command.NewReviseDraftHandler(decider, clock, uow),
+		PostponeDraft:  command.NewPostponeDraftHandler(decider, uow),
 		ApprovalQueue:  query.NewApprovalQueueHandler(repo, decider),
 		DraftDecision:  query.NewDraftDecisionHandler(repo, decider),
 		BatchQueue:     query.NewBatchQueueHandler(repo, risk, decider),
 		BuildBatch:     command.NewBuildBatchHandler(repo, decider, risk),
 		ApproveBatch:   command.NewApproveBatchHandler(decider, clock, uow, risk),
+		DraftQueue:     query.NewDraftQueueHandler(repo, repo, risk, decider),
+		StalledDrafts:  query.NewStalledDraftsHandler(repo, repo, decider),
 		BatchLimits:    testBatchLimits(),
 		CommandKeys:    keys,
+		Auth:           consoleauth.Config{Username: "operator-1", Password: "secret"},
 	})
 
 	httpServer := httptest.NewServer(server)
 	t.Cleanup(httpServer.Close)
-	return &testFixture{server: httpServer, repo: repo, journal: uow.Journal(), keys: keys, access: decider}
+	return &testFixture{server: httpServer, api: server, repo: repo, journal: uow.Journal(), keys: keys, access: decider}
 }
 
 // doJSON выполняет HTTP-запрос с JSON-телом и возвращает ответ и его тело.

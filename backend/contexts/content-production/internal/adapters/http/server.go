@@ -14,6 +14,7 @@ import (
 	"net/http"
 
 	"lead-gen/backend/contexts/content-production/internal/app/command"
+	"lead-gen/backend/contexts/content-production/internal/app/linguistics"
 	"lead-gen/backend/contexts/content-production/internal/app/query"
 	"lead-gen/backend/contexts/content-production/internal/domain"
 	"lead-gen/backend/contexts/content-production/internal/ports"
@@ -39,6 +40,9 @@ type Dependencies struct {
 	GetRenderJob            *query.GetRenderJobHandler
 	GetLandingPage          *query.GetLandingPageHandler
 	ProposeLandingStructure *query.ProposeLandingStructureHandler
+	GenerateLandingTexts    *command.GenerateLandingTextsHandler
+	CollectSite             *command.CollectSiteHandler
+	CheckLandingTexts       *command.CheckLandingTextsHandler
 }
 
 // Server — HTTP-сервер среза. Нулевое значение непригодно: используйте
@@ -72,6 +76,9 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST /content/packages/{assetID}/render-jobs", s.handleRequestRender)
 	mux.HandleFunc("POST /content/produce", s.handleProduce)
 	mux.HandleFunc("POST /content/landing-structure", s.handleProposeLandingStructure)
+	mux.HandleFunc("POST /content/landing-texts", s.handleGenerateLandingTexts)
+	mux.HandleFunc("POST /content/landing-collect", s.handleCollectSite)
+	mux.HandleFunc("POST /content/landing-check", s.handleCheckLandingTexts)
 	mux.HandleFunc("GET /content/render-jobs/{renderJobID}", s.handleGetRenderJob)
 	mux.HandleFunc("GET /healthz", s.handleHealth)
 
@@ -134,7 +141,9 @@ func statusForError(err error) int {
 		errors.Is(err, domain.ErrTerminalRenderState),
 		errors.Is(err, domain.ErrInvalidRenderTransition):
 		return http.StatusConflict
-	case errors.Is(err, ports.ErrRenderUnavailable):
+	case errors.Is(err, ports.ErrRenderUnavailable),
+		errors.Is(err, ports.ErrSourcesUnavailable),
+		errors.Is(err, linguistics.ErrUnavailable):
 		return http.StatusServiceUnavailable
 	case errors.Is(err, ports.ErrRenderRejected):
 		return http.StatusBadGateway
@@ -164,7 +173,10 @@ func statusForError(err error) int {
 		errors.Is(err, domain.ErrArtifactFormatMismatch),
 		errors.Is(err, domain.ErrVersionNotFound),
 		errors.Is(err, command.ErrVersionRequired),
-		errors.Is(err, command.ErrPackageRequired):
+		errors.Is(err, command.ErrPackageRequired),
+		errors.Is(err, command.ErrCollectionInput),
+		errors.Is(err, linguistics.ErrInvalidRequest),
+		errors.Is(err, linguistics.ErrUnsourcedClaims):
 		return http.StatusBadRequest
 	default:
 		return http.StatusInternalServerError

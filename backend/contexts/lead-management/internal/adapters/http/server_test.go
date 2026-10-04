@@ -25,6 +25,7 @@ import (
 	"lead-gen/contracts/integration-platform/llm"
 	"lead-gen/contracts/integration-platform/mail"
 	"lead-gen/contracts/integration-platform/search"
+	"lead-gen/frontend/components"
 )
 
 // testTime — фиксированный момент для детерминированных тестов.
@@ -294,6 +295,14 @@ func newTestEnvWithAuth(auth httpapi.AuthConfig) *testEnv {
 		SemanticRecall: recall,
 		EmbedCompany:   embedCompany,
 		Auth:           auth,
+		// Базовые адреса сервисов консоли: раздел текущего сервиса («Лиды»)
+		// остаётся относительным, остальные разделы ведут по своим адресам. Так
+		// тесты проверяют общую навигацию консоли, а не только её разметку.
+		Console: components.ConsoleBases{
+			components.ConsoleServiceRequests: "https://requests.example.test",
+			components.ConsoleServiceLeads:    "https://leads.example.test",
+			components.ConsoleServiceReports:  "https://reports.example.test",
+		},
 	})
 
 	return &testEnv{

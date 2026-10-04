@@ -15,16 +15,20 @@ package httpapi
 
 import (
 	"context"
+	"embed"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"net/http"
+	"strings"
 
 	"lead-gen/backend/contexts/outreach-orchestration/internal/adapters/idempotency"
 	"lead-gen/backend/contexts/outreach-orchestration/internal/app/command"
 	"lead-gen/backend/contexts/outreach-orchestration/internal/app/query"
 	"lead-gen/backend/contexts/outreach-orchestration/internal/domain"
 	"lead-gen/backend/contexts/outreach-orchestration/internal/ports"
+	"lead-gen/backend/platform/consoleauth"
+	"lead-gen/frontend/components"
 )
 
 const (
@@ -33,7 +37,20 @@ const (
 	maxBodyBytes = 1 << 20
 
 	contentTypeJSON = "application/json; charset=utf-8"
+	contentTypeHTML = "text/html; charset=utf-8"
+
+	// contentSecurityPolicy — политика безопасности консольных HTML-экранов
+	// рассылок. Повторяет политику консолей lead-management и request-fulfillment:
+	// без неё разметка остаётся без ограничений на источники стилей, скриптов и
+	// форм.
+	contentSecurityPolicy = "default-src 'none'; style-src 'self'; script-src 'self'; img-src 'self'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'"
 )
+
+// templateFS — шаблоны операторских экранов очереди утверждения рассылок. Они
+// встроены в бинарник, поэтому разметка не может разойтись с кодом обработчиков.
+//
+//go:embed templates/*.html
+var templateFS embed.FS
 
 // CreateCampaignUseCase — узкий вход сценария создания кампании.
 type CreateCampaignUseCase interface {
@@ -85,6 +102,21 @@ type BuildBatchUseCase interface {
 // ApproveBatchUseCase — узкий вход сценария пакетного решения по digest состава.
 type ApproveBatchUseCase interface {
 	Handle(context.Context, command.ApproveBatch) (command.ApproveBatchResult, error)
+}
+
+// PostponeDraftUseCase — узкий вход сценария отложения решения по черновику.
+type PostponeDraftUseCase interface {
+	Handle(context.Context, command.PostponeDraft) (command.PostponeDraftResult, error)
+}
+
+// DraftQueueUseCase — узкий вход запроса очереди черновиков с проверками риска.
+type DraftQueueUseCase interface {
+	Handle(context.Context, query.DraftQueue) ([]query.DraftQueueItem, error)
+}
+
+// StalledDraftsUseCase — узкий вход запроса среза зависших черновиков.
+type StalledDraftsUseCase interface {
+	Handle(context.Context, query.StalledDrafts) (query.StalledDraftsResult, error)
 }
 
 // DefineSequenceUseCase — узкий вход сценария создания цепочки.
@@ -164,11 +196,37 @@ type Dependencies struct {
 	// конфигурация композиции, а не доменное правило: адаптер лишь прокидывает
 	// её в команду и ничего по ней не решает (design.md, Решение 7).
 	BatchLimits domain.BatchLimits
+
+	// --- Операторская консоль очереди утверждения рассылок (web-frontend-
+	// architecture, срез 4). Экраны — эксплуатационная проекция роли api; они
+	// повторяют приёмы консоли lead-management и экранов request-fulfillment.
+
+	// PostponeDraft — отложение решения по черновику (индивидуальное решение).
+	PostponeDraft PostponeDraftUseCase
+
+	// DraftQueue — очередь черновиков с фильтрами и результатом автоматических
+	// проверок риска. nil трактуется как «очередь недоступна».
+	DraftQueue DraftQueueUseCase
+
+	// StalledDrafts — срез зависших черновиков без автоутверждения.
+	StalledDrafts StalledDraftsUseCase
+
+	// Auth — учётные данные оператора консоли рассылок и стор сессий. Пустое
+	// CookieName означает общее имя cookie "session": вход в консоль рассылок
+	// действителен и в других консолях, когда они делят стор сессий.
+	Auth consoleauth.Config
+
+	// Console — базовые адреса сервисов консоли для общей навигации по разделам.
+	Console components.ConsoleBases
 }
 
 // Server — HTTP-сервер среза. Нулевое значение непригодно: используйте
 // NewServer.
 type Server struct {
+	// deps — полный набор зависимостей: консольные обработчики обращаются к
+	// сценариям по имени, а узкие поля ниже сохранены для существующих путей.
+	deps Dependencies
+
 	createCampaign CreateCampaignUseCase
 	draftAction    DraftActionUseCase
 	approveDraft   ApproveDraftUseCase
@@ -181,6 +239,17 @@ type Server struct {
 	approveBatch   ApproveBatchUseCase
 	commandKeys    CommandKeyStore
 	batchLimits    domain.BatchLimits
+
+	postponeDraft PostponeDraftUseCase
+	draftQueue    DraftQueueUseCase
+	stalledDrafts StalledDraftsUseCase
+
+	// Консольные экраны: общие шаблоны компонентов, серверные сессии/CSRF и
+	// базовые адреса сервисов для навигации.
+	pages             *components.Set
+	sessions          *consoleauth.Manager
+	console           components.ConsoleBases
+	consoleConfigured bool
 
 	defineSequence  DefineSequenceUseCase
 	enrollLead      EnrollLeadUseCase
@@ -196,6 +265,7 @@ type Server struct {
 // NewServer собирает маршруты среза из переданных сценариев.
 func NewServer(deps Dependencies) *Server {
 	server := &Server{
+		deps:           deps,
 		createCampaign: deps.CreateCampaign,
 		draftAction:    deps.DraftAction,
 		approveDraft:   deps.ApproveDraft,
@@ -209,6 +279,14 @@ func NewServer(deps Dependencies) *Server {
 		commandKeys:    deps.CommandKeys,
 		batchLimits:    deps.BatchLimits,
 
+		postponeDraft: deps.PostponeDraft,
+		draftQueue:    deps.DraftQueue,
+		stalledDrafts: deps.StalledDrafts,
+
+		sessions:          consoleauth.New(deps.Auth),
+		console:           deps.Console,
+		consoleConfigured: strings.TrimSpace(deps.Auth.Username) != "",
+
 		defineSequence:  deps.DefineSequence,
 		enrollLead:      deps.EnrollLead,
 		removeLead:      deps.RemoveLead,
@@ -217,6 +295,10 @@ func NewServer(deps Dependencies) *Server {
 		sequenceHistory: deps.SequenceHistory,
 		sequenceState:   deps.SequenceState,
 	}
+	// Шаблоны консольных экранов разбираются сразу, чтобы ошибка разметки была
+	// видна при сборке сервиса. Если набор не собрался, JSON-часть продолжает
+	// работать, а экран честно отвечает 500.
+	server.pages, _ = newPages()
 	server.handler = server.routes()
 	return server
 }
@@ -251,7 +333,60 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST /campaigns/{campaignID}/enrollments/{executionID}/outcomes", s.handleRecordOutcome)
 	mux.HandleFunc("POST /campaigns/{campaignID}/enrollments/{executionID}/resume", s.handleResumeExecution)
 
+	// Операторская консоль очереди утверждения рассылок (web-frontend-
+	// architecture, срез 4): HTMX + серверный рендеринг поверх тех же
+	// прикладных сценариев. Действия — POST/redirect/GET; изменяющие запросы
+	// требуют сессию оператора и CSRF-токен.
+	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(components.StaticFS())))
+
+	mux.Handle("GET /login", s.publicHTML(s.handleLoginForm))
+	mux.Handle("POST /login", s.publicHTML(s.handleLogin))
+	mux.Handle("GET /logout", s.publicHTML(s.handleLogout))
+
+	mux.Handle("GET /outreach/drafts", s.consoleHandler(s.handleDraftQueue))
+	mux.Handle("GET /outreach/campaigns/{campaignID}/batches", s.consoleHandler(s.handleBatchScreen))
+	mux.Handle("POST /outreach/campaigns/{campaignID}/batches/approve", s.consoleHandler(s.handleBatchApprove))
+	mux.Handle("GET /outreach/campaigns/{campaignID}/drafts/{draftID}", s.consoleHandler(s.handleDraftScreen))
+	mux.Handle("POST /outreach/campaigns/{campaignID}/drafts/{draftID}/approve", s.consoleHandler(s.handleDraftApprove))
+	mux.Handle("POST /outreach/campaigns/{campaignID}/drafts/{draftID}/edit-approve", s.consoleHandler(s.handleDraftEditApprove))
+	mux.Handle("POST /outreach/campaigns/{campaignID}/drafts/{draftID}/reject", s.consoleHandler(s.handleDraftReject))
+	mux.Handle("POST /outreach/campaigns/{campaignID}/drafts/{draftID}/postpone", s.consoleHandler(s.handleDraftPostpone))
+	mux.Handle("GET /outreach/stalled", s.consoleHandler(s.handleStalledQueue))
+
 	return mux
+}
+
+// publicHTML навешивает заголовки безопасности на публичную HTML-страницу
+// консоли (вход, выход): сессия на них не требуется.
+func (s *Server) publicHTML(next http.HandlerFunc) http.Handler {
+	return components.SecurityHeaders(contentSecurityPolicy)(next)
+}
+
+// consoleHandler оборачивает консольный экран заголовками безопасности и
+// требованием сессии: без валидной cookie запрос редиректится на вход, а
+// изменяющий — без верного CSRF — отклоняется. Статика публична.
+//
+// Если консоль не настроена (точка входа не задала учётные данные), экран честно
+// отвечает 503, а не уводит в недоступный вход: неподключённая консоль не должна
+// выглядеть работающей.
+func (s *Server) consoleHandler(next http.HandlerFunc) http.Handler {
+	headers := components.SecurityHeaders(contentSecurityPolicy)
+	return headers(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !s.consoleConfigured {
+			s.renderPlainError(w, http.StatusServiceUnavailable, "консоль рассылок не настроена: не заданы учётные данные оператора")
+			return
+		}
+		s.authMiddleware(next).ServeHTTP(w, r)
+	}))
+}
+
+// authMiddleware требует сессию для обёрнутых консольных маршрутов и проверяет
+// CSRF-токен на изменяющих запросах. Правила задаёт общий пакет consoleauth.
+func (s *Server) authMiddleware(next http.Handler) http.Handler {
+	return s.sessions.Middleware(consoleauth.Policy{
+		LoginPath:      "/login",
+		PublicPrefixes: []string{"/static/"},
+	})(next)
 }
 
 // errorResponse — единая форма ошибки HTTP-слоя.
@@ -358,6 +493,9 @@ func statusForError(err error) int {
 		errors.Is(err, domain.ErrInvalidExecutionState),
 		errors.Is(err, domain.ErrUnknownCampaignCommand),
 		errors.Is(err, domain.ErrBatchCompositionEmpty),
+		errors.Is(err, domain.ErrPostponeDeadlineRequired),
+		errors.Is(err, command.ErrApprovalDeadlineRequired),
+		errors.Is(err, query.ErrInvalidRiskFilter),
 		errors.Is(err, domain.ErrInvalidSnapshot):
 		return http.StatusBadRequest
 	default:

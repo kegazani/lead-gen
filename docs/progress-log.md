@@ -1,6 +1,6 @@
 # Журнал прогресса (handoff для агентов)
 
-**Фокус сейчас:** **сквозной E2E-продукт + полные фронты.** Волна 1 (backend) завершена и **принята**: три change (`real-vector-recall`, `shortfall-to-letters`, `outreach-delivery-bridge`) заархивированы, specs перенесены в `openspec/specs/`. Проводка в `backend/cmd/lead-gen` сделана (вектор в `lead-management`/`request-fulfillment`; мост `approved-action → delivery-command` с резолвером адреса и материала). Контракт материала зафиксирован: `content-version` расширен необязательной темой `Subject` (schema MINOR `1.1.0`), добавлена связь `content-to-delivery`. Гейт зелёный: `make check` (OpenSpec 50 passed, archlint 53 capability / 30 связей) и `make test-postgres` (11 suite `ok`). Осталось: остальные срезы консоли (волна 2) и live-E2E (волна 3). Цель и волны — `docs/e2e-plan.md`.
+**Фокус сейчас:** **сквозной E2E-продукт + полные фронты.** Волны 1–3 выполнены: backend-контур (RAG, недобор→письма, мост approved-action→delivery-command) заархивирован; консоль (срезы 3–5), генерация лендингов (`linguistics`) и in-process E2E «утверждено → отправлено» сделаны. Гейт зелёный: `make check` (OpenSpec 50 passed, archlint 53 capability / 30 связей) и `make test-postgres` (11 suite `ok`). Открыто: `MaterialVersionRef` не заполняется в пути approve→relay (материал пуст — отдельный change); срез 5.3 (состояние интеграций), срезы 6–7 (долгие операции/DLQ, a11y/l10n), `service-topology-console` (нужен `backend/platform/topology`), live-контур (Temporal/SMTP/сети). Цель и волны — `docs/e2e-plan.md`.
 
 **Зачем этот файл.** Контекстное окно агента конечно. Этот журнал — точка подхвата:
 новый агент читает его первым и понимает, где остановилась работа и какой следующий
@@ -21,6 +21,16 @@
 ---
 
 ## Где мы остановились
+
+**2026-10-04 (волны 2–3: консоль, генерация лендингов, in-process E2E).** Волна 2 (фронты) и волна 3 (приёмка) продвинуты пятью субагентами (по одному на контекст, общий `frontend/components` не трогали) и проводкой головного агента.
+
+*Консоль (`web-frontend-architecture`).* Срез 3: дашборд лидов (`lead-management`) и раздел отчётности/фильтры/живое обновление/дашборд клиента (`analytics`) подтверждены тестами. Срез 4 (очередь утверждения рассылок, `outreach-orchestration`): список с фильтрами и риском, пакетное решение с обязательным предъявлением состава, индивидуальные решения (правка с автором, отклонение, отложение), отделение рисковых, срез зависших — с консольными экранами (сессия/CSRF, PostgreSQL, миграция `0004`). Срез 5 (`platform-governance`): пользователи/роли через владельца, доступ по снимку `access-decision` (матрица роль→раздел→действие, отказ на сервере), переключение тенанта, журнал аудита с CSV-экспортом. Проводка в `cmd/lead-gen`: консоль рассылок (`ConsoleAuth`/`Console` + общий стор сессий).
+
+*Генерация лендингов (`landing-page-generator` + `linguistics`).* В `content-production` реализованы генерация/переформулирование текста через LLM-порт, проверки сведений (числа/сроки/гарантии) и дословных совпадений, исключение персональных данных, сбор с сайта за портом. Проводка `LLM` в `cmd/lead-gen`.
+
+*Волна 3 (in-process E2E).* `backend/cmd/lead-gen/e2e_approved_to_sent_test.go` — сквозной тест замыкания `approve → outbox → relay → мост (delivery-target + content-version) → команда → SMTP-захват` на реальной композиции `buildService`, вкл. идемпотентность и отказ на не-email. **Честная находка:** в реальном пути approve→relay `relay.MapActionApproved` не заполняет `MaterialVersionRef` — материал письма пуст; кандидат в отдельный change (`material-ref-in-approved-action`).
+
+*Открыто.* (1) Срез 5.3 — состояние адаптеров (нужен контракт владельца `integration-platform`). (2) Срезы 6–7 — долгие операции/DLQ и a11y/l10n/безопасность (затрагивают общий `frontend/components`). (3) `service-topology-console` — нужен `backend/platform/topology` + `deploy/infrastructure.yaml` + `tools/archlint`. (4) `MaterialVersionRef` в approve→relay. (5) Live-контур (реальные Temporal/SMTP/сети).
 
 **2026-10-04 (волна 1 backend: три change + семь контекстов; гейт зелёный).** Созданы три недостающих change OpenSpec с артефактами (proposal/specs/design/tasks, `validate --strict` зелёный): `real-vector-recall`, `shortfall-to-letters`, `outreach-delivery-bridge`. Каталог `architecture/domain-catalog.yaml` и `docs/domain-model.md` обновлены в том же change (capability `vector-recall` → `integration-platform`, `request-shortfall` → `request-fulfillment`, `delivery-bridge` → `message-delivery`; контракт `delivery-target` у `lead-management`, связь `leads-for-delivery`).
 

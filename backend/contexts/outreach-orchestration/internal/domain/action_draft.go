@@ -1,6 +1,9 @@
 package domain
 
-import "fmt"
+import (
+	"fmt"
+	"time"
+)
 
 // DraftState — состояние черновика действия.
 //
@@ -81,6 +84,18 @@ func (s DraftSpec) validate() error {
 
 // ActionDraft — сущность агрегата campaign: подготовленное, но ещё не
 // разрешённое исходящее действие.
+// DraftEdit — запись правки черновика человеком: автор, время, прежний и новый
+// состав. Хранится отдельно от сгенерированного варианта (BRD 1.1): исходный
+// состав черновика (From) сохраняется даже после того, как черновик заменён
+// правкой, — для последующего анализа качества генерации.
+type DraftEdit struct {
+	Actor ActorID
+	At    time.Time
+	From  DraftSpec
+	To    DraftSpec
+}
+
+// ActionDraft — сущность агрегата campaign: подготовленное, но ещё не разрешённое исходящее действие.
 //
 // Версия черновика — естественный ключ идемпотентности решения и защиты
 // инварианта I2: каждая правка повышает версию, поэтому прежнее решение к
@@ -92,6 +107,14 @@ type ActionDraft struct {
 	spec     DraftSpec
 	state    DraftState
 	version  int
+
+	// edits — правки, внесённые человеком: отдельная от сгенерированного запись
+	// (автор, время, прежний и новый состав).
+	edits []DraftEdit
+
+	// postponedUntil — момент, до которого оператор отложил решение. Нулевое
+	// значение означает, что черновик не отложен.
+	postponedUntil time.Time
 }
 
 // newActionDraft создаёт черновик в состоянии «предложено» с версией 1.
@@ -158,6 +181,7 @@ func (d *ActionDraft) approve() error {
 		return d.invalidTransition(DraftStateApproved)
 	}
 	d.state = DraftStateApproved
+	d.postponedUntil = time.Time{}
 	return nil
 }
 
@@ -167,6 +191,21 @@ func (d *ActionDraft) reject() error {
 		return d.invalidTransition(DraftStateRejected)
 	}
 	d.state = DraftStateRejected
+	d.postponedUntil = time.Time{}
+	return nil
+}
+
+// postpone откладывает решение по черновику до указанного момента. Черновик
+// остаётся «ожидает утверждения» и не исполняется: отложение не является ни
+// решением, ни автоутверждением. Нулевой срок отложения недопустим.
+func (d *ActionDraft) postpone(until time.Time) error {
+	if until.IsZero() {
+		return fmt.Errorf("%w: черновик %s", ErrPostponeDeadlineRequired, d.id)
+	}
+	if d.state != DraftStatePendingApproval {
+		return d.invalidTransition(DraftStatePendingApproval)
+	}
+	d.postponedUntil = until.UTC()
 	return nil
 }
 
@@ -174,6 +213,20 @@ func (d *ActionDraft) reject() error {
 // черновик на утверждение. Прежнее решение к новой версии не относится.
 // Исполненный или сбойный черновик доработке не подлежит.
 func (d *ActionDraft) revise(spec DraftSpec) error {
+	return d.applyRevision(spec, nil)
+}
+
+// reviseRecorded применяет доработку и сохраняет запись правки с автором и
+// временем. Изменение состава и запись правки — одна операция: правка без
+// записи автора не создаётся.
+func (d *ActionDraft) reviseRecorded(spec DraftSpec, edit DraftEdit) error {
+	return d.applyRevision(spec, &edit)
+}
+
+// applyRevision — общий путь доработки. При непустой записи правки она
+// добавляется к истории после успешной замены состава, поэтому запрещённый
+// переход не оставляет записи.
+func (d *ActionDraft) applyRevision(spec DraftSpec, edit *DraftEdit) error {
 	switch d.state {
 	case DraftStateProposed, DraftStatePendingApproval, DraftStateApproved, DraftStateRejected:
 	default:
@@ -185,6 +238,11 @@ func (d *ActionDraft) revise(spec DraftSpec) error {
 	d.spec = spec
 	d.version++
 	d.state = DraftStatePendingApproval
+	// Доработка снимает отложение: решение по новой версии оператор принимает заново.
+	d.postponedUntil = time.Time{}
+	if edit != nil {
+		d.edits = append(d.edits, *edit)
+	}
 	return nil
 }
 
@@ -195,8 +253,19 @@ func (d *ActionDraft) expire() error {
 		return d.invalidTransition(DraftStateExpired)
 	}
 	d.state = DraftStateExpired
+	d.postponedUntil = time.Time{}
 	return nil
 }
+
+// Edits возвращает записи правок черновика в порядке внесения. Возвращается
+// копия: история отдельна от текущего (правленого) состава.
+func (d *ActionDraft) Edits() []DraftEdit {
+	return append([]DraftEdit(nil), d.edits...)
+}
+
+// PostponedUntil возвращает момент, до которого решение отложено. Нулевое
+// значение означает, что черновик не отложен.
+func (d *ActionDraft) PostponedUntil() time.Time { return d.postponedUntil }
 
 // markExecuted переводит утверждённый черновик в «исполнено».
 func (d *ActionDraft) markExecuted() error {

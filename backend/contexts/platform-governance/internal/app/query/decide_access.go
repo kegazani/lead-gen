@@ -56,3 +56,32 @@ func (h *DecideAccessHandler) Handle(ctx context.Context, q DecideAccess) (bool,
 func (h *DecideAccessHandler) CanAct(ctx context.Context, actor domain.ActorID, tenant domain.TenantID) (bool, error) {
 	return h.Handle(ctx, DecideAccess{Actor: actor.String(), TenantID: tenant.String()})
 }
+
+// Roles возвращает набор ролей актора в тенанте — ту часть снимка
+// access-decision, по которой консоль управления применяет матрицу «роль →
+// раздел → действие». Роли не вычисляются и не хранятся потребителем: источник —
+// агрегат tenant.
+//
+// Отключённый тенант ролей не выдаёт (пустой набор), как и в DecideAccess.
+// Пустой актор — ошибка вызывающего, а не пустой набор.
+func (h *DecideAccessHandler) Roles(ctx context.Context, tenant domain.TenantID, actor domain.ActorID) (domain.RoleSet, error) {
+	if err := actor.Validate(); err != nil {
+		return domain.RoleSet{}, fmt.Errorf("%w: %v", app.ErrMissingActor, err)
+	}
+	if err := tenant.Validate(); err != nil {
+		return domain.RoleSet{}, err
+	}
+	t, err := h.tenants.FindByID(ctx, tenant)
+	if err != nil {
+		return domain.RoleSet{}, err
+	}
+	if t.State() != domain.TenantActive {
+		return domain.RoleSet{}, nil
+	}
+	for _, user := range t.Users() {
+		if user.ID() == domain.UserID(actor) {
+			return user.Roles(), nil
+		}
+	}
+	return domain.RoleSet{}, nil
+}

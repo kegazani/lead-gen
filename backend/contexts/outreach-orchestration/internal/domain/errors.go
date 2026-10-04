@@ -96,6 +96,9 @@ var (
 	// включён в пакет; исключение нельзя обойти.
 	ErrBatchDraftNotEligible = errors.New("домен: черновик с признаком риска не входит в пакет")
 
+	// ErrPostponeDeadlineRequired — срок отложения решения не задан.
+	ErrPostponeDeadlineRequired = errors.New("домен: срок отложения решения не задан")
+
 	// ErrEmptySequenceName — у сценария последовательности нет названия.
 	ErrEmptySequenceName = errors.New("домен: название сценария не задано")
 

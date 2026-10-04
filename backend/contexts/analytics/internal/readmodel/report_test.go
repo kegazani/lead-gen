@@ -164,6 +164,28 @@ func TestReportFilterCombination(t *testing.T) {
 	}
 }
 
+// TestReportFilterBySegment проверяет фильтр по сегменту: срез сужается до
+// записей сегмента, чужой сегмент в него не проникает, а неизвестный сегмент не
+// отдаётся (ниже порога минимальной группы).
+func TestReportFilterBySegment(t *testing.T) {
+	model := seedReport(t)
+
+	bySegment := model.Report("t1", readmodel.ReportFilter{Segment: "smb"})
+	if !bySegment.Visible || bySegment.Records != 2 {
+		t.Fatalf("срез по сегменту smb = %+v", bySegment)
+	}
+	for _, source := range bySegment.Sources {
+		if source.Key != "web" {
+			t.Fatalf("срез сегмента smb содержит чужой источник %q: %+v", source.Key, bySegment.Sources)
+		}
+	}
+
+	missing := model.Report("t1", readmodel.ReportFilter{Segment: "unknown"})
+	if missing.Visible {
+		t.Fatalf("неизвестный сегмент не должен отдавать записи: %+v", missing)
+	}
+}
+
 // TestReportMinGroupHidesSlices проверяет порог минимальной группы: узкий срез не
 // отдаётся и не показывает счётчики.
 func TestReportMinGroupHidesSlices(t *testing.T) {

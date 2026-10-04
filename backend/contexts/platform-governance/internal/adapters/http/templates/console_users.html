@@ -1,0 +1,61 @@
+{{- define "content" -}}
+<section class="console-users">
+  <h1>Пользователи и роли</h1>
+  {{- with .View.Notice }}
+  <p class="notice" role="status">{{.}}</p>
+  {{- end }}
+  <p class="tenant-label">Тенант: {{ .View.TenantID }}</p>
+  {{- if .View.Users }}
+  <table class="table">
+    <thead>
+      <tr><th>Пользователь</th><th>Логин</th><th>Роли</th><th>Действие</th></tr>
+    </thead>
+    <tbody>
+      {{- range .View.Users }}
+      <tr>
+        <td>{{ .ID }}</td>
+        <td>{{ .Login }}</td>
+        <td>
+          {{- range .Roles }}
+          <span class="status status-{{ .Class }}">{{ .Label }}</span>
+          {{- end }}
+        </td>
+        <td>
+          {{- range .Revoke }}
+          <form method="post" action="/console/users/roles/revoke" class="inline-form">
+            <input type="hidden" name="tenant_id" value="{{ $.View.TenantID }}">
+            <input type="hidden" name="actor" value="{{ $.View.Actor }}">
+            <input type="hidden" name="user_id" value="{{ .UserID }}">
+            <input type="hidden" name="role" value="{{ .Role }}">
+            <input type="hidden" name="command_id" value="{{ .CommandID }}">
+            <button type="submit">Отозвать «{{ .Role }}»</button>
+          </form>
+          {{- end }}
+        </td>
+      </tr>
+      {{- end }}
+    </tbody>
+  </table>
+  {{- else }}
+  <p class="portal-empty">Пользователей пока нет.</p>
+  {{- end }}
+  <section class="assign-role">
+    <h2>Назначить роль</h2>
+    <form method="post" action="/console/users/roles/assign">
+      <input type="hidden" name="tenant_id" value="{{ .View.TenantID }}">
+      <input type="hidden" name="actor" value="{{ .View.Actor }}">
+      <input type="hidden" name="command_id" value="{{ .View.AssignCommandID }}">
+      {{ template "field" .View.UserField }}
+      <p class="field">
+        <label for="assign-role">Роль</label>
+        <select id="assign-role" name="role">
+          {{- range .View.RoleOptions }}
+          <option value="{{ .Value }}">{{ .Label }}</option>
+          {{- end }}
+        </select>
+      </p>
+      <button type="submit">Назначить</button>
+    </form>
+  </section>
+</section>
+{{- end -}}

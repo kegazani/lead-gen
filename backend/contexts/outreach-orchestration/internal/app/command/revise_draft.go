@@ -32,16 +32,18 @@ type ReviseDraftResult struct {
 	Revised bool
 }
 
-// ReviseDraftHandler — use case доработки черновика. Время порт Clock не
-// нужен: доработка не создаёт решения с отметкой времени.
+// ReviseDraftHandler — use case доработки черновика. Порт Clock нужен для
+// отметки времени записи правки: правка оператора фиксируется отдельно от
+// сгенерированного состава с автором и временем.
 type ReviseDraftHandler struct {
 	access ports.AccessDecision
+	clock  ports.Clock
 	uow    ports.UnitOfWork
 }
 
-// NewReviseDraftHandler собирает use case из портов доступа и транзакции.
-func NewReviseDraftHandler(access ports.AccessDecision, uow ports.UnitOfWork) *ReviseDraftHandler {
-	return &ReviseDraftHandler{access: access, uow: uow}
+// NewReviseDraftHandler собирает use case из портов доступа, времени и транзакции.
+func NewReviseDraftHandler(access ports.AccessDecision, clock ports.Clock, uow ports.UnitOfWork) *ReviseDraftHandler {
+	return &ReviseDraftHandler{access: access, clock: clock, uow: uow}
 }
 
 // Handle применяет доработку. Идемпотентность распознаётся по паре
@@ -73,7 +75,7 @@ func (h *ReviseDraftHandler) Handle(ctx context.Context, cmd ReviseDraft) (Revis
 			return nil
 		}
 
-		draft, err := campaign.ReviseDraft(cmd.DraftID, cmd.ExpectedVersion, cmd.Spec)
+		draft, err := campaign.ReviseDraftRecorded(cmd.DraftID, cmd.ExpectedVersion, cmd.Spec, cmd.Actor, h.clock.Now())
 		if err != nil {
 			return err
 		}

@@ -1,0 +1,68 @@
+{{- define "content" -}}
+<section class="draft-screen">
+  <h1>Черновик {{.View.DraftID}}</h1>
+  <p>Кампания: {{.View.CampaignID}} · Версия: {{.View.Version}} · Канал: {{.View.Channel}}</p>
+  <p>Состав: материал {{.View.MaterialID}}, сегмент {{.View.SegmentID}}, получатель {{.View.RecipientID}}</p>
+
+  {{- if .View.RiskReasons }}
+  <div class="risk-block" role="note">
+    <p>Рисковый черновик — решение только индивидуальное, в пакет он не входит.</p>
+    <ul>{{range .View.RiskReasons}}<li>{{.}}</li>{{end}}</ul>
+  </div>
+  {{- end }}
+
+  {{- if .View.PostponedFor }}<p class="postponed">Решение отложено до {{.View.PostponedFor}}</p>{{end}}
+  {{- with .View.Notice }}<p class="notice" role="alert">{{.}}</p>{{end}}
+
+  {{- if .View.Unavailable }}
+  <p class="watermark" role="status">Черновик недоступен: хранилище не подключено</p>
+  {{- else }}
+  {{- if .View.Edits }}
+  <section class="edits">
+    <h2>Правки (хранятся отдельно от сгенерированного)</h2>
+    <ul>
+    {{- range .View.Edits }}
+      <li>{{.Actor}}, {{.At}}: {{.FromRecipient}}/{{.FromChannel}} → {{.ToRecipient}}/{{.ToChannel}}</li>
+    {{- end }}
+    </ul>
+  </section>
+  {{- end }}
+
+  <form method="post" action="/outreach/campaigns/{{.View.CampaignID}}/drafts/{{.View.DraftID}}/approve">
+    <input type="hidden" name="csrf" value="{{.View.CSRF}}">
+    <input type="hidden" name="tenant_id" value="{{.View.TenantID}}">
+    <button type="submit">Утвердить</button>
+  </form>
+
+  <form method="post" action="/outreach/campaigns/{{.View.CampaignID}}/drafts/{{.View.DraftID}}/edit-approve">
+    <input type="hidden" name="csrf" value="{{.View.CSRF}}">
+    <input type="hidden" name="tenant_id" value="{{.View.TenantID}}">
+    <label>Материал <input type="text" name="material_id" value="{{.View.MaterialID}}"></label>
+    <label>Сегмент <input type="text" name="segment_id" value="{{.View.SegmentID}}"></label>
+    <label>Получатель <input type="text" name="recipient_id" value="{{.View.RecipientID}}"></label>
+    <label>Канал
+      <select name="channel">
+        <option value="email"{{if eq .View.Channel "email"}} selected{{end}}>email</option>
+        <option value="call"{{if eq .View.Channel "call"}} selected{{end}}>call</option>
+        <option value="form"{{if eq .View.Channel "form"}} selected{{end}}>form</option>
+      </select>
+    </label>
+    <button type="submit">Отредактировать и утвердить</button>
+  </form>
+
+  <form method="post" action="/outreach/campaigns/{{.View.CampaignID}}/drafts/{{.View.DraftID}}/reject">
+    <input type="hidden" name="csrf" value="{{.View.CSRF}}">
+    <input type="hidden" name="tenant_id" value="{{.View.TenantID}}">
+    <label>Причина <input type="text" name="reason" required></label>
+    <button type="submit">Отклонить</button>
+  </form>
+
+  <form method="post" action="/outreach/campaigns/{{.View.CampaignID}}/drafts/{{.View.DraftID}}/postpone">
+    <input type="hidden" name="csrf" value="{{.View.CSRF}}">
+    <input type="hidden" name="tenant_id" value="{{.View.TenantID}}">
+    <label>Отложить до <input type="datetime-local" name="until" required></label>
+    <button type="submit">Отложить</button>
+  </form>
+  {{- end }}
+</section>
+{{- end -}}

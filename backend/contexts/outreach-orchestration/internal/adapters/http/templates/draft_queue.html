@@ -1,0 +1,67 @@
+{{- define "content" -}}
+<section class="outreach-queue">
+  <h1>Очередь черновиков</h1>
+  <p class="hint">Черновики, ожидающие решения оператора. Тенант: {{.View.TenantID}}</p>
+
+  {{- if .View.Stalled }}
+  <p class="notice notice-attention" role="status">
+    Зависших черновиков без автоутверждения: {{.View.Stalled}}.
+    <a href="{{.View.StalledURL}}">Открыть срез</a>
+  </p>
+  {{- end }}
+
+  {{- if .View.Unavailable }}
+  <p class="watermark" role="status">Очередь недоступна: хранилище не подключено</p>
+  {{- else }}
+  <form method="get" action="/outreach/drafts" class="filters">
+    <input type="hidden" name="tenant_id" value="{{.View.TenantID}}">
+    <label>Кампания <input type="text" name="campaign_id" value="{{.View.CampaignFilter}}"></label>
+    <label>Канал
+      <select name="channel">
+        <option value="">любой</option>
+        <option value="email"{{if eq .View.ChannelFilter "email"}} selected{{end}}>email</option>
+        <option value="call"{{if eq .View.ChannelFilter "call"}} selected{{end}}>call</option>
+        <option value="form"{{if eq .View.ChannelFilter "form"}} selected{{end}}>form</option>
+      </select>
+    </label>
+    <label>Проверки
+      <select name="risk">
+        <option value="">все</option>
+        <option value="risky"{{if eq .View.RiskFilter "risky"}} selected{{end}}>рисковые</option>
+        <option value="safe"{{if eq .View.RiskFilter "safe"}} selected{{end}}>без риска</option>
+      </select>
+    </label>
+    <button type="submit">Применить</button>
+  </form>
+
+  <table class="queue">
+    <thead>
+      <tr><th>Кампания</th><th>Черновик</th><th>Версия</th><th>Канал</th><th>Получатель</th><th>Автоматические проверки</th><th></th></tr>
+    </thead>
+    <tbody>
+    {{- range .View.Items }}
+      <tr class="queue-item{{if .Risky}} is-risky{{end}}">
+        <td>{{.CampaignID}}</td>
+        <td>{{.DraftID}}</td>
+        <td>{{.Version}}</td>
+        <td>{{.Channel}}</td>
+        <td>{{.RecipientID}}</td>
+        <td>
+          {{- if .Risky }}
+          <span class="risk-flag" title="Только индивидуальное решение">рисковый</span>
+          <ul class="risk-reasons">{{range .RiskReasons}}<li>{{.}}</li>{{end}}</ul>
+          {{- else }}
+          <span class="risk-ok">без риска</span>
+          {{- end }}
+          {{- if .PostponedUntil }}<p class="postponed">отложен до {{.PostponedUntil}}</p>{{end}}
+        </td>
+        <td><a href="{{.ScreenURL}}">Открыть</a></td>
+      </tr>
+    {{- else }}
+      <tr><td colspan="7" class="queue-empty">Черновиков, ожидающих решения, нет</td></tr>
+    {{- end }}
+    </tbody>
+  </table>
+  {{- end }}
+</section>
+{{- end -}}

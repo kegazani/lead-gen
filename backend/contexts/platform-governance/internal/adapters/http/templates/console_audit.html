@@ -1,0 +1,31 @@
+{{- define "content" -}}
+<section class="console-audit">
+  <h1>Журнал аудита</h1>
+  <p class="audit-immutable">Журнал неизменяем: записи нельзя изменить или удалить, корректировка добавляет новую запись.</p>
+  {{- with .View.Notice }}
+  <p class="notice" role="status">{{.}}</p>
+  {{- end }}
+  <p class="audit-actions"><a href="{{ .View.ExportURL }}">Выгрузить журнал (CSV)</a></p>
+  {{- if .View.Entries }}
+  <table class="table">
+    <thead>
+      <tr><th>Время</th><th>Субъект</th><th>Действие</th><th>Объект</th><th>Результат</th><th>Запись</th></tr>
+    </thead>
+    <tbody>
+      {{- range .View.Entries }}
+      <tr>
+        <td>{{ .At }}</td>
+        <td>{{ .Actor }}</td>
+        <td>{{ .Action }}</td>
+        <td>{{ .Object }}</td>
+        <td>{{ .Outcome }}</td>
+        <td>{{ .ID }}{{ if .CorrectionOf }} (корректировка {{ .CorrectionOf }}){{ end }}</td>
+      </tr>
+      {{- end }}
+    </tbody>
+  </table>
+  {{- else }}
+  <p class="portal-empty">Записей пока нет.</p>
+  {{- end }}
+</section>
+{{- end -}}

@@ -62,6 +62,12 @@ type Config struct {
 	// портал честно отвечает «недоступен», а не выдумывает заявку.
 	Requests requestintent.Port
 
+	// Adapters — порт чтения состояния адаптеров интеграций (владелец —
+	// integration-platform). nil означает, что владелец не подключён: раздел
+	// «Интеграции» честно сообщает о недоступности, а не показывает пустой список
+	// как успех.
+	Adapters ports.AdapterCatalog
+
 	// Clock — источник времени прикладного слоя. nil → SystemClock.
 	Clock ports.Clock
 
@@ -97,6 +103,8 @@ type Slice struct {
 	RevokeRole    *command.RevokeRoleHandler
 	DecideAccess  *query.DecideAccessHandler
 	AuditJournal  *query.AuditJournalHandler
+	TenantUsers   *query.TenantUsersHandler
+	Adapters      *query.AdapterCatalogHandler
 }
 
 // Build собирает контекст среза из адаптеров и переданных зависимостей.
@@ -148,6 +156,8 @@ func Build(cfg Config) (*Slice, error) {
 	revokeRole := command.NewRevokeRoleHandler(uow, clock, ids, cfg.Grants)
 	decideAccess := query.NewDecideAccessHandler(repository)
 	auditJournal := query.NewAuditJournalHandler(repository)
+	tenantUsers := query.NewTenantUsersHandler(repository)
+	adapters := query.NewAdapterCatalogHandler(cfg.Adapters)
 
 	server := httpapi.NewServer(httpapi.Dependencies{
 		RegisterClient:      registerClient,
@@ -159,6 +169,10 @@ func Build(cfg Config) (*Slice, error) {
 		RevokeRole:          revokeRole,
 		DecideAccess:        decideAccess,
 		AuditJournal:        auditJournal,
+		TenantUsers:         tenantUsers,
+		Adapters:            adapters,
+		IDs:                 ids,
+		Logger:              cfg.Logger,
 	})
 
 	slice := &Slice{
@@ -174,6 +188,8 @@ func Build(cfg Config) (*Slice, error) {
 		RevokeRole:          revokeRole,
 		DecideAccess:        decideAccess,
 		AuditJournal:        auditJournal,
+		TenantUsers:         tenantUsers,
+		Adapters:            adapters,
 	}
 	if provider, ok := uow.(interface {
 		Journal() *outboxinmemory.Journal

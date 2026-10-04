@@ -12,9 +12,11 @@ import (
 	"lead-gen/backend/contexts/outreach-orchestration/internal/app/scheduling"
 	"lead-gen/backend/contexts/outreach-orchestration/internal/domain"
 	composition "lead-gen/backend/platform/composition"
+	"lead-gen/backend/platform/consoleauth"
 	"lead-gen/backend/platform/observability/observ"
 	"lead-gen/backend/platform/transport/amqp"
 	"lead-gen/contracts/outreach-orchestration/approvedaction"
+	"lead-gen/frontend/components"
 )
 
 // ServiceID — идентификатор сервиса, равный идентификатору контекста
@@ -65,6 +67,14 @@ type Config struct {
 	// сюда NewPostgresPersistence, и тогда агрегат и события переживают рестарт,
 	// а движок последовательностей пишет их атомарно в PostgreSQL.
 	Persistence Persistence
+
+	// ConsoleAuth — учётные данные оператора консольных экранов рассылок (срез 4
+	// web-frontend-architecture). Пустое значение означает, что консоль не
+	// настроена: точка входа задаёт логин, пароль и общий стор сессий.
+	ConsoleAuth consoleauth.Config
+
+	// Console — базовые адреса сервисов консоли для общей навигации по разделам.
+	Console components.ConsoleBases
 
 	// Наблюдаемость сервиса: логгер, метрики и трейсер впрыскиваются
 	// composition root'ом; обязательны.
@@ -135,6 +145,8 @@ func New(cfg Config) (*Service, error) {
 		ApprovedActionTransport: transport,
 		ApprovedActionConsumer:  cfg.ApprovedActionConsumer,
 		Persistence:             cfg.Persistence,
+		ConsoleAuth:             cfg.ConsoleAuth,
+		Console:                 cfg.Console,
 	})
 	if err != nil {
 		return nil, err

@@ -54,6 +54,16 @@ func (r *fakeRepository) FindByID(_ context.Context, id domain.CampaignID) (*dom
 	return campaign, nil
 }
 
+// ListCampaignIDs реализует ports.CampaignLister: запросы очереди перечисляют
+// кампании тенанта через тот же репозиторий.
+func (r *fakeRepository) ListCampaignIDs(_ context.Context) ([]domain.CampaignID, error) {
+	ids := make([]domain.CampaignID, 0, len(r.campaigns))
+	for id := range r.campaigns {
+		ids = append(ids, id)
+	}
+	return ids, nil
+}
+
 func testSpec(t *testing.T, channelName string) domain.DraftSpec {
 	t.Helper()
 	channel, err := domain.ParseActionChannel(channelName)

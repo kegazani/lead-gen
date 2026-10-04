@@ -31,12 +31,50 @@ func reviseCommand(t *testing.T, spec domain.DraftSpec) ReviseDraft {
 	}
 }
 
+// TestReviseDraftRecordsEditSeparatelyWithAuthor проверяет требование BRD 1.1:
+// правка человека хранится отдельно от сгенерированного варианта, с автором.
+func TestReviseDraftRecordsEditSeparatelyWithAuthor(t *testing.T) {
+	kit := newTestKit(t)
+	kit.mustCreate(t)
+	generated := testSpec(t)
+	kit.mustDraft(t, generated)
+	edited := revisedSpec(t)
+
+	if _, err := NewReviseDraftHandler(kit.access, kit.clock, kit.uow).Handle(
+		context.Background(), reviseCommand(t, edited),
+	); err != nil {
+		t.Fatalf("Handle: %v", err)
+	}
+
+	draft, ok := kit.campaign(t).Draft(domain.DraftID("draft-1"))
+	if !ok {
+		t.Fatal("черновик не найден")
+	}
+	edits := draft.Edits()
+	if len(edits) != 1 {
+		t.Fatalf("записей правок: got %d, want 1", len(edits))
+	}
+	if edits[0].Actor != domain.ActorID("operator-1") {
+		t.Fatalf("автор правки: got %q", edits[0].Actor)
+	}
+	if edits[0].At.IsZero() {
+		t.Fatal("время правки не зафиксировано")
+	}
+	// Прежний (сгенерированный) состав сохранён отдельно и не потерян правкой.
+	if edits[0].From != generated {
+		t.Fatalf("прежний состав не сохранён: got %+v, want %+v", edits[0].From, generated)
+	}
+	if edits[0].To != edited {
+		t.Fatalf("новый состав записи: got %+v, want %+v", edits[0].To, edited)
+	}
+}
+
 func TestReviseDraftIncrementsVersionAndReturnsToApproval(t *testing.T) {
 	kit := newTestKit(t)
 	kit.mustCreate(t)
 	kit.mustDraft(t, testSpec(t))
 
-	result, err := NewReviseDraftHandler(kit.access, kit.uow).Handle(
+	result, err := NewReviseDraftHandler(kit.access, kit.clock, kit.uow).Handle(
 		context.Background(), reviseCommand(t, revisedSpec(t)),
 	)
 	if err != nil {
@@ -60,7 +98,7 @@ func TestReviseDraftRepeatIsIdempotent(t *testing.T) {
 	kit := newTestKit(t)
 	kit.mustCreate(t)
 	kit.mustDraft(t, testSpec(t))
-	handler := NewReviseDraftHandler(kit.access, kit.uow)
+	handler := NewReviseDraftHandler(kit.access, kit.clock, kit.uow)
 	command := reviseCommand(t, revisedSpec(t))
 
 	if _, err := handler.Handle(context.Background(), command); err != nil {
@@ -76,6 +114,11 @@ func TestReviseDraftRepeatIsIdempotent(t *testing.T) {
 	if result.Version != 2 {
 		t.Fatalf("версия черновика: got %d, want 2", result.Version)
 	}
+	// Повтор идемпотентен: второй записи правки не появляется.
+	draft, _ := kit.campaign(t).Draft(domain.DraftID("draft-1"))
+	if len(draft.Edits()) != 1 {
+		t.Fatalf("записей правок после повтора: got %d, want 1", len(draft.Edits()))
+	}
 }
 
 func TestReviseDraftRejectsStaleVersion(t *testing.T) {
@@ -85,7 +128,7 @@ func TestReviseDraftRejectsStaleVersion(t *testing.T) {
 
 	command := reviseCommand(t, revisedSpec(t))
 	command.ExpectedVersion = 99
-	_, err := NewReviseDraftHandler(kit.access, kit.uow).Handle(context.Background(), command)
+	_, err := NewReviseDraftHandler(kit.access, kit.clock, kit.uow).Handle(context.Background(), command)
 	if !errors.Is(err, domain.ErrDraftVersionMismatch) {
 		t.Fatalf("ожидался отказ по версии, получено %v", err)
 	}

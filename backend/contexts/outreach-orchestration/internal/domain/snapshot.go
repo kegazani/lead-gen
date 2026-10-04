@@ -14,12 +14,18 @@ import (
 // не эмитит события: восстановление не является новым фактом домена.
 
 // ActionDraftSnapshot — сохранённое состояние черновика действия.
+//
+// Edits хранит записи правок, внесённых человеком (отдельно от сгенерированного
+// состава), PostponedUntil — срок отложения решения. Оба поля необязательны и
+// сохраняют прежнее поведение у черновиков без правок и отложений.
 type ActionDraftSnapshot struct {
-	ID       DraftID
-	Campaign CampaignID
-	Spec     DraftSpec
-	State    DraftState
-	Version  int
+	ID             DraftID
+	Campaign       CampaignID
+	Spec           DraftSpec
+	State          DraftState
+	Version        int
+	Edits          []DraftEdit
+	PostponedUntil time.Time
 }
 
 // OperatorDecisionSnapshot — сохранённое состояние решения оператора.
@@ -58,11 +64,13 @@ type CampaignSnapshot struct {
 // Snapshot возвращает состояние черновика для сохранения.
 func (d *ActionDraft) Snapshot() ActionDraftSnapshot {
 	return ActionDraftSnapshot{
-		ID:       d.id,
-		Campaign: d.campaign,
-		Spec:     d.spec,
-		State:    d.state,
-		Version:  d.version,
+		ID:             d.id,
+		Campaign:       d.campaign,
+		Spec:           d.spec,
+		State:          d.state,
+		Version:        d.version,
+		Edits:          append([]DraftEdit(nil), d.edits...),
+		PostponedUntil: d.postponedUntil,
 	}
 }
 
@@ -131,11 +139,13 @@ func RehydrateActionDraft(s ActionDraftSnapshot) (*ActionDraft, error) {
 		return nil, fmt.Errorf("%w: черновик %s версии %d", ErrDraftVersionMismatch, s.ID, s.Version)
 	}
 	return &ActionDraft{
-		id:       s.ID,
-		campaign: s.Campaign,
-		spec:     s.Spec,
-		state:    s.State,
-		version:  s.Version,
+		id:             s.ID,
+		campaign:       s.Campaign,
+		spec:           s.Spec,
+		state:          s.State,
+		version:        s.Version,
+		edits:          append([]DraftEdit(nil), s.Edits...),
+		postponedUntil: s.PostponedUntil,
 	}, nil
 }
 

@@ -30,11 +30,14 @@ import (
 	"lead-gen/backend/contexts/content-production/internal/adapters/renderer/chromium"
 	"lead-gen/backend/contexts/content-production/internal/adapters/renderer/deterministic"
 	"lead-gen/backend/contexts/content-production/internal/app/command"
+	"lead-gen/backend/contexts/content-production/internal/app/linguistics"
 	"lead-gen/backend/contexts/content-production/internal/app/query"
 	"lead-gen/backend/contexts/content-production/internal/ports"
 	composition "lead-gen/backend/platform/composition"
 	platformoutbox "lead-gen/backend/platform/messaging/outbox"
 	"lead-gen/backend/platform/observability/observ"
+	"lead-gen/contracts/integration-platform/crawl"
+	"lead-gen/contracts/integration-platform/llm"
 )
 
 // ServiceID — идентификатор сервиса, равный идентификатору контекста из
@@ -102,6 +105,20 @@ type Config struct {
 	// Ноль — значение по умолчанию адаптера.
 	RendererTimeout time.Duration
 
+	// LLM — порт LLM владельца integration-platform: capability linguistics
+	// (генерация и переформулирование текста). Впрыскивается точкой сборки; nil —
+	// генерация текстов честно недоступна, тексты не выдумываются.
+	LLM llm.Port
+
+	// SiteCollector — порт движка сбора сведений с сайта (Firecrawl) владельца
+	// integration-platform. nil — сбор честно недоступен: работа продолжается на
+	// предоставленных вручную материалах.
+	SiteCollector crawl.Port
+
+	// PlagiarismSource — порт сравнения со сторонними источниками проверки на
+	// заимствование. nil — сравнение со сторонними источниками честно недоступно.
+	PlagiarismSource ports.PlagiarismSource
+
 	// Clock — источник времени прикладного слоя. nil → SystemClock.
 	Clock ports.Clock
 
@@ -155,6 +172,10 @@ type Slice struct {
 	GetPresentation         *query.GetPresentationHandler
 	GetLandingPage          *query.GetLandingPageHandler
 	ProposeLandingStructure *query.ProposeLandingStructureHandler
+
+	GenerateLandingTexts *command.GenerateLandingTextsHandler
+	CollectSite          *command.CollectSiteHandler
+	CheckLandingTexts    *command.CheckLandingTextsHandler
 }
 
 // Build собирает контекст среза из адаптеров и переданных зависимостей.
@@ -259,6 +280,13 @@ func Build(cfg Config) (*Slice, error) {
 	getLandingPage := query.NewGetLandingPageHandler(content)
 	proposeLandingStructure := query.NewProposeLandingStructureHandler()
 
+	// Capability linguistics: генерация и переформулирование текста за портом LLM.
+	// Без порта генерация честно недоступна; тексты не выдумываются.
+	linguisticsGenerator := linguistics.New(cfg.LLM)
+	generateLandingTexts := command.NewGenerateLandingTextsHandler(linguisticsGenerator)
+	collectSite := command.NewCollectSiteHandler(cfg.SiteCollector)
+	checkLandingTexts := command.NewCheckLandingTextsHandler(linguisticsGenerator, cfg.PlagiarismSource)
+
 	server := httpapi.NewServer(httpapi.Dependencies{
 		CreateContentPackage:    createPackage,
 		PublishContentVersion:   publishVersion,
@@ -269,6 +297,9 @@ func Build(cfg Config) (*Slice, error) {
 		GetRenderJob:            getRenderJob,
 		GetLandingPage:          getLandingPage,
 		ProposeLandingStructure: proposeLandingStructure,
+		GenerateLandingTexts:    generateLandingTexts,
+		CollectSite:             collectSite,
+		CheckLandingTexts:       checkLandingTexts,
 	})
 
 	var relay *platformoutbox.Relay
@@ -302,6 +333,10 @@ func Build(cfg Config) (*Slice, error) {
 		GetPresentation:         getPresentation,
 		GetLandingPage:          getLandingPage,
 		ProposeLandingStructure: proposeLandingStructure,
+
+		GenerateLandingTexts: generateLandingTexts,
+		CollectSite:          collectSite,
+		CheckLandingTexts:    checkLandingTexts,
 	}, nil
 }
 

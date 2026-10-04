@@ -4,6 +4,7 @@ import (
 	"errors"
 	"reflect"
 	"testing"
+	"time"
 )
 
 // snapshotOf собирает кампанию с разнообразной историей: исполненный черновик,
@@ -39,6 +40,45 @@ func snapshotOf(t *testing.T) *Campaign {
 	}
 	campaign.PullDomainEvents()
 	return campaign
+}
+
+// TestRehydrateCampaignPreservesEditsAndPostponement проверяет, что отдельная
+// запись правок (с автором) и срок отложения переживают сохранение и загрузку.
+func TestRehydrateCampaignPreservesEditsAndPostponement(t *testing.T) {
+	campaign := newCampaign(t)
+	generated := testSpec(t)
+	if _, _, err := campaign.DraftAction(DraftID("draft-1"), generated, testMoment()); err != nil {
+		t.Fatalf("DraftAction: %v", err)
+	}
+	edited := testSpec(t)
+	edited.Channel = mustChannel(t, ActionChannelCallName)
+	if _, err := campaign.ReviseDraftRecorded(DraftID("draft-1"), 1, edited, ActorID("operator-1"), testMoment()); err != nil {
+		t.Fatalf("ReviseDraftRecorded: %v", err)
+	}
+	until := testMoment().Add(24 * time.Hour)
+	if err := campaign.PostponeDraft(DraftID("draft-1"), 2, until); err != nil {
+		t.Fatalf("PostponeDraft: %v", err)
+	}
+	campaign.PullDomainEvents()
+
+	restored, err := RehydrateCampaign(campaign.Snapshot())
+	if err != nil {
+		t.Fatalf("RehydrateCampaign: %v", err)
+	}
+	draft, ok := restored.Draft(DraftID("draft-1"))
+	if !ok {
+		t.Fatal("черновик не восстановлен")
+	}
+	edits := draft.Edits()
+	if len(edits) != 1 {
+		t.Fatalf("записей правок после round-trip: got %d, want 1", len(edits))
+	}
+	if edits[0].Actor != ActorID("operator-1") || edits[0].From != generated || edits[0].To != edited {
+		t.Fatalf("запись правки восстановлена неверно: %+v", edits[0])
+	}
+	if !draft.PostponedUntil().Equal(until.UTC()) {
+		t.Fatalf("срок отложения после round-trip: got %v, want %v", draft.PostponedUntil(), until.UTC())
+	}
 }
 
 // Round-trip: восстановленный агрегат равен сохранённому и ведёт себя так же.

@@ -1,0 +1,35 @@
+{{- define "content" -}}
+<section class="stalled">
+  <h1>Зависшие черновики</h1>
+  <p class="hint">Черновики с истёкшим сроком утверждения. Автоутверждения нет — действие не исполнено. Тенант: {{.View.TenantID}}</p>
+
+  {{- if .View.Unavailable }}
+  <p class="watermark" role="status">Срез недоступен: хранилище не подключено</p>
+  {{- else }}
+  {{- if .View.Notify }}
+  <p class="notice" role="alert">
+    Оператор уведомляется: зависших черновиков {{len .View.Items}}. Срок истёк, но действие осталось неисполненным.
+  </p>
+  {{- end }}
+  <table class="queue">
+    <thead>
+      <tr><th>Кампания</th><th>Черновик</th><th>Версия</th><th>Канал</th><th>Получатель</th><th>Состояние</th></tr>
+    </thead>
+    <tbody>
+    {{- range .View.Items }}
+      <tr>
+        <td>{{.CampaignID}}</td>
+        <td>{{.DraftID}}</td>
+        <td>{{.Version}}</td>
+        <td>{{.Channel}}</td>
+        <td>{{.RecipientID}}</td>
+        <td><span class="status status-{{.State}}">{{.State}}</span></td>
+      </tr>
+    {{- else }}
+      <tr><td colspan="6" class="queue-empty">Зависших черновиков нет</td></tr>
+    {{- end }}
+    </tbody>
+  </table>
+  {{- end }}
+</section>
+{{- end -}}

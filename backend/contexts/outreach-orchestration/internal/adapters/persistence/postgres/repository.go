@@ -250,6 +250,14 @@ func saveSnapshot(ctx context.Context, q execer, snapshot domain.CampaignSnapsho
 		return fmt.Errorf("postgres: очистка черновиков кампании %s: %w", snapshot.ID, err)
 	}
 	for position, draft := range snapshot.Drafts {
+		edits, err := encodeDraftEdits(draft.Edits)
+		if err != nil {
+			return fmt.Errorf("postgres: правки черновика %s: %w", draft.ID, err)
+		}
+		var postponed any
+		if !draft.PostponedUntil.IsZero() {
+			postponed = draft.PostponedUntil
+		}
 		if _, err := q.Exec(ctx, insertDraft,
 			snapshot.ID.String(),
 			position,
@@ -260,6 +268,8 @@ func saveSnapshot(ctx context.Context, q execer, snapshot domain.CampaignSnapsho
 			draft.Spec.Channel.String(),
 			string(draft.State),
 			draft.Version,
+			string(edits),
+			postponed,
 		); err != nil {
 			return fmt.Errorf("postgres: запись черновика %s: %w", draft.ID, err)
 		}
@@ -400,6 +410,8 @@ func scanDraftSnapshots(rows pgx.Rows) ([]domain.ActionDraftSnapshot, error) {
 	for rows.Next() {
 		snapshot := domain.ActionDraftSnapshot{}
 		var channel string
+		var edits []byte
+		var postponed *time.Time
 		if err := rows.Scan(
 			&snapshot.ID,
 			&snapshot.Spec.Material,
@@ -408,6 +420,8 @@ func scanDraftSnapshots(rows pgx.Rows) ([]domain.ActionDraftSnapshot, error) {
 			&channel,
 			&snapshot.State,
 			&snapshot.Version,
+			&edits,
+			&postponed,
 		); err != nil {
 			return nil, fmt.Errorf("разбор черновика: %w", err)
 		}
@@ -416,6 +430,14 @@ func scanDraftSnapshots(rows pgx.Rows) ([]domain.ActionDraftSnapshot, error) {
 			return nil, fmt.Errorf("черновик %s: %w", snapshot.ID, err)
 		}
 		snapshot.Spec.Channel = parsed
+		decoded, err := decodeDraftEdits(edits)
+		if err != nil {
+			return nil, fmt.Errorf("черновик %s: %w", snapshot.ID, err)
+		}
+		snapshot.Edits = decoded
+		if postponed != nil {
+			snapshot.PostponedUntil = *postponed
+		}
 		snapshots = append(snapshots, snapshot)
 	}
 	if err := rows.Err(); err != nil {
@@ -458,8 +480,8 @@ ON CONFLICT (id) DO UPDATE SET
 
 	insertDraft = `
 INSERT INTO "outreach-orchestration".action_draft
-    (campaign_id, position, id, material_id, segment_id, recipient_id, channel, state, version)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`
+    (campaign_id, position, id, material_id, segment_id, recipient_id, channel, state, version, edits, postponed_until)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11::timestamptz)`
 
 	insertDecision = `
 INSERT INTO "outreach-orchestration".operator_decision
@@ -476,13 +498,13 @@ WHERE id = $1`
 	selectCampaignTenant = `SELECT tenant_id FROM "outreach-orchestration".campaign WHERE id = $1`
 
 	selectDrafts = `
-SELECT id, material_id, segment_id, recipient_id, channel, state, version
+SELECT id, material_id, segment_id, recipient_id, channel, state, version, edits, postponed_until
 FROM "outreach-orchestration".action_draft
 WHERE campaign_id = $1
 ORDER BY position`
 
 	selectDraftWindow = `
-SELECT id, material_id, segment_id, recipient_id, channel, state, version
+SELECT id, material_id, segment_id, recipient_id, channel, state, version, edits, postponed_until
 FROM "outreach-orchestration".action_draft
 WHERE campaign_id = $1
   AND (material_id, segment_id, id) > ($2::text, $3::text, $4::text)

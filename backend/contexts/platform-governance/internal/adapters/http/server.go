@@ -20,6 +20,8 @@ import (
 	"lead-gen/backend/contexts/platform-governance/internal/app/command"
 	"lead-gen/backend/contexts/platform-governance/internal/app/query"
 	"lead-gen/backend/contexts/platform-governance/internal/domain"
+	"lead-gen/backend/contexts/platform-governance/internal/ports"
+	"lead-gen/backend/platform/observability/observ"
 	"lead-gen/frontend/components"
 )
 
@@ -37,6 +39,11 @@ const (
 	pageRegister = "templates/register.html"
 	pagePortal   = "templates/portal.html"
 	pageOffer    = "templates/offer.html"
+
+	pageConsoleUsers        = "templates/console_users.html"
+	pageConsoleIntegrations = "templates/console_integrations.html"
+	pageConsoleAudit        = "templates/console_audit.html"
+	pageConsoleDenied       = "templates/console_denied.html"
 )
 
 // Dependencies — внешние зависимости HTTP-адаптера: прикладные сценарии
@@ -68,6 +75,20 @@ type Dependencies struct {
 
 	// AuditJournal — журнал аудита тенанта.
 	AuditJournal *query.AuditJournalHandler
+
+	// TenantUsers — состав пользователей и ролей тенанта для консоли управления.
+	TenantUsers *query.TenantUsersHandler
+
+	// Adapters — состояние адаптеров интеграций для раздела «Интеграции».
+	Adapters *query.AdapterCatalogHandler
+
+	// IDs — генератор идентификаторов для ключей команд экранных форм.
+	IDs ports.IDGenerator
+
+	// Logger — структурированный логгер для фиксации фактов консоли (например,
+	// переключения тенанта) и предупреждений. Необязателен: nil — логирование
+	// пропускается.
+	Logger observ.Logger
 }
 
 // Server — HTTP-сервер среза. Нулевое значение непригодно: используйте
@@ -113,6 +134,17 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST /api/tenants/{tenantID}/roles/revoke", s.handleRevokeRole)
 	mux.HandleFunc("GET /api/tenants/{tenantID}/access", s.handleAccessDecision)
 	mux.HandleFunc("GET /api/tenants/{tenantID}/audit", s.handleAuditJournal)
+	// Консоль управления: пользователи и роли, интеграции, журнал аудита с
+	// выгрузкой и переключение тенанта. Доступ решается на сервере по матрице
+	// «раздел → действие → право» (handlers_console.go).
+	mux.HandleFunc("GET /console", s.handleConsoleRoot)
+	mux.HandleFunc("GET /console/users", s.handleConsoleUsers)
+	mux.HandleFunc("POST /console/users/roles/assign", s.handleConsoleAssignRole)
+	mux.HandleFunc("POST /console/users/roles/revoke", s.handleConsoleRevokeRole)
+	mux.HandleFunc("GET /console/integrations", s.handleConsoleIntegrations)
+	mux.HandleFunc("GET /console/audit", s.handleConsoleAudit)
+	mux.HandleFunc("GET /console/audit/export", s.handleConsoleAuditExport)
+	mux.HandleFunc("POST /console/tenant/switch", s.handleConsoleTenantSwitch)
 	// Общее оформление экранов раздаётся из frontend/components.
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(components.StaticFS())))
 	mux.HandleFunc("GET /healthz", s.handleHealth)
@@ -123,7 +155,10 @@ func (s *Server) routes() http.Handler {
 // newPages собирает набор шаблонов портала: каркас и общие фрагменты из
 // frontend/components плюс страницы экранов. Разбор идёт при сборке сервиса.
 func newPages() (*components.Set, error) {
-	return components.New(templateFS, pageRegister, pagePortal, pageOffer)
+	return components.New(templateFS,
+		pageRegister, pagePortal, pageOffer,
+		pageConsoleUsers, pageConsoleIntegrations, pageConsoleAudit, pageConsoleDenied,
+	)
 }
 
 // registerView — модель экрана регистрации. Поля собираются здесь, а не в
