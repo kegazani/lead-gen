@@ -1,6 +1,6 @@
 # Журнал прогресса (handoff для агентов)
 
-**Фокус сейчас:** **сквозной E2E-продукт + полные фронты.** Волны 1–3 выполнены: backend-контур (RAG, недобор→письма, мост approved-action→delivery-command) заархивирован; консоль (срезы 3–5), генерация лендингов (`linguistics`) и in-process E2E «утверждено → отправлено» сделаны. Гейт зелёный: `make check` (OpenSpec 50 passed, archlint 53 capability / 30 связей) и `make test-postgres` (11 suite `ok`). Открыто: `MaterialVersionRef` не заполняется в пути approve→relay (материал пуст — отдельный change); срез 5.3 (состояние интеграций), срезы 6–7 (долгие операции/DLQ, a11y/l10n), `service-topology-console` (нужен `backend/platform/topology`), live-контур (Temporal/SMTP/сети). Цель и волны — `docs/e2e-plan.md`.
+**Фокус сейчас:** **сквозной E2E-продукт + полные фронты.** Волны 1–3 выполнены (backend RAG/недобор→письма/мост, консоль срезы 3–5, генерация лендингов, in-process E2E «утверждено → отправлено»); три change заархивированы. Гейт зелёный: `make check` (OpenSpec 50 passed, archlint 53 capability / 30 связей) и `make test-postgres` (11 suite `ok`). **Список следующих работ для новой сессии — `docs/next-session.md`** (приоритеты: замкнуть `MaterialVersionRef` в approve→relay, до-закрыть срезы 3.4/5.3/6.x/7.x консоли, `service-topology-console`, сверка/архивация прочих changes, live-приёмка). Цель и волны — `docs/e2e-plan.md`.
 
 **Зачем этот файл.** Контекстное окно агента конечно. Этот журнал — точка подхвата:
 новый агент читает его первым и понимает, где остановилась работа и какой следующий
