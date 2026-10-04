@@ -20,6 +20,12 @@ supporting`): генерация, версионирование и рендер
 
 - **Value objects**: `content-locale` (`ContentLocale`), `render-format`
   (`RenderFormat`: `landing-page`, `presentation`, `document`).
+- **Value objects capability `landing-page-generator`** (новых сущностей и
+  агрегатов нет — каталог не меняется): `brand-kit` (`BrandKit`), `company-profile`
+  (`CompanyProfile`, личные контакты отделяются и в наполнение не попадают),
+  `lead-form` (`LeadForm`, минимальный состав полей и приёмник в контуре клиента),
+  `landing-materials` (`LandingMaterials`), `landing-structure`
+  (`LandingStructure`: роли блоков и утверждение оператором).
 - **Доменные события**: `content-version-created` (производит `content-package`),
   `content-rendered` (производит `render-job`).
 - **Политика**: `immutable-content-version` — опубликованная версия не
@@ -43,9 +49,19 @@ supporting`): генерация, версионирование и рендер
   `RequestID` (он же — идентификатор задания). Основа контракта `content-request`.
 - `ProcessRender` — исполнить задание воркером: `rendering` → `rendered` (событие
   `content-rendered`) либо `failed`.
+- `RestoreContentVersion` — вернуться к предыдущей версии, публикуя её текст как
+  новую неизменяемую версию (политика `immutable-content-version`); возврат к
+  текущей версии отвергается.
 
 Запросы (`internal/app/query`): `GetContent`, `GetRenderJob`, `GetLanding`,
-`GetPresentation`. Чтение чужого тенанта неотличимо от отсутствия.
+`GetPresentation`, `GetLandingPage` (сборка публикуемой страницы и архива),
+`ProposeLandingStructure` (перечень блоков по материалам до генерации текстов).
+Чтение чужого тенанта неотличимо от отсутствия.
+
+Сборка страницы живёт в `internal/landing` (чистый слой поверх `domain`):
+самодостаточный HTML с инлайн-CSS, адаптивная раскладка, метаданные, бренд-комплект
+или нейтральное оформление, форма заявки и архив размещения `index.html` +
+`styles.css`. Внешних ресурсов страница не требует.
 
 ## Порты и адаптеры
 
@@ -59,11 +75,17 @@ supporting`): генерация, версионирование и рендер
 - `outbox/inmemory` — transactional outbox и unit-of-work; события кодируются в
   записи `platform/messaging/outbox` и публикуются relay при подключённом брокере.
 - `idgen` — генератор `event_id`.
-- `renderer/deterministic` — **заглушка**, а не движок. Честное имя: адаптер не
+- `renderer/chromium` — **реальный движок** за портом `ports.Renderer`: headless
+  Chromium по CDP (библиотека `chromedp`) верстает самодостаточный HTML и
+  производит физический артефакт — PDF (документ, презентация) и PNG-превью
+  (лендинг). Конфигурация — `Config` (`RendererExecPath`/`RendererWSURL`,
+  `RendererTimeout`); недоступность браузера — честный отказ, а не фиктивный
+  документ.
+- `renderer/deterministic` — **dev/test-двойник**, а не движок. Адаптер не
   обращается к внешнему движку и не содержит лингвистических моделей, а
-  детерминированно раскладывает текст версии на блоки. Реальные capability
-  (`linguistics`, `presentation-generator`, `landing-page-generator`) подключаются
-  отдельным адаптером того же порта `ports.Renderer`.
+  детерминированно раскладывает текст версии на блоки. На продуктовом пути он
+  остаётся только как режим без сконфигурированного Chromium (с предупреждением в
+  логе); реальный движок — `renderer/chromium`.
 - `http` — HTTP-адаптер роли `api`.
 
 ## Контракты
@@ -84,9 +106,12 @@ In-proc адаптеры владельца — `contract.go` (`NewContentReques
 ```
 POST /content/packages
 POST /content/packages/{assetID}/versions
+POST /content/packages/{assetID}/versions/{versionID}/restore
 GET  /content/packages/{assetID}?tenant_id=
+GET  /content/packages/{assetID}/landing-page?tenant_id=&form_action=&format=archive
 POST /content/packages/{assetID}/render-jobs
 POST /content/produce
+POST /content/landing-structure
 GET  /content/render-jobs/{renderJobID}?tenant_id=
 GET  /healthz
 ```
@@ -101,15 +126,26 @@ GET  /healthz
 
 ## Что осталось заглушкой
 
-- **Движок рендеринга** — `renderer/deterministic`: детерминированная раскладка
-  текста, без внешнего движка и без LLM. Это единственная честная заглушка среза.
-- Вызов движка в `ProcessRender` выполняется внутри транзакции, потому что движок
-  локальный и детерминированный. Для реального внешнего движка вызов обязан быть
-  вынесен за пределы транзакции, а её границы спроектированы под идемпотентный
-  повтор.
+- **Движок рендеринга** подключён реально (`renderer/chromium`): headless Chromium
+  по CDP. `renderer/deterministic` остаётся только dev/test-двойником и
+  используется, лишь когда Chromium не сконфигурирован (dev-предупреждение в
+  логе). Физический артефакт (PDF/PNG) движок производит, но не сохраняет:
+  хранилище объектов вне границ среза, поэтому порт отдаёт структурированное
+  наполнение, а байты доступны вызывающему через `RenderPDF`/`RenderPNG`.
+- Вызов движка в `ProcessRender` выполняется внутри транзакции. Для реального
+  внешнего движка вызов обязан быть вынесен за пределы транзакции, а её границы
+  спроектированы под идемпотентный повтор.
 - Хранилище — только in-memory (Postgres-адаптер и миграции не входят в срез).
 - Потребители очередей брокера в срезе не регистрируются: relay публикует, но
   подписчиков нет — это логируется, а не скрывается.
+- **Внешние контуры `landing-page-generator` не подключены** и заглушками не
+  подменены: сбор сведений с сайта (движок 3.1), генерация текстов
+  (`linguistics`), проверка на заимствование по сторонним источникам, транзитный
+  приёмник заявок. Что сделано без них: приём и достаточность материалов,
+  построение и утверждение структуры, исключение персональных данных, сборка
+  страницы и архива, версионирование с возвратом. Генерация текстов остаётся
+  нереализованной до подключения `linguistics`; собственного механизма генерации
+  модуль не создаёт.
 
 ## Проверка
 

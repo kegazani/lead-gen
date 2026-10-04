@@ -3,6 +3,9 @@ package integrationplatform
 import (
 	"context"
 	"fmt"
+	"strings"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	"lead-gen/backend/contexts/integration-platform/internal/adapters/repository/inmemory"
 	"lead-gen/backend/contexts/integration-platform/internal/app"
@@ -30,6 +33,20 @@ type Config struct {
 	// Invocations — репозиторий вызовов интеграций. nil → in-memory.
 	Invocations ports.IntegrationInvocationRepository
 
+	// Persistence — PostgreSQL-адаптеры хранилища (зелёная зона). Если задан,
+	// сборка берёт их независимо от DSN.
+	Persistence *Persistence
+
+	// DSN — строка подключения PostgreSQL зелёной зоны. Если Persistence не задан
+	// и DSN пуст, сборка идёт в in-memory dev-режиме и предупреждает об этом. При
+	// заданном DSN сборка создаёт пул сама и применяет миграции из MigrationsDir.
+	DSN string
+
+	// MigrationsDir — каталог SQL-миграций сервиса для применения при сборке по
+	// DSN. Пусто → каталог по умолчанию
+	// (backend/contexts/integration-platform/migrations).
+	MigrationsDir string
+
 	// Clock — источник времени прикладного слоя. nil → часы процесса.
 	Clock app.Clock
 
@@ -49,20 +66,57 @@ type Slice struct {
 	RegisterAdapter   *app.RegisterAdapterHandler
 	SelectAdapter     *app.SelectAdapterHandler
 	InvokeIntegration *app.InvokeIntegrationHandler
+
+	// pool — пул PostgreSQL, если сборка создала его по DSN. Закрывается Close.
+	pool *pgxpool.Pool
 }
 
-// Build собирает контекст среза: in-memory репозитории (или переданные),
-// тестовый/внешний порт провайдера и use cases. Бизнес-правил здесь нет —
-// соединение адаптеров, портов и use cases только своего контекста.
+// Build собирает контекст среза: репозитории регистраций и вызовов (PostgreSQL по
+// заданному DSN/Persistence либо in-memory), порт провайдера и use cases.
+// Бизнес-правил здесь нет — соединение адаптеров, портов и use cases только своего
+// контекста.
 func Build(cfg Config) (*Slice, error) {
 	registrations := cfg.Registrations
+	invocations := cfg.Invocations
+
+	var pool *pgxpool.Pool
+	persist := cfg.Persistence
+	if persist == nil && strings.TrimSpace(cfg.DSN) != "" {
+		built, builtPool, err := buildPostgresPersistence(cfg.DSN, cfg.MigrationsDir)
+		if err != nil {
+			return nil, err
+		}
+		persist = &built
+		pool = builtPool
+	}
+	if persist != nil {
+		if persist.Registrations != nil {
+			registrations = persist.Registrations
+		}
+		if persist.Invocations != nil {
+			invocations = persist.Invocations
+		}
+	}
+
+	// Без PostgreSQL-адаптеров и без DSN контекст идёт в in-memory dev-режиме.
+	// О режиме сообщается честно: состояние не переживёт рестарт процесса.
+	memory := false
 	if registrations == nil {
 		registrations = inmemory.NewAdapterRegistrationRepository()
+		memory = true
 	}
-	invocations := cfg.Invocations
 	if invocations == nil {
 		invocations = inmemory.NewIntegrationInvocationRepository()
+		memory = true
 	}
+	if memory && cfg.Logger != nil {
+		cfg.Logger.Warn(
+			"integration-platform: PostgreSQL DSN не задан — in-memory dev-режим (состояние не переживает рестарт)",
+			observ.Fields{},
+			"service", ServiceID,
+		)
+	}
+
 	provider := cfg.Provider
 	if provider == nil {
 		provider = unconfiguredProvider{}
@@ -72,6 +126,7 @@ func Build(cfg Config) (*Slice, error) {
 		Registrations:     registrations,
 		Invocations:       invocations,
 		Provider:          provider,
+		pool:              pool,
 		RegisterAdapter:   app.NewRegisterAdapterHandler(registrations),
 		SelectAdapter:     app.NewSelectAdapterHandler(registrations),
 		InvokeIntegration: app.NewInvokeIntegrationHandler(registrations, invocations, provider, cfg.Clock),
@@ -85,7 +140,7 @@ type Service struct {
 	logger observ.Logger
 }
 
-// New собирает сервис из in-memory адаптеров и переданных зависимостей.
+// New собирает сервис из адаптеров хранилища и переданных зависимостей.
 func New(cfg Config) (*Service, error) {
 	if cfg.Logger == nil {
 		return nil, fmt.Errorf("integration-platform: Logger обязателен")
@@ -106,6 +161,25 @@ func New(cfg Config) (*Service, error) {
 
 // ID реализует composition.Service.
 func (s *Service) ID() string { return ServiceID }
+
+// Slice возвращает собранный срез контекста. Нужен composition root'у и тестам
+// для прямого вызова сценариев.
+func (s *Service) Slice() *Slice { return s.slice }
+
+// Close освобождает пул PostgreSQL, если сборка создала его по DSN. Для
+// in-memory сборки ничего не делает.
+func (s *Service) Close() error { return s.slice.Close() }
+
+// Close освобождает пул PostgreSQL, созданный сборкой по DSN. Повторный вызов
+// безопасен.
+func (sl *Slice) Close() error {
+	if sl == nil || sl.pool == nil {
+		return nil
+	}
+	sl.pool.Close()
+	sl.pool = nil
+	return nil
+}
 
 // RoleRunner реализует composition.Service. Раннеры ролей владеют только
 // запуском и адаптерами: доменных правил здесь нет.

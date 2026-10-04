@@ -23,6 +23,21 @@ func newSnapshotCriteria(segment *Segment) SnapshotCriteria {
 	}
 }
 
+// RehydrateSnapshotCriteria собирает зафиксированное выражение снимка из
+// сохранённых частей. В отличие от newSnapshotCriteria, не выводит выражение из
+// живого сегмента, а восстанавливает уже зафиксированное — сегмент мог с тех пор
+// измениться, поэтому снимок нельзя пересобрать по нему. Согласованность частей
+// проверяет вызывающий (RehydrateAudienceSnapshot) — восстановление не эмитит
+// событий.
+func RehydrateSnapshotCriteria(segmentID SegmentID, segmentVersion int, modelVersion ModelVersion, criteria SegmentCriteria) SnapshotCriteria {
+	return SnapshotCriteria{
+		segmentID:      segmentID,
+		segmentVersion: segmentVersion,
+		modelVersion:   modelVersion,
+		criteria:       criteria,
+	}
+}
+
 // SegmentID возвращает сегмент, выражение которого зафиксировано.
 func (c SnapshotCriteria) SegmentID() SegmentID { return c.segmentID }
 

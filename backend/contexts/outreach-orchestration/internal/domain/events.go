@@ -14,6 +14,10 @@ const (
 
 	// EventCampaignStateChanged — состояние кампании изменилось.
 	EventCampaignStateChanged EventName = "campaign-state-changed"
+
+	// EventOutreachOutcomeRecorded — результат шага последовательности: шаг
+	// сформирован, приостановлен, остановлен, простой или реакция лида.
+	EventOutreachOutcomeRecorded EventName = "outreach-outcome-recorded"
 )
 
 // DomainEvent — факт домена, произведённый агрегатом.
@@ -60,6 +64,30 @@ func (e CampaignStateChanged) Name() EventName { return EventCampaignStateChange
 
 // OccurredAt реализует DomainEvent.
 func (e CampaignStateChanged) OccurredAt() time.Time { return e.At }
+
+// OutreachOutcomeRecorded — событие о результате шага последовательности.
+//
+// Result описывает факт домена: шаг сформирован как черновик, шаг продвинул
+// цепочку, участие приостановлено или остановлено, зафиксирован простой либо
+// записана реакция лида. Событие не содержит персональных данных — только
+// ссылки на кампанию, участие и лида.
+
+type OutreachOutcomeRecorded struct {
+	CampaignID  CampaignID
+	TenantID    TenantID
+	ExecutionID ExecutionID
+	SequenceID  SequenceID
+	Lead        LeadID
+	Step        int
+	Result      StepOutcome
+	At          time.Time
+}
+
+// Name реализует DomainEvent.
+func (e OutreachOutcomeRecorded) Name() EventName { return EventOutreachOutcomeRecorded }
+
+// OccurredAt реализует DomainEvent.
+func (e OutreachOutcomeRecorded) OccurredAt() time.Time { return e.At }
 
 // EventProducer — агрегат, публикующий свои неподтверждённые события.
 // App-слой вычитывает их и записывает вместе с агрегатом (transactional outbox).

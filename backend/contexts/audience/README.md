@@ -50,7 +50,11 @@ Bounded-контекст `audience` (core, capability `lead-segmentation`): ск
 - `ports`: `SegmentRepository`, `AudienceSnapshotRepository`, `UnitOfWork`,
   `Outbox`, `Clock`, `IDGenerator`; потребляемый контракт `lead-profile` —
   антикоррупционный DTO в `ports/contracts`.
-- `adapters/persistence/inmemory` — репозитории сегментов и снимков;
+- `adapters/persistence/inmemory` — репозитории сегментов и снимков (тесты и
+  dev-режим);
+- `adapters/persistence/postgres` — PostgreSQL-репозитории сегментов (оптимистичная
+  блокировка) и снимков (upsert), unit-of-work с атомарной записью outbox и
+  журнал публикации; схема `audience`, миграции в `migrations/`;
 - `adapters/outbox/inmemory` — unit-of-work и кодирование событий в записи
   outbox платформы;
 - `adapters/idgen` — генератор `event_id` / `snapshot_id`;
@@ -79,9 +83,11 @@ In-proc адаптеры владельца — в `contract.go` (`NewAudienceSn
 
 ## Осталось заглушкой
 
-- Сетевые адаптеры контрактов и PostgreSQL-репозитории не реализованы: срез
-  собран на in-memory адаптерах (`Build`). Точка расширения отмечена в
-  `contract.go`.
+- Сетевые адаптеры контрактов не реализованы: co-location связывает контракты
+  in-proc (`contract.go`), сетевая форма — точка расширения.
+- Продуктовая сборка получает PostgreSQL-адаптеры при заданном DSN
+  (`Config.Persistence`/`NewPostgresPersistence`); без DSN `Build`/`New`
+  собирают in-memory адаптеры (только dev) и предупреждают об этом.
 - `worker` без заданного `Config.Publisher` не публикует события.
 - Потребление `engagement-event` (поведенческая сегментация) не подключено:
   профиль лида приходит в команду `ScoreLead` как вход контракта `lead-profile`.
@@ -93,4 +99,8 @@ gofmt -l backend/contexts/audience contracts/audience
 go -C backend/contexts/audience test -count=1 ./...
 go -C backend/contexts/audience vet ./...
 go -C tools/importlint run .
+
+# PG-suite адаптеров (нужен Docker; строка подключения — LEADGEN_POSTGRES_TEST_DSN):
+LEADGEN_POSTGRES_TEST_DSN='postgres://...' \
+  go -C backend/contexts/audience test ./internal/adapters/persistence/postgres/...
 ```

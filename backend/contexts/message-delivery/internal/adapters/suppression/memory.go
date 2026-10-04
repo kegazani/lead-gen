@@ -34,8 +34,10 @@ func (m *Memory) Suppress(address domain.DeliveryAddress) *Memory {
 	return m
 }
 
-// IsSuppressed реализует ports.SuppressionList.
-func (m *Memory) IsSuppressed(_ context.Context, address domain.DeliveryAddress) (bool, error) {
+// IsSuppressed реализует ports.SuppressionList. Тенант сохраняется в сигнатуре
+// порта (правило подавления действует в границах владельца данных); in-memory
+// реализация хранит единый список и тенант не различает.
+func (m *Memory) IsSuppressed(_ context.Context, _ domain.TenantID, address domain.DeliveryAddress) (bool, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 	_, ok := m.suppressed[address]

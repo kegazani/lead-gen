@@ -67,10 +67,18 @@ type Dependencies struct {
 	// email-generation), отдаваемый эндпоинтом POST /email-generation. nil —
 	// контракт не смонтирован: эндпоинт честно отвечает 503.
 	EmailGeneration *app.DraftEmailForLead
-	Account         budget.AccountReader // nil — остаток аккаунта не показывается
-	Console         components.ConsoleBases
-	Logger          observ.Logger
-	Auth            AuthConfig
+	// SemanticRecall — сценарий семантического recall (контракт vector),
+	// отдаваемый эндпоинтом POST /semantic-recall. nil — сценарий не смонтирован:
+	// эндпоинт честно отвечает 503; кандидаты не выдумываются.
+	SemanticRecall *app.SemanticRecall
+	// EmbedCompany — сценарий эмбеддинга компании (контракт vector), отдаваемый
+	// эндпоинтом POST /cards/{id}/embed. nil — сценарий не смонтирован: эндпоинт
+	// честно отвечает 503.
+	EmbedCompany *app.EmbedCompany
+	Account      budget.AccountReader // nil — остаток аккаунта не показывается
+	Console      components.ConsoleBases
+	Logger       observ.Logger
+	Auth         AuthConfig
 }
 
 // Server — HTTP-сервер роли api. Нулевое значение непригодно: используйте
@@ -90,14 +98,18 @@ type Server struct {
 	// emailGeneration — сценарий генерации письма под лида и оффер (контракт
 	// email-generation). nil — контракт не смонтирован.
 	emailGeneration *app.DraftEmailForLead
-	account         budget.AccountReader
-	sessions        *consoleauth.Manager
-	console         components.ConsoleBases
-	pages           *components.Set
-	leadsExport     *template.Template
-	static          http.Handler
-	handler         http.Handler
-	logger          observ.Logger
+	// semanticRecall — сценарий семантического recall (контракт vector);
+	// embedCompany — сценарий эмбеддинга компании. nil — сценарий не смонтирован.
+	semanticRecall *app.SemanticRecall
+	embedCompany   *app.EmbedCompany
+	account        budget.AccountReader
+	sessions       *consoleauth.Manager
+	console        components.ConsoleBases
+	pages          *components.Set
+	leadsExport    *template.Template
+	static         http.Handler
+	handler        http.Handler
+	logger         observ.Logger
 	// interpreter — use case интерпретации запроса для экрана ассистента. nil —
 	// интерпретация недоступна: экран показывает явное «не определена».
 	interpreter *app.InterpretQuery
@@ -139,6 +151,8 @@ func NewServer(deps Dependencies) *Server {
 		forumSignals:    deps.ForumSignals,
 		searchLeads:     deps.SearchLeads,
 		emailGeneration: deps.EmailGeneration,
+		semanticRecall:  deps.SemanticRecall,
+		embedCompany:    deps.EmbedCompany,
 		account:         deps.Account,
 		sessions:        consoleauth.New(deps.Auth),
 		console:         deps.Console,
@@ -196,6 +210,8 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /forum-signals", s.handleForumSignals)
 	mux.HandleFunc("POST /lead-search", s.handleLeadSearch)
 	mux.HandleFunc("POST /email-generation", s.handleEmailGeneration)
+	mux.HandleFunc("POST /semantic-recall", s.handleSemanticRecall)
+	mux.HandleFunc("POST /cards/{id}/embed", s.handleEmbedCompany)
 	mux.HandleFunc("GET /healthz", handleHealth)
 	mux.Handle("GET /static/", http.StripPrefix("/static/", s.static))
 	return mux

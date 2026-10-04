@@ -15,6 +15,7 @@ import (
 	"lead-gen/backend/contexts/outreach-orchestration/internal/app/command"
 	publicationapp "lead-gen/backend/contexts/outreach-orchestration/internal/app/publication"
 	"lead-gen/backend/contexts/outreach-orchestration/internal/app/query"
+	"lead-gen/backend/contexts/outreach-orchestration/internal/app/scheduling"
 	"lead-gen/backend/contexts/outreach-orchestration/internal/domain"
 	"lead-gen/backend/contexts/outreach-orchestration/internal/ports"
 	"lead-gen/backend/contexts/outreach-orchestration/internal/ports/contracts"
@@ -31,8 +32,10 @@ import (
 // контекста, а другие контексты — только через транспорт и опубликованные
 // контракты владельца.
 //
-// В срезе подключаются in-memory адаптеры: PostgreSQL-репозиторий (задача 5.2)
-// заблокирован решением по внешней зависимости.
+// Хранилище подключается через Params.Persistence: по умолчанию — прежние
+// in-memory адаптеры (тесты и dev), а при заданном DSN точка входа передаёт
+// PostgreSQL-адаптеры (NewPostgresPersistence). Движок последовательностей пишет
+// агрегат и события атомарно через порт ports.UnitOfWork в обоих случаях.
 
 // Grant — выданное право актора действовать в тенанте. Права задаёт вызывающий:
 // composition не выдумывает стартовую политику доступа.
@@ -80,9 +83,10 @@ var NoUpstreamRiskChecks domain.CanBeDecidedInPackage = func(domain.DraftID, int
 	return nil
 }
 
-// Params — параметры сборки среза. Repository и Journal можно передать снаружи,
-// чтобы разделить состояние нескольких потребителей; nil означает создание
-// новых.
+// Params — параметры сборки среза. Хранилище задаётся через Persistence:
+// нулевое значение означает in-memory адаптеры (прежнее поведение), заданное —
+// адаптеры PostgreSQL. Сборка принимает порты, а не конкретные реализации,
+// поэтому точка входа подключает нужное хранилище без правки среза.
 type Params struct {
 	// Clock — источник времени. nil → SystemClock.
 	Clock ports.Clock
@@ -90,15 +94,21 @@ type Params struct {
 	// Grants — права доступа среза. По умолчанию доступ закрыт.
 	Grants []Grant
 
-	// Repository — репозиторий кампаний. nil → новый in-memory репозиторий.
-	Repository *persistence.Repository
-
-	// Journal — журнал outbox. nil → новый журнал.
-	Journal *outboxinmemory.Journal
+	// Persistence — адаптеры хранилища среза. Нулевое значение означает
+	// in-memory-сборку (тесты и dev); заполненное — PostgreSQL-адаптеры,
+	// полученные из NewPostgresPersistence. Частично заданная конфигурация
+	// отвергается: собрать половину на in-memory, половину на PostgreSQL нельзя.
+	Persistence Persistence
 
 	// Sink — назначение публикации approved-action. nil означает, что relay не
 	// собирается: процесс не публикует контракт (например, api).
 	Sink relay.Sink
+
+	// ApprovedActionSink — явное назначение релиза approved-action в форме
+	// функции (SinkFunc): позволяет подменить транспортный Sink и направить
+	// утверждённые действия внешнему получателю. Приоритет выбора назначения:
+	// Sink → ApprovedActionSink → ApprovedActionConsumer. nil — не задан.
+	ApprovedActionSink SinkFunc
 
 	// ApprovedActionTransport — способ связи синхронного контракта
 	// approved-action с потребителем. Пустое значение — TransportInProcess:
@@ -106,6 +116,18 @@ type Params struct {
 	// (механизм группы процессов deploy/services.yaml), а не выбирается кодом
 	// потребителя.
 	ApprovedActionTransport Transport
+
+	// ApprovedActionConsumer — внешний потребитель утверждённых действий
+	// (например, мост в message-delivery), реализующий потребительский интерфейс
+	// контракта approvedaction.Publisher. Задан — сборка связывает с контрактом
+	// именно его выбранным транспортом, и за Slice.ApprovedActionPublisher стоит
+	// реальный потребитель; не задан — прежнее поведение: владелец собирает свой
+	// in-memory publication-сервис (Slice.Publication).
+	//
+	// Кроме того, потребитель может служить назначением релиза: если не заданы
+	// ни Sink, ни ApprovedActionSink, relay доставляет утверждённые действия ему,
+	// а не транспортному Sink (см. ApprovedActionSink).
+	ApprovedActionConsumer approvedaction.Publisher
 
 	// Risk — внешний предикат признаков риска пакетного пути. ОБЯЗАТЕЛЕН:
 	// Build возвращает ошибку, если предикат не задан. Тихий nil-дефолт «рисков
@@ -117,14 +139,24 @@ type Params struct {
 	// сценарии, чтобы решение отвергало то, что исключил состав. Когда реальных
 	// проверок ещё нет, вызывающий осознанно передаёт NoUpstreamRiskChecks.
 	Risk domain.CanBeDecidedInPackage
+
+	// SequenceLimits — ограничения участия лида в цепочках (предел касаний за
+	// период и объём неутверждённых черновиков). Нулевое значение означает
+	// ограничения по умолчанию; частично заданная конфигурация отвергается.
+	SequenceLimits domain.ParticipationLimits
 }
 
 // Slice — собранный контекст среза: порты, use cases, HTTP-обработчики и
 // публикация. Поля экспортированы, чтобы процесс мог запустить нужную часть.
 type Slice struct {
-	Repository  *persistence.Repository
-	Journal     *outboxinmemory.Journal
-	UnitOfWork  *outboxinmemory.UnitOfWork
+	// Repository — хранилище кампаний (in-memory или PostgreSQL). Срез зависит
+	// от портов, поэтому реализация выбирается сборкой.
+	Repository CampaignStore
+	// Journal — журнал outbox со стороны публикации (in-memory или PostgreSQL).
+	Journal relay.Source
+	// UnitOfWork — транзакция записи агрегата и его событий (in-memory или
+	// PostgreSQL).
+	UnitOfWork  ports.UnitOfWork
 	Access      *access.Decider
 	Idempotency *idempotency.Store
 
@@ -146,6 +178,22 @@ type Slice struct {
 	BuildBatch     *command.BuildBatchHandler
 	ApproveBatch   *command.ApproveBatchHandler
 
+	DefineSequence  *command.DefineSequenceHandler
+	EnrollLead      *command.EnrollLeadHandler
+	RemoveLead      *command.RemoveLeadHandler
+	RecordOutcome   *command.RecordOutcomeHandler
+	ResumeExecution *command.ResumeExecutionHandler
+	SequenceHistory *query.SequenceHistoryHandler
+	SequenceState   *query.SequenceStateHandler
+
+	// SequenceEngine — движок последовательностей, который запускает роль
+	// chains: он формирует черновики шагов и продвигает цепочки.
+	SequenceEngine *scheduling.Engine
+
+	// SequenceLimits — валидированные ограничения участия, переданные сценариям
+	// и движку.
+	SequenceLimits domain.ParticipationLimits
+
 	// BatchLimits — валидированные лимиты пакета. Источник — batchlimits;
 	// composition их только передаёт сценариям и HTTP-адаптеру, не решая по ним.
 	BatchLimits domain.BatchLimits
@@ -156,11 +204,15 @@ type Slice struct {
 	ApprovedActionPublisher approvedaction.Publisher
 
 	// Publication — прикладной сервис владельца, реализующий контракт (та сторона,
-	// которую потребитель получает через ApprovedActionPublisher).
+	// которую потребитель получает через ApprovedActionPublisher). Равен nil, если
+	// задан внешний потребитель (Params.ApprovedActionConsumer): тогда встроенной
+	// реализации владельца на пути нет.
 	Publication *publicationapp.Service
 }
 
-// Build собирает контекст среза из in-memory адаптеров и переданных зависимостей.
+// Build собирает контекст среза из переданного хранилища (in-memory по
+// умолчанию, PostgreSQL — при заданном Params.Persistence) и переданных
+// зависимостей.
 func Build(params Params) (*Slice, error) {
 	// Предикат риска обязателен: nil здесь означал бы молчаливое отключение
 	// исключения рисковых черновиков (домен трактует nil как «рисков нет»).
@@ -178,15 +230,32 @@ func Build(params Params) (*Slice, error) {
 		clock = SystemClock{}
 	}
 
-	repository := params.Repository
-	if repository == nil {
-		repository = persistence.New()
+	// Хранилище: PostgreSQL-адаптеры при заданном Persistence, иначе in-memory
+	// (прежнее поведение тестов и dev). Частичная конфигурация — ошибка сборки:
+	// половина среза на одном хранилище, половина на другом — недопустимое
+	// состояние, а не молчаливый выбор.
+	var (
+		repository CampaignStore
+		journal    relay.Source
+		unitOfWork ports.UnitOfWork
+	)
+	if params.Persistence.configured() {
+		if params.Persistence.Campaigns == nil || params.Persistence.Journal == nil || params.Persistence.UnitOfWork == nil {
+			return nil, fmt.Errorf(
+				"сборка: неполная конфигурация хранилища (Params.Persistence): " +
+					"нужны Campaigns, Journal и UnitOfWork",
+			)
+		}
+		repository = params.Persistence.Campaigns
+		journal = params.Persistence.Journal
+		unitOfWork = params.Persistence.UnitOfWork
+	} else {
+		memoryRepository := persistence.New()
+		memoryJournal := outboxinmemory.NewJournal()
+		repository = memoryRepository
+		journal = memoryJournal
+		unitOfWork = outboxinmemory.NewUnitOfWorkWith(memoryRepository, memoryJournal)
 	}
-	journal := params.Journal
-	if journal == nil {
-		journal = outboxinmemory.NewJournal()
-	}
-	unitOfWork := outboxinmemory.NewUnitOfWorkWith(repository, journal)
 
 	decider := access.NewDecider()
 	for _, grant := range params.Grants {
@@ -195,9 +264,25 @@ func Build(params Params) (*Slice, error) {
 		}
 	}
 
+	// Назначение релиза approved-action. Приоритет: явный Sink, затем
+	// ApprovedActionSink (функция), затем внешний потребитель
+	// (ApprovedActionConsumer). Ни одно не задано — relay не собирается, и
+	// действия не публикуются (например, сборка только под api).
+	//
+	// Проверка ApprovedActionSink != nil до присваивания интерфейсу обязательна:
+	// nil-функция, положенная в relay.Sink, дала бы непустой интерфейс с
+	// no-op-реализацией и молча съедала бы действия.
+	sink := params.Sink
+	if sink == nil && params.ApprovedActionSink != nil {
+		sink = params.ApprovedActionSink
+	}
+	if sink == nil && params.ApprovedActionConsumer != nil {
+		sink = params.ApprovedActionConsumer
+	}
+
 	var publication *relay.Relay
-	if params.Sink != nil {
-		publication = relay.New(journal, params.Sink)
+	if sink != nil {
+		publication = relay.New(journal, sink)
 	}
 
 	keys := idempotency.NewStore()
@@ -227,13 +312,55 @@ func Build(params Params) (*Slice, error) {
 	approveBatch := command.NewApproveBatchHandler(decider, clock, unitOfWork, params.Risk)
 	batchQueue := query.NewBatchQueueHandler(repository, params.Risk, decider)
 
+	// Ограничения участия — конфигурация сборки. Нулевое значение означает
+	// ограничения по умолчанию; частично заданная конфигурация — ошибка сборки.
+	sequenceLimits := params.SequenceLimits
+	if sequenceLimits.IsZero() {
+		sequenceLimits = domain.DefaultParticipationLimits()
+	}
+	if err := sequenceLimits.Validate(); err != nil {
+		return nil, fmt.Errorf("сборка: ограничения участия: %w", err)
+	}
+
+	// Движок последовательностей и его сценарии. Движок читает кампании через
+	// репозиторий-листер и пишет изменения в той же транзакции, что и события.
+	defineSequence := command.NewDefineSequenceHandler(decider, unitOfWork)
+	enrollLead := command.NewEnrollLeadHandler(decider, clock, unitOfWork, sequenceLimits)
+	removeLead := command.NewRemoveLeadHandler(decider, clock, unitOfWork)
+	recordOutcome := command.NewRecordOutcomeHandler(decider, clock, unitOfWork)
+	resumeExecution := command.NewResumeExecutionHandler(decider, clock, unitOfWork)
+	sequenceHistory := query.NewSequenceHistoryHandler(repository, decider)
+	sequenceState := query.NewSequenceStateHandler(repository, decider)
+	sequenceEngine, err := scheduling.NewEngine(repository, unitOfWork, clock, sequenceLimits)
+	if err != nil {
+		return nil, fmt.Errorf("сборка: движок последовательностей: %w", err)
+	}
+
 	// Синхронный контракт approved-action: прикладной сервис владельца реализует
 	// интерфейс контракта, а связывается он с потребителем адаптером транспорта,
 	// выбранного топологией (design.md, Решение 2). Потребитель получает
 	// интерфейс контракта, а не пакет владельца.
-	approvedActionPublisher, publicationService, err := newApprovedActionPublisher(params.ApprovedActionTransport)
-	if err != nil {
-		return nil, fmt.Errorf("сборка: синхронный контракт approved-action: %w", err)
+	//
+	// Если задан внешний потребитель (Params.ApprovedActionConsumer, например мост
+	// в message-delivery), связываем с контрактом именно его: за
+	// Slice.ApprovedActionPublisher стоит реальный потребитель, а встроенный
+	// in-memory сервис владельца не собирается. Иначе сохраняется прежнее
+	// поведение — владелец собирает свой publication-сервис, и Slice.Publication
+	// остаётся доступен.
+	var (
+		approvedActionPublisher approvedaction.Publisher
+		publicationService      *publicationapp.Service
+	)
+	if params.ApprovedActionConsumer != nil {
+		approvedActionPublisher, err = LinkApprovedActionPublisher(params.ApprovedActionTransport, params.ApprovedActionConsumer)
+		if err != nil {
+			return nil, fmt.Errorf("сборка: синхронный контракт approved-action: %w", err)
+		}
+	} else {
+		approvedActionPublisher, publicationService, err = newApprovedActionPublisher(params.ApprovedActionTransport)
+		if err != nil {
+			return nil, fmt.Errorf("сборка: синхронный контракт approved-action: %w", err)
+		}
 	}
 
 	server := httpapi.NewServer(httpapi.Dependencies{
@@ -249,6 +376,14 @@ func Build(params Params) (*Slice, error) {
 		ApproveBatch:   approveBatch,
 		CommandKeys:    keys,
 		BatchLimits:    limits,
+
+		DefineSequence:  defineSequence,
+		EnrollLead:      enrollLead,
+		RemoveLead:      removeLead,
+		RecordOutcome:   recordOutcome,
+		ResumeExecution: resumeExecution,
+		SequenceHistory: sequenceHistory,
+		SequenceState:   sequenceState,
 	})
 
 	return &Slice{
@@ -271,6 +406,16 @@ func Build(params Params) (*Slice, error) {
 		BuildBatch:     buildBatch,
 		ApproveBatch:   approveBatch,
 		BatchLimits:    limits,
+
+		DefineSequence:  defineSequence,
+		EnrollLead:      enrollLead,
+		RemoveLead:      removeLead,
+		RecordOutcome:   recordOutcome,
+		ResumeExecution: resumeExecution,
+		SequenceHistory: sequenceHistory,
+		SequenceState:   sequenceState,
+		SequenceEngine:  sequenceEngine,
+		SequenceLimits:  sequenceLimits,
 
 		ApprovedActionPublisher: approvedActionPublisher,
 		Publication:             publicationService,

@@ -4,6 +4,7 @@ import (
 	"context"
 	"strings"
 
+	"lead-gen/backend/contexts/platform-governance/internal/app"
 	"lead-gen/backend/contexts/platform-governance/internal/domain"
 	"lead-gen/backend/contexts/platform-governance/internal/ports"
 )
@@ -25,42 +26,59 @@ type RegisterClientResult struct {
 
 // RegisterClientHandler — use case регистрации клиента.
 type RegisterClientHandler struct {
-	tenants ports.TenantRepository
-	clock   ports.Clock
-	ids     ports.IDGenerator
+	uow   ports.UnitOfWork
+	clock ports.Clock
+	ids   ports.IDGenerator
 }
 
-// NewRegisterClientHandler собирает use case из репозитория тенантов, часов и
-// генератора идентификаторов.
-func NewRegisterClientHandler(tenants ports.TenantRepository, clock ports.Clock, ids ports.IDGenerator) *RegisterClientHandler {
-	return &RegisterClientHandler{tenants: tenants, clock: clock, ids: ids}
+// NewRegisterClientHandler собирает use case из транзакции, часов и генератора
+// идентификаторов.
+func NewRegisterClientHandler(uow ports.UnitOfWork, clock ports.Clock, ids ports.IDGenerator) *RegisterClientHandler {
+	return &RegisterClientHandler{uow: uow, clock: clock, ids: ids}
 }
 
-// Handle создаёт тенант с пользователем роли client, сохраняет его и возвращает
+// Handle создаёт тенант с пользователем роли client, сохраняет его вместе с
+// событиями (аудит и изменение доступа) в одной транзакции и возвращает
 // идентификаторы. Неполная форма — доменная ошибка, а не пустой тенант.
+//
+// Регистрация — самообслуживание: актор не требует платформенного гранта, а
+// запись аудита фиксирует субъектом самого регистрирующегося клиента.
 func (h *RegisterClientHandler) Handle(ctx context.Context, cmd RegisterClient) (RegisterClientResult, error) {
 	userID := h.ids.NewUserID()
-	tenant, err := domain.RegisterTenant(domain.RegisterTenantParams{
-		ID:          h.ids.NewTenantID(),
-		CompanyName: cmd.CompanyName,
-		Description: cmd.Description,
-		UserID:      userID,
-		Login:       loginFor(userID),
-		Role:        domain.RoleClient,
-		At:          h.clock.Now(),
-		EventID:     h.ids.NewEventID(),
+	roles, err := domain.NewRoleSet(domain.RoleClient)
+	if err != nil {
+		return RegisterClientResult{}, err
+	}
+	at := h.clock.Now()
+	result := RegisterClientResult{UserID: userID.String(), Login: loginFor(userID)}
+
+	err = h.uow.WithinTransaction(ctx, func(tx ports.Transaction) error {
+		tenant, err := domain.RegisterTenant(domain.RegisterTenantParams{
+			ID:          h.ids.NewTenantID(),
+			CompanyName: cmd.CompanyName,
+			Description: cmd.Description,
+			At:          at,
+			Actor:       domain.ActorID(userID),
+			EventID:     h.ids.NewEventID(),
+			AuditID:     h.ids.NewAuditRecordID(),
+			User:        &domain.NewUser{ID: userID, Login: loginFor(userID), Roles: roles},
+		})
+		if err != nil {
+			return err
+		}
+		if err := tx.Tenants().Save(ctx, tenant); err != nil {
+			return err
+		}
+		if err := tx.Outbox().Append(ctx, app.ChangeMessages(tenant, tenant.PullDomainEvents(), at)...); err != nil {
+			return err
+		}
+		result.TenantID = tenant.ID().String()
+		return nil
 	})
 	if err != nil {
 		return RegisterClientResult{}, err
 	}
-	if err := h.tenants.Save(ctx, tenant); err != nil {
-		return RegisterClientResult{}, err
-	}
-	return RegisterClientResult{
-		TenantID: tenant.ID().String(),
-		UserID:   userID.String(),
-		Login:    loginFor(userID),
-	}, nil
+	return result, nil
 }
 
 // loginFor выводит логин клиента из идентификатора пользователя. Логин

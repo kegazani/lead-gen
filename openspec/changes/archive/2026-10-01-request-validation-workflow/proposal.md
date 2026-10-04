@@ -26,7 +26,7 @@
 
 **Каталог и модель.** Новая capability `request-validation` добавляется в `architecture/domain-catalog.yaml` (владелец `request-fulfillment`, сервис `request-fulfillment`, роли `api`, `worker`); `docs/domain-model.md` дополняется описанием workflow валидации (без нового агрегата — решение живёт в `request`). **Новых агрегатов нет**; ссылка на `call` — по идентификатору.
 
-**Код.** Прикладной сервис валидации в `backend/contexts/request-fulfillment`; экран валидации — эксплуатационная проекция роли `api` (HTMX + серверный рендеринг, как в `web-frontend-architecture`); звонок — через контракт к `call-orchestration`.
+**Код.** Прикладной сервис валидации в `backend/contexts/request-fulfillment`; экран валидации — эксплуатационная проекция роли `api` (HTMX + серверный рендеринг, как в `web-frontend-architecture`); звонок — через контракт к агрегату `call` (`outreach-orchestration`).
 
 ## Roadmap
 

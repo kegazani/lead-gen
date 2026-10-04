@@ -1,7 +1,7 @@
 ## 1. Каталог и домен
 
 - [x] 1.1 Capability `platform-access` уже объявлена в capabilities контекста `platform-governance` каталога `architecture/domain-catalog.yaml` и в картах (`docs/domain-model.md` capability matrix, `docs/system-map.md` §5) — выполнено при планировании change'а, чтобы `go -C tools/archlint run .` оставался зелёным; повторных правок не требуется. Проверка: `go -C tools/archlint run .` завершается с кодом 0 и учитывает `platform-access` в числе capability.
-- [ ] 1.2 Создать каркас модуля `backend/contexts/platform-governance`: `go.mod` (module `lead-gen/backend/contexts/platform-governance`, go 1.25), README с фиксацией соответствия пакета контексту каталога, каталоги `internal/{domain,app,ports,adapters}`; зарегистрировать модуль в `go.work`. Проверка: `go list ./...` внутри модуля показывает пакеты; `go.work` содержит путь модуля.
+- [x] 1.2 Создать каркас модуля `backend/contexts/platform-governance`: `go.mod` (module `lead-gen/backend/contexts/platform-governance`, go 1.25), README с фиксацией соответствия пакета контексту каталога, каталоги `internal/{domain,app,ports,adapters}`; зарегистрировать модуль в `go.work`. Проверка: `go list ./...` внутри модуля показывает пакеты; `go.work` содержит путь модуля.
 - [ ] 1.3 Реализовать value objects `tenant-id` и `role-set` и типы идентификаторов (`actor`, роли) в `internal/domain`. Проверка: тесты отвергают пустой идентификатор тенанта и роль вне закрытого набора; VO неизменяемы.
 - [ ] 1.4 Реализовать aggregate root `tenant` с созданием и отключением тенанта (`CreateTenant`, `DisableTenant`). Проверка: тест создаёт активный тенант с уникальным id; повторное создание с тем же id отклоняется; отключение переводит тенант в «отключён» и идемпотентно.
 - [ ] 1.5 Реализовать entity `user-role` с назначением и отзывом ролей через неизменяемый `role-set`: изменение создаёт новый набор, прежний не меняется. Проверка: тест подтверждает неизменяемость прежнего набора и привязку роли ровно к одному тенанту.
@@ -38,7 +38,7 @@
 ## 5. Сборка сервиса
 
 - [ ] 5.1 Реализовать корневой пакет сборки `backend/contexts/platform-governance` (composition root): `ServiceID = "platform-governance"`, `New(Config)`, роли `api` и `worker`; публикация `audit-recorded` и обновлений `access-decision` из outbox в брокер; начальное состояние задаёт вызывающий, composition не выдумывает стартовую политику. Проверка: `go build ./...` в модуле; composition не содержит бизнес-правил и не импортирует домены других контекстов.
-- [ ] 5.2 Заменить заглушку `stubService` в `backend/cmd/lead-gen/runners.go`: в `buildService` для id `platform-governance` собирать сервис контекста (роли `api`, `worker`). Проверка: `go build ./...` из `backend/cmd/lead-gen`; сервис `platform-governance` больше не возвращает заглушку.
+- [x] 5.2 Заменить заглушку `stubService` в `backend/cmd/lead-gen/runners.go`: в `buildService` для id `platform-governance` собирать сервис контекста (роли `api`, `worker`). Проверка: `go build ./...` из `backend/cmd/lead-gen`; сервис `platform-governance` больше не возвращает заглушку.
 - [ ] 5.3 Переключить потребителя: в `backend/contexts/outreach-orchestration` заменить заглушку `internal/adapters/access` на тонкий перевод типов к контракту `contracts/platform-governance/accessdecision` через in-process адаптер; порт `AccessDecision` формы не меняет; пометку «заглушка среза» снять. Проверка: тесты outreach проходят; `go -C tools/importlint run .` зелёный (межконтекстный импорт — только через `contracts/platform-governance`).
 
 ## 6. Валидация

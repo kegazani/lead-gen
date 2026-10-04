@@ -3,13 +3,19 @@ package contracttest
 import (
 	"context"
 	"errors"
+	"fmt"
+	"hash/fnv"
 	"iter"
+	"math"
+	"sort"
+	"strings"
 	"testing"
 
 	"lead-gen/contracts/integration-platform/crawl"
 	"lead-gen/contracts/integration-platform/forum"
 	"lead-gen/contracts/integration-platform/llm"
 	"lead-gen/contracts/integration-platform/search"
+	"lead-gen/contracts/integration-platform/vector"
 )
 
 // fakePorts — минимальный тест-дубль всех портов, которым проверяется сам
@@ -233,6 +239,114 @@ func TestForumPortContract(t *testing.T) {
 	RunForumPortContract(t, func(t *testing.T) forum.Port {
 		t.Helper()
 		return &fakePorts{}
+	})
+}
+
+// fakeVectorPort — минимальный тест-дубль vector.Port: детерминированный хеш
+// слов (совпадающие слова дают близкие векторы) и карта документов. Уважает
+// context.Context и отвергает пустой текст/идентификатор — как реальные
+// реализации.
+type fakeVectorPort struct {
+	docs map[string]vector.Vector
+}
+
+var _ vector.Port = (*fakeVectorPort)(nil)
+
+// newFakeVectorPort создаёт пустой тест-дубль векторного порта.
+func newFakeVectorPort() *fakeVectorPort {
+	return &fakeVectorPort{docs: make(map[string]vector.Vector)}
+}
+
+// Embed реализует vector.Port.
+func (f *fakeVectorPort) Embed(ctx context.Context, text string) (vector.Vector, error) {
+	return f.embed(ctx, text)
+}
+
+// Upsert реализует vector.Port.
+func (f *fakeVectorPort) Upsert(ctx context.Context, document vector.Document) (vector.Vector, error) {
+	if strings.TrimSpace(document.ID) == "" {
+		return nil, fmt.Errorf("%w: пустой идентификатор", vector.ErrRejected)
+	}
+	vec, err := f.embed(ctx, document.Text)
+	if err != nil {
+		return nil, err
+	}
+	f.docs[document.ID] = vec
+	return vec, nil
+}
+
+// Search реализует vector.Port.
+func (f *fakeVectorPort) Search(ctx context.Context, text string, k int) ([]vector.Match, error) {
+	query, err := f.embed(ctx, text)
+	if err != nil {
+		return nil, err
+	}
+	if k <= 0 {
+		k = 10
+	}
+	matches := make([]vector.Match, 0, len(f.docs))
+	for id, vec := range f.docs {
+		matches = append(matches, vector.Match{ID: id, Score: dotProduct(query, vec)})
+	}
+	sort.Slice(matches, func(i, j int) bool {
+		if matches[i].Score == matches[j].Score {
+			return matches[i].ID < matches[j].ID
+		}
+		return matches[i].Score > matches[j].Score
+	})
+	if len(matches) > k {
+		matches = matches[:k]
+	}
+	return matches, nil
+}
+
+// embed строит нормализованный детерминированный вектор текста.
+func (f *fakeVectorPort) embed(ctx context.Context, text string) (vector.Vector, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	trimmed := strings.TrimSpace(text)
+	if trimmed == "" {
+		return nil, fmt.Errorf("%w: пустой текст", vector.ErrRejected)
+	}
+	const dim = 32
+	raw := make([]float64, dim)
+	for _, token := range strings.Fields(strings.ToLower(trimmed)) {
+		hash := fnv.New32a()
+		_, _ = hash.Write([]byte(token))
+		raw[int(hash.Sum32()%dim)]++
+	}
+	var sumSquares float64
+	for _, v := range raw {
+		sumSquares += v * v
+	}
+	if sumSquares == 0 {
+		return nil, fmt.Errorf("%w: пустой вектор", vector.ErrUnavailable)
+	}
+	vec := make(vector.Vector, dim)
+	for i, v := range raw {
+		vec[i] = float32(v / math.Sqrt(sumSquares))
+	}
+	return vec, nil
+}
+
+// dotProduct возвращает скалярное произведение нормализованных векторов.
+func dotProduct(a, b vector.Vector) float64 {
+	if len(a) != len(b) {
+		return 0
+	}
+	var dot float64
+	for i := range a {
+		dot += float64(a[i]) * float64(b[i])
+	}
+	return dot
+}
+
+// TestVectorPortContract прогоняет suite порта vector против тест-дубля.
+func TestVectorPortContract(t *testing.T) {
+	RunVectorPortContract(t, func(t *testing.T) vector.Port {
+		t.Helper()
+		return newFakeVectorPort()
 	})
 }
 

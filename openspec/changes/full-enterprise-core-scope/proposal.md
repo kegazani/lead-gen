@@ -71,9 +71,6 @@
 - `osint-enrichment`: stateless-обогащение по запросу без хранения и кеширования профилей; инициация человеком; отказ от накопления баз.
 - `outreach-channel-email`: отправка по opt-in базам с управлением согласиями, стоп-листами и обработкой отказов (38-ФЗ).
 - `lead-pool-client-side`: пул лидов и состояние сделки в контуре клиента; платформа не хранит ПД лидов.
-- `crm-workflow`: ведение сделки по стадиям с обязательным апрувом переходов; основа для атрибуции success fee внутри системы.
-- `billing-subscription`: подписка на платформу и модули; расчёт и лимиты по тарифам.
-- `billing-success-fee`: расчёт вознаграждения от закрытой сделки только для клиентов, ведущих сделки в CRM платформы.
 - `presentation-generator`: генерация B2B-презентаций и графики из ТЗ/брифа/данных сделки; изолирован от персональных данных.
 - `linguistics`: генерация и классификация текста, tone-of-voice, мультиязычность в границах разрешённых данных.
 
@@ -99,8 +96,8 @@
 
 **Влияние на монетизацию:** «продажа баз лидов» сужается до продажи агрегатов; success fee ограничивается клиентами внутри собственной CRM, что делает CRM обязательной для премиум-тарифа.
 
-**Основной риск:** юридическое заключение может опровергнуть рамку, на которой построены все 12 capability. Поэтому задача 1.1 (заключение юриста) стоит первой намеренно.
+**Основной риск:** юридическое заключение может опровергнуть рамку, на которой построены все 9 capability. Поэтому задача 1.1 (заключение юриста) стоит первой намеренно.
 
 **Открытые вопросы, влияющие на объём реализации:** наличие сегмента покупателей, уже владеющих согласиями; целевой рынок и география; где физически размещается пул лидов в режиме A (SaaS-tenancy / шифрование ключом клиента / on-prem); связь IP-стратегии с on-prem; Presentation Generator — отдельный продукт или часть платформы; обязательность собственной CRM для базового тарифа. Зафиксированы в design.md и `docs/business-requirements.md`.
 
-**Доменная модель.** Рамка затрагивает bounded contexts: `data-governance`, `lead-management`, `content-production`, `outreach-orchestration`, `message-delivery`, `engagement-observation`, `sales-workflow`, `billing`. Primary context каждой из 12 capability закреплён в `architecture/domain-catalog.yaml`: `data-handling` и `lead-pool-client-side` — `data-governance`; `osint-enrichment` — `lead-management`; `linguistics` и `presentation-generator` — `content-production`; `outreach-approval` — `outreach-orchestration`; `outreach-channel-email` и `domain-deliverability` — `message-delivery`; `read-tracking` — `engagement-observation`; `crm-workflow` — `sales-workflow`; `billing-subscription` и `billing-success-fee` — `billing`. Владельцем доменной сущности всегда является bounded context, а процесс — только единица развёртывания. Рамка не вводит сущностей и связей вне каталога, поэтому `architecture/domain-catalog.yaml`, `docs/domain-model.md` и диаграммы остаются как есть.
+**Доменная модель.** Рамка затрагивает bounded contexts: `data-governance`, `lead-management`, `content-production`, `outreach-orchestration`, `message-delivery`, `engagement-observation`. Primary context каждой из 9 capability закреплён в `architecture/domain-catalog.yaml`: `data-handling` и `lead-pool-client-side` — `data-governance`; `osint-enrichment` — `lead-management`; `linguistics` и `presentation-generator` — `content-production`; `outreach-approval` — `outreach-orchestration`; `outreach-channel-email` и `domain-deliverability` — `message-delivery`; `read-tracking` — `engagement-observation`. Владельцем доменной сущности всегда является bounded context, а процесс — только единица развёртывания. Рамка не вводит сущностей и связей вне каталога, поэтому `architecture/domain-catalog.yaml`, `docs/domain-model.md` и диаграммы остаются как есть.

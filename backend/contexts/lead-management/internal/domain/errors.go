@@ -57,4 +57,20 @@ var (
 	ErrInvalidEmbedding = errors.New("domain: некорректный эмбеддинг")
 	// ErrInvalidRichDescription — rich-описание с пустой или безымянной составляющей.
 	ErrInvalidRichDescription = errors.New("domain: некорректное rich-описание")
+	// ErrInvalidAddress — адрес не проходит разбор по RFC 5322.
+	ErrInvalidAddress = errors.New("domain: некорректный адрес")
+	// ErrInvalidVerificationStatus — статус верификации вне согласованного набора.
+	ErrInvalidVerificationStatus = errors.New("domain: неизвестный статус верификации")
+	// ErrInvalidVerificationResult — результат верификации без причины, источника или даты.
+	ErrInvalidVerificationResult = errors.New("domain: некорректный результат верификации")
+	// ErrInvalidMetric — метрика размера компании некорректна.
+	ErrInvalidMetric = errors.New("domain: некорректная метрика компании")
+	// ErrUnknownMetricKind — признак размера вне согласованного набора.
+	ErrUnknownMetricKind = errors.New("domain: неизвестный признак размера")
+	// ErrDuplicateMetric — один признак задан дважды.
+	ErrDuplicateMetric = errors.New("domain: признак размера задан дважды")
+	// ErrNoSizeData — для оценки нет ни одной доступной метрики.
+	ErrNoSizeData = errors.New("domain: нет доступных метрик размера")
+	// ErrInvalidSizeConfig — конфигурация оценки некорректна.
+	ErrInvalidSizeConfig = errors.New("domain: некорректная конфигурация оценки размера")
 )

@@ -71,6 +71,15 @@ type Campaign struct {
 	order     []DraftID
 	decisions []OperatorDecision
 	events    []DomainEvent
+
+	// definitions — сценарии последовательностей кампании (сущность
+	// sequence-definition), execution — участия лидов (сущность
+	// sequence-execution). Порядок карт задают срезы definitionOrder и
+	// executionOrder.
+	definitions     map[SequenceID]*SequenceDefinition
+	definitionOrder []SequenceID
+	executions      map[ExecutionID]*SequenceExecution
+	executionOrder  []ExecutionID
 }
 
 // CreateCampaign создаёт кампанию в состоянии «черновик».
@@ -88,12 +97,14 @@ func CreateCampaign(params CreateCampaignParams) (*Campaign, error) {
 		return nil, fmt.Errorf("%w: кампания %s", err, params.ID)
 	}
 	return &Campaign{
-		id:       params.ID,
-		tenantID: params.TenantID,
-		name:     strings.TrimSpace(params.Name),
-		window:   params.Window,
-		state:    CampaignStateDraft,
-		drafts:   make(map[DraftID]*ActionDraft),
+		id:          params.ID,
+		tenantID:    params.TenantID,
+		name:        strings.TrimSpace(params.Name),
+		window:      params.Window,
+		state:       CampaignStateDraft,
+		drafts:      make(map[DraftID]*ActionDraft),
+		definitions: make(map[SequenceID]*SequenceDefinition),
+		executions:  make(map[ExecutionID]*SequenceExecution),
 	}, nil
 }
 

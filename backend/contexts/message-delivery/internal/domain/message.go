@@ -14,6 +14,8 @@ type MessageParams struct {
 	RecipientRef     RecipientRef
 	Address          DeliveryAddress
 	SenderDomain     SenderDomain
+	Subject          string
+	Body             string
 	IdempotencyKey   string
 	CreatedAt        time.Time
 }
@@ -25,7 +27,8 @@ type MessageParams struct {
 // идемпотентности неизменяем и служит естественным ключом повторной команды:
 // повторная отправка с тем же ключом запрещена (инвариант message). Адрес
 // назначения и отправляющий домен — value objects, поэтому в агрегат не попадает
-// непроверенная строка.
+// непроверенная строка. Тема и тело письма хранятся как часть состояния, чтобы
+// повторная попытка могли быть выполнена без внешнего источника содержимого.
 type Message struct {
 	id               MessageID
 	tenantID         TenantID
@@ -33,6 +36,8 @@ type Message struct {
 	recipientRef     RecipientRef
 	address          DeliveryAddress
 	senderDomain     SenderDomain
+	subject          string
+	body             string
 	idempotencyKey   string
 	status           MessageStatus
 	attempts         []DeliveryAttempt
@@ -75,6 +80,8 @@ func NewMessage(params MessageParams) (*Message, error) {
 		recipientRef:     params.RecipientRef,
 		address:          params.Address,
 		senderDomain:     params.SenderDomain,
+		subject:          params.Subject,
+		body:             params.Body,
 		idempotencyKey:   params.IdempotencyKey,
 		status:           MessageStatusPending,
 		createdAt:        params.CreatedAt,
@@ -98,6 +105,12 @@ func (m *Message) Address() DeliveryAddress { return m.address }
 
 // SenderDomain возвращает отправляющий домен.
 func (m *Message) SenderDomain() SenderDomain { return m.senderDomain }
+
+// Subject возвращает тему письма (может быть пустой, если содержимое не задано).
+func (m *Message) Subject() string { return m.subject }
+
+// Body возвращает тело письма (может быть пустым, если содержимое не задано).
+func (m *Message) Body() string { return m.body }
 
 // IdempotencyKey возвращает ключ идемпотентности сообщения.
 func (m *Message) IdempotencyKey() string { return m.idempotencyKey }
@@ -180,6 +193,42 @@ func (m *Message) RecordDelivery(outcome AttemptOutcome, providerCode string, at
 		ProviderCode:     attempt.ProviderCode,
 		At:               at,
 	})
+	return nil
+}
+
+// IsRetryable сообщает, может ли сообщение быть переведено в повторную попытку:
+// состояние failed, последняя попытка завершилась временным исходом,
+// и исход не был терминальным решением провайдера.
+func (m *Message) IsRetryable() bool {
+	if m.status != MessageStatusFailed || len(m.attempts) == 0 {
+		return false
+	}
+	return m.attempts[len(m.attempts)-1].Outcome == OutcomeTemporary
+}
+
+// LastOutcome возвращает исход последней попытки. Второе значение равно false,
+// если попыток ещё нет.
+func (m *Message) LastOutcome() (AttemptOutcome, bool) {
+	if len(m.attempts) == 0 {
+		return "", false
+	}
+	return m.attempts[len(m.attempts)-1].Outcome, true
+}
+
+// ReopenForRetry возвращает сообщение к отправке после временного исхода.
+//
+// Допустим только из состояния failed, когда последняя попытка завершилась
+// временным исходом (сбой транспорта): такие сообщения — единственные, для
+// которых повторная попытка допустима. Терминальные исходы провайдера
+// (delivered, hard-bounce, soft-bounce) повторной попытке не подлежат.
+func (m *Message) ReopenForRetry(at time.Time) error {
+	if !m.IsRetryable() {
+		return fmt.Errorf("%w: сообщение %s", ErrMessageNotRetryable, m.id)
+	}
+	if at.IsZero() {
+		return ErrAttemptTimeRequired
+	}
+	m.status = MessageStatusSending
 	return nil
 }
 

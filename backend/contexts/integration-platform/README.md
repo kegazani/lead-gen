@@ -14,7 +14,8 @@ context `integration-platform` из `architecture/domain-catalog.yaml`. Ката
 | `internal/app` | приложение | use cases `RegisterAdapter`, `SelectAdapter`, `InvokeIntegration` |
 | `internal/ports` | порты | `ProviderPort`, репозитории регистраций и вызовов, реэкспорт контрактов в `contracts/` |
 | `internal/ports/contracttest` | контрактные тесты | общий contract suite портов |
-| `internal/adapters` | адаптеры | in-memory репозитории, тестовый адаптер провайдера, адаптеры `firecrawl`/`openai`/`forum`/`smtp` опубликованных контрактов |
+| `internal/adapters` | адаптеры | in-memory репозитории (тесты/dev), PostgreSQL-репозитории, тестовый адаптер провайдера, адаптеры `firecrawl`/`openai`/`forum`/`smtp` опубликованных контрактов |
+| `migrations` | миграции | SQL-схема сервиса `integration-platform` (`schema-per-service`) |
 
 Публикуемые контракты контекста (`provider-port`, `adapter-capability`,
 `integration-error`) — отдельный модуль `lead-gen/contracts/integration-platform`.
@@ -30,10 +31,14 @@ context `integration-platform` из `architecture/domain-catalog.yaml`. Ката
 
 ## Объём среза
 
-В срезе реализованы доменные агрегаты, use cases, порты и адаптеры. Хранилища —
-только in-memory (драйвер PostgreSQL отсутствует); связи с поставщиками
-проверяются на тестовом адаптере. PostgreSQL-адаптеры прогонятся тем же contract
-suite, когда появится драйвер.
+В срезе реализованы доменные агрегаты, use cases, порты и адаптеры. Хранилища
+регистраций адаптеров и вызовов интеграций имеют две реализации: PostgreSQL
+(`internal/adapters/persistence/postgres`) и in-memory
+(`internal/adapters/repository/inmemory`). PostgreSQL — продуктовый носитель:
+сборка по заданному DSN (`Config.DSN` или `Config.Persistence`, миграции
+`migrations/`); без DSN контекст идёт в in-memory dev-режиме и честно об этом
+предупреждает. Связи с поставщиками проверяются на тестовом адаптере; реальные
+адаптеры `firecrawl`/`openai`/`forum`/`smtp` публикуются для потребителей.
 
 ## Проверка
 
@@ -41,4 +46,13 @@ suite, когда появится драйвер.
 go test ./backend/contexts/integration-platform/...
 go -C tools/importlint run .
 go -C tools/archlint run .
+```
+
+PostgreSQL-адаптеры проверяются общим contract suite против реальной базы (нужен
+Docker; строка подключения — `LEADGEN_POSTGRES_TEST_DSN`, без неё тесты
+пропускаются):
+
+```sh
+LEADGEN_POSTGRES_TEST_DSN='postgres://postgres:postgres@localhost:5448/leadgen?sslmode=disable' \
+  go -C backend/contexts/integration-platform test ./internal/adapters/persistence/postgres/...
 ```

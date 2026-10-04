@@ -1,6 +1,7 @@
 package audience
 
 import (
+	"errors"
 	"time"
 
 	httpapi "lead-gen/backend/contexts/audience/internal/adapters/http"
@@ -23,8 +24,9 @@ import (
 // контекста, а другие контексты — только через транспорт и опубликованные
 // контракты владельца.
 //
-// В срезе подключаются in-memory адаптеры: PostgreSQL-репозиторий заблокирован
-// решением по внешней зависимости.
+// Сборка по умолчанию берёт in-memory адаптеры (dev). Продуктовая сборка
+// передаёт PostgreSQL-адаптеры через Params: точка входа использует
+// NewPostgresPersistence при заданном DSN.
 
 // SystemClock — часы процесса, источник времени по умолчанию. Не адаптер внешней
 // системы: используется, когда вызывающий не передал свой Clock.
@@ -33,20 +35,25 @@ type SystemClock struct{}
 // Now реализует ports.Clock.
 func (SystemClock) Now() time.Time { return time.Now() }
 
-// Params — параметры сборки среза. Репозитории и журнал можно передать снаружи,
-// чтобы разделить состояние нескольких потребителей; nil означает создание новых.
+// Params — параметры сборки среза. Репозитории, unit-of-work и журнал можно
+// передать снаружи: так сборка получает PostgreSQL-адаптеры вместо in-memory, а
+// тесты — своё состояние. nil означает in-memory-реализацию (dev).
 type Params struct {
 	// Clock — источник времени. nil → SystemClock.
 	Clock ports.Clock
 
 	// Segments — репозиторий сегментов. nil → новый in-memory репозиторий.
-	Segments *persistence.SegmentRepository
+	Segments ports.SegmentRepository
 
 	// Snapshots — репозиторий снимков аудитории. nil → новый in-memory репозиторий.
-	Snapshots *persistence.SnapshotRepository
+	Snapshots ports.AudienceSnapshotRepository
 
-	// Journal — журнал outbox. nil → новый журнал.
+	// Journal — журнал outbox. nil → новый журнал в памяти.
 	Journal platformoutbox.Journal
+
+	// UnitOfWork — транзакционный порт. nil → in-memory unit-of-work над
+	// репозиториями и журналом; PostgreSQL-репозитории требуют явного unit-of-work.
+	UnitOfWork ports.UnitOfWork
 
 	// IDs — генератор идентификаторов событий и снимков. nil → Random.
 	IDs ports.IDGenerator
@@ -55,10 +62,10 @@ type Params struct {
 // Slice — собранный контекст среза: порты, use cases и HTTP-обработчики. Поля
 // экспортированы, чтобы процесс мог запустить нужную часть.
 type Slice struct {
-	Segments   *persistence.SegmentRepository
-	Snapshots  *persistence.SnapshotRepository
+	Segments   ports.SegmentRepository
+	Snapshots  ports.AudienceSnapshotRepository
 	Journal    platformoutbox.Journal
-	UnitOfWork *outboxinmemory.UnitOfWork
+	UnitOfWork ports.UnitOfWork
 	IDs        ports.IDGenerator
 
 	// Server — HTTP-обработчики роли api. Реализует http.Handler.
@@ -72,7 +79,12 @@ type Slice struct {
 	SegmentMembers  *query.SegmentMembersHandler
 }
 
-// Build собирает контекст среза из in-memory адаптеров и переданных зависимостей.
+// Build собирает контекст среза из переданных адаптеров и зависимостей. Без
+// переданных репозиториев и unit-of-work собирается in-memory-реализация (dev).
+//
+// PostgreSQL-репозитории нельзя молча подменить in-memory unit-of-work: он
+// работает только с in-memory репозиториями. Если задан не in-memory репозиторий,
+// а unit-of-work не передан, сборка честно завершается ошибкой.
 func Build(params Params) (*Slice, error) {
 	clock := params.Clock
 	if clock == nil {
@@ -96,7 +108,18 @@ func Build(params Params) (*Slice, error) {
 		ids = idgen.NewRandom()
 	}
 
-	unitOfWork := outboxinmemory.NewUnitOfWorkWith(segments, snapshots, journal)
+	unitOfWork := params.UnitOfWork
+	if unitOfWork == nil {
+		memorySegments, ok := segments.(*persistence.SegmentRepository)
+		if !ok {
+			return nil, errors.New("audience: unit-of-work обязателен для не in-memory репозитория сегментов")
+		}
+		memorySnapshots, ok := snapshots.(*persistence.SnapshotRepository)
+		if !ok {
+			return nil, errors.New("audience: unit-of-work обязателен для не in-memory репозитория снимков")
+		}
+		unitOfWork = outboxinmemory.NewUnitOfWorkWith(memorySegments, memorySnapshots, journal)
+	}
 
 	createSegment := command.NewCreateSegmentHandler(unitOfWork)
 	scoreLead := command.NewScoreLeadHandler(unitOfWork, clock, ids)

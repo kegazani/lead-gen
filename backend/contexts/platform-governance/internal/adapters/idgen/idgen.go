@@ -28,6 +28,11 @@ func (Random) NewUserID() domain.UserID { return domain.UserID(newID("user")) }
 // идентификатор служит ключом дедупликации у потребителя.
 func (Random) NewEventID() domain.EventID { return domain.EventID(newID("evt")) }
 
+// NewAuditRecordID возвращает новый идентификатор записи аудита.
+func (Random) NewAuditRecordID() domain.AuditRecordID {
+	return domain.AuditRecordID(newID("audit"))
+}
+
 // NewRequestID возвращает новый идентификатор заявки.
 func (Random) NewRequestID() string { return newID("req") }
 

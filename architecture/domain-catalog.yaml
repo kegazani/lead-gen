@@ -29,7 +29,7 @@
       "capabilities": ["osint-enrichment", "company-size-assessment", "email-verification", "lead-workflow", "lead-email", "email-template-library", "search-strategy", "company-quota-search", "forum-lead-signals", "lead-relevance", "search-job-control", "search-job-lifecycle", "search-job-progress", "search-job-error-codes", "search-job-events", "job-journal-console", "lead-cards-console", "console-appearance", "semantic-lead-search", "lead-search", "email-generation"],
       "service": "lead-management",
       "roles": ["api", "worker"],
-      "contracts": ["lead-profile", "lead-verified", "company-profile", "lead-search", "email-generation"]
+      "contracts": ["lead-profile", "lead-verified", "company-profile", "lead-search", "email-generation", "delivery-target"]
     },
     {
       "id": "audience",
@@ -56,7 +56,7 @@
       "name": "Оркестрация исходящих действий",
       "classification": "core",
       "purpose": "Кампании, последовательности, черновики, решение оператора и планирование встреч.",
-      "capabilities": ["outreach-approval", "outreach-sequences", "call-orchestration", "outreach-channel-form"],
+      "capabilities": ["outreach-approval", "outreach-sequences", "outreach-channel-form"],
       "service": "outreach-orchestration",
       "roles": ["api", "worker", "chains", "schedule"],
           "contracts": ["approved-action", "analytics-event", "campaign-command", "campaign-state", "call-intent", "form-submission", "outreach-outcome"]
@@ -66,7 +66,7 @@
       "name": "Доставка сообщений",
       "classification": "core",
       "purpose": "Исполнение утверждённых почтовых действий, доставляемость и репутация отправляющих доменов.",
-      "capabilities": ["outreach-channel-email", "domain-deliverability"],
+      "capabilities": ["outreach-channel-email", "domain-deliverability", "delivery-bridge"],
       "service": "message-delivery",
       "roles": ["sender", "worker", "schedule"],
       "contracts": ["delivery-command", "delivery-event", "deliverability-policy"]
@@ -82,36 +82,7 @@
       "contracts": ["engagement-event", "read-signal"]
     },
     {
-      "id": "sales-workflow",
-      "name": "Продажи и сделки",
-      "classification": "core",
-      "purpose": "Жизненный цикл сделки, CRM-синхронизация и подтверждаемая атрибуция результата.",
-      "capabilities": ["crm-workflow"],
-      "service": "sales-workflow",
-      "roles": ["api", "ingest", "worker"],
-      "contracts": ["deal-state", "crm-event", "attributed-result"]
-    },
-    {
-      "id": "community-intelligence",
-      "name": "Аналитика сообществ",
-      "classification": "supporting",
-      "purpose": "Чтение разрешённых Telegram-сообществ и формирование обезличенной выжимки.",
-      "capabilities": ["telegram-community-digest"],
-      "service": "community-intelligence",
-      "roles": ["worker", "schedule"],
-      "contracts": ["community-digest", "community-read-command"]
-    },
-    {
-      "id": "publishing",
-      "name": "Публикация материалов",
-      "classification": "supporting",
-      "purpose": "Подготовка и публикация утверждённых материалов через официальные API площадок.",
-      "capabilities": ["digest-publishing"],
-      "service": "publishing",
-      "roles": ["api", "worker", "schedule"],
-      "contracts": ["publication-command", "publication-result"]
-    },
-    {
+      "id": "integration-platform",
       "id": "analytics",
       "name": "Аналитика и отчётность",
       "classification": "supporting",
@@ -122,21 +93,11 @@
       "contracts": ["analytics-event", "campaign-report"]
     },
     {
-      "id": "billing",
-      "name": "Биллинг",
-      "classification": "supporting",
-      "purpose": "Подписки, тарифные лимиты, счета и вознаграждение от подтверждённого результата.",
-      "capabilities": ["billing-subscription", "billing-success-fee"],
-      "service": "billing",
-      "roles": ["api", "worker"],
-      "contracts": ["billing-entitlement", "billing-result", "usage-record"]
-    },
-    {
       "id": "integration-platform",
       "name": "Интеграционная платформа",
       "classification": "generic",
       "purpose": "Vendor-neutral порты, адаптеры, нормализация ошибок и manifest возможностей поставщиков.",
-      "capabilities": ["provider-agnostic-integrations", "firecrawl-credit-budget", "crawler-proxy-pool", "integration-call-resilience"],
+      "capabilities": ["provider-agnostic-integrations", "firecrawl-credit-budget", "crawler-proxy-pool", "integration-call-resilience", "vector-recall"],
       "service": "integration-platform",
       "roles": ["api", "ingest", "worker", "chains", "schedule"],
     	  "contracts": ["adapter-capability", "integration-error", "provider-port", "vector"]
@@ -146,7 +107,7 @@
       "name": "Исполнение заявок клиента",
       "classification": "core",
       "purpose": "Жизненный цикл заявки клиента на лидогенерацию: оффер, статусная модель и связь с артефактами фулфилмента.",
-      "capabilities": ["client-request", "request-validation", "request-fulfillment-execution"],
+      "capabilities": ["client-request", "request-validation", "request-fulfillment-execution", "request-shortfall"],
       "service": "request-fulfillment",
       "roles": ["api", "worker"],
       "contracts": ["request-intent"]
@@ -183,13 +144,7 @@
     {"id": "message", "name": "Сообщение", "owner_context": "message-delivery", "zone": "green", "storage": "relational"},
     {"id": "sender-reputation", "name": "Репутация отправителя", "owner_context": "message-delivery", "zone": "green", "storage": "relational"},
     {"id": "engagement-event", "name": "Событие взаимодействия", "owner_context": "engagement-observation", "zone": "analytics", "storage": "analytics"},
-    {"id": "deal", "name": "Сделка", "owner_context": "sales-workflow", "zone": "red", "storage": "external"},
-    {"id": "crm-sync", "name": "Синхронизация с CRM", "owner_context": "sales-workflow", "zone": "green", "storage": "relational"},
-    {"id": "community-digest", "name": "Выжимка сообщества", "owner_context": "community-intelligence", "zone": "green", "storage": "relational"},
-    {"id": "publication", "name": "Публикация", "owner_context": "publishing", "zone": "green", "storage": "relational"},
     {"id": "report-snapshot", "name": "Снимок отчёта", "owner_context": "analytics", "zone": "analytics", "storage": "analytics"},
-    {"id": "subscription-invoice", "name": "Подписка и счёт", "owner_context": "billing", "zone": "green", "storage": "relational"},
-    {"id": "success-fee", "name": "Вознаграждение за результат", "owner_context": "billing", "zone": "green", "storage": "relational"},
     {"id": "adapter-registration", "name": "Регистрация адаптера", "owner_context": "integration-platform", "zone": "green", "storage": "relational"},
     {"id": "integration-invocation", "name": "Вызов интеграции", "owner_context": "integration-platform", "zone": "green", "storage": "relational"},
     {"id": "request", "name": "Заявка клиента", "owner_context": "request-fulfillment", "zone": "green", "storage": "relational"},
@@ -357,46 +312,6 @@
       "invariants": ["Входящий webhook сначала дедуплицируется.", "Сырой сигнал не равен квалифицированному событию."]
     },
     {
-      "id": "deal",
-      "owner_context": "sales-workflow",
-      "root_entity": "deal",
-      "entities": ["deal"],
-      "value_objects": ["deal-stage", "attribution-proof"],
-      "domain_events": ["deal-state-changed", "result-attributed"],
-      "policies": ["confirmed-attribution"],
-      "invariants": ["Переходы этапов следуют согласованному workflow.", "Подтверждённый результат имеет достаточное доказательство и идемпотентную внешнюю ссылку."]
-    },
-    {
-      "id": "crm-sync",
-      "owner_context": "sales-workflow",
-      "root_entity": "crm-sync",
-      "entities": ["crm-sync"],
-      "value_objects": ["external-version"],
-      "domain_events": ["crm-sync-conflict"],
-      "policies": ["conflict-resolution"],
-      "invariants": ["Синхронизация хранит внешнюю версию и не перезаписывает локальное состояние при конфликте."]
-    },
-    {
-      "id": "community-digest",
-      "owner_context": "community-intelligence",
-      "root_entity": "community-digest",
-      "entities": ["community-digest"],
-      "value_objects": ["community-source", "digest-period"],
-      "domain_events": ["community-digest-created"],
-      "policies": ["authorized-community-read", "digest-anonymization"],
-      "invariants": ["Читаются только разрешённые сообщества.", "Выжимка не содержит сырой архив и прямые идентификаторы участников."]
-    },
-    {
-      "id": "publication",
-      "owner_context": "publishing",
-      "root_entity": "publication",
-      "entities": ["publication"],
-      "value_objects": ["publication-target", "publication-status"],
-      "domain_events": ["material-published"],
-      "policies": ["approved-publication-only"],
-      "invariants": ["Публикуется только утверждённая версия.", "Повтор с тем же idempotency key не создаёт вторую публикацию."]
-    },
-    {
       "id": "campaign-report",
       "owner_context": "analytics",
       "root_entity": "report-snapshot",
@@ -405,26 +320,6 @@
       "domain_events": ["report-snapshot-created"],
       "policies": ["anonymized-reporting"],
       "invariants": ["Аналитика не является владельцем операционного состояния.", "Красные данные не копируются в read-модель без агрегации или обезличивания.", "Снимок воспроизводим по watermark и версии формул."]
-    },
-    {
-      "id": "subscription-billing",
-      "owner_context": "billing",
-      "root_entity": "subscription-invoice",
-      "entities": ["subscription-invoice"],
-      "value_objects": ["billing-period", "money", "tariff-limit"],
-      "domain_events": ["invoice-issued", "billing-result-recorded"],
-      "policies": ["subscription-entitlement"],
-      "invariants": ["Запись об использовании идемпотентна по ключу периода.", "Счёт выставляется в пределах активной подписки и её лимитов."]
-    },
-    {
-      "id": "success-fee",
-      "owner_context": "billing",
-      "root_entity": "success-fee",
-      "entities": ["success-fee"],
-      "value_objects": ["calculation-version"],
-      "domain_events": ["success-fee-calculated"],
-      "policies": ["success-fee-eligibility"],
-      "invariants": ["Вознаграждение создаётся только из подтверждённого результата.", "Расчёт хранит версию применённого правила."]
     },
     {
       "id": "adapter-registration",
@@ -484,19 +379,8 @@
     {"id": "delivery-attempt", "owner_context": "message-delivery", "owner_aggregate": "message-delivery", "semantics": "Номер попытки доставки и результат ответа провайдера."},
     {"id": "engagement-kind", "owner_context": "engagement-observation", "owner_aggregate": "engagement", "semantics": "Классифицированный тип наблюдаемого взаимодействия."},
     {"id": "signal-confidence", "owner_context": "engagement-observation", "owner_aggregate": "engagement", "semantics": "Степень уверенности в квалификации сигнала взаимодействия."},
-    {"id": "deal-stage", "owner_context": "sales-workflow", "owner_aggregate": "deal", "semantics": "Состояние сделки из согласованного жизненного цикла."},
-    {"id": "attribution-proof", "owner_context": "sales-workflow", "owner_aggregate": "deal", "semantics": "Проверяемое основание связи результата с исходящим действием."},
-    {"id": "external-version", "owner_context": "sales-workflow", "owner_aggregate": "crm-sync", "semantics": "Версия записи во внешней CRM, с которой сверяется синхронизация."},
-    {"id": "community-source", "owner_context": "community-intelligence", "owner_aggregate": "community-digest", "semantics": "Разрешённый источник сообщений сообщества."},
-    {"id": "digest-period", "owner_context": "community-intelligence", "owner_aggregate": "community-digest", "semantics": "Интервал сообщений, включённых в одну выжимку."},
-    {"id": "publication-target", "owner_context": "publishing", "owner_aggregate": "publication", "semantics": "Площадка и учётная запись назначения публикации."},
-    {"id": "publication-status", "owner_context": "publishing", "owner_aggregate": "publication", "semantics": "Результат попытки публикации во внешней площадке."},
     {"id": "report-period", "owner_context": "analytics", "owner_aggregate": "campaign-report", "semantics": "Закрытый временной интервал снимка отчёта."},
     {"id": "funnel-metric", "owner_context": "analytics", "owner_aggregate": "campaign-report", "semantics": "Именованное агрегированное значение этапа воронки."},
-    {"id": "billing-period", "owner_context": "billing", "owner_aggregate": "subscription-billing", "semantics": "Интервал начисления подписки и потребления лимитов."},
-    {"id": "money", "owner_context": "billing", "owner_aggregate": "subscription-billing", "semantics": "Точная сумма в минимальных единицах указанной валюты."},
-    {"id": "tariff-limit", "owner_context": "billing", "owner_aggregate": "subscription-billing", "semantics": "Допустимый объём использования возможности в тарифном периоде."},
-    {"id": "calculation-version", "owner_context": "billing", "owner_aggregate": "success-fee", "semantics": "Версия правила расчёта вознаграждения за результат."},
     {"id": "manifest-version", "owner_context": "integration-platform", "owner_aggregate": "adapter-registration", "semantics": "Версия manifest с объявленными возможностями адаптера."},
     {"id": "correlation-ref", "owner_context": "integration-platform", "owner_aggregate": "integration-invocation", "semantics": "Идентификатор, связывающий вызов интеграции со сквозным сценарием."},
     {"id": "request-status", "owner_context": "request-fulfillment", "owner_aggregate": "request", "semantics": "Статус заявки из согласованного набора: submitted, validating, validated, processing, fulfilled, rejected, cancelled."},
@@ -525,15 +409,7 @@
     {"id": "message-delivered", "owner_context": "message-delivery", "producing_aggregate": "message-delivery"},
     {"id": "message-delivery-failed", "owner_context": "message-delivery", "producing_aggregate": "message-delivery"},
     {"id": "engagement-observed", "owner_context": "engagement-observation", "producing_aggregate": "engagement"},
-    {"id": "deal-state-changed", "owner_context": "sales-workflow", "producing_aggregate": "deal"},
-    {"id": "result-attributed", "owner_context": "sales-workflow", "producing_aggregate": "deal"},
-    {"id": "crm-sync-conflict", "owner_context": "sales-workflow", "producing_aggregate": "crm-sync"},
-    {"id": "community-digest-created", "owner_context": "community-intelligence", "producing_aggregate": "community-digest"},
-    {"id": "material-published", "owner_context": "publishing", "producing_aggregate": "publication"},
     {"id": "report-snapshot-created", "owner_context": "analytics", "producing_aggregate": "campaign-report"},
-    {"id": "invoice-issued", "owner_context": "billing", "producing_aggregate": "subscription-billing"},
-    {"id": "billing-result-recorded", "owner_context": "billing", "producing_aggregate": "subscription-billing"},
-    {"id": "success-fee-calculated", "owner_context": "billing", "producing_aggregate": "success-fee"},
     {"id": "adapter-registered", "owner_context": "integration-platform", "producing_aggregate": "adapter-registration"},
     {"id": "integration-failed", "owner_context": "integration-platform", "producing_aggregate": "integration-invocation"},
     {"id": "integration-recovered", "owner_context": "integration-platform", "producing_aggregate": "integration-invocation"},
@@ -558,14 +434,7 @@
     {"id": "deliverability-policy", "owner_context": "message-delivery", "owner_aggregate": "message-delivery", "inputs": [{"kind": "contract", "id": "delivery-command"}], "action": {"kind": "domain-event", "id": "message-delivered"}},
     {"id": "approved-action-only", "owner_context": "message-delivery", "owner_aggregate": "message-delivery", "inputs": [{"kind": "contract", "id": "approved-action"}], "action": {"kind": "domain-event", "id": "message-delivered"}},
     {"id": "pixel-free-observation", "owner_context": "engagement-observation", "owner_aggregate": "engagement", "inputs": [{"kind": "contract", "id": "delivery-event"}], "action": {"kind": "domain-event", "id": "engagement-observed"}},
-    {"id": "confirmed-attribution", "owner_context": "sales-workflow", "owner_aggregate": "deal", "inputs": [{"kind": "contract", "id": "crm-event"}], "action": {"kind": "domain-event", "id": "result-attributed"}},
-    {"id": "conflict-resolution", "owner_context": "sales-workflow", "owner_aggregate": "crm-sync", "inputs": [{"kind": "contract", "id": "crm-event"}], "action": {"kind": "domain-event", "id": "crm-sync-conflict"}},
-    {"id": "authorized-community-read", "owner_context": "community-intelligence", "owner_aggregate": "community-digest", "inputs": [{"kind": "contract", "id": "community-read-command"}], "action": {"kind": "domain-event", "id": "community-digest-created"}},
-    {"id": "digest-anonymization", "owner_context": "community-intelligence", "owner_aggregate": "community-digest", "inputs": [{"kind": "contract", "id": "community-digest"}], "action": {"kind": "domain-event", "id": "community-digest-created"}},
-    {"id": "approved-publication-only", "owner_context": "publishing", "owner_aggregate": "publication", "inputs": [{"kind": "contract", "id": "publication-command"}], "action": {"kind": "domain-event", "id": "material-published"}},
     {"id": "anonymized-reporting", "owner_context": "analytics", "owner_aggregate": "campaign-report", "inputs": [{"kind": "contract", "id": "analytics-event"}], "action": {"kind": "domain-event", "id": "report-snapshot-created"}},
-    {"id": "subscription-entitlement", "owner_context": "billing", "owner_aggregate": "subscription-billing", "inputs": [{"kind": "contract", "id": "usage-record"}], "action": {"kind": "domain-event", "id": "invoice-issued"}},
-    {"id": "success-fee-eligibility", "owner_context": "billing", "owner_aggregate": "success-fee", "inputs": [{"kind": "contract", "id": "billing-result"}], "action": {"kind": "domain-event", "id": "billing-result-recorded"}},
     {"id": "adapter-selection", "owner_context": "integration-platform", "owner_aggregate": "adapter-registration", "inputs": [{"kind": "contract", "id": "provider-port"}], "action": {"kind": "domain-event", "id": "adapter-registered"}},
     {"id": "error-normalization", "owner_context": "integration-platform", "owner_aggregate": "integration-invocation", "inputs": [{"kind": "contract", "id": "integration-error"}], "action": {"kind": "domain-event", "id": "integration-failed"}}
   ],
@@ -576,43 +445,39 @@
     {"id": "lead-to-audience", "upstream": "lead-management", "downstream": "audience", "pattern": "customer-supplier", "integration": "query", "transport": "sync", "mechanism": "http-json", "contract": "lead-profile"},
     {"id": "audience-to-outreach", "upstream": "audience", "downstream": "outreach-orchestration", "pattern": "customer-supplier", "integration": "query", "transport": "sync", "mechanism": "http-json", "contract": "audience-snapshot"},
     {"id": "content-to-outreach", "upstream": "content-production", "downstream": "outreach-orchestration", "pattern": "customer-supplier", "integration": "query", "transport": "sync", "mechanism": "http-json", "contract": "content-version"},
+    {"id": "content-to-delivery", "upstream": "content-production", "downstream": "message-delivery", "pattern": "customer-supplier", "integration": "query", "transport": "sync", "mechanism": "http-json", "contract": "content-version"},
     {"id": "outreach-to-delivery", "upstream": "outreach-orchestration", "downstream": "message-delivery", "pattern": "published-language", "integration": "command", "transport": "sync", "mechanism": "http-json", "contract": "approved-action"},
     {"id": "delivery-to-observation", "upstream": "message-delivery", "downstream": "engagement-observation", "pattern": "published-language", "integration": "event", "transport": "async", "mechanism": "amqp", "contract": "delivery-event"},
     {"id": "observation-to-outreach", "upstream": "engagement-observation", "downstream": "outreach-orchestration", "pattern": "published-language", "integration": "event", "transport": "async", "mechanism": "amqp", "contract": "engagement-event"},
-    {"id": "outreach-to-sales", "upstream": "outreach-orchestration", "downstream": "sales-workflow", "pattern": "published-language", "integration": "event", "transport": "async", "mechanism": "amqp", "contract": "outreach-outcome"},
-    {"id": "sales-to-billing", "upstream": "sales-workflow", "downstream": "billing", "pattern": "published-language", "integration": "event", "transport": "async", "mechanism": "amqp", "contract": "attributed-result"},
-    {"id": "community-to-publishing", "upstream": "community-intelligence", "downstream": "publishing", "pattern": "customer-supplier", "integration": "command", "transport": "sync", "mechanism": "http-json", "contract": "community-digest"},
+
     {"id": "outreach-to-analytics", "upstream": "outreach-orchestration", "downstream": "analytics", "pattern": "published-language", "integration": "event", "transport": "async", "mechanism": "amqp", "contract": "analytics-event"},
     {"id": "delivery-to-analytics", "upstream": "message-delivery", "downstream": "analytics", "pattern": "published-language", "integration": "event", "transport": "async", "mechanism": "amqp", "contract": "delivery-event"},
     {"id": "observation-to-analytics", "upstream": "engagement-observation", "downstream": "analytics", "pattern": "published-language", "integration": "event", "transport": "async", "mechanism": "amqp", "contract": "engagement-event"},
-    {"id": "sales-to-analytics", "upstream": "sales-workflow", "downstream": "analytics", "pattern": "published-language", "integration": "event", "transport": "async", "mechanism": "amqp", "contract": "deal-state"},
+
     {"id": "platform-access-for-outreach", "upstream": "platform-governance", "downstream": "outreach-orchestration", "pattern": "published-language", "integration": "policy", "transport": "async", "mechanism": "amqp", "contract": "access-decision"},
     {"id": "integrations-for-leads", "upstream": "integration-platform", "downstream": "lead-management", "pattern": "anticorruption-layer", "integration": "command", "transport": "sync", "mechanism": "http-json", "contract": "provider-port"},
     {"id": "vector-for-leads", "upstream": "integration-platform", "downstream": "lead-management", "pattern": "anticorruption-layer", "integration": "command", "transport": "sync", "mechanism": "http-json", "contract": "vector"},
     {"id": "vector-for-requests", "upstream": "integration-platform", "downstream": "request-fulfillment", "pattern": "anticorruption-layer", "integration": "command", "transport": "sync", "mechanism": "http-json", "contract": "vector"},
     {"id": "integrations-for-content", "upstream": "integration-platform", "downstream": "content-production", "pattern": "anticorruption-layer", "integration": "command", "transport": "sync", "mechanism": "http-json", "contract": "provider-port"},
     {"id": "integrations-for-delivery", "upstream": "integration-platform", "downstream": "message-delivery", "pattern": "anticorruption-layer", "integration": "command", "transport": "sync", "mechanism": "http-json", "contract": "provider-port"},
-    {"id": "integrations-for-sales", "upstream": "integration-platform", "downstream": "sales-workflow", "pattern": "anticorruption-layer", "integration": "command", "transport": "sync", "mechanism": "http-json", "contract": "provider-port"},
-    {"id": "integrations-for-community", "upstream": "integration-platform", "downstream": "community-intelligence", "pattern": "anticorruption-layer", "integration": "command", "transport": "sync", "mechanism": "http-json", "contract": "provider-port"},
-    {"id": "integrations-for-publishing", "upstream": "integration-platform", "downstream": "publishing", "pattern": "anticorruption-layer", "integration": "command", "transport": "sync", "mechanism": "http-json", "contract": "provider-port"},
+    {"id": "leads-for-delivery", "upstream": "lead-management", "downstream": "message-delivery", "pattern": "customer-supplier", "integration": "query", "transport": "sync", "mechanism": "http-json", "contract": "delivery-target"},
+
     {"id": "integrations-for-outreach", "upstream": "integration-platform", "downstream": "outreach-orchestration", "pattern": "anticorruption-layer", "integration": "command", "transport": "sync", "mechanism": "http-json", "contract": "provider-port"},
     {"id": "delivery-to-lead", "upstream": "message-delivery", "downstream": "lead-management", "pattern": "published-language", "integration": "event", "transport": "async", "mechanism": "amqp", "contract": "delivery-event"},
     {"id": "engagement-to-audience", "upstream": "engagement-observation", "downstream": "audience", "pattern": "published-language", "integration": "event", "transport": "async", "mechanism": "amqp", "contract": "engagement-event"},
     {"id": "governance-policy-for-audience", "upstream": "data-governance", "downstream": "audience", "pattern": "published-language", "integration": "policy", "transport": "async", "mechanism": "amqp", "contract": "data-zone-policy"},
-    {"id": "lead-to-sales", "upstream": "lead-management", "downstream": "sales-workflow", "pattern": "customer-supplier", "integration": "query", "transport": "sync", "mechanism": "http-json", "contract": "company-profile"},
+
     {"id": "tenant-context-for-requests", "upstream": "platform-governance", "downstream": "request-fulfillment", "pattern": "published-language", "integration": "policy", "transport": "async", "mechanism": "amqp", "contract": "tenant-context"},
     {"id": "leads-for-requests", "upstream": "lead-management", "downstream": "request-fulfillment", "pattern": "customer-supplier", "integration": "query", "transport": "sync", "mechanism": "http-json", "contract": "lead-profile"},
     {"id": "audience-for-requests", "upstream": "audience", "downstream": "request-fulfillment", "pattern": "customer-supplier", "integration": "query", "transport": "sync", "mechanism": "http-json", "contract": "audience-snapshot"},
     {"id": "campaign-status-for-requests", "upstream": "outreach-orchestration", "downstream": "request-fulfillment", "pattern": "published-language", "integration": "query", "transport": "sync", "mechanism": "http-json", "contract": "campaign-state"},
     {"id": "call-intent-for-requests", "upstream": "outreach-orchestration", "downstream": "request-fulfillment", "pattern": "published-language", "integration": "command", "transport": "sync", "mechanism": "http-json", "contract": "call-intent"},
-    {"id": "request-intent-from-portal", "upstream": "request-fulfillment", "downstream": "platform-governance", "pattern": "published-language", "integration": "command", "transport": "sync", "mechanism": "http-json", "contract": "request-intent"},
-    {"id": "deals-for-requests", "upstream": "sales-workflow", "downstream": "request-fulfillment", "pattern": "customer-supplier", "integration": "query", "transport": "sync", "mechanism": "http-json", "contract": "deal-state"},
-    {"id": "billing-entitlement-for-requests", "upstream": "billing", "downstream": "request-fulfillment", "pattern": "published-language", "integration": "policy", "transport": "async", "mechanism": "amqp", "contract": "billing-entitlement"}
+    {"id": "request-intent-from-portal", "upstream": "request-fulfillment", "downstream": "platform-governance", "pattern": "published-language", "integration": "command", "transport": "sync", "mechanism": "http-json", "contract": "request-intent"}
   ],
   "required_diagrams": [
-    {"id": "bounded-context-map", "path": "architecture/diagrams/bounded-context-map.puml", "contexts": ["platform-governance", "data-governance", "lead-management", "audience", "content-production", "outreach-orchestration", "message-delivery", "engagement-observation", "sales-workflow", "community-intelligence", "publishing", "analytics", "billing", "integration-platform", "request-fulfillment"]},
-    {"id": "context-relationships", "path": "architecture/diagrams/context-relationships.puml", "contexts": ["platform-governance", "data-governance", "lead-management", "audience", "content-production", "outreach-orchestration", "message-delivery", "engagement-observation", "sales-workflow", "community-intelligence", "publishing", "analytics", "billing", "integration-platform", "request-fulfillment"]},
-    {"id": "outreach-flow", "path": "architecture/diagrams/outreach-flow.puml", "contexts": ["data-governance", "lead-management", "audience", "content-production", "outreach-orchestration", "message-delivery", "engagement-observation", "sales-workflow", "analytics"]},
-    {"id": "data-ownership", "path": "architecture/diagrams/data-ownership.puml", "contexts": ["platform-governance", "data-governance", "lead-management", "audience", "content-production", "outreach-orchestration", "message-delivery", "engagement-observation", "sales-workflow", "community-intelligence", "publishing", "analytics", "billing"]}
+    {"id": "bounded-context-map", "path": "architecture/diagrams/bounded-context-map.puml", "contexts": ["platform-governance", "data-governance", "lead-management", "audience", "content-production", "outreach-orchestration", "message-delivery", "engagement-observation", "analytics", "integration-platform", "request-fulfillment"]},
+    {"id": "context-relationships", "path": "architecture/diagrams/context-relationships.puml", "contexts": ["platform-governance", "data-governance", "lead-management", "audience", "content-production", "outreach-orchestration", "message-delivery", "engagement-observation", "analytics", "integration-platform", "request-fulfillment"]},
+    {"id": "outreach-flow", "path": "architecture/diagrams/outreach-flow.puml", "contexts": ["data-governance", "lead-management", "audience", "content-production", "outreach-orchestration", "message-delivery", "engagement-observation", "analytics"]},
+    {"id": "data-ownership", "path": "architecture/diagrams/data-ownership.puml", "contexts": ["platform-governance", "data-governance", "lead-management", "audience", "content-production", "outreach-orchestration", "message-delivery", "engagement-observation", "analytics"]}
   ]
 }

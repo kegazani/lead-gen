@@ -32,7 +32,7 @@
 
 ### 1. Bounded context — граница модели, процесс — граница эксплуатации
 
-Каталог вводит контексты `identity-access`, `data-governance`, `lead-management`, `audience`, `content-production`, `outreach-orchestration`, `message-delivery`, `engagement-observation`, `sales-workflow`, `community-intelligence`, `publishing`, `analytics`, `billing` и `integration-platform`.
+Каталог вводит контексты `identity-access`, `data-governance`, `lead-management`, `audience`, `content-production`, `outreach-orchestration`, `message-delivery`, `engagement-observation`, `analytics` и `integration-platform`.
 
 Контекст владеет терминами, сущностями и инвариантами. Процесс только размещает application service контекста. Поэтому один контекст может исполняться в `api` и `worker`, а `worker` может размещать несколько контекстов, не превращаясь в владельца общей модели.
 
@@ -114,11 +114,11 @@ cmd/<process>/
 
 После выполнения и проверки `establish-domain-architecture` архивируется отдельным подтверждённым шагом. Это создаёт main spec `domain-architecture`. Затем реализационные changes, прежде всего `migrate-platform-to-go`, могут ссылаться на неё как на действующую capability.
 
-Это уточняет, но не отменяет правило `archive-order-and-rule-deltas`: создатель capability архивируется до changes с `MODIFIED`. `full-enterprise-core-scope` сохраняет приоритет перед `telegram-community-digest`; два независимых foundational change не обязаны искусственно упорядочиваться между собой, если не меняют одну capability.
+Это уточняет, но не отменяет правило `archive-order-and-rule-deltas`: создатель capability архивируется до changes с `MODIFIED`. Два независимых foundational change не обязаны искусственно упорядочиваться между собой, если не меняют одну capability.
 
 ## Risks / Trade-offs
 
-- **[Четырнадцать контекстов кажутся избыточными до появления кода]** → контексты не становятся сервисами; объединение допустимо отдельным change после появления доказанной общей модели.
+- **[Десять контекстов кажутся избыточными до появления кода]** → контексты не становятся сервисами; объединение допустимо отдельным change после появления доказанной общей модели.
 - **[Каталог и проза разойдутся]** → каталог объявлен каноническим, а `archlint` проверяет ссылки и обязательные диаграммы; ревью смысловой прозы остаётся человеческим.
 - **[JSON-синтаксис в `.yaml` менее удобен для ручного редактирования]** → цена принята ради нулевых зависимостей валидатора; формат остаётся стандартным YAML 1.2 и может быть механически преобразован позднее.
 - **[Проверка capability читает незавершённые changes]** → `archlint` учитывает только каталоги с `specs/**/spec.md` и main specs, дедуплицируя идентификаторы; документные changes без спек не создают ложных записей.

@@ -18,6 +18,7 @@ import (
 	"lead-gen/contracts/integration-platform/crawl"
 	"lead-gen/contracts/integration-platform/llm"
 	"lead-gen/contracts/integration-platform/search"
+	"lead-gen/contracts/lead-management/deliverytarget"
 	"lead-gen/contracts/lead-management/emailgeneration"
 	"lead-gen/contracts/lead-management/leadsearch"
 )
@@ -174,5 +175,55 @@ func emailGenerationError(err error) error {
 		return fmt.Errorf("%w: %v", emailgeneration.ErrRejected, err)
 	default:
 		return fmt.Errorf("%w: %v", emailgeneration.ErrUnavailable, err)
+	}
+}
+
+// DeliveryTargetDeps — зависимости фабрики in-proc адаптера контракта
+// delivery-target. Контакты обязательны; TenantID — тенант, которому принадлежит
+// хранилище контактов (красная зона — контур клиента).
+type DeliveryTargetDeps struct {
+	// Repositories — адаптеры хранилища (контакты).
+	Repositories Repositories
+	// TenantID — тенант-владелец ссылки; пусто — резолвер честно недоступен.
+	TenantID string
+}
+
+// NewDeliveryTarget собирает опубликованный контракт delivery-target поверх use
+// case разрешения ссылки получателя в адрес по контактам.
+func NewDeliveryTarget(deps DeliveryTargetDeps) deliverytarget.Resolver {
+	if deps.Repositories.Contacts == nil {
+		// Владелец не собран: честно сообщаем о недоступности, а не выдумываем
+		// адрес.
+		return deliverytarget.InProc(deliverytarget.InProcHandler{})
+	}
+	useCase := &app.ResolveDeliveryTarget{
+		Contacts: deps.Repositories.Contacts,
+		TenantID: deps.TenantID,
+	}
+	return deliverytarget.InProc(deliverytarget.InProcHandler{
+		ResolveFunc: func(ctx context.Context, tenantID, recipientRef string) (deliverytarget.Recipient, error) {
+			recipient, err := useCase.Run(ctx, app.ResolveRecipientInput{
+				TenantID:     tenantID,
+				RecipientRef: recipientRef,
+			})
+			if err != nil {
+				return deliverytarget.Recipient{}, deliveryTargetError(err)
+			}
+			return deliverytarget.Recipient{Address: recipient.Address}, nil
+		},
+	})
+}
+
+// deliveryTargetError переводит ошибку сценария разрешения в исход опубликованного
+// контракта: неразрешимая ссылка — ErrRejected, прочее — ErrUnavailable. Ошибка не
+// выдаётся за разрешённый адрес.
+func deliveryTargetError(err error) error {
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, app.ErrInvalidDeliveryTarget):
+		return fmt.Errorf("%w: %v", deliverytarget.ErrRejected, err)
+	default:
+		return fmt.Errorf("%w: %v", deliverytarget.ErrUnavailable, err)
 	}
 }

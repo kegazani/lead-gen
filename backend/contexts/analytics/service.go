@@ -9,6 +9,7 @@ import (
 
 	accessinmemory "lead-gen/backend/contexts/analytics/internal/adapters/access/inmemory"
 	httpapi "lead-gen/backend/contexts/analytics/internal/adapters/http"
+	persistenceinmemory "lead-gen/backend/contexts/analytics/internal/adapters/persistence/inmemory"
 	"lead-gen/backend/contexts/analytics/internal/adapters/transport"
 	"lead-gen/backend/contexts/analytics/internal/app/command"
 	"lead-gen/backend/contexts/analytics/internal/app/query"
@@ -42,6 +43,11 @@ type Config struct {
 	// Access — решение о доступе. nil → локальная in-memory реализация смысла
 	// контракта access-decision владельца platform-governance.
 	Access ports.AccessDecider
+
+	// ProjectionStore — хранилище эксплуатационной проекции дашборда. nil →
+	// in-memory адаптер (dev): состояние витрины живёт в памяти процесса и
+	// теряется при рестарте. PostgreSQL-адаптер задаётся при подключённой СУБД.
+	ProjectionStore ports.ProjectionStore
 
 	// Clock — источник времени прикладного слоя. nil → SystemClock.
 	Clock ports.Clock
@@ -83,6 +89,7 @@ type Slice struct {
 	Server *httpapi.Server
 
 	Dashboard *query.DashboardHandler
+	Reports   *query.ReportHandler
 	Events    *command.ApplyEventHandler
 }
 
@@ -103,11 +110,33 @@ func Build(cfg Config) (*Slice, error) {
 		access = accessinmemory.New()
 	}
 
+	// Хранилище проекции: PostgreSQL при подключённой СУБД либо in-memory dev.
+	// При наличии хранилища проекция восстанавливается из него до старта: витрина
+	// переживает рестарт процесса. Без хранилища состояние живёт только в памяти,
+	// и роль честно предупреждает об этом.
+	store := cfg.ProjectionStore
+	if store == nil {
+		store = persistenceinmemory.New()
+		if cfg.Logger != nil {
+			cfg.Logger.Warn("проекция дашборда в памяти процесса (dev): PostgreSQL не подключён, состояние не переживёт рестарт", observ.Fields{}, "service", ServiceID)
+		}
+	} else {
+		records, err := store.LoadCompanies(context.Background())
+		if err != nil {
+			return nil, fmt.Errorf("analytics: загрузка проекции из хранилища: %w", err)
+		}
+		for _, record := range records {
+			model.Restore(record)
+		}
+	}
+
 	dashboard := query.NewDashboardHandler(model, clock, cfg.StaleDays)
-	events := command.NewApplyEventHandler(model)
+	reports := query.NewReportHandler(query.ModelReportSource{Model: model}, clock)
+	events := command.NewApplyEventHandler(model, store)
 
 	server := httpapi.NewServer(httpapi.Dependencies{
 		Dashboard: dashboard,
+		Reports:   reports,
 		Events:    events,
 		Access:    access,
 		Console:   cfg.Console,
@@ -118,6 +147,7 @@ func Build(cfg Config) (*Slice, error) {
 		Access:    access,
 		Server:    server,
 		Dashboard: dashboard,
+		Reports:   reports,
 		Events:    events,
 	}, nil
 }
@@ -226,8 +256,7 @@ func (s *Service) runWorker(ctx context.Context) error {
 
 	s.logger.Info("worker: подписка на поток событий дашборда запущена", observ.Fields{}, "service", ServiceID)
 	return s.subscriber.Run(ctx, func(ctx context.Context, event command.ApplyEvent) error {
-		s.slice.Events.Handle(ctx, event)
-		return nil
+		return s.slice.Events.Handle(ctx, event)
 	})
 }
 

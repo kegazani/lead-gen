@@ -5,6 +5,7 @@ import (
 	"errors"
 	"testing"
 
+	"lead-gen/contracts/integration-platform/contracttest"
 	contract "lead-gen/contracts/integration-platform/vector"
 )
 
@@ -94,4 +95,14 @@ func TestEmptyDocumentIDRejected(t *testing.T) {
 	if _, err := store.Upsert(context.Background(), contract.Document{Text: "текст"}); !errors.Is(err, contract.ErrRejected) {
 		t.Fatalf("ошибка = %v, ожидалась ErrRejected", err)
 	}
+}
+
+// TestVectorPortContract прогоняет общий contract suite порта vector против
+// in-memory реализации с детерминированным эмбеддером. Тот же suite проходит и
+// против PostgreSQL-адаптера (internal/adapters/vector/postgres).
+func TestVectorPortContract(t *testing.T) {
+	contracttest.RunVectorPortContract(t, func(t *testing.T) contract.Port {
+		t.Helper()
+		return NewMemory(HashEmbedder{})
+	})
 }

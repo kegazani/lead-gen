@@ -44,19 +44,11 @@ type Config struct {
 	// Interval — интервал прохода relay публикации событий взаимодействия.
 	Interval time.Duration
 
-	// Repository — хранилище событий взаимодействия. nil → новое in-memory
-	// хранилище.
-	Repository *persistence.Repository
-
-	// Ledger — журнал дедупликации сырых сигналов. nil → новый журнал в памяти.
-	Ledger *persistence.Ledger
-
-	// Links — реестр трекинг-ссылок. nil → новый реестр в памяти.
-	Links *persistence.Links
-
-	// Journal — журнал outbox событий взаимодействия. nil → новый журнал в
-	// памяти.
-	Journal platformoutbox.Journal
+	// Persistence — адаптеры хранилища контекста. Нулевое значение означает
+	// dev-режим: сборка берёт in-memory адаптеры, и состояние не переживает
+	// рестарт. Продуктовая сборка задаёт PostgreSQL-адаптеры
+	// (NewPostgresPersistence) по DSN зелёной зоны.
+	Persistence Persistence
 
 	// Clock — источник времени прикладного слоя. nil → SystemClock.
 	Clock ports.Clock
@@ -90,11 +82,11 @@ type Config struct {
 
 // Slice — собранный контекст среза: порты, адаптеры и use cases.
 type Slice struct {
-	Repository *persistence.Repository
-	Ledger     *persistence.Ledger
-	Links      *persistence.Links
+	Repository ports.EngagementRepository
+	Ledger     ports.SignalLedger
+	Links      ports.TransitionLinks
 	Journal    platformoutbox.Journal
-	UnitOfWork *outboxinmemory.UnitOfWork
+	UnitOfWork ports.UnitOfWork
 
 	// Relay не равен nil только если при сборке задан Publisher.
 	Relay *platformoutbox.Relay
@@ -107,25 +99,35 @@ type Slice struct {
 	GetEngagement    *query.GetEngagementHandler
 }
 
+// storage выбирает адаптеры хранилища: заданную персистентность либо dev-набор
+// в памяти. Частичная заданность отвергается: иначе чтение и запись работали бы
+// с разными носителями (например, чтение из PostgreSQL, запись в память).
+func storage(p Persistence) (ports.EngagementRepository, ports.SignalLedger, ports.TransitionLinks, platformoutbox.Journal, ports.UnitOfWork, error) {
+	if p.UnitOfWork != nil {
+		if p.Repository == nil || p.Ledger == nil || p.Links == nil || p.Journal == nil {
+			return nil, nil, nil, nil, nil, errors.New("engagement-observation: неполная персистентность: unit-of-work без хранилищ")
+		}
+		return p.Repository, p.Ledger, p.Links, p.Journal, p.UnitOfWork, nil
+	}
+	if p.Repository != nil || p.Ledger != nil || p.Links != nil || p.Journal != nil {
+		return nil, nil, nil, nil, nil, errors.New("engagement-observation: неполная персистентность: хранилища без unit-of-work")
+	}
+
+	memRepository := persistence.New()
+	memLedger := persistence.NewLedger()
+	memLinks := persistence.NewLinks()
+	journal := platformoutbox.NewMemoryJournal()
+	unitOfWork := outboxinmemory.NewUnitOfWorkWith(memRepository, memLedger, memLinks, journal)
+	return memRepository, memLedger, memLinks, journal, unitOfWork, nil
+}
+
 // Build собирает контекст среза из адаптеров и переданных зависимостей.
 // Бизнес-правил здесь нет — соединение адаптеров, портов и use cases только
 // своего контекста.
 func Build(cfg Config) (*Slice, error) {
-	repository := cfg.Repository
-	if repository == nil {
-		repository = persistence.New()
-	}
-	ledger := cfg.Ledger
-	if ledger == nil {
-		ledger = persistence.NewLedger()
-	}
-	links := cfg.Links
-	if links == nil {
-		links = persistence.NewLinks()
-	}
-	journal := cfg.Journal
-	if journal == nil {
-		journal = platformoutbox.NewMemoryJournal()
+	repository, ledger, links, journal, unitOfWork, err := storage(cfg.Persistence)
+	if err != nil {
+		return nil, err
 	}
 	clock := cfg.Clock
 	if clock == nil {
@@ -135,8 +137,6 @@ func Build(cfg Config) (*Slice, error) {
 	if ids == nil {
 		ids = idgen.NewRandom()
 	}
-
-	unitOfWork := outboxinmemory.NewUnitOfWorkWith(repository, ledger, links, journal)
 
 	ingest := command.NewIngestEventHandler(unitOfWork, clock, ids)
 	recordTransition := command.NewRecordTransitionHandler(links, ingest, ids)
@@ -191,6 +191,13 @@ func New(cfg Config) (*Service, error) {
 	}
 	if cfg.Interval <= 0 {
 		cfg.Interval = defaultPublishInterval
+	}
+	if cfg.Persistence.UnitOfWork == nil {
+		cfg.Logger.Warn(
+			"engagement-observation: персистентность в памяти процесса (dev-режим, состояние не переживает рестарт); задайте DSN зелёной зоны для PostgreSQL",
+			observ.Fields{},
+			"service", ServiceID,
+		)
 	}
 
 	slice, err := Build(cfg)

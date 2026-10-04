@@ -195,3 +195,69 @@ func TestRehydrateMessage_RejectsTerminalWithoutAttempts(t *testing.T) {
 		t.Fatalf("терминальное сообщение без попыток: got %v", err)
 	}
 }
+
+func TestMessage_ContentRoundTrip(t *testing.T) {
+	params := validMessageParams(t)
+	params.Subject = "Тема письма"
+	params.Body = "Тело письма"
+	message, err := NewMessage(params)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if message.Subject() != "Тема письма" || message.Body() != "Тело письма" {
+		t.Fatalf("содержимое агрегата: %q / %q", message.Subject(), message.Body())
+	}
+	restored, err := RehydrateMessage(message.Snapshot())
+	if err != nil {
+		t.Fatalf("RehydrateMessage: %v", err)
+	}
+	if restored.Subject() != "Тема письма" || restored.Body() != "Тело письма" {
+		t.Fatalf("содержимое не восстановлено: %q / %q", restored.Subject(), restored.Body())
+	}
+}
+
+func TestMessage_RetryableAfterTemporary(t *testing.T) {
+	message, err := NewMessage(validMessageParams(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := message.StartDelivery(testTime); err != nil {
+		t.Fatal(err)
+	}
+	if err := message.RecordDelivery(OutcomeTemporary, "mailer-unavailable", testTime); err != nil {
+		t.Fatal(err)
+	}
+	message.PullDomainEvents()
+	if !message.IsRetryable() {
+		t.Fatal("сообщение с временным исходом должно быть доступно повтору")
+	}
+	if err := message.ReopenForRetry(testTime.Add(time.Minute)); err != nil {
+		t.Fatalf("ReopenForRetry: %v", err)
+	}
+	if message.Status() != MessageStatusSending {
+		t.Fatalf("состояние после повтора: %q", message.Status())
+	}
+	if err := message.RecordDelivery(OutcomeDelivered, "250", testTime.Add(2*time.Minute)); err != nil {
+		t.Fatalf("RecordDelivery: %v", err)
+	}
+	attempts := message.Attempts()
+	if len(attempts) != 2 || attempts[1].Number != 2 {
+		t.Fatalf("журнал попыток: %+v", attempts)
+	}
+}
+
+func TestMessage_NotRetryableAfterProviderVerdict(t *testing.T) {
+	message, err := NewMessage(validMessageParams(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := message.RecordDelivery(OutcomeHardBounce, "550", testTime); err != nil {
+		t.Fatal(err)
+	}
+	if message.IsRetryable() {
+		t.Fatal("жёсткий отказ провайдера не подлежит повтору")
+	}
+	if err := message.ReopenForRetry(testTime); !errors.Is(err, ErrMessageNotRetryable) {
+		t.Fatalf("ожидалась ErrMessageNotRetryable, got %v", err)
+	}
+}

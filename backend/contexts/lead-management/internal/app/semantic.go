@@ -14,9 +14,14 @@ import (
 	"lead-gen/contracts/integration-platform/vector"
 )
 
-// errVectorUnavailable — порт векторного хранилища не сконфигурирован: считать и
-// искать эмбеддинги нечем. Кандидаты в этом случае не выдумываются.
-var errVectorUnavailable = errors.New("app: семантический поиск недоступен: векторное хранилище не сконфигурировано")
+// ErrVectorUnavailable — порт векторного хранилища не сконфигурирован: считать и
+// искать эмбеддинги нечем. Кандидаты в этом случае не выдумываются. Экспортирована,
+// чтобы транспорт консоли отличал честную недоступность (503) от прочих сбоев.
+var ErrVectorUnavailable = errors.New("app: семантический поиск недоступен: векторное хранилище не сконфигурировано")
+
+// ErrInvalidRecallRequest — запрос семантического recall некорректен: пустой текст
+// оффера. Владелец не выдумывает кандидатов по несформулированному запросу.
+var ErrInvalidRecallRequest = errors.New("app: запрос семантического поиска некорректен")
 
 // SourceOsint — имя источника составляющих, взятых из карточки компании
 // (capability osint-enrichment).
@@ -53,7 +58,7 @@ type EmbedCompanyInput struct {
 // векторном хранилище и сохраняет карточку.
 func (u *EmbedCompany) Run(ctx context.Context, in EmbedCompanyInput) (domain.Embedding, error) {
 	if u.Vector == nil {
-		return domain.Embedding{}, errVectorUnavailable
+		return domain.Embedding{}, ErrVectorUnavailable
 	}
 	company, err := u.Profiles.FindByID(ctx, in.CompanyID)
 	if err != nil {
@@ -114,10 +119,14 @@ type SemanticRecallInput struct {
 }
 
 // Run возвращает кандидатов, упорядоченных по убыванию близости. Пустой список —
-// допустимый исход: recall может не найти кандидатов.
+// допустимый исход: recall может не найти кандидатов. Пустой текст оффера —
+// доменный отказ: владелец не выдумывает кандидатов по несформулированному запросу.
 func (u *SemanticRecall) Run(ctx context.Context, in SemanticRecallInput) ([]RecallCandidate, error) {
+	if strings.TrimSpace(in.Text) == "" {
+		return nil, fmt.Errorf("%w: текст запроса обязателен", ErrInvalidRecallRequest)
+	}
 	if u.Vector == nil {
-		return nil, errVectorUnavailable
+		return nil, ErrVectorUnavailable
 	}
 	matches, err := u.Vector.Search(ctx, in.Text, in.Limit)
 	if err != nil {

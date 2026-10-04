@@ -14,15 +14,19 @@ import (
 // newTenant собирает тенант для проверок репозитория.
 func newTenant(t *testing.T) *domain.Tenant {
 	t.Helper()
+	roles, err := domain.NewRoleSet(domain.RoleClient)
+	if err != nil {
+		t.Fatalf("NewRoleSet: %v", err)
+	}
 	tenant, err := domain.RegisterTenant(domain.RegisterTenantParams{
 		ID:          "tenant-1",
 		CompanyName: "ООО Ромашка",
 		Description: "Поставщик промышленного оборудования",
-		UserID:      "user-1",
-		Login:       "client-1",
-		Role:        domain.RoleClient,
 		At:          time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC),
+		Actor:       "user-1",
 		EventID:     "evt-1",
+		AuditID:     "audit-1",
+		User:        &domain.NewUser{ID: "user-1", Login: "client-1", Roles: roles},
 	})
 	if err != nil {
 		t.Fatalf("RegisterTenant: %v", err)

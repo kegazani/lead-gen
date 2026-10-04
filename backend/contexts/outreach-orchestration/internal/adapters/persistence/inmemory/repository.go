@@ -34,6 +34,7 @@ type Repository struct {
 var (
 	_ ports.CampaignRepository    = (*Repository)(nil)
 	_ ports.DraftWindowRepository = (*Repository)(nil)
+	_ ports.CampaignLister        = (*Repository)(nil)
 )
 
 // New создаёт пустой репозиторий.
@@ -164,6 +165,18 @@ func (r *Repository) Clone() *Repository {
 		clone.campaigns[id] = snapshot
 	}
 	return clone
+}
+
+// ListCampaignIDs реализует ports.CampaignLister: перечисление идентификаторов
+// сохранённых кампаний для движка последовательностей. Порядок не определён.
+func (r *Repository) ListCampaignIDs(_ context.Context) ([]domain.CampaignID, error) {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	ids := make([]domain.CampaignID, 0, len(r.campaigns))
+	for id := range r.campaigns {
+		ids = append(ids, id)
+	}
+	return ids, nil
 }
 
 // ReplaceWith заменяет состояние репозитория состоянием другого. Вызывается

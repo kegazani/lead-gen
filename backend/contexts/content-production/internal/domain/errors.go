@@ -63,4 +63,40 @@ var (
 	// ErrInvalidSnapshot — сохранённое состояние внутренне противоречиво и не
 	// может быть восстановлено без нарушения инвариантов.
 	ErrInvalidSnapshot = errors.New("домен: некорректное сохранённое состояние")
+
+	// ErrInvalidBrandKit — бренд-комплект задан недопустимо (цвет вне формата
+	// #rrggbb, пустое семейство шрифтов при заданном оформлении).
+	ErrInvalidBrandKit = errors.New("домен: некорректный бренд-комплект")
+
+	// ErrCompanyNameRequired — данные компании без наименования.
+	ErrCompanyNameRequired = errors.New("домен: наименование компании обязательно")
+
+	// ErrInvalidContactKind — вид контакта не объявлен доменом.
+	ErrInvalidContactKind = errors.New("домен: неизвестный вид контакта")
+
+	// ErrInvalidContactValue — значение контакта пусто или задано недопустимо.
+	ErrInvalidContactValue = errors.New("домен: некорректное значение контакта")
+
+	// ErrInvalidLeadForm — форма заявки задана недопустимо (неизвестное поле,
+	// дубликат, отсутствие минимально необходимого состава).
+	ErrInvalidLeadForm = errors.New("домен: некорректная форма заявки")
+
+	// ErrFormActionRequired — форма заявки без приёмника: заявку некуда
+	// передавать, и платформа её не хранит.
+	ErrFormActionRequired = errors.New("домен: приёмник заявки обязателен")
+
+	// ErrRestoreSelf — возврат к версии указывает ту же версию, что восстанавливается.
+	ErrRestoreSelf = errors.New("домен: возврат к самой себе недопустим")
+
+	// ErrMaterialsInsufficient — предоставленных материалов не хватает для
+	// построения обязательного блока; система перечисляет, каких сведений нет, и не
+	// дополняет их самостоятельно.
+	ErrMaterialsInsufficient = errors.New("домен: материалов клиента недостаточно")
+
+	// ErrUnknownBlockRole — роль блока лендинга не объявлена доменом.
+	ErrUnknownBlockRole = errors.New("домен: неизвестная роль блока лендинга")
+
+	// ErrStructureNotApproved — генерация текстов запрошена до утверждения
+	// структуры оператором.
+	ErrStructureNotApproved = errors.New("домен: структура лендинга не утверждена")
 )

@@ -65,4 +65,4 @@
 
 ## 11. Доменная привязка
 
-- [ ] 11.1 Сверить доменную привязку с `architecture/domain-catalog.yaml`: context `content-production`, aggregate `content-package`, aggregate root `content-asset`, события `content-version-created`, `content-rendered`, контракты `content-request`, `content-version`, `rendered-artifact` (верификация: `go -C tools/archlint run .` завершается кодом 0; при изменении границы обновлены каталог, `docs/domain-model.md` и затронутые диаграммы)
+- [x] 11.1 Сверить доменную привязку с `architecture/domain-catalog.yaml`: context `content-production`, aggregate `content-package`, aggregate root `content-asset`, события `content-version-created`, `content-rendered`, контракты `content-request`, `content-version`, `rendered-artifact` (верификация: `go -C tools/archlint run .` завершается кодом 0; при изменении границы обновлены каталог, `docs/domain-model.md` и затронутые диаграммы)

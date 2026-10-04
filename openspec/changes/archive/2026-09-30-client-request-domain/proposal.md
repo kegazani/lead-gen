@@ -12,7 +12,7 @@
   - переход в `processing` (запуск агентов) запрещён до состояния `validated`;
   - оффер после выпуска в работу не редактируется на месте — любое изменение создаёт новую версию оффера;
   - заявка привязана ровно к одному тенанту и не переносится между тенантами;
-  - фулфилмент-состояние ссылается на артефакты других контекстов по идентификаторам (`audience-snapshot`, `campaign`, `deal`), а не по указателям.
+  - фулфилмент-состояние ссылается на артефакты других контекстов по идентификаторам (`audience-snapshot`, `campaign`), а не по указателям.
 - Доменные события: `request-submitted`, `request-validated`, `request-processing-started`, `request-fulfilled`, `request-rejected`, `request-cancelled`.
 - Обновляются `architecture/domain-catalog.yaml`, `docs/domain-model.md` и затронутые диаграммы: новый контекст, его capability, сервис развёртывания, роли и межконтекстные контракты.
 
@@ -28,7 +28,7 @@
 
 ## Impact
 
-**Затрагиваемые bounded contexts (по `architecture/domain-catalog.yaml`):** новый `request-fulfillment` (core); отношения (references) с `lead-management` (поиск и лиды), `audience` (`audience-snapshot`), `outreach-orchestration` (`campaign`), `sales-workflow` (`deal`), `billing` (подписка и лимиты), `platform-governance` (`tenant`).
+**Затрагиваемые bounded contexts (по `architecture/domain-catalog.yaml`):** новый `request-fulfillment` (core); отношения (references) с `lead-management` (поиск и лиды), `audience` (`audience-snapshot`), `outreach-orchestration` (`campaign`), `platform-governance` (`tenant`).
 
 **Каталог и модель.** Обновляются `architecture/domain-catalog.yaml` (новый контекст, его capabilities, `service`, `roles`, `contracts`), `docs/domain-model.md` (ubiquitous language: термины «Заявка», «Оффер»; тактическая модель нового агрегата), `docs/system-map.md` (проекция контекст → сервис, матрица связей). **Доменная модель меняется** — это явное добавление core-контекста и агрегата, а не эксплуатационная проекция.
 

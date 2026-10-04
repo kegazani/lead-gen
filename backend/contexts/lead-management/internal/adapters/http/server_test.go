@@ -199,6 +199,8 @@ type testEnv struct {
 	mail        *fakeMail
 	llm         *fakeLLM
 	forum       *fakeForum
+	vector      *fakeVectorPort
+	recall      *app.SemanticRecall
 	server      *httpapi.Server
 }
 
@@ -221,6 +223,11 @@ func newTestEnvWithAuth(auth httpapi.AuthConfig) *testEnv {
 	mailPort := &fakeMail{}
 	llmPort := &fakeLLM{}
 	forumPort := &fakeForum{}
+	// Векторный порт контракта vector: семантический recall и эмбеддинг компании
+	// собираются, как в сервисе. Тест подменяет matches, чтобы задать кандидатов.
+	vectorPort := &fakeVectorPort{}
+	recall := &app.SemanticRecall{Vector: vectorPort}
+	embedCompany := &app.EmbedCompany{Profiles: profiles, Vector: vectorPort, Clock: fakeClock{t: testTime}}
 
 	runSearch := &app.RunSearch{
 		Jobs:        jobs,
@@ -274,17 +281,19 @@ func newTestEnvWithAuth(auth httpapi.AuthConfig) *testEnv {
 	}
 
 	server := httpapi.NewServer(httpapi.Dependencies{
-		RunSearch:     runSearch,
-		Showcase:      showcase,
-		ChangeStage:   changeStage,
-		Snooze:        snooze,
-		SendToLead:    sendToLead,
-		SendToSegment: sendToSegment,
-		Templates:     templateLibrary,
-		SuggestNiches: &app.SuggestNiches{LLM: llmPort},
-		Dialogue:      &app.ConverseDialogue{LLM: llmPort},
-		ForumSignals:  &app.SearchForumSignals{Forum: forumPort},
-		Auth:          auth,
+		RunSearch:      runSearch,
+		Showcase:       showcase,
+		ChangeStage:    changeStage,
+		Snooze:         snooze,
+		SendToLead:     sendToLead,
+		SendToSegment:  sendToSegment,
+		Templates:      templateLibrary,
+		SuggestNiches:  &app.SuggestNiches{LLM: llmPort},
+		Dialogue:       &app.ConverseDialogue{LLM: llmPort},
+		ForumSignals:   &app.SearchForumSignals{Forum: forumPort},
+		SemanticRecall: recall,
+		EmbedCompany:   embedCompany,
+		Auth:           auth,
 	})
 
 	return &testEnv{
@@ -298,6 +307,8 @@ func newTestEnvWithAuth(auth httpapi.AuthConfig) *testEnv {
 		mail:        mailPort,
 		llm:         llmPort,
 		forum:       forumPort,
+		vector:      vectorPort,
+		recall:      recall,
 		server:      server,
 	}
 }

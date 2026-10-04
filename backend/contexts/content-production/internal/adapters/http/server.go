@@ -30,12 +30,15 @@ const (
 // Dependencies — внешние зависимости HTTP-адаптера: прикладные сценарии
 // контекста.
 type Dependencies struct {
-	CreateContentPackage  *command.CreateContentPackageHandler
-	PublishContentVersion *command.PublishContentVersionHandler
-	RequestRender         *command.RequestRenderHandler
-	ProduceContent        *command.ProduceContentHandler
-	GetContent            *query.GetContentHandler
-	GetRenderJob          *query.GetRenderJobHandler
+	CreateContentPackage    *command.CreateContentPackageHandler
+	PublishContentVersion   *command.PublishContentVersionHandler
+	RequestRender           *command.RequestRenderHandler
+	ProduceContent          *command.ProduceContentHandler
+	RestoreContentVersion   *command.RestoreContentVersionHandler
+	GetContent              *query.GetContentHandler
+	GetRenderJob            *query.GetRenderJobHandler
+	GetLandingPage          *query.GetLandingPageHandler
+	ProposeLandingStructure *query.ProposeLandingStructureHandler
 }
 
 // Server — HTTP-сервер среза. Нулевое значение непригодно: используйте
@@ -63,9 +66,12 @@ func (s *Server) routes() http.Handler {
 
 	mux.HandleFunc("POST /content/packages", s.handleCreatePackage)
 	mux.HandleFunc("POST /content/packages/{assetID}/versions", s.handlePublishVersion)
+	mux.HandleFunc("POST /content/packages/{assetID}/versions/{versionID}/restore", s.handleRestoreVersion)
 	mux.HandleFunc("GET /content/packages/{assetID}", s.handleGetContent)
+	mux.HandleFunc("GET /content/packages/{assetID}/landing-page", s.handleGetLandingPage)
 	mux.HandleFunc("POST /content/packages/{assetID}/render-jobs", s.handleRequestRender)
 	mux.HandleFunc("POST /content/produce", s.handleProduce)
+	mux.HandleFunc("POST /content/landing-structure", s.handleProposeLandingStructure)
 	mux.HandleFunc("GET /content/render-jobs/{renderJobID}", s.handleGetRenderJob)
 	mux.HandleFunc("GET /healthz", s.handleHealth)
 
@@ -132,8 +138,19 @@ func statusForError(err error) int {
 		return http.StatusServiceUnavailable
 	case errors.Is(err, ports.ErrRenderRejected):
 		return http.StatusBadGateway
+	case errors.Is(err, domain.ErrRestoreSelf):
+		return http.StatusConflict
 	case errors.Is(err, domain.ErrEmptyID),
 		errors.Is(err, domain.ErrMissingActor),
+		errors.Is(err, domain.ErrInvalidBrandKit),
+		errors.Is(err, domain.ErrCompanyNameRequired),
+		errors.Is(err, domain.ErrInvalidContactKind),
+		errors.Is(err, domain.ErrInvalidContactValue),
+		errors.Is(err, domain.ErrInvalidLeadForm),
+		errors.Is(err, domain.ErrFormActionRequired),
+		errors.Is(err, domain.ErrMaterialsInsufficient),
+		errors.Is(err, domain.ErrUnknownBlockRole),
+		errors.Is(err, domain.ErrStructureNotApproved),
 		errors.Is(err, domain.ErrMissingTime),
 		errors.Is(err, domain.ErrMissingEventID),
 		errors.Is(err, domain.ErrEmptyContent),

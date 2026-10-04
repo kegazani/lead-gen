@@ -64,6 +64,31 @@ func TestCommand_IdempotencyKey(t *testing.T) {
 	}
 }
 
+func TestCommand_ContentOptional(t *testing.T) {
+	// Поля содержимого необязательны: команда без темы и тела остаётся валидной.
+	if err := validCommand().Validate(); err != nil {
+		t.Fatalf("команда без содержимого должна быть допустима: %v", err)
+	}
+
+	// Непустые тема и тело также допустимы и не ломают разбор.
+	withContent := validCommand()
+	withContent.Subject = "Тема письма"
+	withContent.Body = "Тело письма"
+	if err := withContent.Validate(); err != nil {
+		t.Fatalf("команда с содержимым отвергнута: %v", err)
+	}
+	if withContent.Subject != "Тема письма" || withContent.Body != "Тело письма" {
+		t.Fatalf("содержимое не сохранено: %+v", withContent)
+	}
+}
+
+func TestSchemaVersion_MinorAddition(t *testing.T) {
+	// Добавление темы и тела — MINOR: MAJOR остаётся 1.
+	if SchemaVersion != "1.1.0" {
+		t.Fatalf("ожидалась версия схемы 1.1.0, got %q", SchemaVersion)
+	}
+}
+
 func TestInProcHandler_WithoutFuncIsUnavailable(t *testing.T) {
 	port := InProc(InProcHandler{})
 	if _, err := port.Deliver(nil, validCommand()); err != ErrUnavailable {

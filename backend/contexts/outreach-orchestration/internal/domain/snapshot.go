@@ -48,6 +48,11 @@ type CampaignSnapshot struct {
 	State     CampaignState
 	Drafts    []ActionDraftSnapshot
 	Decisions []OperatorDecisionSnapshot
+
+	// Sequences и Executions — сценарии и участия последовательностей. Их
+	// состояние хранится примитивным снимком (snapshot_sequence.go).
+	Sequences  []SequenceDefinitionSnapshot `json:"sequences,omitempty"`
+	Executions []SequenceExecutionSnapshot  `json:"executions,omitempty"`
 }
 
 // Snapshot возвращает состояние черновика для сохранения.
@@ -86,14 +91,24 @@ func (c *Campaign) Snapshot() CampaignSnapshot {
 	for _, d := range c.decisions {
 		decisions = append(decisions, d.Snapshot())
 	}
+	sequences := make([]SequenceDefinitionSnapshot, 0, len(c.definitionOrder))
+	for _, id := range c.definitionOrder {
+		sequences = append(sequences, c.definitions[id].Snapshot())
+	}
+	executions := make([]SequenceExecutionSnapshot, 0, len(c.executionOrder))
+	for _, id := range c.executionOrder {
+		executions = append(executions, c.executions[id].Snapshot())
+	}
 	return CampaignSnapshot{
-		ID:        c.id,
-		TenantID:  c.tenantID,
-		Name:      c.name,
-		Window:    c.window,
-		State:     c.state,
-		Drafts:    drafts,
-		Decisions: decisions,
+		ID:         c.id,
+		TenantID:   c.tenantID,
+		Name:       c.name,
+		Window:     c.window,
+		State:      c.state,
+		Drafts:     drafts,
+		Decisions:  decisions,
+		Sequences:  sequences,
+		Executions: executions,
 	}
 }
 
@@ -165,13 +180,15 @@ func RehydrateCampaign(s CampaignSnapshot) (*Campaign, error) {
 	}
 
 	c := &Campaign{
-		id:       s.ID,
-		tenantID: s.TenantID,
-		name:     strings.TrimSpace(s.Name),
-		window:   s.Window,
-		state:    s.State,
-		drafts:   make(map[DraftID]*ActionDraft),
-		order:    make([]DraftID, 0, len(s.Drafts)),
+		id:          s.ID,
+		tenantID:    s.TenantID,
+		name:        strings.TrimSpace(s.Name),
+		window:      s.Window,
+		state:       s.State,
+		drafts:      make(map[DraftID]*ActionDraft),
+		order:       make([]DraftID, 0, len(s.Drafts)),
+		definitions: make(map[SequenceID]*SequenceDefinition),
+		executions:  make(map[ExecutionID]*SequenceExecution),
 	}
 
 	for _, ds := range s.Drafts {
@@ -227,6 +244,48 @@ func RehydrateCampaign(s CampaignSnapshot) (*Campaign, error) {
 
 	if err := c.validateRehydratedState(); err != nil {
 		return nil, err
+	}
+
+	for _, ds := range s.Sequences {
+		definition, err := RehydrateSequenceDefinition(c.id, ds)
+		if err != nil {
+			return nil, fmt.Errorf("%w: сценарий %s: %v", ErrInvalidSnapshot, ds.ID, err)
+		}
+		if definition.tenant != c.tenantID {
+			return nil, fmt.Errorf(
+				"%w: сценарий %s принадлежит тенанту %s, а кампания — %s",
+				ErrInvalidSnapshot, definition.id, definition.tenant, c.tenantID,
+			)
+		}
+		if _, exists := c.definitions[definition.id]; exists {
+			return nil, fmt.Errorf("%w: сценарий %s", ErrDuplicateSequence, definition.id)
+		}
+		c.definitions[definition.id] = definition
+		c.definitionOrder = append(c.definitionOrder, definition.id)
+	}
+
+	for _, es := range s.Executions {
+		execution, err := RehydrateSequenceExecution(c.id, es)
+		if err != nil {
+			return nil, fmt.Errorf("%w: участие %s: %v", ErrInvalidSnapshot, es.ID, err)
+		}
+		if execution.tenant != c.tenantID {
+			return nil, fmt.Errorf(
+				"%w: участие %s принадлежит тенанту %s, а кампания — %s",
+				ErrInvalidSnapshot, execution.id, execution.tenant, c.tenantID,
+			)
+		}
+		if _, ok := c.definitions[execution.sequence]; !ok {
+			return nil, fmt.Errorf(
+				"%w: участие %s ссылается на отсутствующий сценарий %s",
+				ErrInvalidSnapshot, execution.id, execution.sequence,
+			)
+		}
+		if _, exists := c.executions[execution.id]; exists {
+			return nil, fmt.Errorf("%w: участие %s", ErrDuplicateExecution, execution.id)
+		}
+		c.executions[execution.id] = execution
+		c.executionOrder = append(c.executionOrder, execution.id)
 	}
 	return c, nil
 }

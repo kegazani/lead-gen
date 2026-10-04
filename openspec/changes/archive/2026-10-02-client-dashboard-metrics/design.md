@@ -1,6 +1,6 @@
 ## Context
 
-`campaign-reporting` (`analytics`) описана как снимки (`report-snapshot`), дашборд клиента — real-time. Воронка — `lead-workflow` (`not warmed`/`email sent`/`warming`/`cold` + snooze). Сигналы — `engagement-observation` (без открытий, pixel-free). Полная CRM — `sales-workflow`. Мотивация — в `proposal.md`.
+`campaign-reporting` (`analytics`) описана как снимки (`report-snapshot`), дашборд клиента — real-time. Воронка — `lead-workflow` (`not warmed`/`email sent`/`warming`/`cold` + snooze). Сигналы — `engagement-observation` (без открытий, pixel-free). Мотивация — в `proposal.md`.
 
 ## Goals / Non-Goals
 
@@ -36,7 +36,7 @@
 
 ### Решение 5: разнесение CRM
 
-Клиент видит только счётчики; содержимое ответов и полная CRM — на админской части (`sales-workflow`). Переход между ними — по роли (`access-decision`).
+Клиент видит только счётчики; содержимое ответов и полная CRM — на админской части. Переход между ними — по роли (`access-decision`).
 
 ## Risks / Trade-offs
 

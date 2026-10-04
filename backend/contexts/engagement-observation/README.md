@@ -59,12 +59,16 @@ context `engagement-observation` из `architecture/domain-catalog.yaml`. Кат
 
 ## Объём среза
 
-Реализованы домен, use cases, порты и адаптеры. Хранилище, журнал дедупликации,
-реестр ссылок и outbox — только in-memory; драйвер PostgreSQL отсутствует.
-Транспортный потребитель разбирает тело события доставки в форме
-`delivery-event`; контракт `delivery-event` у владельца (`message-delivery`) ещё
-каркас волны 0, поэтому форма разбирается адаптером и уточнится, когда владелец
-наполнит контракт.
+Реализованы домен, use cases, порты и адаптеры. Хранилище событий, журнал
+дедупликации, реестр ссылок и outbox доступны и в PostgreSQL
+(`internal/adapters/persistence/postgres`, схема `engagement-observation`,
+миграции `migrations/`), и в памяти. In-memory-адаптеры остаются тестовым и
+dev-носителем: продуктовая сборка получает PostgreSQL-адаптеры
+(`NewPostgresPersistence`) при заданном DSN зелёной зоны, без DSN — in-memory
+dev-режим с предупреждением. Транспортный потребитель разбирает тело события
+доставки в форме `delivery-event`; контракт `delivery-event` у владельца
+(`message-delivery`) ещё каркас волны 0, поэтому форма разбирается адаптером и
+уточнится, когда владелец наполнит контракт.
 
 ## Проверка
 
@@ -73,4 +77,12 @@ gofmt -l backend/contexts/engagement-observation contracts/engagement-observatio
 go -C backend/contexts/engagement-observation test -count=1 ./...
 go -C backend/contexts/engagement-observation vet ./...
 go -C tools/importlint run .
+```
+
+PostgreSQL-адаптеры проверяются отдельно против реальной базы (иначе тесты
+пропускаются):
+
+```sh
+LEADGEN_POSTGRES_TEST_DSN='postgres://...?sslmode=disable' \
+  go -C backend/contexts/engagement-observation test ./internal/adapters/persistence/postgres/...
 ```

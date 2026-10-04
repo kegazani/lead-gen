@@ -2,6 +2,7 @@ package contracttest
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"lead-gen/backend/contexts/lead-management/internal/domain"
@@ -31,6 +32,13 @@ func RunContactRepositoryContract(t *testing.T, newRepository ContactRepositoryF
 			t.Fatalf("FindByID: %v", err)
 		}
 		assertContact(t, loaded, contact)
+	})
+
+	t.Run("отсутствующий контакт даёт ErrContactNotFound", func(t *testing.T) {
+		repository := newRepository(t)
+		if _, err := repository.FindByID(ctx, domain.ContactID("missing-contact")); !errors.Is(err, ports.ErrContactNotFound) {
+			t.Fatalf("FindByID отсутствующего контакта: ошибка = %v, ожидалась ErrContactNotFound", err)
+		}
 	})
 
 	t.Run("ListByCompany возвращает только контакты компании", func(t *testing.T) {

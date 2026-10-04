@@ -12,11 +12,7 @@ rectangle "content-production" as Content
 rectangle "outreach-orchestration" as Outreach
 rectangle "message-delivery" as Delivery
 rectangle "engagement-observation" as Engagement
-rectangle "sales-workflow" as Sales
-rectangle "community-intelligence" as Community
-rectangle "publishing" as Publishing
 rectangle "analytics" as Analytics
-rectangle "billing" as Billing
 rectangle "integration-platform" as Integration
 rectangle "request-fulfillment" as Requests
 
@@ -25,7 +21,6 @@ Governance --> Outreach : PL / policy\nasync · amqp\nprocessing-authority
 Governance --> Delivery : PL / policy\nasync · amqp\nsuppression-policy
 Governance --> Audience : PL / policy\nasync · amqp\ndata-zone-policy
 Leads --> Audience : C/S / query\nsync · http-json\nlead-profile
-Leads --> Sales : C/S / query\nsync · http-json\ncompany-profile
 Audience --> Outreach : C/S / query\nsync · http-json\naudience-snapshot
 Content --> Outreach : C/S / query\nsync · http-json\ncontent-version
 Outreach --> Delivery : PL / command\nsync · http-json\napproved-action
@@ -33,22 +28,15 @@ Delivery --> Engagement : PL / event\nasync · amqp\ndelivery-event
 Delivery --> Leads : PL / event\nasync · amqp\ndelivery-event
 Engagement --> Outreach : PL / event\nasync · amqp\nengagement-event
 Engagement --> Audience : PL / event\nasync · amqp\nengagement-event
-Outreach --> Sales : PL / event\nasync · amqp\noutreach-outcome
-Sales --> Billing : PL / event\nasync · amqp\nattributed-result
-Community --> Publishing : C/S / command\nsync · http-json\ncommunity-digest
 Outreach --> Analytics : PL / event\nasync · amqp\nanalytics-event
 Delivery --> Analytics : PL / event\nasync · amqp\ndelivery-event
 Engagement --> Analytics : PL / event\nasync · amqp\nengagement-event
-Sales --> Analytics : PL / event\nasync · amqp\ndeal-state
 Platform --> Outreach : PL / policy\nasync · amqp\naccess-decision
 
 Integration ..> Leads : ACL / command\nsync · http-json\nprovider-port
 Integration ..> Leads : ACL / command\nsync · http-json\nvector
 Integration ..> Content : ACL / command\nsync · http-json\nprovider-port
 Integration ..> Delivery : ACL / command\nsync · http-json\nprovider-port
-Integration ..> Sales : ACL / command\nsync · http-json\nprovider-port
-Integration ..> Community : ACL / command\nsync · http-json\nprovider-port
-Integration ..> Publishing : ACL / command\nsync · http-json\nprovider-port
 Integration ..> Outreach : ACL / command\nsync · http-json\nprovider-port
 
 Platform --> Requests : PL / policy\nasync · amqp\ntenant-context
@@ -57,8 +45,6 @@ Audience --> Requests : C/S / query\nsync · http-json\naudience-snapshot
 Outreach --> Requests : PL / query\nsync · http-json\ncampaign-state
 Outreach --> Requests : PL / command\nsync · http-json\ncall-intent
 Requests --> Platform : PL / command\nsync · http-json\nrequest-intent
-Sales --> Requests : C/S / query\nsync · http-json\ndeal-state
-Billing --> Requests : PL / policy\nasync · amqp\nbilling-entitlement
 Integration ..> Requests : ACL / command\nsync · http-json\nvector
 
 legend bottom
@@ -77,11 +63,7 @@ endlegend
 ' CTX:outreach-orchestration
 ' CTX:message-delivery
 ' CTX:engagement-observation
-' CTX:sales-workflow
-' CTX:community-intelligence
-' CTX:publishing
 ' CTX:analytics
-' CTX:billing
 ' CTX:integration-platform
 ' CTX:request-fulfillment
 @enduml

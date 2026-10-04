@@ -3,19 +3,18 @@
 # Два именованных состояния одной и той же конфигурации:
 #   - совмещённый первый деплой (текущее содержимое файла) — семь групп, в каждой
 #     несколько сервисов: меньше процессов на старте, один образ на всё;
-#   - целевое состояние — пятнадцать групп, по одной на каждый сервис каталога
+#   - целевое состояние — одиннадцать групп, по одной на каждый сервис каталога
 #     (`architecture/domain-catalog.yaml`). Пример целевого файла — `deploy/README.md`.
 # Переход между состояниями — правка только этого файла: ни код, ни доменная
 # модель, ни схема данных не меняются (design.md, Решения 5 и 11).
 #
-# Статус реализации. Реализованы все пятнадцать сервисов каталога, включая
-# `analytics`, `outreach-orchestration`, `lead-management`, `request-fulfillment`,
-# `platform-governance`, `integration-platform` и добавленные волнами 0–1
-# `data-governance`, `audience`, `content-production`, `message-delivery`,
-# `engagement-observation`, `sales-workflow`, `community-intelligence`,
-# `publishing`, `billing`. Заглушек не осталось: каждая объявленная ниже роль
-# имеет собственную реализацию в `backend/contexts/<id>` (`cmd/lead-gen`). Тип
-# `stubService` сохранён как честный отказ для неизвестного сервиса.
+# Статус реализации. Реализованы объявленные ниже сервисы каталога: `analytics`,
+# `outreach-orchestration`, `lead-management`, `request-fulfillment`,
+# `platform-governance`, `integration-platform`, `data-governance`, `audience`,
+# `content-production`, `message-delivery`, `engagement-observation`. Каждая
+# объявленная ниже роль имеет собственную реализацию в `backend/contexts/<id>`
+# (`cmd/lead-gen`). Тип `stubService` сохранён как честный отказ для неизвестного
+# сервиса.
 # Порядок и критерий выделения сервисов в собственные группы — `deploy/README.md`,
 # разделы «Задачи 4.2–4.5».
 #
@@ -36,9 +35,8 @@
 #   delivery — изолированный контур отправки: async-роли message-delivery
 #              (sender, worker, schedule);
 #   demand   — цепочка подготовки аудитории: лиды → сегменты → контент;
-#   public   — публичный контур: приём внешних событий, чтение сообществ и публикация;
-#   platform — общий фундамент: интеграционные порты и правила доступа/данных;
-#   revenue  — результат и деньги: сделки → биллинг.
+#   public   — публичный контур: приём внешних событий наблюдения;
+#   platform — общий фундамент: интеграционные порты и правила доступа/данных.
 #
 # Почему `delivery` выделен (задача 2.2). Раньше `message-delivery` со всей ролью
 # `sender` и `integration-platform` с ролями `api` и `sender` стояли в группах
@@ -88,10 +86,6 @@ processes:
     services:
       - id: engagement-observation
         roles: [ingest, worker]
-      - id: community-intelligence
-        roles: [worker, schedule]
-      - id: publishing
-        roles: [api, worker, schedule]
 
   - name: platform
     mechanism: in-process
@@ -102,11 +96,3 @@ processes:
         roles: [api, worker]
       - id: data-governance
         roles: [api, worker, chains]
-
-  - name: revenue
-    mechanism: in-process
-    services:
-      - id: sales-workflow
-        roles: [api, ingest, worker]
-      - id: billing
-        roles: [api, worker]

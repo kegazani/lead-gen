@@ -82,6 +82,7 @@ func NewContentVersion(slice *Slice) contentversion.Source {
 				Revision:  chosen.Revision,
 				Language:  view.Language,
 				Region:    view.Region,
+				Subject:   contentVersionSubject(view, chosen.VersionID),
 				Body:      chosen.Body,
 			}, nil
 		},
@@ -141,6 +142,21 @@ func (a RenderedArtifactAdapter) Presentation(ctx context.Context, ref rendereda
 		deck.Slides = append(deck.Slides, renderedartifact.Slide{Heading: slide.Heading, Bullets: append([]string(nil), slide.Bullets...)})
 	}
 	return deck, nil
+}
+
+// contentVersionSubject возвращает тему материала письма — заголовок материала,
+// прикреплённого к выбранной версии контента. Материал письма — текст версии,
+// порождённый рендером документ (или лендинг); заголовок берётся у доступного
+// представления материала с той же версией. Материала с заголовком у версии нет —
+// пустая строка: тема не выдумывается (AGENTS.md §3).
+func contentVersionSubject(view query.ContentView, versionID domain.ContentVersionID) string {
+	if view.Document != nil && view.Document.VersionID == versionID {
+		return view.Document.Title
+	}
+	if view.Landing != nil && view.Landing.VersionID == versionID {
+		return view.Landing.Title
+	}
+	return ""
 }
 
 // selectVersion выбирает версию по запросу: конкретную при непустом VersionID,

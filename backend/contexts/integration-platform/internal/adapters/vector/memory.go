@@ -10,6 +10,7 @@ package vector
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"hash/fnv"
 	"math"
@@ -86,7 +87,7 @@ func (m *Memory) Search(ctx context.Context, text string, k int) ([]contract.Mat
 	m.mu.RLock()
 	matches := make([]contract.Match, 0, len(m.documents))
 	for id, vec := range m.documents {
-		matches = append(matches, contract.Match{ID: id, Score: cosine(query, vec)})
+		matches = append(matches, contract.Match{ID: id, Score: Cosine(query, vec)})
 	}
 	m.mu.RUnlock()
 
@@ -102,17 +103,25 @@ func (m *Memory) Search(ctx context.Context, text string, k int) ([]contract.Mat
 	return matches, nil
 }
 
-// embed строит нормализованный вектор, нормализуя ошибки эмбеддера к контракту.
+// embed строит нормализованный вектор, нормализуя отказ эмбеддера до ошибки
+// контракта. Отмена и дедлайн контекста пробрасываются как есть: это не сбой
+// провайдера, а решение вызывающего, и потребитель должен уметь их различить.
 func (m *Memory) embed(ctx context.Context, text string) (contract.Vector, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	trimmed := strings.TrimSpace(text)
 	if trimmed == "" {
 		return nil, fmt.Errorf("%w: пустой текст", contract.ErrRejected)
 	}
 	raw, err := m.embedder.EmbedText(ctx, trimmed)
 	if err != nil {
+		if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+			return nil, err
+		}
 		return nil, fmt.Errorf("%w: %v", contract.ErrUnavailable, err)
 	}
-	vec := normalize(raw)
+	vec := Normalize(raw)
 	if len(vec) == 0 {
 		return nil, fmt.Errorf("%w: эмбеддер вернул пустой вектор", contract.ErrUnavailable)
 	}
@@ -149,9 +158,10 @@ func (h HashEmbedder) EmbedText(_ context.Context, text string) ([]float32, erro
 	return vec, nil
 }
 
-// normalize приводит вектор к единичной L2-норме, чтобы скалярное произведение
-// равнялось косинусной близости.
-func normalize(raw []float32) contract.Vector {
+// Normalize приводит вектор к единичной L2-норме, чтобы скалярное произведение
+// равнялось косинусной близости. Общий шаг всех реализаций contract.Port: и
+// in-memory, и персистентный индекс хранят нормализованные векторы.
+func Normalize(raw []float32) contract.Vector {
 	var sumSquares float64
 	for _, v := range raw {
 		sumSquares += float64(v) * float64(v)
@@ -167,8 +177,10 @@ func normalize(raw []float32) contract.Vector {
 	return out
 }
 
-// cosine возвращает косинусную близость двух нормализованных векторов.
-func cosine(a, b contract.Vector) float64 {
+// Cosine возвращает косинусную близость двух нормализованных векторов. Для
+// нормализованных векторов это скалярное произведение; векторы разной
+// размерности несовместимы и дают 0.
+func Cosine(a, b contract.Vector) float64 {
 	if len(a) != len(b) {
 		return 0
 	}

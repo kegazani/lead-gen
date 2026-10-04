@@ -1,6 +1,6 @@
 ## Context
 
-`architecture/domain-catalog.yaml` — канонический источник идентификаторов, владения и межконтекстных зависимостей; `docs/domain-model.md` и PlantUML-диаграммы — его представления. DDD-ревизия прошлых changes показала два требования, не подкреплённых объявленной связью: генерация ссылки на конференцию в `call-orchestration` и обратный поток асинхронных отказов для цикла подавления в `email-verification`.
+`architecture/domain-catalog.yaml` — канонический источник идентификаторов, владения и межконтекстных зависимостей; `docs/domain-model.md` и PlantUML-диаграммы — его представления. DDD-ревизия прошлых changes показала два требования, не подкреплённых объявленной связью: генерация ссылки на конференцию в `outreach-orchestration` и обратный поток асинхронных отказов для цикла подавления в `email-verification`.
 
 ## Goals / Non-Goals
 
@@ -19,7 +19,7 @@
 
 ### Решение 1. Провайдер конференций — через ACL и provider-port
 
-`call-orchestration` генерирует ссылку при исполнении и не передаёт провайдеру данные участников (Решение 8 изменения). Это в точности профиль `integration-platform`: адаптер за provider port, нормализация ошибок, отсутствие SDK в домене. Связь объявляется как `integrations-for-outreach` (upstream `integration-platform` → downstream `outreach-orchestration`, pattern `anticorruption-layer`, integration `command`, contract `provider-port`) — по образцу существующих `integrations-for-leads/content/delivery/sales/community/publishing`.
+`outreach-orchestration` генерирует ссылку при исполнении и не передаёт провайдеру данные участников (Решение 8 изменения). Это в точности профиль `integration-platform`: адаптер за provider port, нормализация ошибок, отсутствие SDK в домене. Связь объявляется как `integrations-for-outreach` (upstream `integration-platform` → downstream `outreach-orchestration`, pattern `anticorruption-layer`, integration `command`, contract `provider-port`) — по образцу существующих `integrations-for-leads/content/delivery`.
 
 **Рассмотренная альтернатива:** вызывать провайдера напрямую из `outreach-orchestration` — отклонено: SDK поставщика попал бы в доменный или прикладной слой и стал бы транзитным контрактом, что запрещено.
 

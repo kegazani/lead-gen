@@ -73,7 +73,6 @@
 
 - [ ] 11.1 Реализовать хранение профиля как данных о компании (верификация: профиль не содержит сведений о физических лицах)
 - [ ] 11.2 Реализовать привязку профиля к записи пула в контуре клиента (верификация: привязка выполняется в контуре клиента; аудит подтверждает)
-- [ ] 11.3 Обеспечить отображение метрик в карточке компании в CRM (верификация: метрики видны в карточке через `crm-workflow`)
 
 ## 12. Использование в сегментации
 
@@ -90,4 +89,4 @@
 
 ## 14. Доменная привязка
 
-- [ ] 14.1 Сверить доменную привязку с `architecture/domain-catalog.yaml`: context `lead-management`, aggregate `lead-profile`, aggregate root `company`, события `lead-profile-enriched`, контракты `lead-profile`, `company-profile` (верификация: `go -C tools/archlint run .` завершается кодом 0; при изменении границы обновлены каталог, `docs/domain-model.md` и затронутые диаграммы)
+- [x] 14.1 Сверить доменную привязку с `architecture/domain-catalog.yaml`: context `lead-management`, aggregate `lead-profile`, aggregate root `company`, события `lead-profile-enriched`, контракты `lead-profile`, `company-profile` (верификация: `go -C tools/archlint run .` завершается кодом 0; при изменении границы обновлены каталог, `docs/domain-model.md` и затронутые диаграммы)

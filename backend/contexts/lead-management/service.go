@@ -20,6 +20,8 @@ import (
 	"lead-gen/contracts/integration-platform/llm"
 	"lead-gen/contracts/integration-platform/mail"
 	"lead-gen/contracts/integration-platform/search"
+	"lead-gen/contracts/integration-platform/vector"
+	"lead-gen/contracts/lead-management/deliverytarget"
 	"lead-gen/frontend/components"
 )
 
@@ -64,6 +66,11 @@ type Config struct {
 	LLM    llm.Port   // nil — без LLM-планирования
 	Forum  forum.Port // nil — форумный источник не настроен
 	Mail   mail.Port  // SMTP-адаптер отправки писем
+	// Vector — векторное хранилище за provider-port (контракт vector):
+	// семантический recall по пулу и эмбеддинг компании. nil — семантика
+	// недоступна: recall честно сообщает о недоступности, кандидаты не
+	// выдумываются; детерминированной подмены на продуктовом пути нет.
+	Vector vector.Port
 
 	// Budget — фабрика бюджета Firecrawl на задачу; nil — без бюджета.
 	Budget budget.Factory
@@ -123,12 +130,18 @@ type Config struct {
 // Service — собранный сервис lead-management. Реализует composition.Service:
 // раннер на каждую объявленную роль (api, worker).
 type Service struct {
-	apiAddr string
-	server  *httpapi.Server
-	runner  *jobs.Runner
-	logger  observ.Logger
-	metrics observ.Metrics
-	tracer  observ.Tracer
+	apiAddr        string
+	server         *httpapi.Server
+	runner         *jobs.Runner
+	logger         observ.Logger
+	metrics        observ.Metrics
+	tracer         observ.Tracer
+	embedCompany   *app.EmbedCompany
+	semanticRecall *app.SemanticRecall
+	// repos — собранные адаптеры хранилища. Хранятся на сервисе, чтобы точка сборки
+	// (cmd/lead-gen) могла связать контракт delivery-target с тем же хранилищем
+	// контактов, что использует сервис, а не собирать второй экземпляр.
+	repos Repositories
 }
 
 // New собирает сервис из впрыснутых зависимостей. Обязательные зависимости
@@ -261,6 +274,22 @@ func New(cfg Config) (*Service, error) {
 		Contacts: cfg.Contacts,
 		LLM:      cfg.LLM,
 	}
+	// Семантический контур (контракт vector): эмбеддинг компании и recall по
+	// близости. Собираются всегда и честно сообщают о недоступности при nil-порте,
+	// поэтому «не смонтировано» не маскируется под пустой успех.
+	embedCompany := &app.EmbedCompany{Profiles: cfg.Profiles, Vector: cfg.Vector, Clock: cfg.Clock}
+	semanticRecall := &app.SemanticRecall{Vector: cfg.Vector}
+	// Собранные адаптеры хранилища сохраняются на сервисе: контракт delivery-target
+	// разрешает ссылку получателя по тем же контактам, а не по второму экземпляру.
+	repos := Repositories{
+		Profiles:    cfg.Profiles,
+		Contacts:    cfg.Contacts,
+		Jobs:        cfg.Jobs,
+		Messages:    cfg.Messages,
+		Templates:   cfg.Templates,
+		Activity:    cfg.Activity,
+		Assessments: cfg.Assessments,
+	}
 	server := httpapi.NewServer(httpapi.Dependencies{
 		RunSearch:       runSearch,
 		Showcase:        showcase,
@@ -274,6 +303,8 @@ func New(cfg Config) (*Service, error) {
 		ForumSignals:    forumSignals,
 		SearchLeads:     searchLeads,
 		EmailGeneration: draftEmail,
+		SemanticRecall:  semanticRecall,
+		EmbedCompany:    embedCompany,
 		Account:         cfg.Account,
 		Console:         cfg.Console,
 		Logger:          cfg.Logger,
@@ -303,17 +334,42 @@ func New(cfg Config) (*Service, error) {
 	}
 
 	return &Service{
-		apiAddr: cfg.APIAddr,
-		server:  server,
-		runner:  runner,
-		logger:  cfg.Logger,
-		metrics: cfg.Metrics,
-		tracer:  cfg.Tracer,
+		apiAddr:        cfg.APIAddr,
+		server:         server,
+		runner:         runner,
+		logger:         cfg.Logger,
+		metrics:        cfg.Metrics,
+		tracer:         cfg.Tracer,
+		embedCompany:   embedCompany,
+		semanticRecall: semanticRecall,
+		repos:          repos,
 	}, nil
 }
 
 // ID реализует composition.Service.
 func (s *Service) ID() string { return ServiceID }
+
+// EmbedCompany возвращает сценарий эмбеддинга компании (контракт vector),
+// собранный при создании сервиса. nil не бывает: сценарий есть всегда, а его
+// недоступность выражается исходом вызова, а не отсутствием значения.
+func (s *Service) EmbedCompany() *app.EmbedCompany { return s.embedCompany }
+
+// SemanticRecall возвращает сценарий семантического recall (контракт vector),
+// собранный при создании сервиса. nil не бывает: сценарий есть всегда, а его
+// недоступность выражается исходом вызова, а не отсутствием значения.
+func (s *Service) SemanticRecall() *app.SemanticRecall { return s.semanticRecall }
+
+// DeliveryTargetResolver собирает резолвер ссылки получателя (контракт
+// delivery-target) поверх собранных репозиториев сервиса: контакты красной зоны
+// разрешают ссылку в адрес в контуре тенанта. Это мост «approved-action →
+// delivery-command»: головная точка сборки получает резолвер от самого сервиса,
+// а не собирает второй экземпляр хранилища контактов.
+//
+// tenantID — тенант, которому принадлежит хранилище контактов; пустой тенант даёт
+// честно недоступный резолвер, а не адрес, выдуманный без контура.
+func (s *Service) DeliveryTargetResolver(tenantID string) deliverytarget.Resolver {
+	return NewDeliveryTarget(DeliveryTargetDeps{Repositories: s.repos, TenantID: tenantID})
+}
 
 // RoleRunner реализует composition.Service. Раннеры ролей владеют только запуском
 // и адаптерами: доменных правил здесь нет.

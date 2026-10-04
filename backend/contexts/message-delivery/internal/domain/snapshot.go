@@ -20,6 +20,8 @@ type MessageSnapshot struct {
 	RecipientRef     RecipientRef
 	Address          DeliveryAddress
 	SenderDomain     SenderDomain
+	Subject          string
+	Body             string
 	IdempotencyKey   string
 	Status           MessageStatus
 	Attempts         []DeliveryAttempt
@@ -37,6 +39,8 @@ func (m *Message) Snapshot() MessageSnapshot {
 		RecipientRef:     m.recipientRef,
 		Address:          m.address,
 		SenderDomain:     m.senderDomain,
+		Subject:          m.subject,
+		Body:             m.body,
 		IdempotencyKey:   m.idempotencyKey,
 		Status:           m.status,
 		Attempts:         attempts,
@@ -106,6 +110,8 @@ func RehydrateMessage(s MessageSnapshot) (*Message, error) {
 		recipientRef:     s.RecipientRef,
 		address:          s.Address,
 		senderDomain:     s.SenderDomain,
+		subject:          s.Subject,
+		body:             s.Body,
 		idempotencyKey:   s.IdempotencyKey,
 		status:           s.Status,
 		attempts:         attempts,

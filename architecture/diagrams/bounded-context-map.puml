@@ -18,16 +18,12 @@ package "Core" {
   rectangle "Аудитория\n<<core>>" as Audience
   rectangle "Оркестрация исходящих\nдействий\n<<core>>" as Outreach
   rectangle "Доставка сообщений\n<<core>>" as Delivery
-  rectangle "Продажи и сделки\n<<core>>" as Sales
   rectangle "Исполнение заявок\nклиента\n<<core>>" as Requests
 }
 package "Supporting" {
   rectangle "Производство контента\n<<supporting>>" as Content
   rectangle "Наблюдение\nвзаимодействия\n<<supporting>>" as Engagement
-  rectangle "Аналитика сообществ\n<<supporting>>" as Community
-  rectangle "Публикация материалов\n<<supporting>>" as Publishing
   rectangle "Аналитика и отчётность\n<<supporting>>" as Analytics
-  rectangle "Биллинг\n<<supporting>>" as Billing
 }
 
 Governance --> Leads : data-zone-policy
@@ -43,26 +39,17 @@ Content --> Outreach : content-version
 Outreach --> Delivery : approved-action
 Delivery --> Engagement : delivery-event
 Engagement --> Outreach : engagement-event
-Outreach --> Sales : outreach-outcome
-Sales --> Billing : attributed-result
 Outreach --> Requests : campaign-state
-Sales --> Requests : deal-state
-Billing --> Requests : billing-entitlement
-Community --> Publishing : community-digest
 Outreach --> Analytics
 Delivery --> Analytics
 Engagement --> Analytics
-Sales --> Analytics
 Integration ..> Leads : ACL / provider-port
 Integration ..> Content : ACL / provider-port
 Integration ..> Delivery : ACL / provider-port
-Integration ..> Sales : ACL / provider-port
-Integration ..> Community : ACL / provider-port
-Integration ..> Publishing : ACL / provider-port
 
 legend bottom
   Границы сервисов совпадают с границами bounded contexts:
-  один контекст — один сервис (15 сервисов).
+  один контекст — один сервис (11 сервисов).
   Роли api / ingest / sender / worker / chains / schedule —
   режимы запуска внутри сервиса, а не единицы размещения.
   Консоль топологии — эксплуатационная проекция роли api
@@ -79,11 +66,7 @@ endlegend
 ' CTX:outreach-orchestration
 ' CTX:message-delivery
 ' CTX:engagement-observation
-' CTX:sales-workflow
-' CTX:community-intelligence
-' CTX:publishing
 ' CTX:analytics
-' CTX:billing
 ' CTX:integration-platform
 ' CTX:request-fulfillment
 @enduml

@@ -95,4 +95,52 @@ var (
 	// ErrBatchDraftNotEligible — черновик несёт признак риска и не может быть
 	// включён в пакет; исключение нельзя обойти.
 	ErrBatchDraftNotEligible = errors.New("домен: черновик с признаком риска не входит в пакет")
+
+	// ErrEmptySequenceName — у сценария последовательности нет названия.
+	ErrEmptySequenceName = errors.New("домен: название сценария не задано")
+
+	// ErrSequenceStepsEmpty — у сценария нет ни одного шага.
+	ErrSequenceStepsEmpty = errors.New("домен: сценарий не содержит шагов")
+
+	// ErrDuplicateSequence — сценарий с таким идентификатором уже есть в кампании.
+	ErrDuplicateSequence = errors.New("домен: сценарий с таким идентификатором уже есть в кампании")
+
+	// ErrSequenceNotFound — сценария нет в составе кампании.
+	ErrSequenceNotFound = errors.New("домен: сценарий не найден")
+
+	// ErrInvalidStepDelay — задержка шага отрицательна.
+	ErrInvalidStepDelay = errors.New("домен: недопустимая задержка шага")
+
+	// ErrUnknownTransitionCondition — условие перехода не объявлено доменом.
+	ErrUnknownTransitionCondition = errors.New("домен: неизвестное условие перехода")
+
+	// ErrOpenedSignalUnavailable — условие по факту открытия письма запрещено:
+	// сигнал открытия не собирается (read-tracking).
+	ErrOpenedSignalUnavailable = errors.New("домен: признак открытия не собирается и не может быть условием перехода")
+
+	// ErrDuplicateExecution — участие с таким идентификатором уже есть в кампании.
+	ErrDuplicateExecution = errors.New("домен: участие с таким идентификатором уже есть в кампании")
+
+	// ErrExecutionNotFound — участия нет в составе кампании.
+	ErrExecutionNotFound = errors.New("домен: участие не найдено")
+
+	// ErrInvalidExecutionState — состояние участия не объявлено доменом.
+	ErrInvalidExecutionState = errors.New("домен: недопустимое состояние участия")
+
+	// ErrExecutionTerminal — участие завершено и не возобновляется.
+	ErrExecutionTerminal = errors.New("домен: завершённое участие не возобновляется")
+
+	// ErrResumeNotSuspended — возобновить можно только приостановленное участие.
+	ErrResumeNotSuspended = errors.New("домен: возобновление допустимо только для приостановленного участия")
+
+	// ErrUnknownReaction — реакция лида не объявлена доменом.
+	ErrUnknownReaction = errors.New("домен: неизвестная реакция лида")
+
+	// ErrInvalidParticipationLimits — ограничения участия отсутствуют или
+	// вывернуты.
+	ErrInvalidParticipationLimits = errors.New("домен: недопустимые ограничения участия")
+
+	// ErrExecutionTenantMismatch — участие или сценарий относится к другому
+	// тенанту, чем кампания.
+	ErrExecutionTenantMismatch = errors.New("домен: тенант участия не совпадает с тенантом кампании")
 )

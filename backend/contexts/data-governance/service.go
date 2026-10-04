@@ -8,6 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"lead-gen/backend/contexts/data-governance/internal/adapters/access"
 	httpapi "lead-gen/backend/contexts/data-governance/internal/adapters/http"
 	"lead-gen/backend/contexts/data-governance/internal/adapters/idgen"
@@ -53,8 +55,19 @@ type Config struct {
 	// Grants — права доступа среза. По умолчанию доступ закрыт.
 	Grants []Grant
 
-	// Repository — репозиторий оснований. nil → новый in-memory репозиторий.
+	// Repository — репозиторий оснований. nil и пустой DSN → новый in-memory
+	// репозиторий (dev). Если задан, используется независимо от DSN.
 	Repository ports.ProcessingBasisRepository
+
+	// DSN — строка подключения PostgreSQL зелёной зоны. Если Repository не задан
+	// и DSN пуст, сборка идёт в in-memory dev-режиме и предупреждает об этом. При
+	// заданном DSN сборка создаёт пул сама, применяет миграции из MigrationsDir и
+	// использует PostgreSQL-репозиторий.
+	DSN string
+
+	// MigrationsDir — каталог SQL-миграций сервиса для применения при сборке по
+	// DSN. Пусто → каталог по умолчанию (backend/contexts/data-governance/migrations).
+	MigrationsDir string
 
 	// Clock — источник времени. nil → SystemClock.
 	Clock ports.Clock
@@ -78,6 +91,9 @@ type Slice struct {
 	Repository ports.ProcessingBasisRepository
 	Access     ports.AccessDecision
 
+	// pool — пул PostgreSQL, если сборка создала его по DSN. Закрывается Close.
+	pool *pgxpool.Pool
+
 	// Server — HTTP-обработчики роли api. Реализует http.Handler.
 	Server *httpapi.Server
 
@@ -98,8 +114,25 @@ type Slice struct {
 // Бизнес-правил здесь нет — соединение адаптеров, портов и use cases только
 // своего контекста.
 func Build(cfg Config) (*Slice, error) {
+	var pool *pgxpool.Pool
 	repository := cfg.Repository
+	if repository == nil && strings.TrimSpace(cfg.DSN) != "" {
+		built, builtPool, err := buildPostgresRepository(cfg.DSN, cfg.MigrationsDir)
+		if err != nil {
+			return nil, err
+		}
+		repository = built
+		pool = builtPool
+	}
 	if repository == nil {
+		// Без DSN и без готового адаптера контекст идёт в in-memory dev-режиме. О
+		// режиме сообщается честно: состояние не переживёт рестарт процесса.
+		if cfg.Logger != nil {
+			cfg.Logger.Warn(
+				"data-governance: PostgreSQL DSN не задан — in-memory dev-режим (состояние не переживает рестарт)",
+				observ.Fields{},
+			)
+		}
 		repository = persistence.New()
 	}
 	clock := cfg.Clock
@@ -149,6 +182,7 @@ func Build(cfg Config) (*Slice, error) {
 	return &Slice{
 		Repository:        repository,
 		Access:            accessDecision,
+		pool:              pool,
 		Server:            server,
 		CreateBasis:       createBasis,
 		ChangeAuthority:   changeAuthority,
@@ -161,6 +195,17 @@ func Build(cfg Config) (*Slice, error) {
 		CheckAuthority:    checkAuthority,
 		CheckSuppress:     checkSuppress,
 	}, nil
+}
+
+// Close освобождает пул PostgreSQL, созданный сборкой по DSN. Повторный вызов
+// безопасен.
+func (sl *Slice) Close() error {
+	if sl == nil || sl.pool == nil {
+		return nil
+	}
+	sl.pool.Close()
+	sl.pool = nil
+	return nil
 }
 
 // Service — собранный сервис data-governance. Реализует composition.Service:
@@ -211,6 +256,10 @@ func GrantsFromStrings(actor, tenant string) []Grant {
 	}
 	return []Grant{{Actor: domain.ActorID(actor), Tenant: domain.TenantID(tenant)}}
 }
+
+// Close освобождает пул PostgreSQL, если сборка создала его по DSN. Для
+// in-memory сборки ничего не делает.
+func (s *Service) Close() error { return s.slice.Close() }
 
 // ID реализует composition.Service.
 func (s *Service) ID() string { return ServiceID }

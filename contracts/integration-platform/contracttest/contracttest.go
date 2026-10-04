@@ -11,6 +11,7 @@ package contracttest
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"testing"
 
@@ -19,6 +20,7 @@ import (
 	"lead-gen/contracts/integration-platform/llm"
 	"lead-gen/contracts/integration-platform/mail"
 	"lead-gen/contracts/integration-platform/search"
+	"lead-gen/contracts/integration-platform/vector"
 )
 
 // SearchPortFactory создаёт реализацию search.Port для одного прогона suite.
@@ -43,6 +45,9 @@ type MailPortFactory func(t *testing.T) mail.Port
 
 // ForumPortFactory создаёт реализацию forum.Port для одного прогона suite.
 type ForumPortFactory func(t *testing.T) forum.Port
+
+// VectorPortFactory создаёт реализацию vector.Port для одного прогона suite.
+type VectorPortFactory func(t *testing.T) vector.Port
 
 // RunSearchPortContract проверяет семантику порта search.
 func RunSearchPortContract(t *testing.T, factory SearchPortFactory) {
@@ -453,6 +458,134 @@ func RunForumPortContract(t *testing.T, factory ForumPortFactory) {
 					t.Fatalf("вызов %d: невалидный сигнал: %v", i, err)
 				}
 			}
+		}
+	})
+}
+
+// RunVectorPortContract проверяет общую семантику векторного порта: уважение
+// context.Context (отмена), доменный отказ на пустой текст и идентификатор,
+// запись и поиск по близости, замену документа при повторной записи и
+// ограничение числа кандидатов. Suite не зависит от хранилища и эмбеддера: их
+// задаёт фабрика, поэтому один набор проходит и против in-memory, и против
+// PostgreSQL-реализации.
+func RunVectorPortContract(t *testing.T, factory VectorPortFactory) {
+	t.Helper()
+
+	t.Run("пустой текст отклонён", func(t *testing.T) {
+		port := factory(t)
+		if _, err := port.Embed(context.Background(), "   "); !errors.Is(err, vector.ErrRejected) {
+			t.Fatalf("Embed: ошибка = %v, ожидалась ErrRejected", err)
+		}
+		if _, err := port.Search(context.Background(), "   ", 3); !errors.Is(err, vector.ErrRejected) {
+			t.Fatalf("Search: ошибка = %v, ожидалась ErrRejected", err)
+		}
+	})
+
+	t.Run("пустой идентификатор отклонён", func(t *testing.T) {
+		port := factory(t)
+		if _, err := port.Upsert(context.Background(), vector.Document{Text: "непустой текст"}); !errors.Is(err, vector.ErrRejected) {
+			t.Fatalf("ошибка = %v, ожидалась ErrRejected", err)
+		}
+	})
+
+	t.Run("контекст отменён", func(t *testing.T) {
+		port := factory(t)
+		ctx, cancel := context.WithCancel(context.Background())
+		cancel()
+		if _, err := port.Embed(ctx, "текст"); !errors.Is(err, context.Canceled) {
+			t.Fatalf("Embed: ошибка = %v, ожидалась context.Canceled", err)
+		}
+		if _, err := port.Upsert(ctx, vector.Document{ID: "doc-1", Text: "текст"}); !errors.Is(err, context.Canceled) {
+			t.Fatalf("Upsert: ошибка = %v, ожидалась context.Canceled", err)
+		}
+		if _, err := port.Search(ctx, "текст", 1); !errors.Is(err, context.Canceled) {
+			t.Fatalf("Search: ошибка = %v, ожидалась context.Canceled", err)
+		}
+	})
+
+	t.Run("запись и поиск по близости", func(t *testing.T) {
+		port := factory(t)
+		ctx := context.Background()
+
+		vec, err := port.Upsert(ctx, vector.Document{ID: "doc-a", Text: "разработка программного обеспечения"})
+		if err != nil {
+			t.Fatalf("Upsert doc-a: %v", err)
+		}
+		if len(vec) == 0 {
+			t.Fatal("Upsert вернул пустой вектор")
+		}
+		if _, err := port.Upsert(ctx, vector.Document{ID: "doc-b", Text: "кофейня обжарка зерна"}); err != nil {
+			t.Fatalf("Upsert doc-b: %v", err)
+		}
+
+		matches, err := port.Search(ctx, "разработка программного обеспечения", 10)
+		if err != nil {
+			t.Fatalf("Search: %v", err)
+		}
+		if len(matches) == 0 {
+			t.Fatal("поиск не вернул ни одного кандидата")
+		}
+		if len(matches) > 2 {
+			t.Fatalf("найдено %d, больше записанных документов", len(matches))
+		}
+		for i := 1; i < len(matches); i++ {
+			if matches[i-1].Score < matches[i].Score {
+				t.Fatalf("список не упорядочен по убыванию: %+v", matches)
+			}
+		}
+		found := false
+		for _, match := range matches {
+			if match.ID == "doc-a" {
+				found = true
+			}
+			if match.ID != "doc-a" && match.ID != "doc-b" {
+				t.Fatalf("посторонний идентификатор в выдаче: %q", match.ID)
+			}
+		}
+		if !found {
+			t.Fatalf("документ с точным текстом не найден: %+v", matches)
+		}
+	})
+
+	t.Run("повторная запись заменяет документ", func(t *testing.T) {
+		port := factory(t)
+		ctx := context.Background()
+		if _, err := port.Upsert(ctx, vector.Document{ID: "doc-dup", Text: "первый текст"}); err != nil {
+			t.Fatalf("Upsert первый: %v", err)
+		}
+		if _, err := port.Upsert(ctx, vector.Document{ID: "doc-dup", Text: "второй текст"}); err != nil {
+			t.Fatalf("Upsert второй: %v", err)
+		}
+
+		matches, err := port.Search(ctx, "второй текст", 10)
+		if err != nil {
+			t.Fatalf("Search: %v", err)
+		}
+		count := 0
+		for _, match := range matches {
+			if match.ID == "doc-dup" {
+				count++
+			}
+		}
+		if count != 1 {
+			t.Fatalf("документ doc-dup встречается %d раз, ожидалось 1: %+v", count, matches)
+		}
+	})
+
+	t.Run("ограничение числа кандидатов", func(t *testing.T) {
+		port := factory(t)
+		ctx := context.Background()
+		for _, id := range []string{"c-1", "c-2", "c-3"} {
+			if _, err := port.Upsert(ctx, vector.Document{ID: id, Text: "одинаковый текст"}); err != nil {
+				t.Fatalf("Upsert %s: %v", id, err)
+			}
+		}
+		matches, err := port.Search(ctx, "одинаковый текст", 2)
+		if err != nil {
+			t.Fatalf("Search: %v", err)
+		}
+		if len(matches) != 2 {
+			t.Fatalf("найдено %d, ожидалось 2", len(matches))
 		}
 	})
 }

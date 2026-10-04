@@ -144,7 +144,7 @@ func (r *ContactRepository) loadSnapshot(ctx context.Context, id domain.ContactI
 	var raw string
 	err := r.db.QueryRow(ctx, selectContact, id.String()).Scan(&raw)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return domain.ContactSnapshot{}, fmt.Errorf("postgres: контакт %s не найден", id)
+		return domain.ContactSnapshot{}, fmt.Errorf("%w: контакт %s", ports.ErrContactNotFound, id)
 	}
 	if err != nil {
 		return domain.ContactSnapshot{}, fmt.Errorf("postgres: чтение контакта %s: %w", id, err)

@@ -50,6 +50,24 @@ type Dependencies struct {
 
 	// PortalState — чтение состояния заявки клиента.
 	PortalState *query.PortalStateHandler
+
+	// CreateTenant — создание тенанта уполномоченным актором.
+	CreateTenant *command.CreateTenantHandler
+
+	// DisableTenant — отключение тенанта.
+	DisableTenant *command.DisableTenantHandler
+
+	// AssignRole — назначение роли пользователю.
+	AssignRole *command.AssignRoleHandler
+
+	// RevokeRole — отзыв роли у пользователя.
+	RevokeRole *command.RevokeRoleHandler
+
+	// DecideAccess — решение доступа по ролям актора.
+	DecideAccess *query.DecideAccessHandler
+
+	// AuditJournal — журнал аудита тенанта.
+	AuditJournal *query.AuditJournalHandler
 }
 
 // Server — HTTP-сервер среза. Нулевое значение непригодно: используйте
@@ -88,6 +106,13 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /portal", s.handlePortal)
 	mux.HandleFunc("GET /portal/request", s.handleOfferForm)
 	mux.HandleFunc("POST /portal/request", s.handleOfferSubmit)
+	// Внутренний JSON API управления доступом: тенанты, роли, решения, аудит.
+	mux.HandleFunc("POST /api/tenants", s.handleCreateTenant)
+	mux.HandleFunc("POST /api/tenants/{tenantID}/disable", s.handleDisableTenant)
+	mux.HandleFunc("POST /api/tenants/{tenantID}/roles/assign", s.handleAssignRole)
+	mux.HandleFunc("POST /api/tenants/{tenantID}/roles/revoke", s.handleRevokeRole)
+	mux.HandleFunc("GET /api/tenants/{tenantID}/access", s.handleAccessDecision)
+	mux.HandleFunc("GET /api/tenants/{tenantID}/audit", s.handleAuditJournal)
 	// Общее оформление экранов раздаётся из frontend/components.
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(components.StaticFS())))
 	mux.HandleFunc("GET /healthz", s.handleHealth)

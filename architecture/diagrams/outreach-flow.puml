@@ -10,7 +10,6 @@ participant "content-production" as Content
 participant "outreach-orchestration" as Outreach
 participant "message-delivery" as Delivery
 participant "engagement-observation" as Engagement
-participant "sales-workflow" as Sales
 participant "analytics" as Analytics
 
 Governance -> Leads : data-zone-policy
@@ -37,11 +36,6 @@ alt действие одобрено
     Engagement -> Engagement : deduplicate и квалифицировать signal
     Engagement --> Outreach : engagement-event
     Engagement --> Analytics : engagement-event
-    opt появился коммерческий результат
-      Outreach --> Sales : outreach-outcome
-      Sales -> Sales : проверить attribution evidence
-      Sales --> Analytics : deal-state
-    end
   else адресат подавлен
     Delivery --> Outreach : contact-suppressed
     Delivery --> Analytics : analytics-event
@@ -57,6 +51,5 @@ end
 ' CTX:outreach-orchestration
 ' CTX:message-delivery
 ' CTX:engagement-observation
-' CTX:sales-workflow
 ' CTX:analytics
 @enduml

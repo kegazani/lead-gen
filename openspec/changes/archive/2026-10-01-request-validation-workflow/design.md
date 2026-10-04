@@ -1,6 +1,6 @@
 ## Context
 
-Change №1 (`client-request-domain`) дал агрегат `request` со статусной машиной и инвариантами (заморозка оффера после `validated`, `processing` только из `validated`). Агрегат `call` и capability `call-orchestration` живут в `outreach-orchestration`. Мотивация — в `proposal.md`.
+Change №1 (`client-request-domain`) дал агрегат `request` со статусной машиной и инвариантами (заморозка оффера после `validated`, `processing` только из `validated`). Агрегат `call` живёт в `outreach-orchestration`. Мотивация — в `proposal.md`.
 
 ## Goals / Non-Goals
 

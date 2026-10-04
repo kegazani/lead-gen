@@ -136,6 +136,58 @@ func RunCampaignRepositoryContract(t *testing.T, newRepository CampaignRepositor
 			t.Fatalf("исполнение новой версии без решения: получено %v, ожидалась ErrApprovalRequired", err)
 		}
 	})
+
+	t.Run("сценарии и участия последовательностей", func(t *testing.T) {
+		repository := newRepository(t)
+		campaign := mustCampaign(t, "campaign-sequences")
+		if _, err := campaign.DefineSequence(domain.SequenceDefinitionParams{
+			ID:       "sequence-1",
+			Campaign: campaign.ID(),
+			Tenant:   campaign.TenantID(),
+			Name:     "Сценарий",
+			Steps:    []domain.SequenceStep{sequenceStep(t), sequenceStep(t)},
+		}); err != nil {
+			t.Fatalf("DefineSequence: %v", err)
+		}
+		if _, err := campaign.EnrollLead(domain.EnrollmentParams{
+			ExecutionID: "execution-1",
+			SequenceID:  "sequence-1",
+			TenantID:    campaign.TenantID(),
+			Lead:        "lead-1",
+			Recipient:   "lead-1",
+			At:          at(1),
+		}); err != nil {
+			t.Fatalf("EnrollLead: %v", err)
+		}
+		if _, err := campaign.AdvanceSequences(at(1), domain.DefaultParticipationLimits()); err != nil {
+			t.Fatalf("AdvanceSequences: %v", err)
+		}
+		if err := repository.Save(ctx, campaign); err != nil {
+			t.Fatalf("Save: %v", err)
+		}
+
+		loaded, err := repository.FindByID(ctx, campaign.ID())
+		if err != nil {
+			t.Fatalf("FindByID: %v", err)
+		}
+		definition, ok := loaded.SequenceDefinition("sequence-1")
+		if !ok || definition.Len() != 2 {
+			t.Fatalf("сценарий не восстановлен: %v, шагов %d", ok, definition.Len())
+		}
+		execution, ok := loaded.Execution("execution-1")
+		if !ok {
+			t.Fatal("участие не восстановлено")
+		}
+		if execution.State() != domain.ExecutionActive {
+			t.Fatalf("состояние участия: получено %q, ожидалось %q", execution.State(), domain.ExecutionActive)
+		}
+		if execution.DraftID() != "execution-1.step-0" {
+			t.Fatalf("черновик шага не восстановлен: %q", execution.DraftID())
+		}
+		if len(execution.Journal()) == 0 {
+			t.Fatal("журнал участия не восстановлен")
+		}
+	})
 }
 
 // mustCampaign создаёт кампанию с детерминированными полями или завершает тест.
@@ -161,6 +213,24 @@ func mustCampaign(t *testing.T, id domain.CampaignID) *domain.Campaign {
 func sampleSpec(t *testing.T) domain.DraftSpec {
 	t.Helper()
 	return draftSpec(t, domain.ActionChannelEmailName)
+}
+
+// sequenceStep возвращает шаг сценария с детерминированными полями.
+func sequenceStep(t *testing.T) domain.SequenceStep {
+	t.Helper()
+	channel, err := domain.ParseActionChannel(domain.ActionChannelEmailName)
+	if err != nil {
+		t.Fatalf("канал действия шага: %v", err)
+	}
+	step, err := domain.NewSequenceStep(domain.SequenceStepParams{
+		Action:   channel,
+		Material: "material-1",
+		Segment:  "segment-1",
+	})
+	if err != nil {
+		t.Fatalf("шаг сценария: %v", err)
+	}
+	return step
 }
 
 // revisedSpec возвращает состав доработанного черновика; канал отличается,

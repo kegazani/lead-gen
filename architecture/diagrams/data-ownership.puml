@@ -12,11 +12,7 @@ rectangle "content-production\n---\ncontent-asset [green]\ncontent-version [gree
 rectangle "outreach-orchestration\n---\ncampaign [green]\nsequence-definition [green]\nsequence-execution [green]\naction-draft [green]\noperator-decision [green]\ncall [red]" as Outreach
 rectangle "message-delivery\n---\nmessage [green]\nsender-reputation [green]" as Delivery
 rectangle "engagement-observation\n---\nengagement-event [analytics]" as Engagement
-rectangle "sales-workflow\n---\ndeal [red, external SoR]\ncrm-sync [green]" as Sales
-rectangle "community-intelligence\n---\ncommunity-digest [green]" as Community
-rectangle "publishing\n---\npublication [green]" as Publishing
 rectangle "analytics\n---\nreport-snapshot [analytics]" as Analytics
-rectangle "billing\n---\nsubscription-invoice [green]\nsuccess-fee [green]" as Billing
 
 Platform -[hidden]-> Governance
 Governance -[hidden]-> Leads
@@ -25,11 +21,7 @@ Audience -[hidden]-> Content
 Content -[hidden]-> Outreach
 Outreach -[hidden]-> Delivery
 Delivery -[hidden]-> Engagement
-Engagement -[hidden]-> Sales
-Sales -[hidden]-> Community
-Community -[hidden]-> Publishing
-Publishing -[hidden]-> Analytics
-Analytics -[hidden]-> Billing
+Engagement -[hidden]-> Analytics
 
 note bottom
   Owner изменяет authoritative state.
@@ -46,9 +38,5 @@ end note
 ' CTX:outreach-orchestration
 ' CTX:message-delivery
 ' CTX:engagement-observation
-' CTX:sales-workflow
-' CTX:community-intelligence
-' CTX:publishing
 ' CTX:analytics
-' CTX:billing
 @enduml

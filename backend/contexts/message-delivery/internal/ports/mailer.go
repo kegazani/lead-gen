@@ -12,16 +12,22 @@ import (
 // о недопустимости отправки.
 var ErrMailerUnavailable = errors.New("порты: почтовый провайдер недоступен")
 
-// OutgoingMessage — сообщение, передаваемое провайдеру. Содержит минимум,
-// необходимый порту отправки: адрес назначения, отправляющий домен и
-// идентификаторы для трассировки. Тела письма здесь нет: сборку содержимого
-// выполняет интеграция с content-production, в объём этого среза не входящая.
+// OutgoingMessage — сообщение, передаваемое провайдеру. Содержит адрес
+// назначения, отправляющий домен, тему и тело письма, а также идентификаторы
+// для трассировки. Тема и тело хранятся в агрегате message, поэтому повторная
+// попытка отправляет то же содержимое.
 type OutgoingMessage struct {
 	MessageID    domain.MessageID
 	TenantID     domain.TenantID
 	SenderDomain domain.SenderDomain
 	To           domain.DeliveryAddress
 	RecipientRef domain.RecipientRef
+
+	// Subject — тема письма.
+	Subject string
+
+	// Body — тело письма.
+	Body string
 }
 
 // ProviderResponse — нормализованный ответ провайдера: исход и код.

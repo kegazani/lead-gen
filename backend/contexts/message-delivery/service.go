@@ -5,31 +5,69 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	outboxinmemory "lead-gen/backend/contexts/message-delivery/internal/adapters/outbox/inmemory"
 	"lead-gen/backend/contexts/message-delivery/internal/adapters/outbox/relay"
+	"lead-gen/backend/contexts/message-delivery/internal/adapters/persistence/postgres"
 	"lead-gen/backend/contexts/message-delivery/internal/ports"
 	composition "lead-gen/backend/platform/composition"
 	"lead-gen/backend/platform/observability/observ"
 	"lead-gen/backend/platform/transport/amqp"
+	"lead-gen/contracts/data-governance/suppressionpolicy"
+	"lead-gen/contracts/integration-platform/mail"
 )
 
 // ServiceID — идентификатор сервиса, равный идентификатору контекста из
 // architecture/domain-catalog.yaml.
 const ServiceID = "message-delivery"
 
+// defaultMaxRetryAttempts — предельное число попыток доставки по умолчанию, если
+// конфигурация не задала своё. Считает все попытки, включая первую.
+const defaultMaxRetryAttempts = 3
+
+// defaultRetryInterval — интервал повторных окон по умолчанию.
+const defaultRetryInterval = time.Minute
+
+// retryBatch — предельный размер порции сообщений за один проход повтора.
+const retryBatch = 100
+
 // Config — параметры сборки сервиса, задаваемые точкой входа.
 type Config struct {
 	// Interval — интервал проходов публикации delivery-event транспортным relay.
 	Interval time.Duration
 
+	// RetryInterval — интервал тикера повторных окон роли schedule. Ноль →
+	// defaultRetryInterval.
+	RetryInterval time.Duration
+
+	// MaxRetryAttempts — предельное число попыток доставки (включая первую).
+	// Ноль → defaultMaxRetryAttempts; отрицательное — повторные окна отключены.
+	MaxRetryAttempts int
+
 	// Publisher — издатель брокера. nil означает, что публикация не собирается:
 	// процесс не публикует delivery-event.
 	Publisher amqp.Publisher
 
-	// Mailer — порт отправки почты. nil → in-memory адаптер среза.
+	// Pool — пул соединений PostgreSQL зелёной зоны. Не nil → персистентность
+	// PostgreSQL (сообщения, репутация, outbox) с миграциями, применяемыми точкой
+	// сборки. nil → in-memory адаптеры (dev).
+	Pool *pgxpool.Pool
+
+	// MailPort — реальный почтовый провайдер (контракт mail владельца
+	// integration-platform). MailFrom — адрес отправителя: обязателен, если
+	// задан MailPort.
+	MailPort mail.Port
+	MailFrom string
+
+	// SuppressionPort — стоп-лист владельца data-governance (контракт
+	// suppression-policy). Недоступность источника остаётся ошибкой.
+	SuppressionPort suppressionpolicy.Port
+
+	// Mailer — явный порт отправки (тесты/dev). Приоритет над MailPort.
 	Mailer ports.Mailer
 
-	// Suppressions — стоп-лист получателей. nil → пустой in-memory стоп-лист.
+	// Suppressions — явный стоп-лист (тесты/dev). Приоритет над SuppressionPort.
 	Suppressions ports.SuppressionList
 
 	// Source — источник команд доставки роли sender. nil → очередь в памяти.
@@ -37,6 +75,18 @@ type Config struct {
 
 	// Clock — источник времени. nil → SystemClock.
 	Clock ports.Clock
+
+	// UnitOfWork — явная транзакция контекста (тесты/линейная сборка). Приоритет
+	// над Pool.
+	UnitOfWork ports.UnitOfWork
+
+	// RelaySource — журнал outbox для публикации. Обязателен, если задан
+	// UnitOfWork: публикация читает то же состояние, что пишет транзакция.
+	RelaySource relay.Source
+
+	// Retryables — выборка сообщений для повторных окон. Обязательна, если
+	// задан UnitOfWork: роль schedule читает то же состояние.
+	Retryables ports.RetryableMessages
 
 	// Наблюдаемость сервиса: логгер, метрики и трейсер впрыскиваются
 	// composition root'ом; обязательны.
@@ -50,21 +100,28 @@ type Config struct {
 //
 // Роль sender — единственная точка отправки, изолированная от обработки
 // API-запросов: у контекста нет роли api. worker публикует delivery-event,
-// schedule обслуживает повторные окна (в объёме среза — честная заглушка).
+// schedule обслуживает повторные окна доставки.
 type Service struct {
-	slice    *Slice
-	sink     *AMQPSink
-	interval time.Duration
-	logger   observ.Logger
-	metrics  observ.Metrics
-	tracer   observ.Tracer
+	slice         *Slice
+	sink          *AMQPSink
+	interval      time.Duration
+	retryInterval time.Duration
+	logger        observ.Logger
+	metrics       observ.Metrics
+	tracer        observ.Tracer
 }
 
-// New собирает сервис из in-memory адаптеров. Публикация собирается только
-// тогда, когда задан Publisher: без него срез не публикует delivery-event.
+// New собирает сервис. Персистентность, почтовый провайдер и стоп-лист
+// выбираются из конфигурации; при отсутствии внешних зависимостей собирается
+// явный dev-режим на in-memory адаптерах с предупреждением в лог, а не молчаливая
+// подмена заглушкой.
 func New(cfg Config) (*Service, error) {
 	if cfg.Interval <= 0 {
 		cfg.Interval = time.Second
+	}
+	retryInterval := cfg.RetryInterval
+	if retryInterval <= 0 {
+		retryInterval = defaultRetryInterval
 	}
 	if cfg.Logger == nil {
 		return nil, fmt.Errorf("message-delivery: Logger обязателен")
@@ -83,23 +140,69 @@ func New(cfg Config) (*Service, error) {
 		sink = amqpSink
 	}
 
+	unitOfWork, relaySource, retryables := cfg.UnitOfWork, cfg.RelaySource, cfg.Retryables
+	if unitOfWork == nil && cfg.Pool != nil {
+		unitOfWork = postgres.NewUnitOfWork(cfg.Pool)
+		relaySource = postgres.NewJournal(cfg.Pool)
+		retryables = postgres.NewMessageRepository(cfg.Pool)
+	} else if unitOfWork == nil {
+		cfg.Logger.Warn("message-delivery: DSN не задан — состояние в памяти процесса (dev)",
+			observ.Fields{}, "service", ServiceID)
+	}
+
+	mailer := cfg.Mailer
+	if mailer == nil && cfg.MailPort != nil {
+		built, err := NewProviderMailer(cfg.MailPort, cfg.MailFrom)
+		if err != nil {
+			return nil, fmt.Errorf("message-delivery: почтовый адаптер: %w", err)
+		}
+		mailer = built
+	}
+	if mailer == nil {
+		cfg.Logger.Warn("message-delivery: почтовый провайдер не задан — in-memory mailer (dev)",
+			observ.Fields{}, "service", ServiceID)
+	}
+
+	suppressions := cfg.Suppressions
+	if suppressions == nil && cfg.SuppressionPort != nil {
+		built, err := NewSuppressionList(cfg.SuppressionPort)
+		if err != nil {
+			return nil, fmt.Errorf("message-delivery: стоп-лист: %w", err)
+		}
+		suppressions = built
+	}
+	if suppressions == nil {
+		cfg.Logger.Warn("message-delivery: стоп-лист не задан — пустой in-memory (dev)",
+			observ.Fields{}, "service", ServiceID)
+	}
+
+	maxRetryAttempts := cfg.MaxRetryAttempts
+	if maxRetryAttempts == 0 {
+		maxRetryAttempts = defaultMaxRetryAttempts
+	}
+
 	slice, err := Build(Params{
-		Clock:        cfg.Clock,
-		Sink:         sink,
-		Mailer:       cfg.Mailer,
-		Suppressions: cfg.Suppressions,
-		Source:       cfg.Source,
+		Clock:            cfg.Clock,
+		UnitOfWork:       unitOfWork,
+		RelaySource:      relaySource,
+		Retryables:       retryables,
+		Sink:             sink,
+		Mailer:           mailer,
+		Suppressions:     suppressions,
+		Source:           cfg.Source,
+		MaxRetryAttempts: maxRetryAttempts,
 	})
 	if err != nil {
 		return nil, err
 	}
 	return &Service{
-		slice:    slice,
-		sink:     amqpSink,
-		interval: cfg.Interval,
-		logger:   cfg.Logger,
-		metrics:  cfg.Metrics,
-		tracer:   cfg.Tracer,
+		slice:         slice,
+		sink:          amqpSink,
+		interval:      cfg.Interval,
+		retryInterval: retryInterval,
+		logger:        cfg.Logger,
+		metrics:       cfg.Metrics,
+		tracer:        cfg.Tracer,
 	}, nil
 }
 
@@ -204,16 +307,58 @@ func (s *Service) publishPending(ctx context.Context) {
 	}
 }
 
-// runSchedule — каркас роли schedule. Тикер повторных окон доставки в объёме
-// среза не реализован: роль честно сообщает об этом и не делает вид, что ведёт
-// повторные попытки.
+// runSchedule — роль schedule: тикер повторных окон доставки. Первый проход
+// выполняется сразу, затем с заданным интервалом, пока контекст не отменён.
+// Повтор подхватывает сообщения, последняя попытка которых завершилась временным
+// исходом (недоступность провайдера), и запускает отправку заново.
 func (s *Service) runSchedule(ctx context.Context) error {
-	s.logger.Warn("schedule: тикер повторных попыток не реализован", observ.Fields{}, "service", ServiceID)
-	<-ctx.Done()
-	return nil
+	if s.slice.RetryPending == nil {
+		s.logger.Warn("schedule: повторные окна отключены (не задана выборка сообщений)",
+			observ.Fields{}, "service", ServiceID)
+		<-ctx.Done()
+		return nil
+	}
+
+	s.logger.Info("schedule: тикер повторных окон запущен", observ.Fields{},
+		"service", ServiceID, "interval", s.retryInterval.String())
+	s.retryOnce(ctx)
+
+	ticker := time.NewTicker(s.retryInterval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			s.logger.Info("schedule: останов", observ.Fields{}, "service", ServiceID)
+			return nil
+		case <-ticker.C:
+			s.retryOnce(ctx)
+		}
+	}
 }
 
-// Journal возвращает журнал outbox среза. Нужен точке сборки и проверкам.
+// retryOnce выполняет один проход повторных окон и логирует результат. Ошибка
+// прохода не останавливает роль: сообщение остаётся в хранилище.
+func (s *Service) retryOnce(ctx context.Context) {
+	summary, err := s.slice.RetryPending.RetryDue(ctx, retryBatch)
+	if err != nil {
+		if ctx.Err() != nil {
+			return
+		}
+		s.logger.Error("schedule: повторные окна", err, observ.Fields{}, "service", ServiceID)
+		return
+	}
+	if summary.Attempted > 0 || summary.Skipped > 0 {
+		s.logger.Info("schedule: проход повторных окон завершён", observ.Fields{},
+			"service", ServiceID,
+			"attempted", summary.Attempted,
+			"delivered", summary.Delivered,
+			"failed", summary.Failed,
+			"skipped", summary.Skipped)
+	}
+}
+
+// Journal возвращает журнал outbox среза. Нужен точке сборки и проверкам. nil,
+// если состояние вынесено во внешнюю (PostgreSQL) транзакцию.
 func (s *Service) Journal() *outboxinmemory.Journal { return s.slice.Journal }
 
 // Проверка соответствия контракту сервисной сборки на этапе компиляции.

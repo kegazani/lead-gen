@@ -28,7 +28,7 @@ type (
 	// CampaignID — ссылка на кампанию (владение outreach-orchestration).
 	CampaignID string
 
-	// DealID — ссылка на сделку (владение sales-workflow).
+	// DealID — ссылка на сделку.
 	DealID string
 
 	// CallID — ссылка на звонок-уточнение (владение outreach-orchestration).

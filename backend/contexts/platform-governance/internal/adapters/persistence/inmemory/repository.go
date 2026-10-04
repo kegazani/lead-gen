@@ -47,6 +47,38 @@ func (r *Repository) Save(_ context.Context, tenant *domain.Tenant) error {
 	return nil
 }
 
+// Clone возвращает независимую копию состояния репозитория. Копия нужна
+// unit-of-work: транзакция работает с копией, а основное состояние заменяется
+// только при успешном commit. Снимки тенантов трактуются как неизменяемые,
+// поэтому копируется карта, а не сами снимки.
+func (r *Repository) Clone() *Repository {
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	copyMap := make(map[domain.TenantID]domain.TenantSnapshot, len(r.tenants))
+	for id, snapshot := range r.tenants {
+		copyMap[id] = snapshot
+	}
+	return &Repository{tenants: copyMap}
+}
+
+// ReplaceWith заменяет состояние репозитория состоянием другого репозитория.
+// Вызывается unit-of-work после успешного commit транзакции.
+func (r *Repository) ReplaceWith(other *Repository) {
+	if other == nil {
+		return
+	}
+	other.mu.RLock()
+	copyMap := make(map[domain.TenantID]domain.TenantSnapshot, len(other.tenants))
+	for id, snapshot := range other.tenants {
+		copyMap[id] = snapshot
+	}
+	other.mu.RUnlock()
+
+	r.mu.Lock()
+	r.tenants = copyMap
+	r.mu.Unlock()
+}
+
 // FindByID загружает тенант по идентификатору через domain.RehydrateTenant.
 // Отсутствие тенанта даёт ошибку, для которой истинно errors.Is(err,
 // ports.ErrTenantNotFound).

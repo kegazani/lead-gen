@@ -2,7 +2,6 @@ package app
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"iter"
 	"sort"
@@ -454,7 +453,7 @@ func (m *memContacts) FindByID(_ context.Context, id domain.ContactID) (*domain.
 			return c, nil
 		}
 	}
-	return nil, errors.New("contact not found")
+	return nil, ports.ErrContactNotFound
 }
 
 func (m *memContacts) ListByCompany(_ context.Context, companyID domain.CompanyID) ([]*domain.Contact, error) {

@@ -49,11 +49,7 @@
 | `outreach-orchestration` | `api`, `worker`, `chains`, `schedule` |
 | `message-delivery` | `sender`, `worker`, `schedule` |
 | `engagement-observation` | `ingest`, `worker` |
-| `sales-workflow` | `api`, `ingest`, `worker` |
-| `community-intelligence` | `worker`, `schedule` |
-| `publishing` | `api`, `worker`, `schedule` |
 | `analytics` | `api`, `worker`, `schedule` |
-| `billing` | `api`, `worker` |
 | `request-fulfillment` | `api`, `worker` |
 | `integration-platform` | `api`, `ingest`, `sender`, `worker`, `chains`, `schedule` |
 
@@ -69,17 +65,17 @@
 - **Входы:** HTTPS от браузера (карточки, кампании, очередь утверждений, отчёты).
 - **Выходы:** команды в очередь; записи в зелёную зону; страницы интерфейса.
 - **Зона доступа:** зелёная — постоянный доступ; красная — только в рамках поручения (карточки лидов, решения оператора), без копирования на сторону платформы.
-- **Реализует:** `outreach-approval`, `billing-subscription`, `billing-success-fee`, доступ и аудит (3.16), чтение отчётов.
+- **Реализует:** `outreach-approval`, доступ и аудит (3.16), чтение отчётов.
 
 **`ingest` — публичный контур приёма**
 
 - **Назначение.** Принять обращение извне, зафиксировать факт и поставить задание в очередь.
-- **Делает:** переходы по отслеживаемым ссылкам (3.9); приём вебхуков провайдера отправки (доставка, отказ, жалоба, ответ) и вебхуков CRM; публичные страницы — выбор слота конференц-звонка и просмотр презентации по ссылке; распознавание автоматических переходов (сканеры, шлюзы, дата-центровые диапазоны).
+- **Делает:** переходы по отслеживаемым ссылкам (3.9); приём вебхуков провайдера отправки (доставка, отказ, жалоба, ответ); публичные страницы — выбор слота конференц-звонка и просмотр презентации по ссылке; распознавание автоматических переходов (сканеры, шлюзы, дата-центровые диапазоны).
 - **Не делает:** не хранит идентифицирующие данные получателя; не выполняет работу — только ставит задание; не имеет доступа к красной зоне.
 - **Входы:** HTTP из публичного интернета (отдельный домен), вебхуки внешних сервисов.
 - **Выходы:** события в аналитическое хранилище; задания в очередь.
 - **Зона доступа:** аналитическое хранилище (обезличенные события); красная зона — **нет** (требование `read-tracking`).
-- **Реализует:** `read-tracking`, приём событий для `email-verification` и `crm-workflow`, публичные страницы `call-orchestration` и `presentation-generator`.
+- **Реализует:** `read-tracking`, приём событий для `email-verification`, публичные страницы `presentation-generator`.
 
 **`sender` — контур отправки**
 
@@ -94,12 +90,12 @@
 **`worker` — пулы движков**
 
 - **Назначение.** Обработка по контракту движка. Один образ, движок выбирается конфигурацией; пулы масштабируются по длине своей очереди.
-- **Делает:** сбор данных (3.1); импорт и нормализация (3.2); обогащение (3.3, 3.17); дедупликация и скоринг (3.4); сегментация (3.5); генерация контента (3.6); рендеринг документов (3.7); верификация адресов (3.18); CRM-синхронизация (3.14); отчётность (3.15); чтение сообществ Telegram (3.12); публикация выжимки (3.20); подготовка обращений через формы (3.19); генерация презентаций и наполнения лендингов.
+- **Делает:** сбор данных (3.1); импорт и нормализация (3.2); обогащение (3.3, 3.17); дедупликация и скоринг (3.4); сегментация (3.5); генерация контента (3.6); рендеринг документов (3.7); верификация адресов (3.18); отчётность (3.15); подготовка обращений через формы (3.19); генерация презентаций и наполнения лендингов.
 - **Не делает:** не запускает другие движки напрямую — только через очередь; не отправляет письма; не принимает решения за оператора.
 - **Входы:** команды из очереди; данные пула в контуре клиента; внешние источники.
 - **Выходы:** записи в зоны и объектное хранилище; черновики в очередь утверждений; события; агрегаты.
-- **Зона доступа:** по движку. Красная зона — у импорта, обогащения (включая оценку размера и привязку к лиду), дедупликации, сегментации, верификации, CRM, чтения Telegram (авторы и состав) — в рамках поручения. Без доступа к красной зоне: генерация презентаций и наполнения лендингов (рамка, Решение 7), отчётность (только агрегаты), публикация выжимки (только зелёная зона).
-- **Реализует:** `osint-enrichment`, `lead-pool-client-side`, `crm-workflow`, `presentation-generator`, `linguistics`, `telegram-community-digest`, `company-size-assessment`, `email-verification`, `lead-segmentation`, `outreach-channel-form`, `campaign-reporting`, `digest-publishing`, `landing-page-generator`.
+- **Зона доступа:** по движку. Красная зона — у импорта, обогащения (включая оценку размера и привязку к лиду), дедупликации, сегментации и верификации — в рамках поручения. Без доступа к красной зоне: генерация презентаций и наполнения лендингов (рамка, Решение 7) и отчётность (только агрегаты).
+- **Реализует:** `osint-enrichment`, `lead-pool-client-side`, `presentation-generator`, `linguistics`, `company-size-assessment`, `email-verification`, `lead-segmentation`, `outreach-channel-form`, `campaign-reporting`, `landing-page-generator`.
 
 **`chains` — долгие состояния и таймеры**
 
@@ -109,17 +105,17 @@
 - **Входы:** команды запуска; события реакций из `ingest`; решения оператора из `api`.
 - **Выходы:** черновики в очередь утверждений; уведомления; команды таймеров.
 - **Зона доступа:** зелёная — состояние выполнения; красная — только идентификаторы и статусы лида в рамках поручения, без копирования содержимого.
-- **Реализует:** `outreach-sequences`, исполнение `call-orchestration`, сроки `outreach-approval`.
+- **Реализует:** `outreach-sequences`, сроки `outreach-approval`.
 
 **`schedule` — расписания**
 
 - **Назначение.** Запускать регулярные работы идемпотентными окнами.
-- **Делает:** пересчёт динамических сегментов; повторную верификацию адресов; построение отчётов; чтение сообществ Telegram по расписанию; подготовку материалов публикации (публикация без утверждения не выполняется); контроль сроков хранения.
+- **Делает:** пересчёт динамических сегментов; повторную верификацию адресов; построение отчётов; контроль сроков хранения.
 - **Не делает:** не выполняет работу сам — только ставит задания; пропущенное окно не приводит к двойной обработке; при недоступности очереди задания не теряются.
 - **Входы:** собственное расписание (настройка).
 - **Выходы:** команды в очередь.
 - **Зона доступа:** не имеет собственного доступа к данным — только право постановки заданий.
-- **Реализует:** инициацию `lead-segmentation`, `email-verification`, `campaign-reporting`, `telegram-community-digest`, `company-size-assessment`, `digest-publishing`.
+- **Реализует:** инициацию `lead-segmentation`, `email-verification`, `campaign-reporting`, `company-size-assessment`.
 
 ### 2.2 Policies и platform primitives
 
@@ -145,19 +141,19 @@
 
 - **Очередь** (RabbitMQ): очереди по движкам, подтверждения, повторные попытки, DLQ. Потеря задания при перезапуске воркера не допускается.
 - **Хранилище зелёной зоны** (PostgreSQL): агрегаты, юрлица из открытых реестров, состояние платформы, аудит.
-- **Хранилище красной зоны** (PostgreSQL в контуре клиента): пул лидов, персональные данные физлиц, состояние сделки. Физически отдельно; перекрёстные запросы невозможны (рамка, Решение 1).
+- **Хранилище красной зоны** (PostgreSQL в контуре клиента): пул лидов и персональные данные физлиц. Физически отдельно; перекрёстные запросы невозможны (рамка, Решение 1).
 - **Аналитическое хранилище:** события трекинга и доставки, read-модели отчётности. События отделены от сущностей: объём на порядки выше.
 - **Объектное хранилище** (S3-совместимое): PDF, изображения, архивы лендингов, вложения.
 - **Кэш и лимиты** (Valkey): счётчики частоты, блокировки по ключу дедупликации.
 - **Долгие процессы** (Temporal): состояние цепочек, таймеры, сигналы утверждения.
 - **Метрики** (Prometheus): источник состояния узлов и интенсивности рёбер эксплуатационной консоли топологии сервисов. Консоль — часть роли `api` сервиса `platform-governance` (capability `service-topology-console`): она показывает граф сервисов и инфраструктуры, собранный из объявлений каталога и `deploy/services.yaml`, а метрики читает через серверный прокси (браузер к Prometheus напрямую не ходит). Консоль — **не контекст и не владелец модели**: её узлы и рёбра — эксплуатационная проекция, а не новые сущности или связи.
-- **Внешние сервисы:** Firecrawl (сбор и разбор), LLM-провайдер (обезличенный контент), провайдер отправки (SES), сервис верификации адресов, сервис оценки трафика, Twenty CRM (собственная инсталляция), Telegram (MTProto), официальные API площадок публикации, провайдер ссылок конференций.
+- **Внешние сервисы:** Firecrawl (сбор и разбор), LLM-провайдер (обезличенный контент), провайдер отправки (SES), сервис верификации адресов, сервис оценки трафика, провайдер ссылок конференций.
 
 ### 2.4 Группы процессов, изоляция ролей и связывание контрактов
 
 Группа процессов (`process`) — способ запуска: один процесс служебного образа поднимает один или несколько сервисов, каждый со своим подмножеством ролей. Роль — единица размещения: она встречается ровно один раз по всем группам, поэтому разнести её по процессам нельзя. Группа не вправе объявить роль или сервис, которых нет в каталоге.
 
-Текущее (совмещённое) состояние — семь групп, объявленных в `deploy/services.yaml`; они описывают форму деплоя, а не готовность кода:
+Текущее (совмещённое) состояние — шесть групп, объявленных в `deploy/services.yaml`; они описывают форму деплоя, а не готовность кода:
 
 | Группа | Сервисы и роли | Контур |
 |---|---|---|
@@ -165,9 +161,8 @@
 | `core` | `outreach-orchestration` (`api`, `worker`, `chains`, `schedule`); `analytics` (`api`, `worker`, `schedule`) | горячий путь кампании: оркестрация → аналитика |
 | `delivery` | `message-delivery` (`sender`, `worker`, `schedule`); `integration-platform` (`sender`) | изолированный контур отправки |
 | `demand` | `lead-management` (`api`, `worker`); `audience` (`api`, `worker`, `schedule`); `content-production` (`api`, `worker`) | подготовка аудитории: лиды → сегменты → контент |
-| `public` | `engagement-observation` (`ingest`, `worker`); `community-intelligence` (`worker`, `schedule`); `publishing` (`api`, `worker`, `schedule`) | публичный контур: приём событий, чтение сообществ, публикация |
+| `public` | `engagement-observation` (`ingest`, `worker`) | публичный контур: приём внешних событий |
 | `platform` | `integration-platform` (`api`, `ingest`, `worker`, `chains`, `schedule`); `platform-governance` (`api`, `worker`); `data-governance` (`api`, `worker`, `chains`) | общий фундамент: интеграционные порты и правила доступа/данных |
-| `revenue` | `sales-workflow` (`api`, `ingest`, `worker`); `billing` (`api`, `worker`) | результат и деньги: сделки → биллинг |
 
 Группы — форма первого деплоя, а не второй владелец модели: целевое состояние — группа на сервис, а переход между состояниями — правка `deploy/services.yaml` без изменения кода и домена.
 
@@ -200,7 +195,7 @@
                       │
   ИНТЕРНЕТ ──> ingest ──события──> аналитическое хранилище
                   │      └──задания──> ОЧЕРЕДЬ
-                  └──вебхуки (провайдер отправки, CRM)
+                  └──вебхуки (провайдер отправки)
 
   ОЧЕРЕДЬ ──утверждённые черновики──> sender ──> провайдер отправки ──> вебхуки ──> ingest
   chains ──черновики и таймеры──> ОЧЕРЕДЬ          (решения оператора приходят из api)
@@ -211,25 +206,20 @@
 
 ### 3.3 Матрица связей
 
-**Межконтекстные связи (38, по каталогу).** Транспорт каждой связи объявлен в каталоге и не выводится из контекста рассуждения: `command`/`query` — `sync`/`http-json`, `event`/`policy` — `async`/`amqp`. `policy` доставляется как подписка на изменение правила, а не синхронным вызовом: потребитель хранит контрактный снимок и применяет его локально.
+**Межконтекстные связи (28, по каталогу).** Транспорт каждой связи объявлен в каталоге и не выводится из контекста рассуждения: `command`/`query` — `sync`/`http-json`, `event`/`policy` — `async`/`amqp`. `policy` доставляется как подписка на изменение правила, а не синхронным вызовом: потребитель хранит контрактный снимок и применяет его локально.
 
 | Upstream (сервис) | Downstream (сервис) | Тип | Транспорт | Механизм | Контракт |
 |---|---|---|---|---|---|
 | `outreach-orchestration` | `message-delivery` | command | sync | http-json | `approved-action` |
-| `community-intelligence` | `publishing` | command | sync | http-json | `community-digest` |
 | `integration-platform` | `lead-management` | command | sync | http-json | `provider-port` |
 | `integration-platform` | `content-production` | command | sync | http-json | `provider-port` |
 | `integration-platform` | `message-delivery` | command | sync | http-json | `provider-port` |
-| `integration-platform` | `sales-workflow` | command | sync | http-json | `provider-port` |
-| `integration-platform` | `community-intelligence` | command | sync | http-json | `provider-port` |
-| `integration-platform` | `publishing` | command | sync | http-json | `provider-port` |
 | `integration-platform` | `outreach-orchestration` | command | sync | http-json | `provider-port` |
 | `integration-platform` | `lead-management` | command | sync | http-json | `vector` |
 | `integration-platform` | `request-fulfillment` | command | sync | http-json | `vector` |
 | `outreach-orchestration` | `request-fulfillment` | command | sync | http-json | `call-intent` |
 | `request-fulfillment` | `platform-governance` | command | sync | http-json | `request-intent` |
 | `lead-management` | `audience` | query | sync | http-json | `lead-profile` |
-| `lead-management` | `sales-workflow` | query | sync | http-json | `company-profile` |
 | `audience` | `outreach-orchestration` | query | sync | http-json | `audience-snapshot` |
 | `content-production` | `outreach-orchestration` | query | sync | http-json | `content-version` |
 | `message-delivery` | `engagement-observation` | event | async | amqp | `delivery-event` |
@@ -238,10 +228,7 @@
 | `engagement-observation` | `outreach-orchestration` | event | async | amqp | `engagement-event` |
 | `engagement-observation` | `audience` | event | async | amqp | `engagement-event` |
 | `engagement-observation` | `analytics` | event | async | amqp | `engagement-event` |
-| `outreach-orchestration` | `sales-workflow` | event | async | amqp | `outreach-outcome` |
 | `outreach-orchestration` | `analytics` | event | async | amqp | `analytics-event` |
-| `sales-workflow` | `billing` | event | async | amqp | `attributed-result` |
-| `sales-workflow` | `analytics` | event | async | amqp | `deal-state` |
 | `data-governance` | `lead-management` | policy | async | amqp | `data-zone-policy` |
 | `data-governance` | `outreach-orchestration` | policy | async | amqp | `processing-authority` |
 | `data-governance` | `message-delivery` | policy | async | amqp | `suppression-policy` |
@@ -251,10 +238,8 @@
 | `lead-management` | `request-fulfillment` | query | sync | http-json | `lead-profile` |
 | `audience` | `request-fulfillment` | query | sync | http-json | `audience-snapshot` |
 | `outreach-orchestration` | `request-fulfillment` | query | sync | http-json | `campaign-state` |
-| `sales-workflow` | `request-fulfillment` | query | sync | http-json | `deal-state` |
-| `billing` | `request-fulfillment` | policy | async | amqp | `billing-entitlement` |
 
-Итого: 21 синхронная связь (13 `command`, 8 `query`) и 17 асинхронных (10 `event`, 7 `policy`).
+Итого: 15 синхронных связей (9 `command`, 6 `query`) и 13 асинхронных (7 `event`, 6 `policy`).
 
 **Операционные взаимодействия.** Строки ниже описывают потоки внутри платформы и к внешним системам; инициатор и адресат — сервисы и их роли.
 
@@ -266,25 +251,20 @@
 | `api` | контур клиента | по поручению | карточки лидов, решения оператора | красная | тенант + идентификатор команды |
 | `ingest` | ОЧЕРЕДЬ | задание | переход по отслеживаемой ссылке | без ПД | идентификатор сообщения + тип события + временное окно |
 | `ingest` | ОЧЕРЕДЬ | задание | вебхук провайдера отправки | без ПД | идентификатор события провайдера |
-| `ingest` | ОЧЕРЕДЬ | задание | вебхук CRM | без ПД | идентификатор записи + версия изменения |
 | `ingest` | ОЧЕРЕДЬ | задание | выбор слота на публичной странице | без ПД | источник + внешний идентификатор события |
 | `ingest` | аналитическое хранилище | запись события | трекинг переходов | обезличенно | идентификатор сообщения + тип события + временное окно |
 | `ingest` | контур клиента | нет доступа | — | — | — |
 | `worker` | внешние сервисы | синхронно, с лимитами | сбор, LLM, верификация, оценка трафика | зелёная или обезличенно | идентификатор задания + тип запроса |
 | `worker` | ОЧЕРЕДЬ | результат | обновлённые статусы, следующий шаг, черновик | по движку | идентификатор задания + версия результата |
-| `worker` | контур клиента | по поручению | нормализация, обогащение, дедупликация, скоринг, сегменты, оценка размера, верификация, сделки | красная | идентификатор задания или хеш файла импорта |
+| `worker` | контур клиента | по поручению | нормализация, обогащение, дедупликация, скоринг, сегменты, оценка размера, верификация | красная | идентификатор задания или хеш файла импорта |
 | `worker` | объектное хранилище | запись | PDF, изображения, архивы лендингов | зелёная | идентификатор артефакта + версия |
-| `worker` (CRM) | Twenty CRM | GraphQL и вебхуки | сделки, стадии, история коммуникаций | красная | идентификатор записи + версия изменения |
-| `worker` (Telegram) | Telegram (MTProto) | MTProto | чтение сообществ: выжимка и авторы | обе | идентификатор сообщества + идентификатор сообщения |
-| `worker` (публикация) | площадки | официальные API | публикация утверждённого материала | зелёная | идентификатор публикации + версия |
 | `worker` (отчётность) | аналитика и контур клиента | чтение | агрегаты с минимальным порогом группы | обезличенно | идентификатор окна отчёта |
 | `chains` | ОЧЕРЕДЬ | команда | следующий шаг цепочки, таймер, напоминание | зелёная | идентификатор выполнения + шаг |
 | `chains` | `api` | уведомление | требуется решение оператора, срок истёк | зелёная | идентификатор объекта + тип уведомления |
 | `sender` | провайдер отправки | синхронно | отправка утверждённого черновика | зелёная | идентификатор утверждённого черновика |
 | `sender` | ОЧЕРЕДЬ | событие | факт отправки, отказ, жалоба | зелёная | идентификатор события провайдера |
-| `schedule` | ОЧЕРЕДЬ | команда | пересчёты, повторная верификация, отчёты, чтение Telegram, подготовка публикаций | зелёная | идентификатор окна расписания |
+| `schedule` | ОЧЕРЕДЬ | команда | пересчёты, повторная верификация, отчёты | зелёная | идентификатор окна расписания |
 | Провайдер отправки | `ingest` | вебхук | доставка, отказ, ответ | без ПД | идентификатор события провайдера |
-| CRM | `ingest` | вебхук | событие CRM | без ПД | идентификатор записи + версия изменения |
 
 **Что проверяется по этой матрице:** ни одна строка не ведёт в `sender` минуя утверждённый черновик; `ingest` не имеет доступа к красной зоне; ни один сервис не вызывает другой движок напрямую; транспорт каждой межконтекстной связи совпадает с видом интеграции (таблица выше).
 
@@ -313,11 +293,7 @@
 | Сообщение | `message-delivery` | зелёная | реляционное | отправлено / доставлено / отказ / жалоба |
 | Репутация отправителя | `message-delivery` | зелёная | реляционное | прогрев не завершён → завершён; отправка приостановлена / ограничена |
 | Событие | `engagement-observation` | аналитическое | аналитическое | доставка, переход, ответ, отказ; открытий нет |
-| Сделка | `sales-workflow` | контур клиента | внешняя система | стадии; переход утверждается человеком |
-| Синхронизация с CRM | `sales-workflow` | зелёная | реляционное | — |
 | Звонок | `outreach-orchestration` | контур клиента | реляционное в контуре клиента | назначен → подтверждён → план утверждён → ссылка выдана → проведён / перенесён / отменён |
-| Выжимка сообщества | `community-intelligence` | зелёная | реляционное | построена; авторы и состав — красная зона, выгрузка запрещена |
-| Публикация | `publishing` | зелёная | реляционное | подготовлена → утверждена → опубликована / отклонена площадкой |
 | Снимок отчёта | `analytics` | аналитическое | аналитическое | актуален; при недоступности контура — последний рассчитанный с указанием времени |
 | Профиль размера компании | `lead-management` | зелёная | реляционное | `измерено` / `оценка` / `недоступно` |
 | Контент-пакет | `content-production` | зелёная | реляционное | — |
@@ -325,8 +301,6 @@
 | Наполнение лендинга | `content-production` | зелёная | объектное | версия наполнения; публикация вне платформы |
 | Документ (PDF, изображение) | `content-production` | зелёная | объектное | версия; детерминированный рендеринг |
 | Задание рендеринга | `content-production` | зелёная | реляционное | — |
-| Подписка и счёт | `billing` | зелёная | реляционное | активна / приостановлена / лимиты тарифа |
-| Вознаграждение за результат | `billing` | зелёная | реляционное | кандидат → начислено / исключено; спор приостанавливает списание |
 | Регистрация адаптера | `integration-platform` | зелёная | реляционное | зарегистрирован; прошёл контрактные тесты / не допущен к поставке |
 | Вызов интеграции | `integration-platform` | зелёная | реляционное | выполнен / нормализованная ошибка; тайм-аут; отменён |
 | Запись аудита | `platform-governance` | зелёная | реляционное | неизменяема; корректировка только новой записью |
@@ -350,21 +324,15 @@
 | `osint-enrichment` | `lead-management` | 3.1, 3.3 | `worker` | обе (карточка — зелёная, контакты — красная) | `mvp-lead-search/specs/osint-enrichment/spec.md` |
 | `outreach-channel-email` | `message-delivery` | 3.8 | `sender` | зелёная + контур клиента | `full-enterprise-core-scope/specs/outreach-channel-email/spec.md` |
 | `lead-pool-client-side` | `data-governance` | 3.2, 3.4 | `worker` | контур клиента | `full-enterprise-core-scope/specs/lead-pool-client-side/spec.md` |
-| `crm-workflow` | `sales-workflow` | 3.14 | `worker`, `ingest` | контур клиента | `full-enterprise-core-scope/specs/crm-workflow/spec.md` |
-| `billing-subscription` | `billing` | — | `api` | зелёная | `full-enterprise-core-scope/specs/billing-subscription/spec.md` |
-| `billing-success-fee` | `billing` | — | `api`, `worker` | зелёная | `full-enterprise-core-scope/specs/billing-success-fee/spec.md` |
 | `presentation-generator` | `content-production` | 3.6, 3.7 | `worker` | зелёная | `full-enterprise-core-scope/specs/presentation-generator/spec.md` |
 | `linguistics` | `content-production` | 3.6 | `worker` | по запросу | `full-enterprise-core-scope/specs/linguistics/spec.md` |
-| `telegram-community-digest` | `community-intelligence` | 3.12 | `worker`, `schedule` | обе | `telegram-community-digest/specs/telegram-community-digest/spec.md` |
 | `company-size-assessment` | `lead-management` | 3.17 | `worker` | обе | `company-size-assessment/specs/company-size-assessment/spec.md` |
 | `email-verification` | `lead-management` | 3.18 | `worker` | контур клиента | `email-verification/specs/email-verification/spec.md` |
 | `lead-segmentation` | `audience` | 3.5 | `worker`, `schedule` | контур клиента | `lead-segmentation/specs/lead-segmentation/spec.md` |
 | `outreach-channel-form` | `outreach-orchestration` | 3.19 | `worker` | зелёная | `outreach-channel-form/specs/outreach-channel-form/spec.md` |
 | `outreach-sequences` | `outreach-orchestration` | 3.10 | `chains` | зелёная + контур клиента | `sequences-and-reporting/specs/outreach-sequences/spec.md` |
 | `campaign-reporting` | `analytics` | 3.15 | `worker`, `schedule` | обезличенно | `sequences-and-reporting/specs/campaign-reporting/spec.md` |
-| `digest-publishing` | `publishing` | 3.20 | `worker`, `schedule` | зелёная | `digest-publishing/specs/digest-publishing/spec.md` |
 | `landing-page-generator` | `content-production` | — | `worker` | зелёная | `landing-page-generator/specs/landing-page-generator/spec.md` |
-| `call-orchestration` | `outreach-orchestration` | — | `chains`, `worker`, `ingest` | обе | `call-orchestration/specs/call-orchestration/spec.md` |
 | `provider-agnostic-integrations` | `integration-platform` | — | все роли | по порту | `migrate-platform-to-go/specs/provider-agnostic-integrations/spec.md` |
 | `client-request` | `request-fulfillment` | — (ядро) | `api`, `worker` | зелёная | `openspec/specs/client-request/spec.md` |
 | `request-validation` | `request-fulfillment` | — (ядро) | `api`, `worker` | зелёная | `openspec/specs/request-validation/spec.md` |

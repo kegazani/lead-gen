@@ -20,7 +20,7 @@ const (
 	// ArtifactCampaign — кампания (владение outreach-orchestration).
 	ArtifactCampaign ArtifactKind = "campaign"
 
-	// ArtifactDeal — сделка (владение sales-workflow).
+	// ArtifactDeal — ссылка на сделку.
 	ArtifactDeal ArtifactKind = "deal"
 )
 

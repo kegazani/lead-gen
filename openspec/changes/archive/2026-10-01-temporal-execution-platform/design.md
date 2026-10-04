@@ -30,7 +30,7 @@
 
 ### Решение 3: workflow фулфилмента живёт в `request-fulfillment`
 
-Workflow исполнения заявки принадлежит контексту `request-fulfillment`: он владеет состоянием заявки (см. change №1) и двигает её по статусной машине, вызывая activities `lead-management`, `audience`, `outreach-orchestration`, `content-production`, `message-delivery`, `sales-workflow`.
+Workflow исполнения заявки принадлежит контексту `request-fulfillment`: он владеет состоянием заявки (см. change №1) и двигает её по статусной машине, вызывая activities `lead-management`, `audience`, `outreach-orchestration`, `content-production`, `message-delivery`.
 
 Раскладка пакета — `internal/adapters/workflow`: workflow-код импортирует SDK Temporal, а внешние модули в контексте допустимы только в adapters (`tools/importlint`, правило «внутренний слой, кроме adapters, не импортирует внешние модули»). Это адаптер durable-исполнения, а не application service: он не содержит доменных правил и вызывает application services (`internal/app/command`) через activities. Владение графом исполнения остаётся за контекстом, а не за платформенным пакетом.
 

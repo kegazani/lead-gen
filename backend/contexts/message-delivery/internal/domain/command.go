@@ -19,9 +19,15 @@ type DeliveryCommand struct {
 	RecipientRef     RecipientRef
 	Address          DeliveryAddress
 	SenderDomain     SenderDomain
-	CorrelationID    CorrelationID
-	CausationID      string
-	RequestedAt      time.Time
+	// Subject и Body — содержимое письма, переданное вызывающим. Реальному
+	// провайдеру нужны тема и тело; без них отправка возможна лишь как честный
+	// отказ. Материал разрешается адаптером контракта content-version до сборки
+	// команды: домен содержимое не выдумывает.
+	Subject       string
+	Body          string
+	CorrelationID CorrelationID
+	CausationID   string
+	RequestedAt   time.Time
 }
 
 // validate проверяет обязательные части команды. Канал в доменной команде

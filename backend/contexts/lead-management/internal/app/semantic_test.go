@@ -155,8 +155,8 @@ func TestEmbedCompanyRecomputesAfterChange(t *testing.T) {
 func TestEmbedCompanyWithoutVector(t *testing.T) {
 	profiles := newMemProfiles()
 	useCase := &EmbedCompany{Profiles: profiles}
-	if _, err := useCase.Run(context.Background(), EmbedCompanyInput{CompanyID: "acme.example"}); !errors.Is(err, errVectorUnavailable) {
-		t.Fatalf("ошибка = %v, ожидалась errVectorUnavailable", err)
+	if _, err := useCase.Run(context.Background(), EmbedCompanyInput{CompanyID: "acme.example"}); !errors.Is(err, ErrVectorUnavailable) {
+		t.Fatalf("ошибка = %v, ожидалась ErrVectorUnavailable", err)
 	}
 }
 
@@ -183,8 +183,17 @@ func TestSemanticRecallOrdersCandidates(t *testing.T) {
 // TestSemanticRecallWithoutVector отвергает работу без хранилища.
 func TestSemanticRecallWithoutVector(t *testing.T) {
 	recall := &SemanticRecall{}
-	if _, err := recall.Run(context.Background(), SemanticRecallInput{Text: "оффер"}); !errors.Is(err, errVectorUnavailable) {
-		t.Fatalf("ошибка = %v, ожидалась errVectorUnavailable", err)
+	if _, err := recall.Run(context.Background(), SemanticRecallInput{Text: "оффер"}); !errors.Is(err, ErrVectorUnavailable) {
+		t.Fatalf("ошибка = %v, ожидалась ErrVectorUnavailable", err)
+	}
+}
+
+// TestSemanticRecallRejectsEmptyText отвергает recall по пустому или пробельному
+// тексту: кандидаты не выдумываются по несформулированному запросу.
+func TestSemanticRecallRejectsEmptyText(t *testing.T) {
+	recall := &SemanticRecall{Vector: &fakeVector{matches: []vector.Match{{ID: "a.example", Score: 0.9}}}}
+	if _, err := recall.Run(context.Background(), SemanticRecallInput{Text: "   "}); !errors.Is(err, ErrInvalidRecallRequest) {
+		t.Fatalf("ошибка = %v, ожидалась ErrInvalidRecallRequest", err)
 	}
 }
 

@@ -21,11 +21,16 @@ import (
 	"syscall"
 	"time"
 
+	contentproduction "lead-gen/backend/contexts/content-production"
+	leadmanagement "lead-gen/backend/contexts/lead-management"
+	messagedelivery "lead-gen/backend/contexts/message-delivery"
+	outreachorchestration "lead-gen/backend/contexts/outreach-orchestration"
 	composition "lead-gen/backend/platform/composition"
 	"lead-gen/backend/platform/deployment"
 	"lead-gen/backend/platform/observability/observ"
 	"lead-gen/backend/platform/transport/amqp"
 	platformworkflow "lead-gen/backend/platform/workflow"
+	"lead-gen/contracts/content-production/contentversion"
 	"lead-gen/frontend/components"
 )
 
@@ -59,6 +64,7 @@ func main() {
 	leadGreenDSN := flag.String("lead-green-dsn", "", "DSN зелёной зоны lead-management (пусто — in-memory адаптеры)")
 	leadRedDSN := flag.String("lead-red-dsn", "", "DSN красной зоны lead-management (пусто — DSN зелёной зоны)")
 	requestGreenDSN := flag.String("request-green-dsn", "", "DSN зелёной зоны request-fulfillment (пусто — in-memory адаптеры)")
+	supportGreenDSN := flag.String("support-green-dsn", "", "DSN зелёной зоны supporting-контекстов (пусто — in-memory адаптеры)")
 	firecrawlKey := flag.String("firecrawl-key", "", "ключ доступа Firecrawl (поиск и обход)")
 	firecrawlURL := flag.String("firecrawl-url", "", "базовый адрес Firecrawl API (пусто — адрес по умолчанию)")
 	llmBaseURL := flag.String("llm-base-url", "", "базовый адрес LLM API (DeepSeek; пусто — адрес по умолчанию)")
@@ -83,6 +89,15 @@ func main() {
 	smtpUsername := flag.String("smtp-username", "", "имя учётной записи SMTP (пусто — без аутентификации)")
 	smtpPassword := flag.String("smtp-password", "", "пароль учётной записи SMTP")
 	smtpFrom := flag.String("smtp-from", "leads@lead-gen.local", "адрес отправителя писем")
+	deliveryRetryInterval := flag.Duration("delivery-retry-interval", time.Minute, "интервал повторных окон доставки message-delivery")
+	deliveryMaxAttempts := flag.Int("delivery-max-attempts", 3, "предельное число попыток доставки message-delivery (включая первую)")
+
+	// Конфигурация реального движка рендеринга content-production (headless
+	// Chromium по CDP). Пусто — контекст остаётся на детерминированном dev-двойнике
+	// рендера и честно предупреждает об этом: подмены продуктового движка нет.
+	rendererExecPath := flag.String("renderer-exec-path", envOr("RENDERER_EXEC_PATH", ""), "путь к исполняемому Chromium/Chrome для реального рендера (пусто — браузер не задан)")
+	rendererWSURL := flag.String("renderer-ws-url", envOr("RENDERER_WS_URL", ""), "адрес CDP-эндпоинта запущенного Chromium (пусто — браузер не задан)")
+	rendererTimeout := flag.Duration("renderer-timeout", 30*time.Second, "таймаут одной операции реального рендера Chromium")
 
 	// Рантайм исполнения (Temporal). Пустой адрес отключает рантайм: воркер
 	// workflow не поднимается, заявка остаётся в текущем статусе.
@@ -196,6 +211,7 @@ func main() {
 		leadGreenDSN:       *leadGreenDSN,
 		leadRedDSN:         *leadRedDSN,
 		requestGreenDSN:    *requestGreenDSN,
+		supportGreenDSN:    *supportGreenDSN,
 		firecrawlKey:       *firecrawlKey,
 		firecrawlURL:       *firecrawlURL,
 		llmBaseURL:         *llmBaseURL,
@@ -208,16 +224,22 @@ func main() {
 			components.ConsoleServiceRequests: *consoleRequestsURL,
 			components.ConsoleServiceReports:  *consoleReportsURL,
 		},
-		leadMaxPages:        *leadMaxPages,
-		leadMaxDepth:        *leadMaxDepth,
-		leadMaxTimeSeconds:  *leadMaxTimeSeconds,
-		dialogueMaxTurns:    *dialogueMaxTurns,
-		firecrawlMaxCredits: *firecrawlMaxCredits,
-		smtpHost:            *smtpHost,
-		smtpPort:            *smtpPort,
-		smtpUsername:        *smtpUsername,
-		smtpPassword:        *smtpPassword,
-		smtpFrom:            *smtpFrom,
+		leadMaxPages:          *leadMaxPages,
+		leadMaxDepth:          *leadMaxDepth,
+		leadMaxTimeSeconds:    *leadMaxTimeSeconds,
+		dialogueMaxTurns:      *dialogueMaxTurns,
+		firecrawlMaxCredits:   *firecrawlMaxCredits,
+		smtpHost:              *smtpHost,
+		smtpPort:              *smtpPort,
+		smtpUsername:          *smtpUsername,
+		smtpPassword:          *smtpPassword,
+		smtpFrom:              *smtpFrom,
+		deliveryRetryInterval: *deliveryRetryInterval,
+		deliveryMaxAttempts:   *deliveryMaxAttempts,
+		// Реальный движок рендера content-production.
+		rendererExecPath:    *rendererExecPath,
+		rendererWSURL:       *rendererWSURL,
+		rendererTimeout:     *rendererTimeout,
 		workflowClient:      workflowClient,
 		workflowTaskQueue:   *temporalTaskQueue,
 		runtime:             availability,
@@ -239,9 +261,66 @@ func main() {
 	ctx, cancel := context.WithCancel(signalCtx)
 	defer cancel()
 
+	// Сборка сервисов кэшируется: мост approved-action → delivery-command требует
+	// резолвер получателя из lead-management ДО сборки message-delivery и
+	// outreach-orchestration, поэтому lead-management собирается первым, а его
+	// результат переиспользуется в основном цикле (повторной сборки нет).
+	built := make(map[string]composition.Service, len(selected))
+	buildOnce := func(sel selectedService) (composition.Service, error) {
+		if service, ok := built[sel.ID]; ok {
+			return service, nil
+		}
+		service, err := buildService(sel.ID, sel.Mechanism, opts, publisher, stub)
+		if err != nil {
+			return nil, err
+		}
+		built[sel.ID] = service
+		return service, nil
+	}
+
+	if lm, ok := findSelected(selected, leadmanagement.ServiceID); ok {
+		service, err := buildOnce(lm)
+		if err != nil {
+			logger.Error("lead-gen: сборка сервиса", err, observ.Fields{}, "service", lm.ID)
+			os.Exit(1)
+		}
+		lmService, _ := service.(*leadmanagement.Service)
+		switch domain := senderDomainFromAddr(opts.smtpFrom); {
+		case lmService == nil:
+			logger.Warn("lead-gen: lead-management не отдал резолвер — мост approved-action не собран", observ.Fields{})
+		case domain == "":
+			logger.Warn("lead-gen: sender-domain не выведен из smtp-from — мост approved-action не собран", observ.Fields{})
+		default:
+			resolver := lmService.DeliveryTargetResolver(opts.tenant)
+			// Материал письма: версия контента владельца content-production (контракт
+			// content-version). Если content-production не выбран, резолвер материала
+			// не собирается — мост честно отдаёт недоступность при заданной ссылке.
+			var contentSource contentversion.Source
+			if cp, ok := findSelected(selected, contentproduction.ServiceID); ok {
+				cpService, err := buildOnce(cp)
+				if err != nil {
+					logger.Error("lead-gen: сборка сервиса", err, observ.Fields{}, "service", cp.ID)
+					os.Exit(1)
+				}
+				if cps, ok := cpService.(*contentproduction.Service); ok {
+					contentSource = contentproduction.NewContentVersion(cps.Slice())
+				}
+			}
+			materials := messagedelivery.NewContentMaterialResolver(contentSource)
+			bridge, err := messagedelivery.NewApprovedActionBridge(resolver, materials, domain)
+			if err != nil {
+				logger.Error("lead-gen: мост approved-action → delivery-command", err, observ.Fields{})
+				os.Exit(1)
+			}
+			opts.bridge = bridge
+			opts.approvedActionSink = outreachorchestration.SinkFunc(bridge.Sink())
+			logger.Info("lead-gen: мост approved-action → delivery-command собран", observ.Fields{}, "sender_domain", domain)
+		}
+	}
+
 	var wg sync.WaitGroup
 	for _, sel := range selected {
-		service, err := buildService(sel.ID, sel.Mechanism, opts, publisher, stub)
+		service, err := buildOnce(sel)
 		if err != nil {
 			logger.Error("lead-gen: сборка сервиса", err, observ.Fields{}, "service", sel.ID)
 			os.Exit(1)
@@ -265,6 +344,31 @@ func main() {
 	case <-time.After(*shutdownTimeout):
 		logger.Warn("lead-gen: роли не завершились за отведённое время, выход", observ.Fields{}, "timeout", *shutdownTimeout)
 	}
+}
+
+// findSelected возвращает выбранный к запуску сервис по идентификатору.
+func findSelected(selected []selectedService, id string) (selectedService, bool) {
+	for _, sel := range selected {
+		if sel.ID == id {
+			return sel, true
+		}
+	}
+	return selectedService{}, false
+}
+
+// senderDomainFromAddr выводит отправляющий домен из адреса отправителя
+// (например, "Name <noreply@example.com>" → "example.com"). Пусто, если домен не
+// выводится: тогда мост не собирается, а выдуманный домен не подставляется.
+func senderDomainFromAddr(from string) string {
+	value := strings.TrimSpace(from)
+	value = strings.Trim(value, "<>")
+	if at := strings.IndexByte(value, '@'); at >= 0 {
+		value = value[at+1:]
+	}
+	if space := strings.IndexAny(value, "> "); space >= 0 {
+		value = value[:space]
+	}
+	return strings.TrimSpace(strings.Trim(value, "<>"))
 }
 
 // selectedService — выбранный к запуску сервис вместе с группой, механизмом

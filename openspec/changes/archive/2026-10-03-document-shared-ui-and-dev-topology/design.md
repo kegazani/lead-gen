@@ -7,7 +7,7 @@
 - `platform-governance` (портал) и `analytics` (дашборд) в своём `render` подставляют `components.ConsoleStylesheets` и `components.ConsoleBootstrapScripts`, если экран не задал собственные. Портал рендерит общую навигацию (`portalNav`) — значит, показывает `#theme-toggle`; дашборд навигацию не рендерит — переключателя нет, но `theme.js` применяет тему.
 - `theme.js` разрешает режим (`system`/`light`/`dark`) в атрибут `data-theme` на `<html>` до отрисовки; выбор хранится в `localStorage` (origin-специфично).
 - `compose.yaml` поднимает self-hosted Temporal: `postgres-temporal` (PG16), `temporalio/auto-setup:1.26.2` (монтирует `deploy/temporal/dynamicconfig/development.yaml`), `temporal-ui:2.31.2`. `deploy/infrastructure.yaml` уже описывает узел `temporal` (`kind: workflow`, «self-hosted; Temporal Cloud — альтернатива»).
-- Локальный контур также описывает клиентские и самостоятельные сервисы отдельными контейнерами: портал `platform-governance` на 8082 с сетевым `-request-intent-url http://request-fulfillment:8080`, дашборд `analytics` на 8083 с `-broker-url`, `billing` на 8084, `publishing` на 8085.
+- Локальный контур также описывает клиентские и самостоятельные сервисы отдельными контейнерами: портал `platform-governance` на 8082 с сетевым `-request-intent-url http://request-fulfillment:8080`, дашборд `analytics` на 8083 с `-broker-url`.
 - `analytics` HTTP-адаптер объявляет `POST /dashboard/events` (`handleEvents`), который применяет нормализованное событие через `command.ApplyEventHandler`; доменные поля совпадают с `eventDTO` транспортного потребителя, а `event_id` и дедупликация живут в очереди брокера (`inbox.Deduper`).
 - Спеки, расходящиеся с фактом: `console-appearance` (архив `console-theme-switcher`) утверждает, что переключатель — только консоль; архив `temporal-execution-platform` — «Cloud first, self-hosted отложен»; `harden-fulfillment-execution` — «self-hosted вне объёма».
 
@@ -43,7 +43,7 @@
 
 ### Решение 4. Dev-топология — исполняемая проверка сетевых адаптеров и брокера
 
-Локальный контур воспроизводит топологию как композицию: портал ходит в сервис заявок сетевым адаптером контракта `request-intent`; события дашборда идут через брокер (`analytics-event` публикуется, воркер `analytics` подписан на `analytics.analytics-event`); сервисы с собственной ролью `api` (`billing`, `publishing`) и клиентские экраны (`platform-governance` 8082, `analytics` 8083, `billing` 8084, `publishing` 8085) поднимаются отдельными контейнерами. Так dev повторяет сетевую границу, а не только co-location, и проверяет, что смена транспорта не требует правки потребителя.
+Локальный контур воспроизводит топологию как композицию: портал ходит в сервис заявок сетевым адаптером контракта `request-intent`; события дашборда идут через брокер (`analytics-event` публикуется, воркер `analytics` подписан на `analytics.analytics-event`); клиентские экраны (`platform-governance` 8082, `analytics` 8083) поднимаются отдельными контейнерами. Так dev повторяет сетевую границу, а не только co-location, и проверяет, что смена транспорта не требует правки потребителя.
 
 ### Решение 5. Границы `POST /dashboard/events`
 

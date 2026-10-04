@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 )
@@ -52,6 +53,37 @@ func (l ContentLocale) String() string {
 
 // IsZero сообщает, что локаль не задана.
 func (l ContentLocale) IsZero() bool { return l.language == "" }
+
+// MarshalJSON сохраняет локаль как каноническую строку "ru-RU"/"ru". Снимок
+// состояния версии хранится в JSONB, а у локали закрытые поля, поэтому адаптер
+// опирается на этот метод, а не на отражение.
+func (l ContentLocale) MarshalJSON() ([]byte, error) { return json.Marshal(l.String()) }
+
+// UnmarshalJSON читает локаль из канонической строки. Пустая строка даёт
+// нулевую локаль: отсутствие проверяет восстановление снимка. Допустимость
+// языка и региона проверяет NewContentLocale, поэтому испорченный снимок
+// отвергается уже на разборе.
+func (l *ContentLocale) UnmarshalJSON(data []byte) error {
+	var raw string
+	if err := json.Unmarshal(data, &raw); err != nil {
+		return err
+	}
+	if raw == "" {
+		*l = ContentLocale{}
+		return nil
+	}
+	language := raw
+	region := ""
+	if index := strings.IndexByte(raw, '-'); index >= 0 {
+		language, region = raw[:index], raw[index+1:]
+	}
+	parsed, err := NewContentLocale(language, region)
+	if err != nil {
+		return err
+	}
+	*l = parsed
+	return nil
+}
 
 // isAlpha проверяет, что строка состоит только из латинских букв.
 func isAlpha(value string) bool {

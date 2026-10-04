@@ -96,6 +96,12 @@ type eventDTO struct {
 	Outcome    string `json:"outcome"`
 	OccurredAt string `json:"occurred_at"`
 	ReplyText  string `json:"reply_text"`
+
+	Source     string `json:"source"`
+	Industry   string `json:"industry"`
+	Segment    string `json:"segment"`
+	CampaignID string `json:"campaign_id"`
+	ManagerID  string `json:"manager_id"`
 }
 
 // message — разобранное сообщение: идентификатор для дедупликации и событие
@@ -135,6 +141,12 @@ func decode(delivery amqptransport.Delivery) (message, error) {
 			Outcome:    dto.Outcome,
 			OccurredAt: occurred,
 			ReplyText:  dto.ReplyText,
+
+			Source:     dto.Source,
+			Industry:   dto.Industry,
+			Segment:    dto.Segment,
+			CampaignID: dto.CampaignID,
+			ManagerID:  dto.ManagerID,
 		},
 	}, nil
 }

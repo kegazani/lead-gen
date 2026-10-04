@@ -9,10 +9,12 @@ import (
 	"time"
 
 	"lead-gen/backend/contexts/outreach-orchestration/internal/adapters/outbox/relay"
+	"lead-gen/backend/contexts/outreach-orchestration/internal/app/scheduling"
 	"lead-gen/backend/contexts/outreach-orchestration/internal/domain"
 	composition "lead-gen/backend/platform/composition"
 	"lead-gen/backend/platform/observability/observ"
 	"lead-gen/backend/platform/transport/amqp"
+	"lead-gen/contracts/outreach-orchestration/approvedaction"
 )
 
 // ServiceID — идентификатор сервиса, равный идентификатору контекста
@@ -39,11 +41,30 @@ type Config struct {
 	// процесс не публикует approved-action (например, сборка только под api).
 	Publisher amqp.Publisher
 
+	// ApprovedActionSink — явное назначение релиза approved-action в форме
+	// функции (SinkFunc): задано — утверждённые действия из outbox-релиза
+	// доставляются сюда, а транспортный AMQP-Sink не собирается. nil — назначение
+	// выбирается из ApprovedActionConsumer, затем из Publisher. См.
+	// Params.ApprovedActionSink.
+	ApprovedActionSink SinkFunc
+
 	// Transport — механизм группы процессов из deploy/services.yaml, задающий
 	// способ связи синхронного контракта approved-action с потребителем. Пустое
 	// значение означает in-process (совмещённый деплой); сетевой транспорт в
 	// объёме среза не реализован.
 	Transport string
+
+	// ApprovedActionConsumer — внешний потребитель утверждённых действий
+	// (например, мост в message-delivery), реализующий потребительский интерфейс
+	// контракта. nil — прежнее поведение: владелец собирает свой in-memory
+	// publication-сервис (Slice.Publication). См. Params.ApprovedActionConsumer.
+	ApprovedActionConsumer approvedaction.Publisher
+
+	// Persistence — адаптеры хранилища контекста. Нулевое значение означает
+	// dev-сборку на in-memory адаптерах; при заданном DSN точка входа передаёт
+	// сюда NewPostgresPersistence, и тогда агрегат и события переживают рестарт,
+	// а движок последовательностей пишет их атомарно в PostgreSQL.
+	Persistence Persistence
 
 	// Наблюдаемость сервиса: логгер, метрики и трейсер впрыскиваются
 	// composition root'ом; обязательны.
@@ -64,8 +85,9 @@ type Service struct {
 	tracer   observ.Tracer
 }
 
-// New собирает сервис из in-memory адаптеров. Публикация собирается только
-// тогда, когда задан Publisher: без него срез не публикует approved-action.
+// New собирает сервис из in-memory адаптеров. Публикация собирается, если задан
+// явный ApprovedActionSink, внешний ApprovedActionConsumer или Publisher: тогда
+// срез публикует approved-action. Без них публикация не собирается.
 func New(cfg Config) (*Service, error) {
 	if cfg.Interval <= 0 {
 		cfg.Interval = time.Second
@@ -87,18 +109,32 @@ func New(cfg Config) (*Service, error) {
 		return nil, err
 	}
 
+	// Назначение релиза approved-action. Если задан внешний Sink или потребитель,
+	// транспортный AMQP-Sink не собирается: утверждённые действия идут внешнему
+	// получателю. Иначе сохраняется прежнее поведение (AMQP при заданном
+	// Publisher).
 	var sink relay.Sink
 	var amqpSink *AMQPSink
-	if cfg.Publisher != nil {
+	if cfg.ApprovedActionSink == nil && cfg.ApprovedActionConsumer == nil && cfg.Publisher != nil {
 		amqpSink = NewAMQPSink(cfg.Publisher, cfg.Interval)
 		sink = amqpSink
+	}
+
+	// Хранилище контекста: PostgreSQL-адаптеры при заданном Persistence, иначе
+	// in-memory (dev). О dev-сборке честно сообщается: пустой DSN не должен
+	// выглядеть готовой персистентностью.
+	if !cfg.Persistence.configured() {
+		cfg.Logger.Warn("outreach-orchestration: PostgreSQL не подключён (DSN пуст), сборка на in-memory адаптерах (только dev)", observ.Fields{}, "service", ServiceID)
 	}
 
 	slice, err := Build(Params{
 		Grants:                  cfg.Grants,
 		Risk:                    cfg.Risk,
 		Sink:                    sink,
+		ApprovedActionSink:      cfg.ApprovedActionSink,
 		ApprovedActionTransport: transport,
+		ApprovedActionConsumer:  cfg.ApprovedActionConsumer,
+		Persistence:             cfg.Persistence,
 	})
 	if err != nil {
 		return nil, err
@@ -178,15 +214,20 @@ func (s *Service) runAPI(ctx context.Context) error {
 // перекладывает в него утверждённые действия. Потребителей очередей движков
 // контекста в срезе нет — это не скрывается, а логируется.
 func (s *Service) runWorker(ctx context.Context) error {
-	if s.slice.Relay == nil || s.sink == nil {
-		return fmt.Errorf("worker: публикация approved-action не собрана (Publisher не задан)")
+	if s.slice.Relay == nil {
+		return fmt.Errorf("worker: публикация approved-action не собрана (не задан ApprovedActionSink, ApprovedActionConsumer или Publisher)")
 	}
 
-	go func() {
-		if err := s.sink.Run(ctx); err != nil {
-			s.logger.Error("worker: транспортный relay", err, observ.Fields{}, "service", ServiceID)
-		}
-	}()
+	// Транспортный relay (AMQP) запускается только тогда, когда собран. Внешний
+	// Sink/потребитель доставляет действие синхронно в проходе PublishPending и
+	// отдельного Run не требует.
+	if s.sink != nil {
+		go func() {
+			if err := s.sink.Run(ctx); err != nil {
+				s.logger.Error("worker: транспортный relay", err, observ.Fields{}, "service", ServiceID)
+			}
+		}()
+	}
 
 	s.logger.Warn("worker: обработчики очередей не зарегистрированы", observ.Fields{}, "service", ServiceID)
 
@@ -220,13 +261,48 @@ func (s *Service) publishPending(ctx context.Context) {
 	}
 }
 
-// runChains — каркас роли chains. Durable-планировщик долгих состояний
-// (design.md, Решение 6) в срезе не реализован: роли честно сообщают об этом и
-// не делают вид, что ведут цепочки.
+// runChains запускает движок последовательностей: он формирует черновики шагов
+// и продвигает цепочки. Отправка не выполняется: каждый шаг ждёт отдельного
+// утверждения оператора (design.md, Решение 1).
 func (s *Service) runChains(ctx context.Context) error {
-	s.logger.Warn("chains: планировщик долгих состояний не реализован", observ.Fields{}, "service", ServiceID)
-	<-ctx.Done()
-	return nil
+	engine := s.slice.SequenceEngine
+	if engine == nil {
+		return fmt.Errorf("chains: движок последовательностей не собран")
+	}
+
+	s.logger.Info("chains: движок последовательностей запущен", observ.Fields{}, "service", ServiceID)
+
+	s.advanceSequences(ctx, engine)
+	ticker := time.NewTicker(s.interval)
+	defer ticker.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			s.logger.Info("chains: останов", observ.Fields{}, "service", ServiceID)
+			return nil
+		case <-ticker.C:
+			s.advanceSequences(ctx, engine)
+		}
+	}
+}
+
+// advanceSequences выполняет один проход движка и логирует результат. Простой
+// цепочек не устраняется, а сообщается: неутверждённый шаг остаётся
+// неисполненным (design.md, Решение 2).
+func (s *Service) advanceSequences(ctx context.Context, engine *scheduling.Engine) {
+	report, err := engine.RunOnce(ctx)
+	if err != nil {
+		s.logger.Error("chains: проход движка последовательностей", err, observ.Fields{}, "service", ServiceID)
+		return
+	}
+	if report.Drafted > 0 || report.Advanced > 0 || report.Completed > 0 {
+		s.logger.Info("chains: проход завершён", observ.Fields{}, "service", ServiceID,
+			"drafted", report.Drafted, "advanced", report.Advanced, "completed", report.Completed)
+	}
+	for _, notice := range report.Stalled {
+		s.logger.Warn("chains: простой — шаг ждёт утверждения оператора", observ.Fields{}, "service", ServiceID,
+			"campaign", notice.CampaignID, "executions", len(notice.Executions))
+	}
 }
 
 // runSchedule — каркас роли schedule. Тикер идемпотентных окон в срезе не

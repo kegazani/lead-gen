@@ -19,6 +19,18 @@ type (
 	// DecisionID — идентификатор сущности operator-decision.
 	DecisionID string
 
+	// SequenceID — идентификатор сущности sequence-definition: сценария
+	// последовательности касаний.
+	SequenceID string
+
+	// ExecutionID — идентификатор сущности sequence-execution: участия
+	// конкретного лида в сценарии.
+	ExecutionID string
+
+	// LeadID — идентификатор лида, для которого ведётся последовательность. Не
+	// сущность этого контекста: ссылка на владельца профиля лида.
+	LeadID string
+
 	// TenantID — идентификатор тенанта-владельца данных.
 	TenantID string
 
@@ -41,6 +53,9 @@ type (
 func (id CampaignID) String() string  { return string(id) }
 func (id DraftID) String() string     { return string(id) }
 func (id DecisionID) String() string  { return string(id) }
+func (id SequenceID) String() string  { return string(id) }
+func (id ExecutionID) String() string { return string(id) }
+func (id LeadID) String() string      { return string(id) }
 func (id TenantID) String() string    { return string(id) }
 func (id ActorID) String() string     { return string(id) }
 func (id MaterialID) String() string  { return string(id) }
@@ -51,6 +66,9 @@ func (id CommandID) String() string   { return string(id) }
 func (id CampaignID) validate() error  { return validateID("campaign_id", string(id)) }
 func (id DraftID) validate() error     { return validateID("draft_id", string(id)) }
 func (id DecisionID) validate() error  { return validateID("decision_id", string(id)) }
+func (id SequenceID) validate() error  { return validateID("sequence_id", string(id)) }
+func (id ExecutionID) validate() error { return validateID("execution_id", string(id)) }
+func (id LeadID) validate() error      { return validateID("lead_id", string(id)) }
 func (id TenantID) validate() error    { return validateID("tenant_id", string(id)) }
 func (id ActorID) validate() error     { return validateID("actor_id", string(id)) }
 func (id MaterialID) validate() error  { return validateID("material_id", string(id)) }

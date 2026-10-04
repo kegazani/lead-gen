@@ -13,8 +13,7 @@ import (
 
 	analytics "lead-gen/backend/contexts/analytics"
 	audience "lead-gen/backend/contexts/audience"
-	billing "lead-gen/backend/contexts/billing"
-	communityintelligence "lead-gen/backend/contexts/community-intelligence"
+
 	contentproduction "lead-gen/backend/contexts/content-production"
 	datagovernance "lead-gen/backend/contexts/data-governance"
 	engagementobservation "lead-gen/backend/contexts/engagement-observation"
@@ -23,9 +22,9 @@ import (
 	messagedelivery "lead-gen/backend/contexts/message-delivery"
 	outreachorchestration "lead-gen/backend/contexts/outreach-orchestration"
 	platformgovernance "lead-gen/backend/contexts/platform-governance"
-	publishing "lead-gen/backend/contexts/publishing"
+
 	requestfulfillment "lead-gen/backend/contexts/request-fulfillment"
-	salesworkflow "lead-gen/backend/contexts/sales-workflow"
+
 	composition "lead-gen/backend/platform/composition"
 	"lead-gen/backend/platform/consoleauth"
 	"lead-gen/backend/platform/migrate"
@@ -34,6 +33,7 @@ import (
 	platformworkflow "lead-gen/backend/platform/workflow"
 	"lead-gen/contracts/integration-platform/budget"
 	"lead-gen/contracts/integration-platform/llm"
+	"lead-gen/contracts/integration-platform/vector"
 	"lead-gen/contracts/lead-management/emailgeneration"
 	emailgenerationhttp "lead-gen/contracts/lead-management/emailgeneration/httpport"
 	"lead-gen/contracts/lead-management/leadsearch"
@@ -68,7 +68,21 @@ type buildOptions struct {
 	leadRedDSN   string // DSN красной зоны; пусто — DSN зелёной зоны
 
 	// Конфигурация хранилища сервиса request-fulfillment.
-	requestGreenDSN     string                  // DSN зелёной зоны; пусто — in-memory адаптеры
+	requestGreenDSN string // DSN зелёной зоны; пусто — in-memory адаптеры
+
+	// Конфигурация хранилища supporting-контекстов зелёной зоны (analytics,
+	// audience, content-production, data-governance, engagement-observation,
+	// integration-platform, platform-governance, message-delivery). Пусто —
+	// каждый контекст собирается на in-memory адаптерах (dev).
+	supportGreenDSN string // DSN зелёной зоны; пусто — in-memory адаптеры
+
+	// Конфигурация реального движка рендеринга content-production (headless
+	// Chromium). Пусто — контекст остаётся на детерминированном dev-двойнике
+	// рендера и предупреждает об этом: продуктовый движок не подменяется молча.
+	rendererExecPath string        // путь к Chromium/Chrome; пусто — браузер не задан
+	rendererWSURL    string        // адрес CDP-эндпоинта запущенного браузера; пусто — не задан
+	rendererTimeout  time.Duration // таймаут одной операции рендера
+
 	firecrawlKey        string                  // ключ Firecrawl; обязателен для поиска и обхода
 	firecrawlURL        string                  // базовый адрес Firecrawl; пусто — по умолчанию
 	llmBaseURL          string                  // базовый адрес LLM (DeepSeek); пусто — по умолчанию
@@ -87,6 +101,17 @@ type buildOptions struct {
 	smtpUsername        string                  // имя учётной записи SMTP
 	smtpPassword        string                  // пароль учётной записи SMTP
 	smtpFrom            string                  // адрес отправителя писем
+
+	// Параметры повторных окон доставки message-delivery.
+	deliveryRetryInterval time.Duration // интервал тика повторных окон
+	deliveryMaxAttempts   int           // предельное число попыток (включая первую)
+
+	// Мост approved-action → delivery-command: резолвер получателя
+	// (lead-management) + источник команд роли sender (message-delivery) +
+	// приёмник утверждённых действий (outreach-orchestration). Собирается один раз
+	// на процесс в main и разделяется сервисами; nil — мост не собран.
+	bridge             *messagedelivery.ApprovedActionBridge
+	approvedActionSink outreachorchestration.SinkFunc
 
 	// Рантайм исполнения заявок (Temporal). workflowClient равен nil, если
 	// рантайм отключён или недоступен: воркер workflow не поднимается, а
@@ -132,26 +157,51 @@ func buildService(
 	tracer := observ.NewTracer(id)
 	switch id {
 	case analytics.ServiceID:
-		return analytics.New(analytics.Config{
+		cfg := analytics.Config{
 			APIAddr:  opts.apiAddr,
 			Consumer: opts.consumer,
 			Console:  opts.console,
 			Logger:   opts.logger,
 			Metrics:  opts.metrics,
 			Tracer:   tracer,
-		})
+		}
+		// Проекция дашборда: PostgreSQL при заданном DSN зелёной зоны, иначе
+		// in-memory dev. Витрина переживает рестарт только с хранилищем.
+		if dsn := strings.TrimSpace(opts.supportGreenDSN); dsn != "" {
+			pool, err := supportPool(dsn, analytics.ServiceID, "backend/contexts/analytics/migrations")
+			if err != nil {
+				return nil, err
+			}
+			cfg.ProjectionStore = analytics.NewPostgresPersistence(pool).Projection
+		}
+		return analytics.New(cfg)
 	case outreachorchestration.ServiceID:
-		return outreachorchestration.New(outreachorchestration.Config{
+		cfg := outreachorchestration.Config{
 			APIAddr:   opts.apiAddr,
 			Interval:  opts.publishInterval,
 			Grants:    outreachorchestration.GrantsFromStrings(opts.actor, opts.tenant),
 			Risk:      outreachorchestration.NoUpstreamRiskChecks,
 			Publisher: broker,
 			Transport: mechanism,
-			Logger:    opts.logger,
-			Metrics:   opts.metrics,
-			Tracer:    tracer,
-		})
+			// Приёмник утверждённых действий: если собран мост в message-delivery,
+			// действия из outbox-релиза идут ему (замыкание «утверждено → отправлено»),
+			// а не в AMQP. Иначе — прежнее поведение (Publisher/AMQP).
+			ApprovedActionSink: opts.approvedActionSink,
+			Logger:             opts.logger,
+			Metrics:            opts.metrics,
+			Tracer:             tracer,
+		}
+		// Кампании и цепочки: PostgreSQL при заданном DSN зелёной зоны, иначе
+		// in-memory dev. Движок последовательностей переживает рестарт только с
+		// хранилищем.
+		if dsn := strings.TrimSpace(opts.supportGreenDSN); dsn != "" {
+			pool, err := supportPool(dsn, outreachorchestration.ServiceID, "backend/contexts/outreach-orchestration/migrations")
+			if err != nil {
+				return nil, err
+			}
+			cfg.Persistence = outreachorchestration.NewPostgresPersistence(pool)
+		}
+		return outreachorchestration.New(cfg)
 	case leadmanagement.ServiceID:
 		return buildLeadManagement(opts, tracer, broker)
 	case requestfulfillment.ServiceID:
@@ -162,6 +212,12 @@ func buildService(
 		emailGeneration, err := emailGenerationPort(opts)
 		if err != nil {
 			return nil, fmt.Errorf("request-fulfillment: порт генерации писем: %w", err)
+		}
+		// Векторное хранилище за provider-port (контракт vector): эмбеддинг оффера
+		// заявки. Без DSN/ключа — порт не собирается, и эмбеддинг честно недоступен.
+		vectorPort, err := vectorRecallPort(opts)
+		if err != nil {
+			return nil, fmt.Errorf("request-fulfillment: векторный порт: %w", err)
 		}
 
 		// Хранилище заявок: PostgreSQL по DSN зелёной зоны либо in-memory (dev).
@@ -219,6 +275,7 @@ func buildService(
 			SearchLeads:                   opts.searchStubLeads,
 			LeadSearch:                    leadSearch,
 			EmailGeneration:               emailGeneration,
+			Vector:                        vectorPort,
 			ConsoleUser:                   opts.consoleUser,
 			ConsolePassword:               opts.consolePassword,
 			ConsoleStore:                  consoleStore,
@@ -230,7 +287,10 @@ func buildService(
 	case platformgovernance.ServiceID:
 		return buildPlatformGovernance(opts, tracer)
 	case integrationplatform.ServiceID:
+		// Контекст сам собирает персистентность по DSN зелёной зоны: без DSN —
+		// in-memory dev с предупреждением.
 		return integrationplatform.New(integrationplatform.Config{
+			DSN:     opts.supportGreenDSN,
 			Logger:  opts.logger,
 			Metrics: opts.metrics,
 			Tracer:  tracer,
@@ -238,43 +298,58 @@ func buildService(
 	case datagovernance.ServiceID:
 		// Период фонового истечения полномочий оставляем доменному значению по
 		// умолчанию (defaultSweepInterval): -publish-interval задаёт публикацию, а
-		// не проход полномочий.
+		// не проход полномочий. Персистентность контекст собирает сам по DSN
+		// зелёной зоны.
 		return datagovernance.New(datagovernance.Config{
 			APIAddr: opts.apiAddr,
+			DSN:     opts.supportGreenDSN,
 			Grants:  datagovernance.GrantsFromStrings(opts.actor, opts.tenant),
 			Logger:  opts.logger,
 			Metrics: opts.metrics,
 			Tracer:  tracer,
 		})
 	case audience.ServiceID:
-		return audience.New(audience.Config{
+		cfg := audience.Config{
 			APIAddr:   opts.apiAddr,
 			Interval:  opts.publishInterval,
 			Publisher: broker,
 			Logger:    opts.logger,
 			Metrics:   opts.metrics,
 			Tracer:    tracer,
-		})
+		}
+		if dsn := strings.TrimSpace(opts.supportGreenDSN); dsn != "" {
+			pool, err := supportPool(dsn, audience.ServiceID, "backend/contexts/audience/migrations")
+			if err != nil {
+				return nil, err
+			}
+			cfg.Persistence = audience.NewPostgresPersistence(pool)
+		}
+		return audience.New(cfg)
 	case contentproduction.ServiceID:
+		// Контекст сам собирает персистентность по DSN зелёной зоны: без DSN —
+		// in-memory dev с предупреждением. Реальный движок рендера (headless
+		// Chromium) подключается при заданном пути или CDP-адресе; пустые значения
+		// оставляют контекст на детерминированном dev-двойнике рендера.
+		if strings.TrimSpace(opts.rendererExecPath) == "" && strings.TrimSpace(opts.rendererWSURL) == "" {
+			opts.logger.Warn("content-production: движок рендера не сконфигурирован (renderer-exec-path/renderer-ws-url пусты), рендер на dev-двойнике (dev-режим)", observ.Fields{})
+		}
 		return contentproduction.New(contentproduction.Config{
-			APIAddr:   opts.apiAddr,
-			Interval:  opts.publishInterval,
-			Publisher: broker,
-			Logger:    opts.logger,
-			Metrics:   opts.metrics,
-			Tracer:    tracer,
+			APIAddr:          opts.apiAddr,
+			Interval:         opts.publishInterval,
+			DSN:              opts.supportGreenDSN,
+			RendererExecPath: opts.rendererExecPath,
+			RendererWSURL:    opts.rendererWSURL,
+			RendererTimeout:  opts.rendererTimeout,
+			Publisher:        broker,
+			Logger:           opts.logger,
+			Metrics:          opts.metrics,
+			Tracer:           tracer,
 		})
 	case messagedelivery.ServiceID:
 		// У контекста нет роли api: адрес внутреннего сервера не задаётся.
-		return messagedelivery.New(messagedelivery.Config{
-			Interval:  opts.publishInterval,
-			Publisher: broker,
-			Logger:    opts.logger,
-			Metrics:   opts.metrics,
-			Tracer:    tracer,
-		})
+		return buildMessageDelivery(opts, tracer, broker)
 	case engagementobservation.ServiceID:
-		return engagementobservation.New(engagementobservation.Config{
+		cfg := engagementobservation.Config{
 			IngestAddr: opts.ingestAddr,
 			Interval:   opts.publishInterval,
 			Publisher:  broker,
@@ -282,43 +357,15 @@ func buildService(
 			Logger:     opts.logger,
 			Metrics:    opts.metrics,
 			Tracer:     tracer,
-		})
-	case salesworkflow.ServiceID:
-		return salesworkflow.New(salesworkflow.Config{
-			APIAddr:    opts.apiAddr,
-			IngestAddr: opts.ingestAddr,
-			Interval:   opts.publishInterval,
-			Publisher:  broker,
-			Logger:     opts.logger,
-			Metrics:    opts.metrics,
-			Tracer:     tracer,
-		})
-	case communityintelligence.ServiceID:
-		// У контекста нет роли api, а период регулярного сбора оставляем
-		// доменному значению по умолчанию (defaultInterval = 1 мин).
-		return communityintelligence.New(communityintelligence.Config{
-			Logger:  opts.logger,
-			Metrics: opts.metrics,
-			Tracer:  tracer,
-		})
-	case publishing.ServiceID:
-		return publishing.New(publishing.Config{
-			APIAddr:   opts.apiAddr,
-			Interval:  opts.publishInterval,
-			Publisher: broker,
-			Logger:    opts.logger,
-			Metrics:   opts.metrics,
-			Tracer:    tracer,
-		})
-	case billing.ServiceID:
-		return billing.New(billing.Config{
-			APIAddr:   opts.apiAddr,
-			Interval:  opts.publishInterval,
-			Publisher: broker,
-			Logger:    opts.logger,
-			Metrics:   opts.metrics,
-			Tracer:    tracer,
-		})
+		}
+		if dsn := strings.TrimSpace(opts.supportGreenDSN); dsn != "" {
+			pool, err := supportPool(dsn, engagementobservation.ServiceID, "backend/contexts/engagement-observation/migrations")
+			if err != nil {
+				return nil, err
+			}
+			cfg.Persistence = engagementobservation.NewPostgresPersistence(pool)
+		}
+		return engagementobservation.New(cfg)
 	default:
 		return &stubService{id: id, ingest: stub}, nil
 	}
@@ -332,13 +379,23 @@ func buildPlatformGovernance(opts buildOptions, tracer observ.Tracer) (compositi
 	if err != nil {
 		return nil, fmt.Errorf("platform-governance: порт заявок: %w", err)
 	}
-	return platformgovernance.New(platformgovernance.Config{
+	cfg := platformgovernance.Config{
 		APIAddr:  opts.apiAddr,
 		Requests: requests,
 		Logger:   opts.logger,
 		Metrics:  opts.metrics,
 		Tracer:   tracer,
-	})
+	}
+	// Хранилище тенантов и пользователей: PostgreSQL по пулу зелёной зоны,
+	// иначе in-memory dev. Миграции схемы применяет точка сборки.
+	if dsn := strings.TrimSpace(opts.supportGreenDSN); dsn != "" {
+		pool, err := supportPool(dsn, platformgovernance.ServiceID, "backend/contexts/platform-governance/migrations")
+		if err != nil {
+			return nil, err
+		}
+		cfg.Pool = pool
+	}
+	return platformgovernance.New(cfg)
 }
 
 // requestIntentPort выбирает адаптер контракта request-intent по топологии:
@@ -372,6 +429,31 @@ func emailGenerationPort(opts buildOptions) (emailgeneration.Port, error) {
 		return emailgenerationhttp.New(addr)
 	}
 	return nil, nil
+}
+
+// vectorRecallPort собирает векторное хранилище за provider-port (контракт vector):
+// реальный эмбеддер поверх OpenAI-совместимого endpoint и персистентный индекс
+// integration-platform (schema-per-service). Без DSN зелёной зоны или без ключа
+// провайдера эмбеддингов порт не собирается (nil): потребитель честно сообщает о
+// недоступности, а детерминированная подмена на продуктовом пути не ставится.
+func vectorRecallPort(opts buildOptions) (vector.Port, error) {
+	dsn := strings.TrimSpace(opts.supportGreenDSN)
+	if dsn == "" || strings.TrimSpace(opts.llmKey) == "" {
+		return nil, nil
+	}
+	pool, err := supportPool(dsn, integrationplatform.ServiceID, "backend/contexts/integration-platform/migrations")
+	if err != nil {
+		return nil, err
+	}
+	embedder, err := integrationplatform.NewVectorEmbedder(integrationplatform.VectorEmbedderConfig{
+		BaseURL: opts.llmBaseURL,
+		Model:   opts.llmModel,
+		APIKey:  opts.llmKey,
+	})
+	if err != nil {
+		return nil, err
+	}
+	return integrationplatform.NewVectorPostgres(pool, embedder), nil
 }
 
 // buildLeadManagement собирает сервис lead-management и впрыскивает адаптеры.
@@ -466,6 +548,14 @@ func buildLeadManagement(opts buildOptions, tracer observ.Tracer, broker amqp.Pu
 		})
 	}
 
+	// Векторное хранилище за provider-port (контракт vector): семантический recall
+	// и эмбеддинг компании. Без DSN/ключа — порт не собирается, recall честно
+	// недоступен (кандидаты не выдумываются).
+	vectorPort, err := vectorRecallPort(opts)
+	if err != nil {
+		return nil, fmt.Errorf("lead-management: векторный порт: %w", err)
+	}
+
 	smtpHost := opts.smtpHost
 	if strings.TrimSpace(smtpHost) == "" {
 		smtpHost = "localhost"
@@ -503,6 +593,7 @@ func buildLeadManagement(opts buildOptions, tracer observ.Tracer, broker amqp.Pu
 		Budget:           firecrawlBudget,
 		Account:          firecrawlAccount,
 		LLM:              llmPort,
+		Vector:           vectorPort,
 		DialogueMaxTurns: opts.dialogueMaxTurns,
 		Forum:            forumClient,
 		Mail:             smtpClient,
@@ -522,6 +613,95 @@ func buildLeadManagement(opts buildOptions, tracer observ.Tracer, broker amqp.Pu
 		},
 		Interval: time.Second,
 	})
+}
+
+// buildMessageDelivery собирает сервис message-delivery: PostgreSQL по DSN
+// зелёной зоны, реальный SMTP-адаптер (владелец integration-platform) и стоп-лист
+// через контракт suppression-policy (владелец data-governance). Без DSN и
+// провайдера контекст честно уходит в in-memory dev-режим с предупреждением —
+// заглушка на продуктовый путь не ставится.
+func buildMessageDelivery(opts buildOptions, tracer observ.Tracer, broker amqp.Publisher) (composition.Service, error) {
+	cfg := messagedelivery.Config{
+		Interval:         opts.publishInterval,
+		RetryInterval:    opts.deliveryRetryInterval,
+		MaxRetryAttempts: opts.deliveryMaxAttempts,
+		Publisher:        broker,
+		Logger:           opts.logger,
+		Metrics:          opts.metrics,
+		Tracer:           tracer,
+	}
+
+	// Персистентность: PostgreSQL по DSN зелёной зоны (схема green). Миграции
+	// применяет точка сборки; пул живёт столько же, сколько процесс.
+	dsn := strings.TrimSpace(opts.supportGreenDSN)
+	if dsn != "" {
+		pool, err := supportPool(dsn, messagedelivery.ServiceID, "backend/contexts/message-delivery/migrations/green")
+		if err != nil {
+			return nil, err
+		}
+		cfg.Pool = pool
+	}
+
+	// Реальный почтовый адаптер: SMTP-клиент владельца integration-platform.
+	// Адрес отправителя обязателен, его проверяет сборка контекста.
+	smtpHost := opts.smtpHost
+	if strings.TrimSpace(smtpHost) == "" {
+		smtpHost = "localhost"
+	}
+	smtpClient, err := integrationplatform.NewSmtp(integrationplatform.SmtpConfig{
+		Host:     smtpHost,
+		Port:     opts.smtpPort,
+		Username: opts.smtpUsername,
+		Password: opts.smtpPassword,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("message-delivery: SMTP: %w", err)
+	}
+	cfg.MailPort = smtpClient
+	cfg.MailFrom = opts.smtpFrom
+
+	// Мост approved-action → delivery-command: если он собран, роль sender читает
+	// команды из него (утверждённое действие → разрешённая команда → отправка).
+	// Без моста роль sender остаётся без источника (прежнее поведение).
+	if opts.bridge != nil {
+		opts.bridge.Bind(&cfg)
+	}
+
+	// Стоп-лист: контракт suppression-policy владельца data-governance. Без DSN
+	// реального источника нет — оставляем стоп-лист незаданным, чтобы контекст
+	// честно предупредил о dev-режиме, а не выдал пустой in-memory список за
+	// рабочий стоп-лист.
+	if dsn != "" {
+		govSlice, err := datagovernance.Build(datagovernance.Config{
+			DSN:    dsn,
+			Logger: opts.logger,
+		})
+		if err != nil {
+			return nil, fmt.Errorf("message-delivery: стоп-лист data-governance: %w", err)
+		}
+		suppressions, err := messagedelivery.NewSuppressionList(datagovernance.NewSuppressionPolicy(govSlice))
+		if err != nil {
+			return nil, fmt.Errorf("message-delivery: стоп-лист: %w", err)
+		}
+		cfg.Suppressions = suppressions
+	}
+
+	return messagedelivery.New(cfg)
+}
+
+// supportPool создаёт пул PostgreSQL зелёной зоны для supporting-контекста и
+// применяет миграции его схемы. Вызывается только при заданном DSN. Пул живёт
+// столько же, сколько процесс: сервис не владеет его закрытием.
+func supportPool(dsn, service, migrationsDir string) (*pgxpool.Pool, error) {
+	pool, err := newServicePool(dsn, service)
+	if err != nil {
+		return nil, err
+	}
+	if err := applyMigrations(pool, migrationsDir, service); err != nil {
+		pool.Close()
+		return nil, err
+	}
+	return pool, nil
 }
 
 // newLeadPool собирает пул соединений PostgreSQL для зоны данных.

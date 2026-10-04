@@ -9,6 +9,7 @@ import (
 	"lead-gen/backend/contexts/data-governance/internal/adapters/persistence/inmemory"
 	"lead-gen/backend/contexts/data-governance/internal/domain"
 	"lead-gen/backend/contexts/data-governance/internal/ports"
+	"lead-gen/backend/contexts/data-governance/internal/ports/contracttest"
 )
 
 var (
@@ -36,6 +37,16 @@ func newBasis(t *testing.T, id domain.BasisID, tenant domain.TenantID) *domain.P
 		t.Fatalf("основание: %v", err)
 	}
 	return basis
+}
+
+// TestRepositoryContract прогоняет общий contract suite порта
+// ProcessingBasisRepository против in-memory-реализации: тот же набор проверок
+// проходит и против PostgreSQL-адаптера.
+func TestRepositoryContract(t *testing.T) {
+	contracttest.RunProcessingBasisRepositoryContract(t, func(t *testing.T) ports.ProcessingBasisRepository {
+		t.Helper()
+		return inmemory.New()
+	})
 }
 
 // TestSaveAndLoad проверяет запись и чтение с восстановлением инвариантов.

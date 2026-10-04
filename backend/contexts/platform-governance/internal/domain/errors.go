@@ -23,12 +23,38 @@ var (
 	// ErrUserLoginRequired — логин пользователя пуст.
 	ErrUserLoginRequired = errors.New("домен: логин пользователя обязателен")
 
+	// ErrRolesRequired — у пользователя не задано ни одной роли.
+	ErrRolesRequired = errors.New("домен: пользователю нужна хотя бы одна роль")
+
 	// ErrUnknownRole — роль не объявлена доменом.
 	ErrUnknownRole = errors.New("домен: неизвестная роль")
 
 	// ErrDuplicateUser — пользователь уже принадлежит тенанту. Инвариант: роль
 	// принадлежит ровно одному тенанту.
 	ErrDuplicateUser = errors.New("домен: пользователь уже принадлежит тенанту")
+
+	// ErrUserNotFound — пользователь отсутствует в составе тенанта. Роль
+	// принадлежит ровно одному тенанту: назначить роль можно только его
+	// пользователю.
+	ErrUserNotFound = errors.New("домен: пользователь не найден в тенанте")
+
+	// ErrRoleNotAssigned — попытка отозвать роль, которой у пользователя нет.
+	ErrRoleNotAssigned = errors.New("домен: роль не назначена пользователю")
+
+	// ErrTenantDisabled — отключённый тенант не принимает изменений доступа.
+	ErrTenantDisabled = errors.New("домен: тенант отключён")
+
+	// ErrUnknownAuditAction — действие аудита не объявлено доменом.
+	ErrUnknownAuditAction = errors.New("домен: неизвестное действие аудита")
+
+	// ErrUnknownAuditOutcome — результат аудита не объявлен доменом.
+	ErrUnknownAuditOutcome = errors.New("домен: неизвестный результат аудита")
+
+	// ErrAuditRecordInvalid — запись аудита некорректна.
+	ErrAuditRecordInvalid = errors.New("домен: некорректная запись аудита")
+
+	// ErrAuditRecordNotFound — записи аудита с таким идентификатором нет.
+	ErrAuditRecordNotFound = errors.New("домен: запись аудита не найдена")
 
 	// ErrInvalidSnapshot — сохранённое состояние тенанта внутренне противоречиво
 	// и не может быть восстановлено без нарушения инвариантов.

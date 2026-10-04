@@ -43,6 +43,11 @@ type Config struct {
 	// публикующей.
 	Publisher platformoutbox.Publisher
 
+	// Persistence — адаптеры хранилища контекста. Нулевое значение означает
+	// dev-сборку на in-memory адаптерах; при заданном DSN точка входа передаёт
+	// сюда NewPostgresPersistence, и тогда состояние переживает рестарт.
+	Persistence Persistence
+
 	// Наблюдаемость сервиса: логгер, метрики и трейсер впрыскиваются
 	// composition root'ом; обязательны.
 	Logger  observ.Logger
@@ -62,8 +67,10 @@ type Service struct {
 	tracer   observ.Tracer
 }
 
-// New собирает сервис из in-memory адаптеров. Публикация собирается только тогда,
-// когда задан Publisher: без него роль worker не публикует события.
+// New собирает сервис из адаптеров хранилища. При заданном DSN точка входа
+// передаёт PostgreSQL-адаптеры (Config.Persistence); без них сборка идёт на
+// in-memory адаптерах (dev), о чём честно предупреждает. Публикация собирается
+// только тогда, когда задан Publisher: без него роль worker не публикует события.
 func New(cfg Config) (*Service, error) {
 	if cfg.Logger == nil {
 		return nil, fmt.Errorf("audience: Logger обязателен")
@@ -79,7 +86,19 @@ func New(cfg Config) (*Service, error) {
 		interval = defaultInterval
 	}
 
-	slice, err := Build(Params{})
+	// Хранилище контекста: PostgreSQL-адаптеры при заданном DSN, иначе in-memory
+	// (dev). О dev-сборке честно сообщается: пустой DSN не должен выглядеть
+	// готовой персистентностью.
+	if !cfg.Persistence.configured() {
+		cfg.Logger.Warn("audience: PostgreSQL не подключён (DSN пуст), сборка на in-memory адаптерах (только dev)", observ.Fields{}, "service", ServiceID)
+	}
+
+	slice, err := Build(Params{
+		Segments:   cfg.Persistence.Segments,
+		Snapshots:  cfg.Persistence.Snapshots,
+		Journal:    cfg.Persistence.Journal,
+		UnitOfWork: cfg.Persistence.UnitOfWork,
+	})
 	if err != nil {
 		return nil, fmt.Errorf("audience: сборка среза: %w", err)
 	}

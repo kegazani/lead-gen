@@ -12,6 +12,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"sync"
 
 	"lead-gen/backend/contexts/message-delivery/internal/domain"
@@ -84,6 +85,47 @@ func (r *Messages) FindByIdempotencyKey(ctx context.Context, key string) (*domai
 		return nil, fmt.Errorf("%w: ключ %q", ports.ErrMessageNotFound, key)
 	}
 	return r.FindByID(ctx, id)
+}
+
+// ListRetryable реализует ports.RetryableMessages. Возвращаются сообщения с
+// временным исходом последней попытки, у которых число попыток меньше
+// maxAttempts, в устойчивом порядке (создание, затем идентификатор).
+func (r *Messages) ListRetryable(_ context.Context, maxAttempts, limit int) ([]*domain.Message, error) {
+	r.mu.RLock()
+	snapshots := make([]domain.MessageSnapshot, 0, len(r.byID))
+	for _, snapshot := range r.byID {
+		if snapshot.Status != domain.MessageStatusFailed || len(snapshot.Attempts) == 0 {
+			continue
+		}
+		if snapshot.Attempts[len(snapshot.Attempts)-1].Outcome != domain.OutcomeTemporary {
+			continue
+		}
+		if maxAttempts > 0 && len(snapshot.Attempts) >= maxAttempts {
+			continue
+		}
+		snapshots = append(snapshots, snapshot)
+	}
+	r.mu.RUnlock()
+
+	sort.Slice(snapshots, func(i, j int) bool {
+		if snapshots[i].CreatedAt.Equal(snapshots[j].CreatedAt) {
+			return snapshots[i].ID < snapshots[j].ID
+		}
+		return snapshots[i].CreatedAt.Before(snapshots[j].CreatedAt)
+	})
+	if limit > 0 && len(snapshots) > limit {
+		snapshots = snapshots[:limit]
+	}
+
+	messages := make([]*domain.Message, 0, len(snapshots))
+	for _, snapshot := range snapshots {
+		message, err := domain.RehydrateMessage(snapshot)
+		if err != nil {
+			return nil, fmt.Errorf("inmemory: восстановление сообщения %s: %w", snapshot.ID, err)
+		}
+		messages = append(messages, message)
+	}
+	return messages, nil
 }
 
 // Clone возвращает независимую копию репозитория для одной транзакции.

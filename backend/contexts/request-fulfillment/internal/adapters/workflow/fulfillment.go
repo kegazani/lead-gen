@@ -59,6 +59,10 @@ const (
 	changeApprovalGate  = "approval-gate"
 	changeApprovalTimer = "approval-timer"
 	changeEmailDrafts   = "email-drafts"
+	// changeShortfallGate — маркер гейта «недобор → письма»: при включённом гейте
+	// черновики генерируются только при наблюдаемом недоборе. Отдельный маркер
+	// нужен, чтобы прежние бегущие исполнения воспроизводились без гейта.
+	changeShortfallGate = "shortfall-gate"
 )
 
 // Коды причин терминальных исходов человеческой паузы.
@@ -146,6 +150,9 @@ func Fulfillment(ctx workflow.Context, params Params) (Status, error) {
 	// версионируется: прежние бегущие исполнения без добора воспроизводятся
 	// детерминированно.
 	target := params.LeadTarget
+	// explicitTarget отличает явно заданную цель от значения по умолчанию: при
+	// отсутствии цели недобор не рассчитывается (см. шаг 2.0).
+	explicitTarget := target > 0
 	if target <= 0 {
 		target = defaultLeadTarget
 	}
@@ -182,6 +189,18 @@ func Fulfillment(ctx workflow.Context, params Params) (Status, error) {
 		}
 	}
 
+	// 2.0. Недобор — производное наблюдаемое значение: сколько компаний не
+	// хватает до цели заявки. Считается только при явно заданной цели: при её
+	// отсутствии недобор не рассчитывается, чтобы не показывать выдуманный ноль.
+	// Лиды не выдумываются — недобор честно отражает остаток (AGENTS.md §3).
+	if explicitTarget {
+		shortfall := target - state.Found
+		if shortfall < 0 {
+			shortfall = 0
+		}
+		state.Shortfall = &shortfall
+	}
+
 	// 2.1. Нуль уникальных лидов — наблюдаемый исход: заявка не может быть
 	// завершена успехом молча, без явного одобрения оператора.
 	if topUpVersion >= 1 && state.Found == 0 {
@@ -192,10 +211,14 @@ func Fulfillment(ctx workflow.Context, params Params) (Status, error) {
 	// 2.5. Черновики писем под найденных лидов. Генерация идёт до человеческой
 	// паузы: оператор утверждает результат вместе с готовыми письмами. Шаг
 	// версионируется, чтобы бегущие исполнения без него воспроизводились
-	// детерминированно. Текст писем в payload не поднимается — он оседает в
-	// хранилище черновиков, а workflow получает только счётчик.
+	// детерминированно. Гейт «недобор → письма» версионируется отдельным маркером
+	// (`shortfall-gate`): письма нужны, чтобы добрать недостающее, поэтому при
+	// достигнутой цели шаг пропускается, а прежние исполнения без гейта
+	// воспроизводят безусловную генерацию. Текст писем в payload не поднимается —
+	// он оседает в хранилище черновиков, а workflow получает только счётчик.
 	draftsVersion := workflow.GetVersion(ctx, changeEmailDrafts, workflow.DefaultVersion, 1)
-	if draftsVersion >= 1 && len(leadIDs) > 0 {
+	shortfallGate := workflow.GetVersion(ctx, changeShortfallGate, workflow.DefaultVersion, 1)
+	if draftsVersion >= 1 && len(leadIDs) > 0 && draftsAllowed(shortfallGate, state.Shortfall) {
 		state.Phase = PhaseDrafting
 		var drafted draftResult
 		if err := workflow.ExecuteActivity(longCtx, ActivityDraftEmails, draftInput{
@@ -279,6 +302,19 @@ func cancelRequest(
 		return *state, err
 	}
 	return *state, nil
+}
+
+// draftsAllowed решает, запускать ли генерацию черновиков при найденных лидах.
+// При включённом гейте (`shortfall-gate`) письма нужны только при наблюдаемом
+// недоборе: цель достигнута — outreach не нужен. Прежние исполнения без гейта
+// (версия DefaultVersion) воспроизводят безусловную генерацию под найденных
+// лидов, чтобы реплей не менял их структуру. Недобор nil (цель не задана)
+// трактуется как отсутствие недобора — выдуманный ноль не подставляется.
+func draftsAllowed(shortfallGate workflow.Version, shortfall *int) bool {
+	if shortfallGate < 1 {
+		return true
+	}
+	return shortfall != nil && *shortfall > 0
 }
 
 // activityOptions строит раздельные опции activities: короткие переходы статуса —

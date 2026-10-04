@@ -81,12 +81,12 @@ func (h *DeliverMessageHandler) Handle(ctx context.Context, cmd domain.DeliveryC
 		return resultFromMessage(reserved, true), nil
 	}
 
-	outcome, providerCode, err := h.send(ctx, reserved)
+	outcome, providerCode, err := sendMessage(ctx, h.mailer, reserved)
 	if err != nil {
 		return DeliverMessageResult{}, err
 	}
 
-	return h.record(ctx, reserved.ID(), outcome, providerCode)
+	return recordDelivery(ctx, h.uow, h.clock, reserved.ID(), outcome, providerCode)
 }
 
 // reserve выполняет резервирование сообщения в транзакции. Возвращённое
@@ -107,14 +107,14 @@ func (h *DeliverMessageHandler) reserve(
 			return fmt.Errorf("поиск сообщения по ключу идемпотентности: %w", findErr)
 		}
 
-		reputation, repErr := h.loadReputation(ctx, tx, cmd.SenderDomain)
+		reputation, repErr := loadReputation(ctx, tx, h.clock, cmd.SenderDomain)
 		if repErr != nil {
 			return repErr
 		}
 
 		// Стоп-лист проверяется непосредственно перед попыткой доставки
-		// (инвариант message).
-		suppressed, supErr := h.suppressions.IsSuppressed(ctx, cmd.Address)
+		// (инвариант message) и в границах тенанта.
+		suppressed, supErr := h.suppressions.IsSuppressed(ctx, cmd.TenantID, cmd.Address)
 		if supErr != nil {
 			return fmt.Errorf("проверка стоп-листа получателя: %w", supErr)
 		}
@@ -134,6 +134,8 @@ func (h *DeliverMessageHandler) reserve(
 			RecipientRef:     cmd.RecipientRef,
 			Address:          cmd.Address,
 			SenderDomain:     cmd.SenderDomain,
+			Subject:          cmd.Subject,
+			Body:             cmd.Body,
 			IdempotencyKey:   key,
 			CreatedAt:        h.clock.Now(),
 		})
@@ -155,19 +157,23 @@ func (h *DeliverMessageHandler) reserve(
 	return reserved, replayed, nil
 }
 
-// send выполняет отправку через порт провайдера. Недоступность провайдера не
-// прерывает сценарий: она фиксируется как временный исход, чтобы сообщение
-// получило терминальное состояние и событие.
-func (h *DeliverMessageHandler) send(
+// sendMessage выполняет отправку через порт провайдера. Недоступность
+// провайдера не прерывает сценарий: она фиксируется как временный исход, чтобы
+// сообщение получило терминальное состояние и событие. Тема и тело берутся из
+// агрегата, поэтому повторная попытка отправляет то же содержимое.
+func sendMessage(
 	ctx context.Context,
+	mailer ports.Mailer,
 	message *domain.Message,
 ) (domain.AttemptOutcome, string, error) {
-	response, err := h.mailer.Send(ctx, ports.OutgoingMessage{
+	response, err := mailer.Send(ctx, ports.OutgoingMessage{
 		MessageID:    message.ID(),
 		TenantID:     message.TenantID(),
 		SenderDomain: message.SenderDomain(),
 		To:           message.Address(),
 		RecipientRef: message.RecipientRef(),
+		Subject:      message.Subject(),
+		Body:         message.Body(),
 	})
 	if err != nil {
 		if ctx.Err() != nil {
@@ -182,16 +188,18 @@ func (h *DeliverMessageHandler) send(
 	return response.Outcome, response.ProviderCode, nil
 }
 
-// record фиксирует исход попытки в транзакции: терминальное состояние,
+// recordDelivery фиксирует исход попытки в транзакции: терминальное состояние,
 // обновление репутации по нормализованному ответу и запись события в outbox.
-func (h *DeliverMessageHandler) record(
+func recordDelivery(
 	ctx context.Context,
+	uow ports.UnitOfWork,
+	clock ports.Clock,
 	id domain.MessageID,
 	outcome domain.AttemptOutcome,
 	providerCode string,
 ) (DeliverMessageResult, error) {
 	var result DeliverMessageResult
-	err := h.uow.WithinTransaction(ctx, func(tx ports.Transaction) error {
+	err := uow.WithinTransaction(ctx, func(tx ports.Transaction) error {
 		message, findErr := tx.Messages().FindByID(ctx, id)
 		if findErr != nil {
 			return fmt.Errorf("загрузка сообщения %s: %w", id, findErr)
@@ -203,7 +211,7 @@ func (h *DeliverMessageHandler) record(
 			return nil
 		}
 
-		if recErr := message.RecordDelivery(outcome, providerCode, h.clock.Now()); recErr != nil {
+		if recErr := message.RecordDelivery(outcome, providerCode, clock.Now()); recErr != nil {
 			return recErr
 		}
 		if saveErr := tx.Messages().Save(ctx, message); saveErr != nil {
@@ -215,11 +223,11 @@ func (h *DeliverMessageHandler) record(
 		message.PullDomainEvents()
 
 		if normalized, ok := domain.NormalizeProviderResponse(outcome, providerCode); ok {
-			reputation, repErr := h.loadReputation(ctx, tx, message.SenderDomain())
+			reputation, repErr := loadReputation(ctx, tx, clock, message.SenderDomain())
 			if repErr != nil {
 				return repErr
 			}
-			if applyErr := reputation.ApplyNormalizedOutcome(normalized, h.clock.Now()); applyErr != nil {
+			if applyErr := reputation.ApplyNormalizedOutcome(normalized, clock.Now()); applyErr != nil {
 				return applyErr
 			}
 			if saveErr := tx.Reputations().Save(ctx, reputation); saveErr != nil {
@@ -238,9 +246,10 @@ func (h *DeliverMessageHandler) record(
 
 // loadReputation загружает репутацию домена в транзакции. Отсутствие истории —
 // не ошибка: домен без ответов провайдера считается неограниченным.
-func (h *DeliverMessageHandler) loadReputation(
+func loadReputation(
 	ctx context.Context,
 	tx ports.Transaction,
+	clock ports.Clock,
 	sender domain.SenderDomain,
 ) (*domain.SenderReputation, error) {
 	reputation, err := tx.Reputations().FindByDomain(ctx, sender)
@@ -250,7 +259,7 @@ func (h *DeliverMessageHandler) loadReputation(
 	if !errors.Is(err, ports.ErrSenderReputationNotFound) {
 		return nil, fmt.Errorf("загрузка репутации домена %s: %w", sender, err)
 	}
-	reputation, buildErr := domain.NewSenderReputation(sender, h.clock.Now())
+	reputation, buildErr := domain.NewSenderReputation(sender, clock.Now())
 	if buildErr != nil {
 		return nil, buildErr
 	}

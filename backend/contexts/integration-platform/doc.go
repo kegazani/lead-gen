@@ -7,8 +7,9 @@
 //
 // Пакет собирает вертикальный срез контекста: доменные агрегаты
 // adapter-registration и integration-invocation, use cases RegisterAdapter,
-// SelectAdapter и InvokeIntegration, порты ProviderPort и репозитории, in-memory
-// и тестовые адаптеры. Здесь же публикуются конструкторы адаптеров,
+// SelectAdapter и InvokeIntegration, порты ProviderPort и репозитории,
+// in-memory и PostgreSQL-адаптеры хранения. Здесь же публикуются конструкторы
+// адаптеров,
 // реализующих опубликованные контракты search/crawl/llm/mail/forum (firecrawl,
 // openai, forum, smtp) — их впрыскивает composition root cmd/lead-gen.
 //

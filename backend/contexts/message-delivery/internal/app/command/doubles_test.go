@@ -3,6 +3,7 @@ package command
 import (
 	"context"
 	"fmt"
+	"sort"
 	"time"
 
 	"lead-gen/backend/contexts/message-delivery/internal/domain"
@@ -57,6 +58,32 @@ func (r *fakeMessages) FindByIdempotencyKey(ctx context.Context, key string) (*d
 		return nil, fmt.Errorf("%w: ключ %q", ports.ErrMessageNotFound, key)
 	}
 	return r.FindByID(ctx, id)
+}
+
+// ListRetryable реализует ports.RetryableMessages для tests повтора.
+func (r *fakeMessages) ListRetryable(_ context.Context, maxAttempts, limit int) ([]*domain.Message, error) {
+	messages := make([]*domain.Message, 0)
+	for _, snapshot := range r.byID {
+		if snapshot.Status != domain.MessageStatusFailed || len(snapshot.Attempts) == 0 {
+			continue
+		}
+		if snapshot.Attempts[len(snapshot.Attempts)-1].Outcome != domain.OutcomeTemporary {
+			continue
+		}
+		if maxAttempts > 0 && len(snapshot.Attempts) >= maxAttempts {
+			continue
+		}
+		message, err := domain.RehydrateMessage(snapshot)
+		if err != nil {
+			return nil, err
+		}
+		messages = append(messages, message)
+	}
+	sort.Slice(messages, func(i, j int) bool { return messages[i].ID() < messages[j].ID() })
+	if limit > 0 && len(messages) > limit {
+		messages = messages[:limit]
+	}
+	return messages, nil
 }
 
 type fakeReputations struct {
@@ -141,7 +168,7 @@ func newFakeSuppression() *fakeSuppression {
 	return &fakeSuppression{suppressed: make(map[domain.DeliveryAddress]struct{})}
 }
 
-func (s *fakeSuppression) IsSuppressed(_ context.Context, address domain.DeliveryAddress) (bool, error) {
+func (s *fakeSuppression) IsSuppressed(_ context.Context, _ domain.TenantID, address domain.DeliveryAddress) (bool, error) {
 	if s.err != nil {
 		return false, s.err
 	}

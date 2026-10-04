@@ -8,19 +8,27 @@ import (
 	"time"
 
 	"lead-gen/backend/contexts/message-delivery/internal/adapters/commandsource"
+	approvedactionadapter "lead-gen/backend/contexts/message-delivery/internal/adapters/commandsource/approvedaction"
 	"lead-gen/backend/contexts/message-delivery/internal/adapters/mailer"
+	"lead-gen/backend/contexts/message-delivery/internal/adapters/mailer/provider"
 	outboxinmemory "lead-gen/backend/contexts/message-delivery/internal/adapters/outbox/inmemory"
 	"lead-gen/backend/contexts/message-delivery/internal/adapters/outbox/relay"
 	persistence "lead-gen/backend/contexts/message-delivery/internal/adapters/persistence/inmemory"
+	"lead-gen/backend/contexts/message-delivery/internal/adapters/reference"
 	"lead-gen/backend/contexts/message-delivery/internal/adapters/suppression"
+	suppressionpolicyadapter "lead-gen/backend/contexts/message-delivery/internal/adapters/suppression/policy"
 	"lead-gen/backend/contexts/message-delivery/internal/app/command"
 	"lead-gen/backend/contexts/message-delivery/internal/domain"
 	"lead-gen/backend/contexts/message-delivery/internal/ports"
 	platformcontracts "lead-gen/backend/platform/contracts"
 	outbox "lead-gen/backend/platform/messaging/outbox"
 	"lead-gen/backend/platform/transport/amqp"
+	"lead-gen/contracts/data-governance/suppressionpolicy"
+	"lead-gen/contracts/integration-platform/mail"
+	deliverytarget "lead-gen/contracts/lead-management/deliverytarget"
 	"lead-gen/contracts/message-delivery/deliverycommand"
 	"lead-gen/contracts/message-delivery/deliveryevent"
+	approvedaction "lead-gen/contracts/outreach-orchestration/approvedaction"
 )
 
 // Сборка сервиса message-delivery для его ролей (sender, worker, schedule).
@@ -42,21 +50,24 @@ type SystemClock struct{}
 // Now реализует ports.Clock.
 func (SystemClock) Now() time.Time { return time.Now() }
 
-// Params — параметры сборки среза. Репозитории и журнал можно передать снаружи,
-// чтобы разделить состояние нескольких потребителей; nil означает создание
-// новых.
+// Params — параметры сборки среза. Порты можно передать снаружи — тогда
+// состояние разделяется несколькими потребителями (ролями). Нулевые значения
+// означают in-memory адаптеры среза.
 type Params struct {
 	// Clock — источник времени. nil → SystemClock.
 	Clock ports.Clock
 
-	// Messages — репозиторий сообщений. nil → новый in-memory репозиторий.
-	Messages *persistence.Messages
+	// UnitOfWork — транзакция контекста. Не nil → внешняя (например,
+	// PostgreSQL); nil → in-memory unit-of-work срезa.
+	UnitOfWork ports.UnitOfWork
 
-	// Reputations — репозиторий репутаций. nil → новый in-memory репозиторий.
-	Reputations *persistence.Reputations
+	// RelaySource — журнал outbox для публикации. Обязателен, если задан
+	// UnitOfWork: публикация читает то же состояние, что пишет транзакция.
+	RelaySource relay.Source
 
-	// Journal — журнал outbox. nil → новый журнал.
-	Journal *outboxinmemory.Journal
+	// Retryables — выборка сообщений для повторных окон. Не nil — используется
+	// ролью schedule; nil отключает повторные окна.
+	Retryables ports.RetryableMessages
 
 	// Sink — назначение публикации delivery-event. nil означает, что relay не
 	// собирается: процесс не публикует контракт (например, сборка без брокера).
@@ -71,15 +82,20 @@ type Params struct {
 
 	// Source — источник команд доставки для роли sender. nil → очередь в памяти.
 	Source ports.CommandSource
+
+	// MaxRetryAttempts — предельное число попыток доставки. <= 0 отключает
+	// повторные окна.
+	MaxRetryAttempts int
 }
 
-// Slice — собранный контекст среза: порты, use case и публикация. Поля
+// Slice — собранный контекст среза: порты, use cases и публикация. Поля
 // экспортированы, чтобы процесс мог запустить нужную часть.
 type Slice struct {
-	Messages    *persistence.Messages
-	Reputations *persistence.Reputations
-	Journal     *outboxinmemory.Journal
-	UnitOfWork  *outboxinmemory.UnitOfWork
+	// Journal — in-memory журнал outbox. nil, если состояние вынесено во внешнюю
+	// транзакцию (PostgreSQL).
+	Journal *outboxinmemory.Journal
+
+	UnitOfWork ports.UnitOfWork
 
 	// Relay не равен nil только если при сборке задан Sink.
 	Relay *relay.Relay
@@ -90,29 +106,33 @@ type Slice struct {
 
 	// DeliverMessage — use case доставки, вход единственной роли отправки sender.
 	DeliverMessage *command.DeliverMessageHandler
+
+	// RetryPending — use case повторных окон роли schedule. nil, если повторные
+	// окна отключены или не задана выборка.
+	RetryPending *command.RetryPendingHandler
 }
 
 // Build собирает контекст среза из in-memory адаптеров и переданных
-// зависимостей.
+// зависимостей. Если задан UnitOfWork, состояние берётся из него, а in-memory
+// репозитории не создаются.
 func Build(params Params) (*Slice, error) {
 	clock := params.Clock
 	if clock == nil {
 		clock = SystemClock{}
 	}
 
-	messages := params.Messages
-	if messages == nil {
-		messages = persistence.NewMessages()
-	}
-	reputations := params.Reputations
-	if reputations == nil {
-		reputations = persistence.NewReputations()
-	}
-	journal := params.Journal
-	if journal == nil {
+	unitOfWork := params.UnitOfWork
+	relaySource := params.RelaySource
+	retryables := params.Retryables
+	var journal *outboxinmemory.Journal
+	if unitOfWork == nil {
+		messages := persistence.NewMessages()
+		reputations := persistence.NewReputations()
 		journal = outboxinmemory.NewJournal()
+		unitOfWork = outboxinmemory.NewUnitOfWorkWith(messages, reputations, journal)
+		relaySource = journal
+		retryables = messages
 	}
-	unitOfWork := outboxinmemory.NewUnitOfWorkWith(messages, reputations, journal)
 
 	mail := params.Mailer
 	if mail == nil {
@@ -128,15 +148,18 @@ func Build(params Params) (*Slice, error) {
 	}
 
 	var publication *relay.Relay
-	if params.Sink != nil {
-		publication = relay.New(journal, params.Sink)
+	if params.Sink != nil && relaySource != nil {
+		publication = relay.New(relaySource, params.Sink)
 	}
 
 	deliver := command.NewDeliverMessageHandler(suppressions, mail, clock, unitOfWork)
 
+	var retry *command.RetryPendingHandler
+	if retryables != nil {
+		retry = command.NewRetryPendingHandler(retryables, mail, clock, unitOfWork, params.MaxRetryAttempts)
+	}
+
 	return &Slice{
-		Messages:       messages,
-		Reputations:    reputations,
 		Journal:        journal,
 		UnitOfWork:     unitOfWork,
 		Relay:          publication,
@@ -144,6 +167,7 @@ func Build(params Params) (*Slice, error) {
 		Suppressions:   suppressions,
 		Source:         source,
 		DeliverMessage: deliver,
+		RetryPending:   retry,
 	}, nil
 }
 
@@ -199,6 +223,8 @@ func (s *Slice) mapCommand(cmd deliverycommand.Command) (domain.DeliveryCommand,
 		RecipientRef:     domain.RecipientRef(cmd.RecipientRef),
 		Address:          address,
 		SenderDomain:     sender,
+		Subject:          cmd.Subject,
+		Body:             cmd.Body,
 		CorrelationID:    domain.CorrelationID(cmd.CorrelationID),
 		CausationID:      cmd.CausationID,
 	}, nil
@@ -222,6 +248,56 @@ func portError(err error) error {
 	default:
 		return fmt.Errorf("%w: %v", deliverycommand.ErrUnavailable, err)
 	}
+}
+
+// NewProviderMailer собирает реальный почтовый адаптер поверх контракта mail
+// владельца integration-platform. Точка сборки передаёт сюда SMTP-адаптер и
+// адрес отправителя; контекст message-delivery не импортирует чужие внутренние
+// пакеты.
+func NewProviderMailer(port mail.Port, from string) (ports.Mailer, error) {
+	return provider.New(provider.Config{Port: port, From: from})
+}
+
+// NewSuppressionList собирает стоп-лист поверх контракта suppression-policy
+// владельца data-governance. Недоступность источника остаётся ошибкой, а не
+// пустым списком.
+func NewSuppressionList(port suppressionpolicy.Port) (ports.SuppressionList, error) {
+	return suppressionpolicyadapter.New(port)
+}
+
+// NewApprovedActionSource собирает мост утверждённого действия: источник команд
+// роли sender (Params.Source / Config.Source) и приёмник утверждённых действий
+// (approved-action.Publisher). Это одна и та же сущность: `Publish`/`Enqueue`
+// принимает утверждённое действие, `Next` отдаёт собранную команду роли sender.
+//
+// Публичная фабрика владельца: точка сборки (cmd/lead-gen) не имеет доступа к
+// внутренним пакетам контекста, поэтому адаптер контракта delivery-target объявлен
+// внутри контекста. Получателя разрешает владелец контакта (lead-management,
+// связь leads-for-delivery); ссылка переводится в адрес в момент доставки, а
+// approved-action остаётся ссылочным и без PII.
+//
+// materials — резолвер материала письма поверх контракта content-version
+// владельца content-production (см. NewContentMaterialResolver). Если задан
+// MaterialVersionRef, а резолвер не подключён, приём честно сообщает о
+// недоступности, а содержимое не выдумывается (AGENTS.md §3).
+func NewApprovedActionSource(
+	recipients deliverytarget.Resolver,
+	materials ports.MaterialResolver,
+	senderDomain string,
+) (ports.CommandSource, approvedaction.Publisher, error) {
+	recipientResolver, err := reference.NewRecipientResolver(recipients)
+	if err != nil {
+		return nil, nil, fmt.Errorf("message-delivery: резолвер получателя: %w", err)
+	}
+	bridge, err := approvedactionadapter.New(approvedactionadapter.Config{
+		Recipients:   recipientResolver,
+		Materials:    materials,
+		SenderDomain: senderDomain,
+	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("message-delivery: мост approved-action: %w", err)
+	}
+	return bridge, bridge, nil
 }
 
 // ExchangeMessageDelivery — topic exchange контекста-владельца. Имя совпадает с

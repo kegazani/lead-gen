@@ -1,7 +1,7 @@
 # Деплой: служебный образ, публичный edge и группы сервисов
 
-Единица деплоя — сервис, и сервис равен bounded context: пятнадцать контекстов
-дают пятнадцать сервисов, по одному на контекст (`architecture/domain-catalog.yaml`).
+Единица деплоя — сервис, и сервис равен bounded context: одиннадцать контекстов
+дают одиннадцать сервисов, по одному на контекст (`architecture/domain-catalog.yaml`).
 Физически внутренние сервисы запускает **служебный образ с единой точкой входа `backend/cmd/lead-gen`**
 (корневой `Dockerfile`); назначение — какие сервисы и в каких ролях подняты — задаёт
 `deploy/services.yaml`. Публичный edge — **отдельный минимальный образ** модулей
@@ -41,7 +41,7 @@
 размещение. Поэтому переход между состояниями — правка конфигурации, а не кода и
 не модели (design.md, Решения 5 и 11).
 
-### Текущее (совмещённое) состояние — 7 групп
+### Текущее (совмещённое) состояние — 6 групп
 
 | Группа | Сервисы | Обоснование группировки |
 |---|---|---|
@@ -49,9 +49,8 @@
 | `core` | `outreach-orchestration`, `analytics` | горячий путь кампании: оркестрация → аналитика |
 | `delivery` | `message-delivery` | изолированный контур отправки: роль `sender` не делит процесс с `api` |
 | `demand` | `lead-management`, `audience`, `content-production` | цепочка подготовки аудитории: лиды → сегменты → контент |
-| `public` | `engagement-observation`, `community-intelligence`, `publishing` | публичный контур: приём внешних событий, чтение сообществ, публикация |
+| `public` | `engagement-observation` | публичный контур: приём внешних событий наблюдения |
 | `platform` | `integration-platform`, `platform-governance`, `data-governance` | общий фундамент: интеграционные порты и правила доступа/данных |
-| `revenue` | `sales-workflow`, `billing` | результат и деньги: сделки → биллинг |
 
 Группа `delivery` выделена при переходе к модульному монолиту: раньше `message-delivery`
 со всей ролью `sender` и `integration-platform` с ролями `api` и `sender` стояли в
@@ -62,7 +61,7 @@
 её в `RoleRunner`, поэтому объявление в каталоге убрано; она вернётся при реализации
 контура доставки.
 
-### Целевое состояние — 15 групп (пример)
+### Целевое состояние — 11 групп (пример)
 
 ```yaml
 processes:
@@ -101,16 +100,6 @@ processes:
     services:
       - id: engagement-observation
         roles: [ingest, worker]
-  - name: community-intelligence
-    mechanism: in-process
-    services:
-      - id: community-intelligence
-        roles: [worker, schedule]
-  - name: publishing
-    mechanism: in-process
-    services:
-      - id: publishing
-        roles: [api, worker, schedule]
   - name: integration-platform
     mechanism: in-process
     services:
@@ -126,16 +115,6 @@ processes:
     services:
       - id: data-governance
         roles: [api, worker, chains]
-  - name: sales-workflow
-    mechanism: in-process
-    services:
-      - id: sales-workflow
-        roles: [api, ingest, worker]
-  - name: billing
-    mechanism: in-process
-    services:
-      - id: billing
-        roles: [api, worker]
   - name: request-fulfillment
     mechanism: in-process
     services:
@@ -147,7 +126,7 @@ processes:
 согласованность — каждый сервис каталога встречается ровно в одной группе, группа
 не объявляет чужой сервис, роли группы ⊆ ролей сервиса, `mechanism` группы
 совпадает с режимом роли. Совмещённая форма проверена прогоном на текущем файле,
-целевая — временной подменой файла на пятнадцать групп (обе дают код 0; см.
+целевая — временной подменой файла на одиннадцать групп (обе дают код 0; см.
 «Проверка»).
 
 Отдельно: юнит-тесты точки входа ожидания групп ещё не обновили — они фиксируют

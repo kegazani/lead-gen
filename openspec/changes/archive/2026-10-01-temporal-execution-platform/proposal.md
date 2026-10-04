@@ -29,7 +29,7 @@
 
 ## Impact
 
-**Затрагиваемые bounded contexts.** Новых контекстов нет. `request-fulfillment` — владелец workflow фулфилмента; остальные контексты (`lead-management`, `audience`, `outreach-orchestration`, `content-production`, `message-delivery`, `sales-workflow`, `integration-platform`) предоставляют activities через свои application services и опубликованные контракты. **Доменная модель не меняется.**
+**Затрагиваемые bounded contexts.** Новых контекстов нет. `request-fulfillment` — владелец workflow фулфилмента; остальные контексты (`lead-management`, `audience`, `outreach-orchestration`, `content-production`, `message-delivery`, `integration-platform`) предоставляют activities через свои application services и опубликованные контракты. **Доменная модель не меняется.**
 
 **Код и структура.** Добавляется `backend/platform/workflow` (клиент и worker host Temporal, уровень `transport`/`persistence`). Сервисные сборки в `backend/contexts/<context-id>` получают worker. Workflow-код фулфилмента — application service контекста `request-fulfillment`.
 

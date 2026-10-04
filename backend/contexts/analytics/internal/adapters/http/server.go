@@ -55,6 +55,9 @@ type Dependencies struct {
 	// Dashboard — чтение среза дашборда.
 	Dashboard *query.DashboardHandler
 
+	// Reports — сборка среза отчётности.
+	Reports *query.ReportHandler
+
 	// Events — применение нормализованного события к read-модели.
 	Events *command.ApplyEventHandler
 
@@ -101,6 +104,11 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /{$}", s.handleRoot)
 	mux.HandleFunc("GET /dashboard", s.handleDashboard)
 	mux.HandleFunc("GET /dashboard/stream", s.handleStream)
+	// Отчётность: экран, JSON-срез и выгрузки CSV/XLSX с тем же фильтром.
+	mux.HandleFunc("GET /reports", s.handleReports)
+	mux.HandleFunc("GET /reports.json", s.handleReportsJSON)
+	mux.HandleFunc("GET /reports/export.csv", s.handleReportsCSV)
+	mux.HandleFunc("GET /reports/export.xlsx", s.handleReportsXLSX)
 	// Приём событий — write-путь dev- и тест-контура, а не клиентский read-путь:
 	// в рабочем контуре события приходят воркером из брокера.
 	mux.HandleFunc("POST /dashboard/events", s.handleEvents)
@@ -111,10 +119,10 @@ func (s *Server) routes() http.Handler {
 	return mux
 }
 
-// newPages собирает набор шаблонов дашборда: каркас и общие фрагменты из
-// frontend/components плюс страницу экрана.
+// newPages собирает набор шаблонов дашборда и отчётности: каркас и общие
+// фрагменты из frontend/components плюс страницы экранов.
 func newPages() (*components.Set, error) {
-	return components.New(templateFS, pageDashboard)
+	return components.New(templateFS, pageDashboard, pageReports)
 }
 
 // handleRoot обслуживает GET /{$}: корень сервиса ведёт на дашборд, а не
@@ -262,7 +270,7 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	s.deps.Events.Handle(r.Context(), command.ApplyEvent{
+	if err := s.deps.Events.Handle(r.Context(), command.ApplyEvent{
 		TenantID:   dto.TenantID,
 		Kind:       dto.Kind,
 		CompanyID:  dto.CompanyID,
@@ -270,7 +278,18 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 		Outcome:    dto.Outcome,
 		OccurredAt: occurred,
 		ReplyText:  dto.ReplyText,
-	})
+
+		Source:     dto.Source,
+		Industry:   dto.Industry,
+		Segment:    dto.Segment,
+		CampaignID: dto.CampaignID,
+		ManagerID:  dto.ManagerID,
+	}); err != nil {
+		// Событие принято проекцией, но снимок не записан на носитель: честный
+		// отказ, а не успех без эффекта.
+		http.Error(w, "применение события: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
 	writeJSON(w, http.StatusAccepted, map[string]string{"status": "accepted"})
 }
 
@@ -284,6 +303,12 @@ type eventDTO struct {
 	Outcome    string `json:"outcome"`
 	OccurredAt string `json:"occurred_at"`
 	ReplyText  string `json:"reply_text"`
+
+	Source     string `json:"source"`
+	Industry   string `json:"industry"`
+	Segment    string `json:"segment"`
+	CampaignID string `json:"campaign_id"`
+	ManagerID  string `json:"manager_id"`
 }
 
 // requireAccess проверяет доступ роли к ресурсу через порт решения. Отказ — 403,

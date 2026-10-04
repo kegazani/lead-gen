@@ -39,14 +39,14 @@ func (r *ContactRepository) Save(_ context.Context, contact *domain.Contact) err
 }
 
 // FindByID загружает контакт по идентификатору через domain.RehydrateContact.
-// Отсутствие контакта даёт нейтральную ошибку: у порта контактов нет отдельного
-// sentinel отсутствия сущности.
+// Отсутствие контакта даёт ports.ErrContactNotFound: владелец различает
+// неизвестную ссылку и сбой чтения.
 func (r *ContactRepository) FindByID(_ context.Context, id domain.ContactID) (*domain.Contact, error) {
 	r.mu.RLock()
 	snapshot, ok := r.contacts[id]
 	r.mu.RUnlock()
 	if !ok {
-		return nil, fmt.Errorf("memory: контакт %s не найден", id)
+		return nil, fmt.Errorf("%w: контакт %s", ports.ErrContactNotFound, id)
 	}
 	contact, err := domain.RehydrateContact(snapshot)
 	if err != nil {

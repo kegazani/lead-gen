@@ -20,6 +20,7 @@ package postgres
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"time"
@@ -56,6 +57,7 @@ type Repository struct {
 var (
 	_ ports.CampaignRepository    = (*Repository)(nil)
 	_ ports.DraftWindowRepository = (*Repository)(nil)
+	_ ports.CampaignLister        = (*Repository)(nil)
 )
 
 // New создаёт репозиторий поверх пула соединений. Каждый Save выполняется в
@@ -171,6 +173,30 @@ func (r *Repository) LoadDraftWindow(ctx context.Context, query ports.DraftWindo
 	return window, nil
 }
 
+// ListCampaignIDs реализует ports.CampaignLister: перечисление идентификаторов
+// кампаний для роли chains. Схема указана литералом: адаптер работает только в
+// схеме сервиса.
+func (r *Repository) ListCampaignIDs(ctx context.Context) ([]domain.CampaignID, error) {
+	rows, err := r.db.Query(ctx, selectCampaignIDs)
+	if err != nil {
+		return nil, fmt.Errorf("postgres: перечисление кампаний: %w", err)
+	}
+	defer rows.Close()
+
+	ids := make([]domain.CampaignID, 0)
+	for rows.Next() {
+		var id domain.CampaignID
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("postgres: разбор идентификатора кампании: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("postgres: перечисление кампаний: %w", err)
+	}
+	return ids, nil
+}
+
 // withTransaction выполняет fn в транзакции, если репозиторий привязан к пулу;
 // привязанный к транзакции репозиторий выполняет fn в ней же.
 func (r *Repository) withTransaction(ctx context.Context, fn func(execer) error) error {
@@ -197,6 +223,14 @@ func (r *Repository) withTransaction(ctx context.Context, fn func(execer) error)
 // Подчинённые таблицы предварительно очищаются: снимок содержит агрегат целиком,
 // поэтому полная замена не оставляет строк, удалённых из агрегата.
 func saveSnapshot(ctx context.Context, q execer, snapshot domain.CampaignSnapshot) error {
+	sequences, err := json.Marshal(snapshot.Sequences)
+	if err != nil {
+		return fmt.Errorf("postgres: сериализация сценариев кампании %s: %w", snapshot.ID, err)
+	}
+	executions, err := json.Marshal(snapshot.Executions)
+	if err != nil {
+		return fmt.Errorf("postgres: сериализация участий кампании %s: %w", snapshot.ID, err)
+	}
 	if _, err := q.Exec(ctx, upsertCampaign,
 		snapshot.ID.String(),
 		snapshot.TenantID.String(),
@@ -204,6 +238,8 @@ func saveSnapshot(ctx context.Context, q execer, snapshot domain.CampaignSnapsho
 		snapshot.Window.Start(),
 		snapshot.Window.End(),
 		string(snapshot.State),
+		sequences,
+		executions,
 	); err != nil {
 		return fmt.Errorf("postgres: запись кампании %s: %w", snapshot.ID, err)
 	}
@@ -253,6 +289,7 @@ func loadSnapshot(ctx context.Context, q execer, id domain.CampaignID) (domain.C
 	snapshot := domain.CampaignSnapshot{}
 
 	var start, end time.Time
+	var sequences, executions []byte
 	err := q.QueryRow(ctx, selectCampaign, id.String()).Scan(
 		&snapshot.ID,
 		&snapshot.TenantID,
@@ -260,6 +297,8 @@ func loadSnapshot(ctx context.Context, q execer, id domain.CampaignID) (domain.C
 		&start,
 		&end,
 		&snapshot.State,
+		&sequences,
+		&executions,
 	)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.CampaignSnapshot{}, fmt.Errorf("%w: %s", ports.ErrCampaignNotFound, id)
@@ -273,6 +312,10 @@ func loadSnapshot(ctx context.Context, q execer, id domain.CampaignID) (domain.C
 	}
 	snapshot.Window = window
 
+	if err := unmarshalSequences(&snapshot, sequences, executions); err != nil {
+		return domain.CampaignSnapshot{}, fmt.Errorf("postgres: кампания %s: %w", id, err)
+	}
+
 	drafts, err := queryDrafts(ctx, q, id)
 	if err != nil {
 		return domain.CampaignSnapshot{}, err
@@ -284,6 +327,22 @@ func loadSnapshot(ctx context.Context, q execer, id domain.CampaignID) (domain.C
 	snapshot.Drafts = drafts
 	snapshot.Decisions = decisions
 	return snapshot, nil
+}
+
+// unmarshalSequences восстанавливает состояние цепочек из jsonb-колонок.
+// Пустое значение трактуется как отсутствие цепочек.
+func unmarshalSequences(snapshot *domain.CampaignSnapshot, sequences, executions []byte) error {
+	if len(sequences) > 0 {
+		if err := json.Unmarshal(sequences, &snapshot.Sequences); err != nil {
+			return fmt.Errorf("разбор сценариев: %w", err)
+		}
+	}
+	if len(executions) > 0 {
+		if err := json.Unmarshal(executions, &snapshot.Executions); err != nil {
+			return fmt.Errorf("разбор участий: %w", err)
+		}
+	}
+	return nil
 }
 
 func queryDrafts(ctx context.Context, q execer, id domain.CampaignID) ([]domain.ActionDraftSnapshot, error) {
@@ -382,14 +441,17 @@ func campaignTenant(ctx context.Context, q execer, id domain.CampaignID) (domain
 // схеме сервиса (Schema) и не параметризует её извне.
 const (
 	upsertCampaign = `
-INSERT INTO "outreach-orchestration".campaign (id, tenant_id, name, window_start, window_end, state)
-VALUES ($1, $2, $3, $4, $5, $6)
+INSERT INTO "outreach-orchestration".campaign
+    (id, tenant_id, name, window_start, window_end, state, sequence_definitions, sequence_executions)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
 ON CONFLICT (id) DO UPDATE SET
-    tenant_id    = EXCLUDED.tenant_id,
-    name         = EXCLUDED.name,
-    window_start = EXCLUDED.window_start,
-    window_end   = EXCLUDED.window_end,
-    state        = EXCLUDED.state`
+    tenant_id            = EXCLUDED.tenant_id,
+    name                 = EXCLUDED.name,
+    window_start         = EXCLUDED.window_start,
+    window_end           = EXCLUDED.window_end,
+    state                = EXCLUDED.state,
+    sequence_definitions = EXCLUDED.sequence_definitions,
+    sequence_executions  = EXCLUDED.sequence_executions`
 
 	deleteDecisions = `DELETE FROM "outreach-orchestration".operator_decision WHERE campaign_id = $1`
 	deleteDrafts    = `DELETE FROM "outreach-orchestration".action_draft WHERE campaign_id = $1`
@@ -405,9 +467,11 @@ INSERT INTO "outreach-orchestration".operator_decision
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`
 
 	selectCampaign = `
-SELECT id, tenant_id, name, window_start, window_end, state
+SELECT id, tenant_id, name, window_start, window_end, state, sequence_definitions, sequence_executions
 FROM "outreach-orchestration".campaign
 WHERE id = $1`
+
+	selectCampaignIDs = `SELECT id FROM "outreach-orchestration".campaign`
 
 	selectCampaignTenant = `SELECT tenant_id FROM "outreach-orchestration".campaign WHERE id = $1`
 

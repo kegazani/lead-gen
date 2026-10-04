@@ -6,10 +6,12 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"lead-gen/backend/contexts/outreach-orchestration/internal/adapters/persistence/postgres"
+	"lead-gen/backend/contexts/outreach-orchestration/internal/domain"
 	"lead-gen/backend/contexts/outreach-orchestration/internal/ports"
 	"lead-gen/backend/contexts/outreach-orchestration/internal/ports/contracttest"
 	"lead-gen/backend/platform/migrate"
@@ -118,5 +120,49 @@ func applyMigrations(ctx context.Context, pool *pgxpool.Pool) error {
 }
 
 // TRUNCATE ... CASCADE очищает кампании и подчинённые строки черновиков и
-// решений, сохраняя схему и таблицы.
-const truncateTables = `TRUNCATE "outreach-orchestration".campaign CASCADE`
+// решений вместе с журналом outbox, сохраняя схему и таблицы.
+const truncateTables = `TRUNCATE "outreach-orchestration".campaign, "outreach-orchestration".outbox CASCADE`
+
+// TestListCampaignIDs проверяет порт CampaignLister против PostgreSQL. Тест
+// пропускается без заданной строки подключения, как и остальные PG-suite.
+func TestListCampaignIDs(t *testing.T) {
+	ctx := context.Background()
+	pool := testPool(t)
+	if _, err := pool.Exec(ctx, truncateTables); err != nil {
+		t.Fatalf("очистка таблиц: %v", err)
+	}
+	repo := postgres.New(pool)
+
+	ids, err := repo.ListCampaignIDs(ctx)
+	if err != nil {
+		t.Fatalf("ListCampaignIDs пустого репозитория: %v", err)
+	}
+	if len(ids) != 0 {
+		t.Fatalf("пустой репозиторий вернул %d кампаний", len(ids))
+	}
+
+	window, err := domain.NewCampaignWindow(time.Now(), time.Now().Add(time.Hour))
+	if err != nil {
+		t.Fatalf("NewCampaignWindow: %v", err)
+	}
+	campaign, err := domain.CreateCampaign(domain.CreateCampaignParams{
+		ID:       "campaign-list",
+		TenantID: "tenant-1",
+		Name:     "Кампания перечисления",
+		Window:   window,
+	})
+	if err != nil {
+		t.Fatalf("CreateCampaign: %v", err)
+	}
+	if err := repo.Save(ctx, campaign); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	ids, err = repo.ListCampaignIDs(ctx)
+	if err != nil {
+		t.Fatalf("ListCampaignIDs: %v", err)
+	}
+	if len(ids) != 1 || ids[0] != "campaign-list" {
+		t.Fatalf("ожидалась одна кампания campaign-list, получено %v", ids)
+	}
+}

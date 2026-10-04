@@ -16,13 +16,18 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"net/http"
+	"strings"
 	"time"
+
+	"github.com/jackc/pgx/v5/pgxpool"
 
 	httpapi "lead-gen/backend/contexts/content-production/internal/adapters/http"
 	"lead-gen/backend/contexts/content-production/internal/adapters/idgen"
 	outboxinmemory "lead-gen/backend/contexts/content-production/internal/adapters/outbox/inmemory"
 	persistence "lead-gen/backend/contexts/content-production/internal/adapters/persistence/inmemory"
+	"lead-gen/backend/contexts/content-production/internal/adapters/renderer/chromium"
 	"lead-gen/backend/contexts/content-production/internal/adapters/renderer/deterministic"
 	"lead-gen/backend/contexts/content-production/internal/app/command"
 	"lead-gen/backend/contexts/content-production/internal/app/query"
@@ -59,15 +64,43 @@ type Config struct {
 	Interval time.Duration
 
 	// Store — in-memory хранилище контент-пакетов и заданий рендеринга.
-	// nil → новое хранилище.
+	// nil → новое хранилище. Используется только в in-memory dev-режиме.
 	Store *persistence.Store
 
 	// Journal — журнал outbox событий контекста. nil → журнал в памяти.
+	// Используется только в in-memory dev-режиме.
 	Journal platformoutbox.Journal
 
-	// Renderer — движок рендеринга за портом. nil → детерминированный
-	// адаптер-заглушка (internal/adapters/renderer/deterministic).
+	// Persistence — PostgreSQL-адаптеры хранилища (зелёная зона). Если задан,
+	// сборка берёт их независимо от DSN.
+	Persistence *Persistence
+
+	// DSN — строка подключения PostgreSQL зелёной зоны. Если Persistence не задан
+	// и DSN пуст, сборка идёт в in-memory dev-режиме и предупреждает об этом. При
+	// заданном DSN сборка создаёт пул сама и применяет миграции из MigrationsDir.
+	DSN string
+
+	// MigrationsDir — каталог SQL-миграций сервиса для применения при сборке по
+	// DSN. Пусто → каталог по умолчанию (backend/contexts/content-production/migrations).
+	MigrationsDir string
+
+	// Renderer — движок рендеринга за портом. Задан → используется как есть;
+	// при пустом значении сборка выбирает движок по конфигурации Chromium ниже.
 	Renderer ports.Renderer
+
+	// RendererExecPath — путь к исполняемому Chromium/Chrome для реального
+	// рендера. Задан (вместе с RendererWSURL или без него) при пустом Renderer —
+	// сборка подключает адаптер headless Chromium
+	// (internal/adapters/renderer/chromium).
+	RendererExecPath string
+
+	// RendererWSURL — адрес CDP-эндпоинта запущенного Chromium. Задан при пустом
+	// Renderer — сборка подключает реальный рендер к этому браузеру.
+	RendererWSURL string
+
+	// RendererTimeout — таймаут одной операции реального рендера.
+	// Ноль — значение по умолчанию адаптера.
+	RendererTimeout time.Duration
 
 	// Clock — источник времени прикладного слоя. nil → SystemClock.
 	Clock ports.Clock
@@ -88,12 +121,20 @@ type Config struct {
 
 // Slice — собранный контекст среза: порты, адаптеры и use cases.
 type Slice struct {
+	// Store — in-memory хранилище dev-режима; nil в PostgreSQL-сборке.
 	Store      *persistence.Store
-	Content    *persistence.ContentRepository
-	RenderJobs *persistence.RenderJobRepository
+	Content    ports.ContentPackageRepository
+	RenderJobs ports.RenderJobRepository
 	Journal    platformoutbox.Journal
-	UnitOfWork *outboxinmemory.UnitOfWork
+	UnitOfWork ports.UnitOfWork
 	Renderer   ports.Renderer
+
+	// pool — пул PostgreSQL, если сборка создала его по DSN. Закрывается Close.
+	pool *pgxpool.Pool
+
+	// rendererCloser — реальный движок рендера, созданный сборкой. Закрывается
+	// Close; движок, переданный вызывающим, владелец закрывает сам.
+	rendererCloser io.Closer
 
 	// Relay не равен nil только если при сборке задан Publisher.
 	Relay *platformoutbox.Relay
@@ -106,11 +147,14 @@ type Slice struct {
 	RequestRender         *command.RequestRenderHandler
 	ProduceContent        *command.ProduceContentHandler
 	ProcessRender         *command.ProcessRenderHandler
+	RestoreContentVersion *command.RestoreContentVersionHandler
 
-	GetContent      *query.GetContentHandler
-	GetRenderJob    *query.GetRenderJobHandler
-	GetLanding      *query.GetLandingHandler
-	GetPresentation *query.GetPresentationHandler
+	GetContent              *query.GetContentHandler
+	GetRenderJob            *query.GetRenderJobHandler
+	GetLanding              *query.GetLandingHandler
+	GetPresentation         *query.GetPresentationHandler
+	GetLandingPage          *query.GetLandingPageHandler
+	ProposeLandingStructure *query.ProposeLandingStructureHandler
 }
 
 // Build собирает контекст среза из адаптеров и переданных зависимостей.
@@ -120,14 +164,51 @@ func Build(cfg Config) (*Slice, error) {
 	if cfg.Interval <= 0 {
 		cfg.Interval = defaultInterval
 	}
-	store := cfg.Store
-	if store == nil {
-		store = persistence.New()
+
+	var (
+		store      *persistence.Store
+		pool       *pgxpool.Pool
+		content    ports.ContentPackageRepository
+		renderJobs ports.RenderJobRepository
+		unitOfWork ports.UnitOfWork
+		journal    platformoutbox.Journal
+	)
+	persist := cfg.Persistence
+	if persist == nil && strings.TrimSpace(cfg.DSN) != "" {
+		built, builtPool, err := buildPostgresPersistence(cfg.DSN, cfg.MigrationsDir)
+		if err != nil {
+			return nil, err
+		}
+		persist = &built
+		pool = builtPool
 	}
-	journal := cfg.Journal
-	if journal == nil {
-		journal = platformoutbox.NewMemoryJournal()
+	if persist != nil {
+		content = persist.Content
+		renderJobs = persist.RenderJobs
+		unitOfWork = persist.UnitOfWork
+		journal = persist.Journal
+	} else {
+		// Без DSN и без готовых адаптеров контекст идёт в in-memory dev-режиме.
+		// О режиме сообщается честно: состояние не переживёт рестарт процесса.
+		if cfg.Logger != nil {
+			cfg.Logger.Warn(
+				"content-production: PostgreSQL DSN не задан — in-memory dev-режим (состояние не переживает рестарт)",
+				observ.Fields{},
+			)
+		}
+		store = cfg.Store
+		if store == nil {
+			store = persistence.New()
+		}
+		journal = cfg.Journal
+		if journal == nil {
+			journal = platformoutbox.NewMemoryJournal()
+		}
+		content = store.Content()
+		renderJobs = store.RenderJobs()
+		unitOfWork = outboxinmemory.NewUnitOfWorkWith(store, journal)
 	}
+
 	clock := cfg.Clock
 	if clock == nil {
 		clock = SystemClock{}
@@ -136,31 +217,58 @@ func Build(cfg Config) (*Slice, error) {
 	if ids == nil {
 		ids = idgen.NewRandom()
 	}
+	var rendererCloser io.Closer
 	renderer := cfg.Renderer
-	if renderer == nil {
+	switch {
+	case renderer != nil:
+		// Движок передан вызывающим: сборка его не создаёт и не закрывает.
+	case strings.TrimSpace(cfg.RendererExecPath) != "" || strings.TrimSpace(cfg.RendererWSURL) != "":
+		engine, err := chromium.New(chromium.Config{
+			ExecPath: cfg.RendererExecPath,
+			WSURL:    cfg.RendererWSURL,
+			Timeout:  cfg.RendererTimeout,
+		})
+		if err != nil {
+			return nil, err
+		}
+		renderer = engine
+		rendererCloser = engine
+	default:
+		// Без конфигурации Chromium контекст остаётся на детерминированном
+		// dev-двойнике. О движке сообщается честно: это не продуктовый рендер.
+		if cfg.Logger != nil {
+			cfg.Logger.Warn(
+				"content-production: Chromium не сконфигурирован — детерминированный dev-двойник рендера (не продуктовый движок)",
+				observ.Fields{},
+			)
+		}
 		renderer = deterministic.New()
 	}
-
-	unitOfWork := outboxinmemory.NewUnitOfWorkWith(store, journal)
 
 	createPackage := command.NewCreateContentPackageHandler(unitOfWork, clock, ids)
 	publishVersion := command.NewPublishContentVersionHandler(unitOfWork, clock, ids)
 	requestRender := command.NewRequestRenderHandler(unitOfWork)
 	produceContent := command.NewProduceContentHandler(unitOfWork, clock, ids)
 	processRender := command.NewProcessRenderHandler(unitOfWork, renderer, clock, ids)
+	restoreVersion := command.NewRestoreContentVersionHandler(unitOfWork, clock, ids)
 
-	getContent := query.NewGetContentHandler(store.Content())
-	getRenderJob := query.NewGetRenderJobHandler(store.RenderJobs())
-	getLanding := query.NewGetLandingHandler(store.Content())
-	getPresentation := query.NewGetPresentationHandler(store.RenderJobs())
+	getContent := query.NewGetContentHandler(content)
+	getRenderJob := query.NewGetRenderJobHandler(renderJobs)
+	getLanding := query.NewGetLandingHandler(content)
+	getPresentation := query.NewGetPresentationHandler(renderJobs)
+	getLandingPage := query.NewGetLandingPageHandler(content)
+	proposeLandingStructure := query.NewProposeLandingStructureHandler()
 
 	server := httpapi.NewServer(httpapi.Dependencies{
-		CreateContentPackage:  createPackage,
-		PublishContentVersion: publishVersion,
-		RequestRender:         requestRender,
-		ProduceContent:        produceContent,
-		GetContent:            getContent,
-		GetRenderJob:          getRenderJob,
+		CreateContentPackage:    createPackage,
+		PublishContentVersion:   publishVersion,
+		RequestRender:           requestRender,
+		ProduceContent:          produceContent,
+		RestoreContentVersion:   restoreVersion,
+		GetContent:              getContent,
+		GetRenderJob:            getRenderJob,
+		GetLandingPage:          getLandingPage,
+		ProposeLandingStructure: proposeLandingStructure,
 	})
 
 	var relay *platformoutbox.Relay
@@ -170,24 +278,30 @@ func Build(cfg Config) (*Slice, error) {
 
 	return &Slice{
 		Store:      store,
-		Content:    store.Content(),
-		RenderJobs: store.RenderJobs(),
+		Content:    content,
+		RenderJobs: renderJobs,
 		Journal:    journal,
 		UnitOfWork: unitOfWork,
 		Renderer:   renderer,
 		Relay:      relay,
 		Server:     server,
+		pool:       pool,
+
+		rendererCloser: rendererCloser,
 
 		CreateContentPackage:  createPackage,
 		PublishContentVersion: publishVersion,
 		RequestRender:         requestRender,
 		ProduceContent:        produceContent,
 		ProcessRender:         processRender,
+		RestoreContentVersion: restoreVersion,
 
-		GetContent:      getContent,
-		GetRenderJob:    getRenderJob,
-		GetLanding:      getLanding,
-		GetPresentation: getPresentation,
+		GetContent:              getContent,
+		GetRenderJob:            getRenderJob,
+		GetLanding:              getLanding,
+		GetPresentation:         getPresentation,
+		GetLandingPage:          getLandingPage,
+		ProposeLandingStructure: proposeLandingStructure,
 	}, nil
 }
 
@@ -233,6 +347,29 @@ func New(cfg Config) (*Service, error) {
 // Slice возвращает собранный срез контекста. Нужен composition root'у и тестам
 // для прямого вызова сценариев.
 func (s *Service) Slice() *Slice { return s.slice }
+
+// Close освобождает пул PostgreSQL, если сборка создала его по DSN. Для
+// in-memory сборки ничего не делает.
+func (s *Service) Close() error { return s.slice.Close() }
+
+// Close останавливает реальный движок рендера, если его создала сборка, и
+// освобождает пул PostgreSQL, созданный по DSN. Повторный вызов безопасен.
+func (sl *Slice) Close() error {
+	if sl == nil {
+		return nil
+	}
+	if sl.rendererCloser != nil {
+		if err := sl.rendererCloser.Close(); err != nil {
+			return err
+		}
+		sl.rendererCloser = nil
+	}
+	if sl.pool != nil {
+		sl.pool.Close()
+		sl.pool = nil
+	}
+	return nil
+}
 
 // ID реализует composition.Service.
 func (s *Service) ID() string { return ServiceID }

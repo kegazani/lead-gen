@@ -23,7 +23,7 @@
 
 ## Impact
 
-**Затрагиваемые bounded contexts.** `analytics` — real-time проекция (рядом со снимками `campaign-reporting`); `engagement-observation` — сигналы ответов/переходов; `lead-management` (`lead-workflow`) — воронка статусов; `sales-workflow` — полная CRM на админской части; `message-delivery` — события отправки.
+**Затрагиваемые bounded contexts.** `analytics` — real-time проекция (рядом со снимками `campaign-reporting`); `engagement-observation` — сигналы ответов/переходов; `lead-management` (`lead-workflow`) — воронка статусов; `message-delivery` — события отправки.
 
 **Каталог и модель.** Capability `client-dashboard` — эксплуатационная read-модель роли `api`, **не добавляет агрегатов** (аналог `console-appearance`/`job-journal-console`). Владелец capability — `analytics`. `docs/domain-model.md` дополняется примечанием.
 

@@ -19,6 +19,10 @@ var ErrProfileNotFound = errors.New("lead-management: карточка комп�
 // ErrMessageNotFound — исходящее сообщение не найдено.
 var ErrMessageNotFound = errors.New("lead-management: сообщение не найдено")
 
+// ErrContactNotFound — контакт не найден. Позволяет отличить доменный отказ
+// (неизвестная ссылка) от сбоя чтения хранилища.
+var ErrContactNotFound = errors.New("lead-management: контакт не найден")
+
 // LeadProfileRepository — репозиторий карточек компаний (зелёная зона).
 type LeadProfileRepository interface {
 	// Save сохраняет карточку (создаёт или дополняет).

@@ -14,7 +14,7 @@
 ### New Capabilities
 
 - `search-strategy`: подбор секторов, ниш и seed-запросов с помощью LLM по описанию задачи оператора; владелец — `lead-management`.
-- `forum-lead-signals`: поиск сигналов по форумам (темы, боли, обсуждения) как источник выбора ниш; первый шаг — обезличенные сигналы, не контакты; владелец — `lead-management` (пересечение с `community-intelligence` решается в design).
+- `forum-lead-signals`: поиск сигналов по форумам (темы, боли, обсуждения) как источник выбора ниш; первый шаг — обезличенные сигналы, не контакты; владелец — `lead-management`.
 
 ### Modified Capabilities
 
@@ -22,7 +22,7 @@
 
 ## Impact
 
-- **Bounded contexts:** `lead-management` (первичный), `integration-platform` (адаптер форумного провайдера), `community-intelligence` (пересечение с чтением сообществ; решение по владению — в design).
+- **Bounded contexts:** `lead-management` (первичный), `integration-platform` (адаптер форумного провайдера).
 - **Доменная модель:** новые capability; состав агрегатов и межконтекстных контрактов — решение design; `architecture/domain-catalog.yaml`, `docs/domain-model.md` и диаграммы обновляются в этом же change.
 - **Код:** расширение `contracts/integration-platform/llm`, адаптер `openai`, новый use-case в `lead-management`, экран ассистента.
 - **Зависимости:** тот же LLM-провайдер (DeepSeek); форумный источник — за портом, конкретный провайдер выбирается в design.

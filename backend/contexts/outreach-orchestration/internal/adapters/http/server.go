@@ -87,6 +87,41 @@ type ApproveBatchUseCase interface {
 	Handle(context.Context, command.ApproveBatch) (command.ApproveBatchResult, error)
 }
 
+// DefineSequenceUseCase — узкий вход сценария создания цепочки.
+type DefineSequenceUseCase interface {
+	Handle(context.Context, command.DefineSequence) (command.DefineSequenceResult, error)
+}
+
+// EnrollLeadUseCase — узкий вход сценария добавления лида в цепочку.
+type EnrollLeadUseCase interface {
+	Handle(context.Context, command.EnrollLead) (command.EnrollLeadResult, error)
+}
+
+// RemoveLeadUseCase — узкий вход сценария удаления лида из цепочки.
+type RemoveLeadUseCase interface {
+	Handle(context.Context, command.RemoveLead) (command.RemoveLeadResult, error)
+}
+
+// RecordOutcomeUseCase — узкий вход сценария записи реакции лида.
+type RecordOutcomeUseCase interface {
+	Handle(context.Context, command.RecordOutcome) (command.RecordOutcomeResult, error)
+}
+
+// ResumeExecutionUseCase — узкий вход сценария возобновления цепочки.
+type ResumeExecutionUseCase interface {
+	Handle(context.Context, command.ResumeExecution) (command.ResumeExecutionResult, error)
+}
+
+// SequenceHistoryUseCase — узкий вход запроса истории шагов по лиду.
+type SequenceHistoryUseCase interface {
+	Handle(context.Context, query.SequenceHistory) ([]query.SequenceHistoryEntry, error)
+}
+
+// SequenceStateUseCase — узкий вход запроса состояния цепочек.
+type SequenceStateUseCase interface {
+	Handle(context.Context, query.SequenceState) ([]query.SequenceStateItem, error)
+}
+
 // CommandKeyStore — узкий интерфейс хранилища ключей идемпотентности команд.
 // Его реализует adapters/idempotency.Store; HTTP-адаптер работает с ключами
 // только через этот интерфейс, а к пакету idempotency обращается лишь за
@@ -117,6 +152,14 @@ type Dependencies struct {
 	ApproveBatch   ApproveBatchUseCase
 	CommandKeys    CommandKeyStore
 
+	DefineSequence  DefineSequenceUseCase
+	EnrollLead      EnrollLeadUseCase
+	RemoveLead      RemoveLeadUseCase
+	RecordOutcome   RecordOutcomeUseCase
+	ResumeExecution ResumeExecutionUseCase
+	SequenceHistory SequenceHistoryUseCase
+	SequenceState   SequenceStateUseCase
+
 	// BatchLimits — лимиты пакета, передаваемые сценариям параметром. Это
 	// конфигурация композиции, а не доменное правило: адаптер лишь прокидывает
 	// её в команду и ничего по ней не решает (design.md, Решение 7).
@@ -139,6 +182,14 @@ type Server struct {
 	commandKeys    CommandKeyStore
 	batchLimits    domain.BatchLimits
 
+	defineSequence  DefineSequenceUseCase
+	enrollLead      EnrollLeadUseCase
+	removeLead      RemoveLeadUseCase
+	recordOutcome   RecordOutcomeUseCase
+	resumeExecution ResumeExecutionUseCase
+	sequenceHistory SequenceHistoryUseCase
+	sequenceState   SequenceStateUseCase
+
 	handler http.Handler
 }
 
@@ -157,6 +208,14 @@ func NewServer(deps Dependencies) *Server {
 		approveBatch:   deps.ApproveBatch,
 		commandKeys:    deps.CommandKeys,
 		batchLimits:    deps.BatchLimits,
+
+		defineSequence:  deps.DefineSequence,
+		enrollLead:      deps.EnrollLead,
+		removeLead:      deps.RemoveLead,
+		recordOutcome:   deps.RecordOutcome,
+		resumeExecution: deps.ResumeExecution,
+		sequenceHistory: deps.SequenceHistory,
+		sequenceState:   deps.SequenceState,
 	}
 	server.handler = server.routes()
 	return server
@@ -183,6 +242,14 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /campaigns/{campaignID}/batches", s.handleBatchQueue)
 	mux.HandleFunc("GET /campaigns/{campaignID}/batches/composition", s.handleBatchComposition)
 	mux.HandleFunc("POST /campaigns/{campaignID}/batches/approve", s.handleApproveBatch)
+
+	mux.HandleFunc("POST /campaigns/{campaignID}/sequences", s.handleDefineSequence)
+	mux.HandleFunc("GET /campaigns/{campaignID}/sequences", s.handleSequenceState)
+	mux.HandleFunc("GET /campaigns/{campaignID}/sequences/history", s.handleSequenceHistory)
+	mux.HandleFunc("POST /campaigns/{campaignID}/enrollments", s.handleEnrollLead)
+	mux.HandleFunc("POST /campaigns/{campaignID}/enrollments/{executionID}/remove", s.handleRemoveLead)
+	mux.HandleFunc("POST /campaigns/{campaignID}/enrollments/{executionID}/outcomes", s.handleRecordOutcome)
+	mux.HandleFunc("POST /campaigns/{campaignID}/enrollments/{executionID}/resume", s.handleResumeExecution)
 
 	return mux
 }
@@ -247,6 +314,8 @@ func statusForError(err error) int {
 		return http.StatusForbidden
 	case errors.Is(err, ports.ErrCampaignNotFound),
 		errors.Is(err, domain.ErrDraftNotFound),
+		errors.Is(err, domain.ErrSequenceNotFound),
+		errors.Is(err, domain.ErrExecutionNotFound),
 		errors.Is(err, command.ErrCampaignTenantMismatch):
 		return http.StatusNotFound
 	case errors.Is(err, domain.ErrDraftVersionMismatch),
@@ -254,7 +323,10 @@ func statusForError(err error) int {
 		errors.Is(err, domain.ErrInvalidDraftTransition),
 		errors.Is(err, domain.ErrApprovalRequired),
 		errors.Is(err, domain.ErrDuplicateDraft),
+		errors.Is(err, domain.ErrDuplicateSequence),
 		errors.Is(err, domain.ErrCampaignCompleted),
+		errors.Is(err, domain.ErrExecutionTerminal),
+		errors.Is(err, domain.ErrResumeNotSuspended),
 		errors.Is(err, domain.ErrBatchDigestMismatch),
 		errors.Is(err, domain.ErrBatchCompositionChanged),
 		errors.Is(err, domain.ErrBatchNotHomogeneous),
@@ -270,12 +342,20 @@ func statusForError(err error) int {
 		errors.Is(err, domain.ErrInvalidCampaignWindow),
 		errors.Is(err, domain.ErrUnknownActionChannel),
 		errors.Is(err, domain.ErrEmptyDraftField),
+		errors.Is(err, domain.ErrEmptySequenceName),
+		errors.Is(err, domain.ErrSequenceStepsEmpty),
+		errors.Is(err, domain.ErrInvalidStepDelay),
+		errors.Is(err, domain.ErrUnknownTransitionCondition),
+		errors.Is(err, domain.ErrOpenedSignalUnavailable),
+		errors.Is(err, domain.ErrUnknownReaction),
+		errors.Is(err, domain.ErrExecutionTenantMismatch),
 		errors.Is(err, domain.ErrDecisionWithoutVersion),
 		errors.Is(err, domain.ErrInvalidDecisionOutcome),
 		errors.Is(err, domain.ErrDecisionTimeRequired),
 		errors.Is(err, domain.ErrDecisionReasonRequired),
 		errors.Is(err, domain.ErrInvalidCampaignState),
 		errors.Is(err, domain.ErrInvalidDraftState),
+		errors.Is(err, domain.ErrInvalidExecutionState),
 		errors.Is(err, domain.ErrUnknownCampaignCommand),
 		errors.Is(err, domain.ErrBatchCompositionEmpty),
 		errors.Is(err, domain.ErrInvalidSnapshot):

@@ -183,8 +183,10 @@ func TestFulfillmentReproducesOldGraph(t *testing.T) {
 }
 
 // TestFulfillmentDraftsEmailsBeforeApproval проверяет, что шаг генерации писем
-// идёт после поиска и до паузы утверждения: идентификаторы найденных лидов
-// доходят до activity, а счётчик черновиков попадает в наблюдаемое состояние.
+// идёт после поиска и до паузы утверждения при недоборе: идентификаторы найденных
+// лидов доходят до activity, а счётчик черновиков попадает в наблюдаемое
+// состояние. Цель 3 при двух уникальных лидах даёт недобор 1 — письма нужны,
+// чтобы добрать недостающее.
 func TestFulfillmentDraftsEmailsBeforeApproval(t *testing.T) {
 	env := newEnv(t)
 	env.OnActivity(ActivityStartProcessing, mock.Anything, mock.Anything).Return(nil)
@@ -198,7 +200,7 @@ func TestFulfillmentDraftsEmailsBeforeApproval(t *testing.T) {
 		env.SignalWorkflow(SignalApprovalDecision, ApprovalDecision{Approved: true, Actor: "operator"})
 	}, time.Second)
 
-	env.ExecuteWorkflow(Fulfillment, Params{RequestID: "req-draft", TenantID: "tenant-1", LeadTarget: 2})
+	env.ExecuteWorkflow(Fulfillment, Params{RequestID: "req-draft", TenantID: "tenant-1", LeadTarget: 3})
 	if err := env.GetWorkflowError(); err != nil {
 		t.Fatalf("workflow завершился ошибкой: %v", err)
 	}
@@ -211,6 +213,9 @@ func TestFulfillmentDraftsEmailsBeforeApproval(t *testing.T) {
 	}
 	if status.Drafted != 2 {
 		t.Fatalf("черновиков = %d, ожидалось 2", status.Drafted)
+	}
+	if status.Shortfall == nil || *status.Shortfall != 1 {
+		t.Fatalf("недобор = %v, ожидался 1", status.Shortfall)
 	}
 	env.AssertExpectations(t)
 }
@@ -390,6 +395,219 @@ func TestFulfillmentNoLeadsApprovedByOperator(t *testing.T) {
 	}
 	if status.Phase != PhaseFulfilled || !status.NoLeads {
 		t.Fatalf("исход = %+v, ожидался fulfilled с признаком no-leads", status)
+	}
+}
+
+// TestFulfillmentNoDraftsWhenTargetReached проверяет сценарий «цель достигнута —
+// письма не генерируются»: при недоборе равном нулю шаг черновиков не запускается
+// автоматически, а наблюдаемый недобор честно равен нулю (не nil).
+func TestFulfillmentNoDraftsWhenTargetReached(t *testing.T) {
+	env := newEnv(t)
+	env.OnActivity(ActivityStartProcessing, mock.Anything, mock.Anything).Return(nil)
+	env.OnActivity(ActivitySearchLeads, mock.Anything, mock.Anything).
+		Return(searchResult{Found: 2, LeadIDs: []string{"lead-a", "lead-b"}}, nil)
+	env.OnActivity(ActivityFulfillRequest, mock.Anything, mock.Anything).Return(nil)
+
+	env.RegisterDelayedCallback(func() {
+		env.SignalWorkflow(SignalApprovalDecision, ApprovalDecision{Approved: true, Actor: "operator"})
+	}, time.Second)
+
+	env.ExecuteWorkflow(Fulfillment, Params{RequestID: "req-no-shortfall", TenantID: "tenant-1", LeadTarget: 2})
+	if err := env.GetWorkflowError(); err != nil {
+		t.Fatalf("workflow завершился ошибкой: %v", err)
+	}
+	var status Status
+	if err := env.GetWorkflowResult(&status); err != nil {
+		t.Fatalf("чтение результата: %v", err)
+	}
+	if status.Shortfall == nil || *status.Shortfall != 0 {
+		t.Fatalf("недобор = %v, при достигнутой цели ожидался 0", status.Shortfall)
+	}
+	if status.Drafted != 0 {
+		t.Fatalf("черновиков = %d, при достигнутой цели ожидался 0", status.Drafted)
+	}
+	env.AssertNotCalled(t, "ExecuteActivity", ActivityDraftEmails)
+	env.AssertExpectations(t)
+}
+
+// TestFulfillmentNoDraftsWithoutLeads проверяет сценарий «0 лидов → письма не
+// генерируются»: недобор наблюдается, но под кого генерировать — нет, поэтому
+// письма не выдумываются.
+func TestFulfillmentNoDraftsWithoutLeads(t *testing.T) {
+	env := newEnv(t)
+	env.OnActivity(ActivityStartProcessing, mock.Anything, mock.Anything).Return(nil)
+	env.OnActivity(ActivitySearchLeads, mock.Anything, mock.Anything).Return(searchResult{}, nil)
+	env.OnActivity(ActivityFulfillRequest, mock.Anything, mock.Anything).Return(nil)
+
+	env.RegisterDelayedCallback(func() {
+		env.SignalWorkflow(SignalApprovalDecision, ApprovalDecision{Approved: true, Actor: "operator"})
+	}, time.Second)
+
+	env.ExecuteWorkflow(Fulfillment, Params{RequestID: "req-zero-leads", TenantID: "tenant-1", LeadTarget: 3})
+	if err := env.GetWorkflowError(); err != nil {
+		t.Fatalf("workflow завершился ошибкой: %v", err)
+	}
+	var status Status
+	if err := env.GetWorkflowResult(&status); err != nil {
+		t.Fatalf("чтение результата: %v", err)
+	}
+	if status.Shortfall == nil || *status.Shortfall != 3 {
+		t.Fatalf("недобор = %v, без лидов при цели 3 ожидался 3", status.Shortfall)
+	}
+	if status.Drafted != 0 {
+		t.Fatalf("черновиков = %d, без лидов ожидался 0", status.Drafted)
+	}
+	env.AssertNotCalled(t, "ExecuteActivity", ActivityDraftEmails)
+}
+
+// TestFulfillmentShortfallVisibleInQuery проверяет наблюдаемость недобора через
+// query status: число недостающих компаний видно наряду с найденными и
+// черновиками.
+func TestFulfillmentShortfallVisibleInQuery(t *testing.T) {
+	env := newEnv(t)
+	env.OnActivity(ActivityStartProcessing, mock.Anything, mock.Anything).Return(nil)
+	env.OnActivity(ActivitySearchLeads, mock.Anything, mock.Anything).
+		Return(searchResult{Found: 1, LeadIDs: []string{"lead-1"}}, nil)
+	env.OnActivity(ActivityDraftEmails, mock.Anything, mock.Anything).
+		Return(draftResult{Drafted: 1, LeadIDs: []string{"lead-1"}}, nil)
+	env.OnActivity(ActivityFulfillRequest, mock.Anything, mock.Anything).Return(nil)
+
+	env.RegisterDelayedCallback(func() {
+		env.SignalWorkflow(SignalApprovalDecision, ApprovalDecision{Approved: true, Actor: "operator"})
+	}, time.Second)
+
+	env.ExecuteWorkflow(Fulfillment, Params{RequestID: "req-shortfall-query", TenantID: "tenant-1", LeadTarget: 3})
+	if err := env.GetWorkflowError(); err != nil {
+		t.Fatalf("workflow завершился ошибкой: %v", err)
+	}
+	value, err := env.QueryWorkflow(QueryStatus)
+	if err != nil {
+		t.Fatalf("запрос состояния: %v", err)
+	}
+	var queried Status
+	if err := value.Get(&queried); err != nil {
+		t.Fatalf("разбор состояния: %v", err)
+	}
+	if queried.Shortfall == nil || *queried.Shortfall != 2 {
+		t.Fatalf("недобор в query = %v, ожидался 2", queried.Shortfall)
+	}
+}
+
+// TestFulfillmentShortfallNotCalculatedWithoutTarget проверяет сценарий «цель не
+// задана»: недобор не рассчитывается и не показывается выдуманным нулём, письма
+// автоматически не генерируются.
+func TestFulfillmentShortfallNotCalculatedWithoutTarget(t *testing.T) {
+	env := newEnv(t)
+	env.OnActivity(ActivityStartProcessing, mock.Anything, mock.Anything).Return(nil)
+	env.OnActivity(ActivitySearchLeads, mock.Anything, mock.Anything).
+		Return(searchResult{Found: 2, LeadIDs: []string{"lead-a", "lead-b"}}, nil)
+	env.OnActivity(ActivityFulfillRequest, mock.Anything, mock.Anything).Return(nil)
+
+	env.RegisterDelayedCallback(func() {
+		env.SignalWorkflow(SignalApprovalDecision, ApprovalDecision{Approved: true, Actor: "operator"})
+	}, time.Second)
+
+	env.ExecuteWorkflow(Fulfillment, Params{RequestID: "req-no-target", TenantID: "tenant-1"})
+	if err := env.GetWorkflowError(); err != nil {
+		t.Fatalf("workflow завершился ошибкой: %v", err)
+	}
+	var status Status
+	if err := env.GetWorkflowResult(&status); err != nil {
+		t.Fatalf("чтение результата: %v", err)
+	}
+	if status.Shortfall != nil {
+		t.Fatalf("недобор = %d, при отсутствии цели ожидался nil", *status.Shortfall)
+	}
+	env.AssertNotCalled(t, "ExecuteActivity", ActivityDraftEmails)
+}
+
+// TestFulfillmentReproducesDraftsWithoutShortfallGate проверяет совместимость
+// версий: исполнение, начатое до появления гейта по недобору (`shortfall-gate` ==
+// DefaultVersion), воспроизводит прежнюю структуру — черновики генерируются под
+// найденных лидов даже при достигнутой цели.
+func TestFulfillmentReproducesDraftsWithoutShortfallGate(t *testing.T) {
+	env := newEnv(t)
+	env.OnGetVersion(changeShortfallGate, workflow.DefaultVersion, workflow.Version(1)).
+		Return(func(string, workflow.Version, workflow.Version) workflow.Version { return workflow.DefaultVersion })
+	env.OnGetVersion(changeEmailDrafts, workflow.DefaultVersion, workflow.Version(1)).
+		Return(func(string, workflow.Version, workflow.Version) workflow.Version { return workflow.Version(1) })
+	env.OnActivity(ActivityStartProcessing, mock.Anything, mock.Anything).Return(nil)
+	env.OnActivity(ActivitySearchLeads, mock.Anything, mock.Anything).
+		Return(searchResult{Found: 2, LeadIDs: []string{"lead-a", "lead-b"}}, nil)
+	env.OnActivity(ActivityDraftEmails, mock.Anything, mock.Anything).
+		Return(draftResult{Drafted: 2, LeadIDs: []string{"lead-a", "lead-b"}}, nil)
+	env.OnActivity(ActivityFulfillRequest, mock.Anything, mock.Anything).Return(nil)
+
+	env.RegisterDelayedCallback(func() {
+		env.SignalWorkflow(SignalApprovalDecision, ApprovalDecision{Approved: true, Actor: "operator"})
+	}, time.Second)
+
+	env.ExecuteWorkflow(Fulfillment, Params{RequestID: "req-old-graph", TenantID: "tenant-1", LeadTarget: 2})
+	if err := env.GetWorkflowError(); err != nil {
+		t.Fatalf("workflow завершился ошибкой: %v", err)
+	}
+	var status Status
+	if err := env.GetWorkflowResult(&status); err != nil {
+		t.Fatalf("чтение результата: %v", err)
+	}
+	if status.Drafted != 2 {
+		t.Fatalf("черновиков = %d, прежнее исполнение без гейта ожидало 2", status.Drafted)
+	}
+	env.AssertExpectations(t)
+}
+
+// TestFulfillmentDraftStepMissingContractContinues проверяет штатный пропуск при
+// неподключённом контракте `email-generation`: шаг черновиков вызывается, но
+// возвращает пустой результат, и исполнение продолжает путь с нулём черновиков.
+func TestFulfillmentDraftStepMissingContractContinues(t *testing.T) {
+	env := newEnv(t)
+	env.OnActivity(ActivityStartProcessing, mock.Anything, mock.Anything).Return(nil)
+	env.OnActivity(ActivitySearchLeads, mock.Anything, mock.Anything).
+		Return(searchResult{Found: 1, LeadIDs: []string{"lead-1"}}, nil)
+	env.OnActivity(ActivityDraftEmails, mock.Anything, mock.Anything).
+		Return(draftResult{}, nil)
+	env.OnActivity(ActivityFulfillRequest, mock.Anything, mock.Anything).Return(nil)
+
+	env.RegisterDelayedCallback(func() {
+		env.SignalWorkflow(SignalApprovalDecision, ApprovalDecision{Approved: true, Actor: "operator"})
+	}, time.Second)
+
+	env.ExecuteWorkflow(Fulfillment, Params{RequestID: "req-no-contract", TenantID: "tenant-1", LeadTarget: 3})
+	if err := env.GetWorkflowError(); err != nil {
+		t.Fatalf("workflow завершился ошибкой: %v", err)
+	}
+	var status Status
+	if err := env.GetWorkflowResult(&status); err != nil {
+		t.Fatalf("чтение результата: %v", err)
+	}
+	if status.Phase != PhaseFulfilled || status.Drafted != 0 {
+		t.Fatalf("исход = %+v, ожидался fulfilled с нулём черновиков", status)
+	}
+	env.AssertExpectations(t)
+}
+
+// TestDraftsAllowed проверяет правило гейта «недобор → письма»: при включённом
+// гейте нужен наблюдаемый недобор, при выключенном (прежнее исполнение) генерация
+// разрешена безусловно.
+func TestDraftsAllowed(t *testing.T) {
+	zero, positive := 0, 2
+	tests := []struct {
+		name      string
+		gate      workflow.Version
+		shortfall *int
+		want      bool
+	}{
+		{"прежнее исполнение без гейта", workflow.DefaultVersion, nil, true},
+		{"гейт: цель не задана", 1, nil, false},
+		{"гейт: цель достигнута", 1, &zero, false},
+		{"гейт: недобор", 1, &positive, true},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := draftsAllowed(tc.gate, tc.shortfall); got != tc.want {
+				t.Fatalf("draftsAllowed(%v, %v) = %v, ожидалось %v", tc.gate, tc.shortfall, got, tc.want)
+			}
+		})
 	}
 }
 

@@ -29,6 +29,17 @@ const (
 	KindEngagementObserved Kind = "engagement-observed"
 	KindMessageSent        Kind = "message-sent"
 	KindDeliveryEvent      Kind = "delivery-event"
+
+	// KindEmailVerification — результат проверки адреса (исход valid/invalid).
+	// Питает отчёт по качеству базы.
+	KindEmailVerification Kind = "email-verification"
+
+	// KindOutreachOutcome — результат шага последовательности (drafted, approved,
+	// rejected и т.д.). Питает показатель простоя — объём неутверждённых шагов.
+	KindOutreachOutcome Kind = "outreach-outcome"
+
+	// KindLeadOutcome — исход лида сверх переписки (сделка): исход won/lost.
+	KindLeadOutcome Kind = "lead-outcome"
 )
 
 // Event — нормализованное доменное событие, применяемое к проекции.
@@ -44,6 +55,16 @@ type Event struct {
 	Outcome    string
 	OccurredAt time.Time
 	ReplyText  string
+
+	// Измерения отчётности: источник, отрасль, сегмент, кампания и менеджер.
+	// Необязательны; непустое значение уточняет срез, пустое — не затирает ранее
+	// известное измерение. Это агрегатные измерения витрины, а не персональные
+	// данные: значения принадлежат срезу, а не контакту.
+	Source     string
+	Industry   string
+	Segment    string
+	CampaignID string
+	ManagerID  string
 }
 
 // Stage — стадия статусной воронки лида (`lead-workflow`).
@@ -97,8 +118,17 @@ type Snapshot struct {
 	WaitingAges []time.Duration
 }
 
-// company — состояние одной компании в проекции. Хранит только стадию и
-// отметки времени: содержимое ответов сюда не попадает.
+// validityState — состояние проверки контакта для отчёта по качеству базы.
+type validityState string
+
+const (
+	validityUnknown validityState = ""
+	validityValid   validityState = "valid"
+	validityInvalid validityState = "invalid"
+)
+
+// company — состояние одной компании в проекции. Хранит стадию, измерения среза
+// и отметки времени: содержимое ответов сюда не попадает.
 type company struct {
 	stage     Stage
 	foundAt   time.Time
@@ -106,6 +136,30 @@ type company struct {
 	repliedAt time.Time
 	hasSent   bool
 	hasReply  bool
+
+	// Измерения отчётности.
+	source     string
+	industry   string
+	segment    string
+	campaignID string
+	managerID  string
+
+	// Факты отчётности: сроки и признаки для дашбордов кампаний и качества базы.
+	deliveredAt    time.Time
+	transitionedAt time.Time
+	unsubscribedAt time.Time
+	bouncedAt      time.Time
+	wonAt          time.Time
+
+	hasDelivered    bool
+	hasTransition   bool
+	hasUnsubscribed bool
+	hasBounce       bool
+	hasWon          bool
+
+	validity      validityState
+	duplicate     bool
+	pendingDrafts int
 }
 
 // ReadModel — потокобезопасная проекция «тенант → счётчики по компаниям».
@@ -150,10 +204,15 @@ func (m *ReadModel) Apply(event Event) {
 	if c.foundAt.IsZero() {
 		c.foundAt = event.OccurredAt
 	}
+	applyDimensions(c, event)
 
 	switch event.Kind {
 	case KindLeadWorkflow:
-		if stage, ok := normalizeStage(event.Status); ok {
+		// Признак дубля приходит статусом лида и не является стадией воронки:
+		// записывается отдельно, а не подменяет стадию.
+		if isDuplicate(event.Status) {
+			c.duplicate = true
+		} else if stage, ok := normalizeStage(event.Status); ok {
 			c.stage = stage
 		}
 	case KindMessageSent:
@@ -164,16 +223,68 @@ func (m *ReadModel) Apply(event Event) {
 		if c.stage == "" || c.stage == StageNotWarmed {
 			c.stage = StageEmailSent
 		}
+	case KindDeliveryEvent:
+		switch {
+		case isBounce(event.Outcome):
+			c.hasBounce = true
+			if c.bouncedAt.IsZero() {
+				c.bouncedAt = event.OccurredAt
+			}
+			c.stage = StageCold
+		case isDelivered(event.Outcome):
+			c.hasDelivered = true
+			if c.deliveredAt.IsZero() {
+				c.deliveredAt = event.OccurredAt
+			}
+		}
 	case KindEngagementObserved:
-		if isReply(event.Outcome) {
+		switch {
+		case isReply(event.Outcome):
 			c.hasReply = true
 			if c.repliedAt.IsZero() {
 				c.repliedAt = event.OccurredAt
 			}
-		}
-	case KindDeliveryEvent:
-		if isBounce(event.Outcome) {
+		case isUnsubscribe(event.Outcome):
+			c.hasUnsubscribed = true
+			if c.unsubscribedAt.IsZero() {
+				c.unsubscribedAt = event.OccurredAt
+			}
+			// Отписка останавливает коммуникацию: последующие касания не идут.
 			c.stage = StageCold
+		case isTransition(event.Outcome):
+			c.hasTransition = true
+			if c.transitionedAt.IsZero() {
+				c.transitionedAt = event.OccurredAt
+			}
+		}
+	case KindEmailVerification:
+		switch {
+		case isInvalidEmail(event.Outcome):
+			c.validity = validityInvalid
+		case isDelivered(event.Outcome):
+			// Исход valid нормализуется тем же словом, что и доставка.
+			c.validity = validityValid
+		}
+	case KindOutreachOutcome:
+		switch {
+		case isDrafted(event.Outcome):
+			c.pendingDrafts++
+		case isDraftResolved(event.Outcome):
+			if c.pendingDrafts > 0 {
+				c.pendingDrafts--
+			}
+		case isDraftApproved(event.Outcome):
+			// Утверждение снимает ровно один неутверждённый шаг.
+			if c.pendingDrafts > 0 {
+				c.pendingDrafts--
+			}
+		}
+	case KindLeadOutcome:
+		if isWon(event.Outcome) {
+			c.hasWon = true
+			if c.wonAt.IsZero() {
+				c.wonAt = event.OccurredAt
+			}
 		}
 	default:
 		// Неизвестный вид события проекцией не учитывается.
@@ -294,6 +405,153 @@ func (m *ReadModel) Snapshot(tenantID string, scope Scope, now time.Time) Snapsh
 	return snapshot
 }
 
+// CompanyRecord — снимок состояния одной компании в проекции для хранилища.
+//
+// Текст ответа сюда не входит: событие ответа отражается только признаком
+// HasReply и отметкой времени, поэтому маскирование сохраняется и на носителе
+// состояния.
+type CompanyRecord struct {
+	TenantID  string
+	CompanyID string
+	Stage     Stage
+
+	FoundAt   time.Time
+	SentAt    time.Time
+	RepliedAt time.Time
+
+	HasSent  bool
+	HasReply bool
+
+	// Измерения среза и факты отчётности, переживающие рестарт проекции.
+	Source     string
+	Industry   string
+	Segment    string
+	CampaignID string
+	ManagerID  string
+
+	DeliveredAt    time.Time
+	TransitionedAt time.Time
+	UnsubscribedAt time.Time
+	BouncedAt      time.Time
+	WonAt          time.Time
+
+	HasDelivered    bool
+	HasTransition   bool
+	HasUnsubscribed bool
+	HasBounce       bool
+	HasWon          bool
+
+	Validity      string
+	Duplicate     bool
+	PendingDrafts int
+}
+
+// Record возвращает снимок состояния компании для сохранения в хранилище. ok
+// ложно, если такой компании в проекции нет: событие было отброшено
+// (пустой тенант или компания) и сохранять нечего.
+func (m *ReadModel) Record(tenantID, companyID string) (CompanyRecord, bool) {
+	if m == nil {
+		return CompanyRecord{}, false
+	}
+	tenant := strings.TrimSpace(tenantID)
+	id := strings.TrimSpace(companyID)
+	if tenant == "" || id == "" {
+		return CompanyRecord{}, false
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	c := m.tenants[tenant][id]
+	if c == nil {
+		return CompanyRecord{}, false
+	}
+	return CompanyRecord{
+		TenantID:  tenant,
+		CompanyID: id,
+		Stage:     c.stage,
+		FoundAt:   c.foundAt,
+		SentAt:    c.sentAt,
+		RepliedAt: c.repliedAt,
+		HasSent:   c.hasSent,
+		HasReply:  c.hasReply,
+
+		Source:     c.source,
+		Industry:   c.industry,
+		Segment:    c.segment,
+		CampaignID: c.campaignID,
+		ManagerID:  c.managerID,
+
+		DeliveredAt:    c.deliveredAt,
+		TransitionedAt: c.transitionedAt,
+		UnsubscribedAt: c.unsubscribedAt,
+		BouncedAt:      c.bouncedAt,
+		WonAt:          c.wonAt,
+
+		HasDelivered:    c.hasDelivered,
+		HasTransition:   c.hasTransition,
+		HasUnsubscribed: c.hasUnsubscribed,
+		HasBounce:       c.hasBounce,
+		HasWon:          c.hasWon,
+
+		Validity:      string(c.validity),
+		Duplicate:     c.duplicate,
+		PendingDrafts: c.pendingDrafts,
+	}, true
+}
+
+// Restore восстанавливает состояние компании из снимка хранилища при тёплом
+// старте. Прежнее состояние той же компании заменяется: снимок хранилища —
+// источник истины для проекции. Уведомления подписчиков не рассылаются: тёплый
+// старт выполняется до появления наблюдателей.
+func (m *ReadModel) Restore(record CompanyRecord) {
+	if m == nil {
+		return
+	}
+	tenant := strings.TrimSpace(record.TenantID)
+	id := strings.TrimSpace(record.CompanyID)
+	if tenant == "" || id == "" {
+		return
+	}
+
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	companies := m.tenants[tenant]
+	if companies == nil {
+		companies = make(map[string]*company)
+		m.tenants[tenant] = companies
+	}
+	companies[id] = &company{
+		stage:     record.Stage,
+		foundAt:   record.FoundAt,
+		sentAt:    record.SentAt,
+		repliedAt: record.RepliedAt,
+		hasSent:   record.HasSent,
+		hasReply:  record.HasReply,
+
+		source:     record.Source,
+		industry:   record.Industry,
+		segment:    record.Segment,
+		campaignID: record.CampaignID,
+		managerID:  record.ManagerID,
+
+		deliveredAt:    record.DeliveredAt,
+		transitionedAt: record.TransitionedAt,
+		unsubscribedAt: record.UnsubscribedAt,
+		bouncedAt:      record.BouncedAt,
+		wonAt:          record.WonAt,
+
+		hasDelivered:    record.HasDelivered,
+		hasTransition:   record.HasTransition,
+		hasUnsubscribed: record.HasUnsubscribed,
+		hasBounce:       record.HasBounce,
+		hasWon:          record.HasWon,
+
+		validity:      validityState(record.Validity),
+		duplicate:     record.Duplicate,
+		pendingDrafts: record.PendingDrafts,
+	}
+}
+
 // normalizeStage переводит внешнюю подпись стадии воронки в нормализованную.
 // Принимает варианты с пробелами и дефисами: «not warmed», «not-warmed»,
 // «email sent», «warming», «cold».
@@ -324,7 +582,123 @@ func isReply(outcome string) bool {
 // isBounce сообщает, что исход события доставки — отказ доставки.
 func isBounce(outcome string) bool {
 	switch strings.ToLower(strings.TrimSpace(outcome)) {
-	case "bounced", "bounce", "undelivered":
+	case "bounced", "bounce", "undelivered", "failed":
+		return true
+	default:
+		return false
+	}
+}
+
+// applyDimensions уточняет измерения среза компании непустыми значениями
+// события. Пустое значение не затирает ранее известное измерение: событие без
+// измерения не отменяет уже установленное.
+func applyDimensions(c *company, event Event) {
+	if c == nil {
+		return
+	}
+	if value := strings.TrimSpace(event.Source); value != "" {
+		c.source = value
+	}
+	if value := strings.TrimSpace(event.Industry); value != "" {
+		c.industry = value
+	}
+	if value := strings.TrimSpace(event.Segment); value != "" {
+		c.segment = value
+	}
+	if value := strings.TrimSpace(event.CampaignID); value != "" {
+		c.campaignID = value
+	}
+	if value := strings.TrimSpace(event.ManagerID); value != "" {
+		c.managerID = value
+	}
+}
+
+// isDelivered сообщает, что исход — успешная доставка или валидность адреса.
+func isDelivered(outcome string) bool {
+	switch strings.ToLower(strings.TrimSpace(outcome)) {
+	case "delivered", "delivery", "valid":
+		return true
+	default:
+		return false
+	}
+}
+
+// isInvalidEmail сообщает, что проверка адреса признала его невалидным.
+func isInvalidEmail(outcome string) bool {
+	switch strings.ToLower(strings.TrimSpace(outcome)) {
+	case "invalid", "undeliverable", "rejected":
+		return true
+	default:
+		return false
+	}
+}
+
+// isUnsubscribe сообщает, что исход — отписка получателя.
+func isUnsubscribe(outcome string) bool {
+	switch strings.ToLower(strings.TrimSpace(outcome)) {
+	case "unsubscribed", "unsubscribe", "opted-out", "opt-out":
+		return true
+	default:
+		return false
+	}
+}
+
+// isTransition сообщает, что исход — переход по трекинг-ссылке.
+func isTransition(outcome string) bool {
+	switch strings.ToLower(strings.TrimSpace(outcome)) {
+	case "transitioned", "transition", "clicked", "click":
+		return true
+	default:
+		return false
+	}
+}
+
+// isDuplicate сообщает, что статус лида — признак дубля.
+func isDuplicate(status string) bool {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "duplicate", "duplicated", "dup":
+		return true
+	default:
+		return false
+	}
+}
+
+// isWon сообщает, что исход лида — заключённая сделка.
+func isWon(outcome string) bool {
+	switch strings.ToLower(strings.TrimSpace(outcome)) {
+	case "won", "deal", "closed-won", "closed_won":
+		return true
+	default:
+		return false
+	}
+}
+
+// isDrafted сообщает, что исход шага — сформированный черновик, ожидающий
+// утверждения (объём простоя).
+func isDrafted(outcome string) bool {
+	switch strings.ToLower(strings.TrimSpace(outcome)) {
+	case "drafted", "pending", "held", "stalled":
+		return true
+	default:
+		return false
+	}
+}
+
+// isDraftApproved сообщает, что черновик шага получил положительное решение.
+func isDraftApproved(outcome string) bool {
+	switch strings.ToLower(strings.TrimSpace(outcome)) {
+	case "approved":
+		return true
+	default:
+		return false
+	}
+}
+
+// isDraftResolved сообщает, что шаг более не ждёт утверждения: отклонён,
+// удалён или завершён.
+func isDraftResolved(outcome string) bool {
+	switch strings.ToLower(strings.TrimSpace(outcome)) {
+	case "rejected", "removed", "completed":
 		return true
 	default:
 		return false
