@@ -53,7 +53,7 @@
     <tbody>
       <tr class="queue-item">
         <td>
-          <a class="cell-main" href="/requests/req-1/approval?tenant_id=tenant-1">Предлагаем автоматизацию найма</a>
+          <a class="cell-main" href="/requests/req-1/approval?tenant_id=tenant-1">Заявка на утверждение</a>
           <span class="cell-sub">№ req-1 · версия 4</span>
         </td>
         <td><span class="status status-awaiting-approval">Ждёт решения</span></td>

@@ -75,7 +75,7 @@ func (f *fakeRequests) List(_ context.Context, q requestintent.ListQuery) ([]req
 	if !ok {
 		return nil, requestintent.ErrNotFound
 	}
-	return []requestintent.ListEntry{{RequestID: requestID, Status: "submitted"}}, nil
+	return []requestintent.ListEntry{{RequestID: requestID, Title: "Заявка клиента", Status: "submitted"}}, nil
 }
 
 // fixedClock — детерминированные часы теста.
@@ -473,6 +473,7 @@ func TestSubmitRequestThroughSession(t *testing.T) {
 	cookie := login(t, server, "client@romashka.ru", "secret")
 
 	resp := postFormCookie(t, server, "/portal/request", url.Values{
+		"title":   {"Автоматизация найма"},
 		"content": {"Предлагаем автоматизацию найма"},
 		"target":  {"IT-компании"},
 	}, cookie)
@@ -503,6 +504,7 @@ func TestPortalShowsFailureReason(t *testing.T) {
 	cookie := login(t, server, "client@romashka.ru", "secret")
 
 	resp := postFormCookie(t, server, "/portal/request", url.Values{
+		"title":   {"Автоматизация найма"},
 		"content": {"Предлагаем автоматизацию найма"},
 		"target":  {"IT-компании"},
 	}, cookie)

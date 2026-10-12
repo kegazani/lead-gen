@@ -20,7 +20,7 @@
     {{- range .View.Items }}
       <tr class="queue-item">
         <td>
-          <a class="cell-main" href="/requests/{{.RequestID}}/approval?tenant_id={{urlquery $.View.TenantID}}">{{.Offer.Content}}</a>
+          <a class="cell-main" href="/requests/{{.RequestID}}/approval?tenant_id={{urlquery $.View.TenantID}}">{{.Title}}</a>
           <span class="cell-sub">{{ text "request.number" }} {{.RequestID}} · {{ text "request.version" }} {{.Version}}</span>
         </td>
         <td><span class="status status-{{.Phase}}">{{ label "request.phase" .Phase }}</span></td>
@@ -69,7 +69,7 @@
       <tbody>
       {{- range .View.Executions }}
         <tr class="execution-history-item">
-          <td>{{ text "request.number" }} {{.RequestID}}</td>
+          <td><a href="/requests/{{.RequestID}}/approval?tenant_id={{urlquery $.View.TenantID}}">{{.Title}}</a><span class="cell-sub">{{ text "request.number" }} {{.RequestID}}</span></td>
           <td>{{ label "request.status" .Status }}</td>
           <td>{{- if .Phase }}<span class="status status-{{.Phase}}">{{ label "request.phase" .Phase }}</span>{{- end }}{{- if .Execution }} · {{.Execution}}{{- end }}</td>
           <td>{{.Found}}</td>

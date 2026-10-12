@@ -220,6 +220,7 @@ func RunRequestRepositoryContract(t *testing.T, newRepository RequestRepositoryF
 		// Чужой тенант: заявка не должна попадать в подсчёт и список tenant-1.
 		other, err := domain.NewRequest(domain.NewRequestParams{
 			ID: "req-e", OfferID: "offer-req-e", TenantID: "tenant-2",
+			Title:   "Заявка чужого тенанта",
 			Content: "Оффер чужого тенанта", Target: "IT", Actor: "actor-1", At: baseTime, EventID: "evt-req-e",
 		})
 		if err != nil {

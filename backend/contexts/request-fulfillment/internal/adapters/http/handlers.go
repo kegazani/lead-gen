@@ -28,6 +28,7 @@ type submitBody struct {
 	RequestID        string                               `json:"request_id"`
 	OfferID          string                               `json:"offer_id"`
 	TenantID         string                               `json:"tenant_id"`
+	Title            string                               `json:"title"`
 	Actor            string                               `json:"actor"`
 	Content          string                               `json:"content"`
 	Target           string                               `json:"target,omitempty"`
@@ -71,6 +72,7 @@ func (s *Server) handleSubmit(w http.ResponseWriter, r *http.Request) {
 		RequestID:        domain.RequestID(body.RequestID),
 		OfferID:          domain.OfferID(body.OfferID),
 		TenantID:         domain.TenantID(body.TenantID),
+		Title:            body.Title,
 		Content:          body.Content,
 		Target:           body.Target,
 		Actor:            domain.ActorID(body.Actor),

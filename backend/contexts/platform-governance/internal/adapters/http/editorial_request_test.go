@@ -50,7 +50,7 @@ func TestPortalBuildsEditorialIntentFromActiveProfile(t *testing.T) {
 	approveDemoProfile(t, slice, tenantID)
 	cookie := login(t, server, "client@romashka.ru", "secret")
 	resp := postFormCookie(t, server, "/portal/request", url.Values{
-		"content": {"Предлагаем CRM"}, "target": {"B2B компании"},
+		"title": {"Внедрение CRM"}, "content": {"Предлагаем CRM"}, "target": {"B2B компании"},
 		"tenant_id": {"attacker-tenant"}, "execution_purpose": {"delivery"},
 		"sender_company[company_name]": {"Чужая компания"},
 	}, cookie)
@@ -62,7 +62,7 @@ func TestPortalBuildsEditorialIntentFromActiveProfile(t *testing.T) {
 	if got.TenantID != tenantID || got.Actor != userID || got.ExecutionPurpose != "editorial" {
 		t.Fatalf("trusted intent fields подменены: %+v", got)
 	}
-	if got.Content != "Предлагаем CRM" || got.Target != "B2B компании" {
+	if got.Title != "Внедрение CRM" || got.Content != "Предлагаем CRM" || got.Target != "B2B компании" {
 		t.Fatalf("offer content/target смешаны или потеряны: %+v", got)
 	}
 	if got.SenderCompany == nil || got.SenderCompany.CompanyName != "ООО Ромашка" || got.SenderCompany.Website != "https://romashka.ru" || got.SenderCompany.Description != "Услуги по автоматизации продаж" {
@@ -83,7 +83,7 @@ func TestPortalRejectsRequestBeforeProfileApproval(t *testing.T) {
 		t.Fatal(err)
 	}
 	cookie := login(t, server, "client2@romashka.ru", "secret")
-	resp := postFormCookie(t, server, "/portal/request", url.Values{"content": {"Оффер"}}, cookie)
+	resp := postFormCookie(t, server, "/portal/request", url.Values{"title": {"Тестовая заявка"}, "content": {"Оффер"}}, cookie)
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("без одобренного профиля = %d, ожидался 403", resp.StatusCode)

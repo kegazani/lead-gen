@@ -82,13 +82,16 @@ func TestExecutionAttemptMigrationPreservesLegacyRequests(t *testing.T) {
 
 	legacy, err := domain.NewRequest(domain.NewRequestParams{
 		ID: "req-existing-before-0004", OfferID: "offer-before-0004", TenantID: "tenant-before-0004",
+		Title:   "Legacy offer",
 		Content: "legacy offer", Target: "legacy target", Actor: "migration-test",
 		At: time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC), EventID: "event-before-0004",
 	})
 	if err != nil {
 		t.Fatalf("создать legacy aggregate: %v", err)
 	}
-	snapshot, err := json.Marshal(legacy.Snapshot())
+	legacySnapshot := legacy.Snapshot()
+	legacySnapshot.Title = "" // Имитируем сохранённую до появления имени заявку.
+	snapshot, err := json.Marshal(legacySnapshot)
 	if err != nil {
 		t.Fatalf("сериализовать legacy snapshot: %v", err)
 	}
@@ -200,6 +203,7 @@ VALUES('pre-0006-target',$1,$2,'target','explicit',4,'legacy-operator',$3,$4)`, 
 
 	runtimeRequest, err := domain.NewRequest(domain.NewRequestParams{
 		ID: "req-runtime-resolution", OfferID: "offer-runtime-resolution", TenantID: "tenant-runtime-resolution",
+		Title:   "Runtime resolution",
 		Content: "runtime test", Actor: "migration-test", At: time.Date(2026, 3, 4, 5, 6, 7, 0, time.UTC), EventID: "runtime-request-event",
 	})
 	if err != nil {
@@ -341,6 +345,7 @@ FROM pg_trigger WHERE tgrelid=to_regclass($1) AND tgname=$2 AND NOT tgisinternal
 	// только составной FK миграции 0008.
 	fkRequest, err := domain.NewRequest(domain.NewRequestParams{
 		ID: "req-revision-fk-only", OfferID: "offer-revision-fk-only", TenantID: "tenant-revision-fk-only",
+		Title:   "Foreign key request",
 		Content: "FK test", Actor: "migration-test", At: time.Date(2026, 4, 5, 6, 7, 8, 0, time.UTC), EventID: "revision-fk-only-event",
 	})
 	if err != nil {

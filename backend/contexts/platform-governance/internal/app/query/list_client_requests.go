@@ -20,6 +20,7 @@ type ListClientRequests struct {
 // историю переходов статусов: дерево показывает фактическое текущее состояние.
 type ClientRequestView struct {
 	RequestID string
+	Title     string
 	Status    string
 }
 
@@ -45,7 +46,7 @@ func (h *ListClientRequestsHandler) Handle(ctx context.Context, q ListClientRequ
 	}
 	views := make([]ClientRequestView, 0, len(entries))
 	for _, entry := range entries {
-		views = append(views, ClientRequestView{RequestID: entry.RequestID, Status: entry.Status})
+		views = append(views, ClientRequestView{RequestID: entry.RequestID, Title: entry.Title, Status: entry.Status})
 	}
 	return views, nil
 }

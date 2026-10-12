@@ -95,7 +95,7 @@ func createWorkflowRequest(t *testing.T, server *httptest.Server) {
 	t.Helper()
 	resp := do(t, server, http.MethodPost, "/requests", map[string]any{
 		"request_id": requestID, "offer_id": "offer-workflow", "tenant_id": tenantID,
-		"actor": "client", "content": "Offer", "target": "IT",
+		"title": "Workflow request", "actor": "client", "content": "Offer", "target": "IT",
 	})
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("создание заявки для workflow = %d: %s", resp.StatusCode, readBody(t, resp))

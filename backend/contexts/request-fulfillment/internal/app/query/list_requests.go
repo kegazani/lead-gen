@@ -15,6 +15,7 @@ type ListRequests struct {
 // ListRequestItem — строка списка заявок: идентификатор и текущий статус.
 type ListRequestItem struct {
 	RequestID string
+	Title     string
 	Status    domain.RequestStatus
 }
 
@@ -40,6 +41,7 @@ func (h *ListRequestsHandler) Handle(ctx context.Context, q ListRequests) ([]Lis
 	for _, request := range requests {
 		items = append(items, ListRequestItem{
 			RequestID: request.ID().String(),
+			Title:     request.Title(),
 			Status:    request.Status(),
 		})
 	}

@@ -27,9 +27,9 @@ import (
 // доменной архитектуры.
 const ContractName = "request-intent"
 
-// SchemaVersion — текущая версия схемы контракта. Версионирование — semver:
-// MAJOR несовместимо, MINOR добавляет опциональное поле, PATCH уточняет смысл.
-const SchemaVersion = "1.2.0"
+// SchemaVersion — текущая версия схемы контракта. Обязательное имя в SubmitIntent
+// делает эту версию несовместимой с клиентами 1.x.
+const SchemaVersion = "2.0.0"
 
 // ErrRejected — заявка не создана по доменной причине владельца (например,
 // пустой оффер). Потребитель различает этот отказ от сбоя транспорта.
@@ -54,6 +54,8 @@ type SubmitIntent struct {
 	OfferID string
 	// TenantID — тенант-владелец заявки.
 	TenantID string
+	// Title — обязательное короткое имя заявки (1–100 Unicode-символов).
+	Title string `json:"title"`
 	// Content — что клиент предлагает (непустой).
 	Content string
 	// Target — кому адресован оффер; может быть пустым.
@@ -110,6 +112,7 @@ type StatusQuery struct {
 type StatusResult struct {
 	RequestID     string
 	Status        string
+	Title         string
 	OfferContent  string
 	OfferTarget   string
 	OfferRevision int
@@ -127,6 +130,7 @@ type ListQuery struct {
 // ListEntry — строка списка заявок клиента: идентификатор и текущий статус.
 type ListEntry struct {
 	RequestID string
+	Title     string
 	Status    string
 }
 

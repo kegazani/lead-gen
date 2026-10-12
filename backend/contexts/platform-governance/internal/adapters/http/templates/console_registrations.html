@@ -22,12 +22,12 @@
     <tbody>
       {{- range .View.Registrations }}
       <tr>
-        <td>{{ .CompanyName }}</td>
-        <td>{{ .Description }}</td>
+        <td><span class="cell-truncated" title="{{.CompanyName}}" aria-label="{{.CompanyName}}">{{truncate .CompanyName 100}}</span></td>
+        <td><span class="cell-truncated" title="{{.Description}}" aria-label="{{.Description}}">{{truncate .Description 100}}</span></td>
         <td>{{ .INN }}</td>
         <td>{{ .CompanyEmail }}</td>
-        <td>{{ .Website }}</td>
-        <td>{{ .LegalData }}</td>
+        <td><span class="cell-truncated" title="{{.Website}}" aria-label="{{.Website}}">{{truncate .Website 100}}</span></td>
+        <td><span class="cell-truncated" title="{{.LegalData}}" aria-label="{{.LegalData}}">{{truncate .LegalData 100}}</span></td>
         <td>{{ .CreatedAt }}</td>
         <td>
           <form method="post" action="/console/registrations/{{ .TenantID }}/approve" class="inline-form">

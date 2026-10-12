@@ -19,6 +19,7 @@ type SubmitRequest struct {
 	RequestID        domain.RequestID
 	OfferID          domain.OfferID
 	TenantID         domain.TenantID
+	Title            string
 	Content          string
 	Target           string
 	ExecutionPurpose string
@@ -75,7 +76,7 @@ func (h *SubmitRequestHandler) Handle(ctx context.Context, cmd SubmitRequest) (S
 	err := h.uow.WithinTransaction(ctx, func(txCtx context.Context, tx ports.Transaction) error {
 		params := domain.NewRequestParams{
 			ID: cmd.RequestID, OfferID: cmd.OfferID, TenantID: cmd.TenantID,
-			Content: cmd.Content, Target: cmd.Target, ExecutionHistoryKnown: h.executionHistoryKnown,
+			Title: cmd.Title, Content: cmd.Content, Target: cmd.Target, ExecutionHistoryKnown: h.executionHistoryKnown,
 			ExecutionPurpose: cmd.ExecutionPurpose, SenderCompany: cmd.SenderCompany,
 			Actor: cmd.Actor, At: at, CorrelationID: correlation, CausationID: cmd.CausationID,
 		}

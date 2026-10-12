@@ -29,6 +29,7 @@ func processingRequest(t *testing.T, id, tenant, content, target string) *domain
 		ID:       domain.RequestID(id),
 		OfferID:  domain.OfferID("offer-" + id),
 		TenantID: domain.TenantID(tenant),
+		Title:    "Заявка " + id,
 		Content:  content,
 		Target:   target,
 		Actor:    "actor-1",

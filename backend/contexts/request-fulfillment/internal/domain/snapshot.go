@@ -2,6 +2,7 @@ package domain
 
 import (
 	"fmt"
+	"strings"
 	"time"
 )
 
@@ -37,6 +38,7 @@ type TransitionSnapshot struct {
 type RequestSnapshot struct {
 	ID                 RequestID
 	TenantID           TenantID
+	Title              string `json:",omitempty"`
 	Status             RequestStatus
 	Version            int
 	Offer              OfferSnapshot
@@ -74,6 +76,7 @@ func (r *Request) Snapshot() RequestSnapshot {
 	return RequestSnapshot{
 		ID:                    r.id,
 		TenantID:              r.tenantID,
+		Title:                 r.title,
 		Status:                r.status,
 		Version:               r.version,
 		Offer:                 r.offer.Snapshot(),
@@ -124,6 +127,13 @@ func RehydrateRequest(s RequestSnapshot) (*Request, error) {
 	offer, err := rehydrateOffer(s.Offer)
 	if err != nil {
 		return nil, fmt.Errorf("%w: заявка %s: %v", ErrInvalidSnapshot, s.ID, err)
+	}
+	title := strings.TrimSpace(s.Title)
+	if title == "" {
+		title = legacyRequestTitle(offer.Content().Text())
+	}
+	if len([]rune(title)) > maxRequestTitleRunes {
+		return nil, fmt.Errorf("%w: имя заявки длиннее %d символов", ErrInvalidSnapshot, maxRequestTitleRunes)
 	}
 
 	history := make([]Offer, 0, len(s.OfferHistory))
@@ -186,6 +196,7 @@ func RehydrateRequest(s RequestSnapshot) (*Request, error) {
 	return &Request{
 		id:                    s.ID,
 		tenantID:              s.TenantID,
+		title:                 title,
 		status:                s.Status,
 		offer:                 offer,
 		offerHistory:          history,
@@ -200,6 +211,14 @@ func RehydrateRequest(s RequestSnapshot) (*Request, error) {
 		transitions:           transitions,
 		version:               s.Version,
 	}, nil
+}
+
+func legacyRequestTitle(offer string) string {
+	runes := []rune(offer)
+	if len(runes) > maxRequestTitleRunes {
+		runes = runes[:maxRequestTitleRunes]
+	}
+	return strings.TrimSpace(string(runes))
 }
 
 // Не добавляем синтетическое значение delivery в legacy snapshot: отсутствие

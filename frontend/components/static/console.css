@@ -1057,6 +1057,13 @@ button:disabled {
   white-space: nowrap;
 }
 
+.cell-truncated {
+  display: inline-block;
+  max-width: 100%;
+  vertical-align: bottom;
+  overflow-wrap: anywhere;
+}
+
 .table tbody tr,
 .page tbody tr {
   transition: background 0.16s var(--ease);

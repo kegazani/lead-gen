@@ -178,7 +178,7 @@ func TestTransactionalJournalFailureRollsBackAggregateIntentAndOutbox(t *testing
 	journal := NewTransactionalJournal()
 	sentinel := errors.New("ошибка batch commit")
 	uow := NewUnitOfWorkWith(repo, &failingCommitJournal{TransactionalJournal: journal, err: sentinel})
-	request, err := domain.NewRequest(domain.NewRequestParams{ID: "req-journal-error", OfferID: "offer-journal-error", TenantID: "tenant-1", Content: "Оффер", Target: "IT", Actor: "actor", At: time.Now().UTC(), EventID: "evt-journal-error"})
+	request, err := domain.NewRequest(domain.NewRequestParams{ID: "req-journal-error", OfferID: "offer-journal-error", TenantID: "tenant-1", Title: "Journal error", Content: "Оффер", Target: "IT", Actor: "actor", At: time.Now().UTC(), EventID: "evt-journal-error"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -218,7 +218,7 @@ func TestUnitOfWorkCommitCancellationAndCallbackPanicReleaseGate(t *testing.T) {
 	repo, journal, _ := newGateTestUOW(nil)
 	cancelledCtx, cancel := context.WithCancel(ctx)
 	uow := NewUnitOfWorkWith(repo, &cancelCommitJournal{TransactionalJournal: journal, cancel: cancel})
-	request, err := domain.NewRequest(domain.NewRequestParams{ID: "req-cancel-commit", OfferID: "offer-cancel-commit", TenantID: "tenant-1", Content: "Оффер", Target: "IT", Actor: "actor", At: time.Now().UTC(), EventID: "evt-cancel-commit"})
+	request, err := domain.NewRequest(domain.NewRequestParams{ID: "req-cancel-commit", OfferID: "offer-cancel-commit", TenantID: "tenant-1", Title: "Cancel commit", Content: "Оффер", Target: "IT", Actor: "actor", At: time.Now().UTC(), EventID: "evt-cancel-commit"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -240,7 +240,7 @@ func TestUnitOfWorkCommitCancellationAndCallbackPanicReleaseGate(t *testing.T) {
 		t.Fatalf("успешный commit после cancellation: %v", err)
 	}
 
-	panicRequest, err := domain.NewRequest(domain.NewRequestParams{ID: "req-panic-callback", OfferID: "offer-panic-callback", TenantID: "tenant-1", Content: "Оффер", Target: "IT", Actor: "actor", At: time.Now().UTC(), EventID: "evt-panic-callback"})
+	panicRequest, err := domain.NewRequest(domain.NewRequestParams{ID: "req-panic-callback", OfferID: "offer-panic-callback", TenantID: "tenant-1", Title: "Panic callback", Content: "Оффер", Target: "IT", Actor: "actor", At: time.Now().UTC(), EventID: "evt-panic-callback"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -274,7 +274,7 @@ func TestUnitOfWorkSerializesCloneCallbackCommitWithDirectClaim(t *testing.T) {
 	journal := NewTransactionalJournal()
 	firstUOW := NewUnitOfWorkWith(repo, journal)
 	secondUOW := NewUnitOfWorkWith(repo, journal)
-	request, err := domain.NewRequest(domain.NewRequestParams{ID: "req-lost-claim", OfferID: "offer-lost-claim", TenantID: "tenant-1", Content: "Оффер", Target: "IT", Actor: "actor", At: clock.Now(), EventID: "evt-lost-claim"})
+	request, err := domain.NewRequest(domain.NewRequestParams{ID: "req-lost-claim", OfferID: "offer-lost-claim", TenantID: "tenant-1", Title: "Lost claim", Content: "Оффер", Target: "IT", Actor: "actor", At: clock.Now(), EventID: "evt-lost-claim"})
 	if err != nil {
 		t.Fatal(err)
 	}

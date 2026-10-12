@@ -73,6 +73,7 @@ func (h *harness) submitOK(t *testing.T) command.SubmitRequestResult {
 	t.Helper()
 	result, err := h.submit.Handle(context.Background(), command.SubmitRequest{
 		RequestID: "req-1", OfferID: "offer-1", TenantID: "tenant-1",
+		Title:   "Заявка автоматизации найма",
 		Content: "Предлагаем автоматизацию найма", Target: "IT-компании",
 		Actor: "actor-1", CorrelationID: "corr-1", CausationID: "cause-1",
 	})
@@ -168,6 +169,7 @@ func TestSubmitRejectsEmptyOffer(t *testing.T) {
 	h := newHarness()
 	_, err := h.submit.Handle(context.Background(), command.SubmitRequest{
 		RequestID: "req-1", OfferID: "offer-1", TenantID: "tenant-1",
+		Title:   "Пустой оффер",
 		Content: "   ", Actor: "actor-1",
 	})
 	if !errors.Is(err, domain.ErrOfferRequired) {

@@ -51,6 +51,7 @@ func TestSubmitSuccess(t *testing.T) {
 		RequestID:     "req-9",
 		OfferID:       "offer-1",
 		TenantID:      "tenant-1",
+		Title:         "Заявка клиента",
 		Actor:         "client",
 		Content:       "Оффер",
 		Target:        "рынок",
@@ -71,7 +72,7 @@ func TestSubmitSuccess(t *testing.T) {
 	if gotCorr != "corr-1" {
 		t.Fatalf("X-Correlation-Id = %q", gotCorr)
 	}
-	if gotBody["request_id"] != "req-9" || gotBody["offer_id"] != "offer-1" ||
+	if gotBody["request_id"] != "req-9" || gotBody["offer_id"] != "offer-1" || gotBody["title"] != "Заявка клиента" ||
 		gotBody["tenant_id"] != "tenant-1" || gotBody["content"] != "Оффер" ||
 		gotBody["target"] != "рынок" || gotBody["correlation_id"] != "corr-1" {
 		t.Fatalf("тело команды = %+v", gotBody)
@@ -104,7 +105,7 @@ func TestStatusSuccess(t *testing.T) {
 		gotPath = r.URL.Path
 		gotTenant = r.URL.Query().Get("tenant_id")
 		w.Header().Set("Content-Type", "application/json")
-		_, _ = io.WriteString(w, `{"RequestID":"req-9","Status":"processing","Offer":{"OfferID":"offer-1","Content":"Оффер","Target":"рынок","Revision":3}}`)
+		_, _ = io.WriteString(w, `{"RequestID":"req-9","Status":"processing","Title":"Короткое имя","Offer":{"OfferID":"offer-1","Content":"Оффер","Target":"рынок","Revision":3}}`)
 	}))
 	defer server.Close()
 
@@ -115,7 +116,7 @@ func TestStatusSuccess(t *testing.T) {
 	if gotPath != "/requests/req-9" || gotTenant != "tenant-1" {
 		t.Fatalf("запрос %s?tenant_id=%s", gotPath, gotTenant)
 	}
-	want := requestintent.StatusResult{RequestID: "req-9", Status: "processing", OfferContent: "Оффер", OfferTarget: "рынок", OfferRevision: 3}
+	want := requestintent.StatusResult{RequestID: "req-9", Status: "processing", Title: "Короткое имя", OfferContent: "Оффер", OfferTarget: "рынок", OfferRevision: 3}
 	if result != want {
 		t.Fatalf("результат = %+v, ожидалось %+v", result, want)
 	}

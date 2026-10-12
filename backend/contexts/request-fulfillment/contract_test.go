@@ -27,6 +27,7 @@ func TestContractSubmitAndStatus(t *testing.T) {
 	port := newContract(t)
 	result, err := port.Submit(context.Background(), requestintent.SubmitIntent{
 		RequestID: "req-1", OfferID: "offer-1", TenantID: "tenant-1",
+		Title:   "Автоматизация найма",
 		Content: "Предлагаем автоматизацию найма", Target: "IT-компании",
 		Actor: "client", CorrelationID: "corr-1",
 	})
@@ -41,7 +42,7 @@ func TestContractSubmitAndStatus(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Status: %v", err)
 	}
-	if status.Status != "submitted" || status.OfferContent != "Предлагаем автоматизацию найма" {
+	if status.Status != "submitted" || status.Title != "Автоматизация найма" || status.OfferContent != "Предлагаем автоматизацию найма" {
 		t.Fatalf("Status результат = %+v", status)
 	}
 }
@@ -52,6 +53,7 @@ func TestContractTenantIsolation(t *testing.T) {
 	port := newContract(t)
 	if _, err := port.Submit(context.Background(), requestintent.SubmitIntent{
 		RequestID: "req-1", OfferID: "offer-1", TenantID: "tenant-1",
+		Title:   "Изоляция тенанта",
 		Content: "Оффер", Actor: "client",
 	}); err != nil {
 		t.Fatalf("Submit: %v", err)
@@ -89,9 +91,9 @@ func TestContractUnknownRequest(t *testing.T) {
 func TestContractList(t *testing.T) {
 	port := newContract(t)
 	for _, in := range []requestintent.SubmitIntent{
-		{RequestID: "req-1", OfferID: "offer-1", TenantID: "tenant-1", Content: "Оффер 1", Actor: "client"},
-		{RequestID: "req-2", OfferID: "offer-2", TenantID: "tenant-1", Content: "Оффер 2", Actor: "client"},
-		{RequestID: "req-3", OfferID: "offer-3", TenantID: "tenant-2", Content: "Оффер 3", Actor: "client"},
+		{RequestID: "req-1", OfferID: "offer-1", TenantID: "tenant-1", Title: "Заявка 1", Content: "Оффер 1", Actor: "client"},
+		{RequestID: "req-2", OfferID: "offer-2", TenantID: "tenant-1", Title: "Заявка 2", Content: "Оффер 2", Actor: "client"},
+		{RequestID: "req-3", OfferID: "offer-3", TenantID: "tenant-2", Title: "Заявка 3", Content: "Оффер 3", Actor: "client"},
 	} {
 		if _, err := port.Submit(context.Background(), in); err != nil {
 			t.Fatalf("Submit %s: %v", in.RequestID, err)
@@ -105,10 +107,10 @@ func TestContractList(t *testing.T) {
 	if len(entries) != 2 {
 		t.Fatalf("List вернул %d записей, ожидалось 2: %+v", len(entries), entries)
 	}
-	if entries[0].RequestID != "req-1" || entries[0].Status != "submitted" {
+	if entries[0].RequestID != "req-1" || entries[0].Title != "Заявка 1" || entries[0].Status != "submitted" {
 		t.Fatalf("запись[0] = %+v", entries[0])
 	}
-	if entries[1].RequestID != "req-2" || entries[1].Status != "submitted" {
+	if entries[1].RequestID != "req-2" || entries[1].Title != "Заявка 2" || entries[1].Status != "submitted" {
 		t.Fatalf("запись[1] = %+v", entries[1])
 	}
 }
@@ -135,6 +137,7 @@ func TestContractStatusCarriesFailureReason(t *testing.T) {
 
 	if _, err := port.Submit(ctx, requestintent.SubmitIntent{
 		RequestID: "req-f", OfferID: "offer-f", TenantID: "tenant-1",
+		Title:   "Заявка со сбоем",
 		Content: "Оффер", Actor: "client",
 	}); err != nil {
 		t.Fatalf("Submit: %v", err)

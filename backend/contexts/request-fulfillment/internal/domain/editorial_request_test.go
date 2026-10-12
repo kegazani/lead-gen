@@ -11,13 +11,13 @@ import (
 
 func TestRequestSnapshotPersistsEditorialDataAndDeepCopiesServices(t *testing.T) {
 	sender := &domain.SenderCompanySnapshot{CompanyName: "ООО Ромашка", Website: "https://example.test", Description: "CRM", Services: []domain.SenderServiceSnapshot{{Name: "Автоматизация", Short: "Подбор", Full: "Внедрение"}}}
-	request, err := domain.NewRequest(domain.NewRequestParams{ID: "req-editorial", OfferID: "offer-editorial", TenantID: "tenant-1", Content: "Offer", Target: "B2B", ExecutionPurpose: domain.ExecutionPurposeEditorial, SenderCompany: sender, Actor: "client", At: time.Now().UTC(), EventID: "evt-editorial"})
+	request, err := domain.NewRequest(domain.NewRequestParams{ID: "req-editorial", OfferID: "offer-editorial", TenantID: "tenant-1", Title: "Editorial request", Content: "Offer", Target: "B2B", ExecutionPurpose: domain.ExecutionPurposeEditorial, SenderCompany: sender, Actor: "client", At: time.Now().UTC(), EventID: "evt-editorial"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	sender.Services[0].Name = "mutated input"
 	snapshot := request.Snapshot()
-	if snapshot.ExecutionPurpose != domain.ExecutionPurposeEditorial || snapshot.SenderCompany.Services[0].Name != "Автоматизация" {
+	if snapshot.ExecutionPurpose != domain.ExecutionPurposeEditorial || snapshot.Title != "Editorial request" || snapshot.SenderCompany.Services[0].Name != "Автоматизация" {
 		t.Fatalf("snapshot = %+v", snapshot)
 	}
 	request.SenderCompanySnapshot().Services[0].Name = "mutated read"
@@ -25,7 +25,7 @@ func TestRequestSnapshotPersistsEditorialDataAndDeepCopiesServices(t *testing.T)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if rehydrated.ExecutionPurpose() != domain.ExecutionPurposeEditorial || rehydrated.SenderCompanySnapshot().Services[0].Name != "Автоматизация" {
+	if rehydrated.ExecutionPurpose() != domain.ExecutionPurposeEditorial || rehydrated.Title() != "Editorial request" || rehydrated.SenderCompanySnapshot().Services[0].Name != "Автоматизация" {
 		t.Fatal("snapshot не пережил rehydrate/deep copy")
 	}
 }

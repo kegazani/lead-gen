@@ -27,7 +27,7 @@ func TestSubmitTransportsEditorialPurposeAndSenderAllowlist(t *testing.T) {
 		t.Fatal(err)
 	}
 	_, err = client.Submit(context.Background(), requestintent.SubmitIntent{
-		RequestID: "req-1", TenantID: "tenant-1", Content: "Offer", Target: "B2B",
+		RequestID: "req-1", TenantID: "tenant-1", Title: "Editorial offer", Content: "Offer", Target: "B2B",
 		ExecutionPurpose: "editorial",
 		SenderCompany: &requestintent.SenderCompanySnapshot{
 			CompanyName: "Отправитель", Website: "https://sender.example", Description: "CRM",

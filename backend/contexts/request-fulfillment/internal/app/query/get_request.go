@@ -43,6 +43,7 @@ type ValidationDecisionView struct {
 type RequestView struct {
 	RequestID          string
 	TenantID           string
+	Title              string
 	Status             domain.RequestStatus
 	Version            int
 	Offer              OfferView
@@ -90,6 +91,7 @@ func buildView(request *domain.Request) RequestView {
 	view := RequestView{
 		RequestID:          request.ID().String(),
 		TenantID:           request.TenantID().String(),
+		Title:              request.Title(),
 		Status:             request.Status(),
 		Version:            request.Version(),
 		Offer:              offerView(request.Offer()),

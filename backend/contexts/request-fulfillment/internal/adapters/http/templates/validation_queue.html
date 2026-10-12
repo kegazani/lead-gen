@@ -15,7 +15,7 @@
     {{- range .View.Items }}
       <tr class="queue-item">
         <td>
-          <a class="cell-main" href="/requests/{{.RequestID}}/validation?tenant_id={{urlquery $.View.TenantID}}">{{.Offer.Content}}</a>
+          <a class="cell-main" href="/requests/{{.RequestID}}/validation?tenant_id={{urlquery $.View.TenantID}}">{{.Title}}</a>
           <span class="cell-sub">{{ text "request.number" }} {{.RequestID}}</span>
         </td>
         <td><span class="status status-{{.Status}}">{{ label "request.status" .Status }}</span></td>

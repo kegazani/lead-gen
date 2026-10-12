@@ -23,6 +23,7 @@ func newDraftServer(t *testing.T, drafts []ports.EmailDraft) *httptest.Server {
 	}
 	if _, err := slice.SubmitRequest.Handle(ctx, command.SubmitRequest{
 		RequestID: requestID, OfferID: "offer-1", TenantID: tenantID,
+		Title:   "Заявка для писем",
 		Content: "Предлагаем автоматизацию найма", Actor: "client",
 	}); err != nil {
 		t.Fatalf("подача заявки: %v", err)

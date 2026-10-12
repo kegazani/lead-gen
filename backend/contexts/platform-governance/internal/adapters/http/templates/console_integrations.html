@@ -13,7 +13,7 @@
       <tr>
         <td>{{ .Adapter }}</td>
         <td><span class="status status-{{ .Class }}">{{ .StateLabel }}</span></td>
-        <td>{{ .ReasonLabel }}</td>
+        <td><span class="cell-truncated" title="{{.ReasonLabel}}" aria-label="{{.ReasonLabel}}">{{truncate .ReasonLabel 100}}</span></td>
       </tr>
       {{- end }}
     </tbody>

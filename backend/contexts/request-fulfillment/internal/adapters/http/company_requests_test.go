@@ -36,7 +36,7 @@ func TestCompanyRequestsList(t *testing.T) {
 	client.login(t)
 
 	body := readBody(t, client.get(t, "/company?tenant_id="+tenantID))
-	if !strings.Contains(body, "Предлагаем автоматизацию найма") {
+	if !strings.Contains(body, "Автоматизация найма") {
 		t.Fatalf("список не показал заявку: %s", body)
 	}
 	if !strings.Contains(body, "История переходов") {
@@ -47,7 +47,7 @@ func TestCompanyRequestsList(t *testing.T) {
 	}
 
 	other := readBody(t, client.get(t, "/company?tenant_id=tenant-2"))
-	if strings.Contains(other, "Предлагаем автоматизацию найма") {
+	if strings.Contains(other, "Автоматизация найма") {
 		t.Fatal("список показал заявку чужого тенанта")
 	}
 }
@@ -146,7 +146,7 @@ func TestCompanyRequestsShowsFailedReason(t *testing.T) {
 
 	resp := do(t, server, http.MethodPost, "/requests", map[string]any{
 		"request_id": requestID, "offer_id": "offer-1", "tenant_id": tenantID,
-		"actor": "client", "content": "Предлагаем автоматизацию найма", "target": "IT-компании",
+		"title": "Заявка компании", "actor": "client", "content": "Предлагаем автоматизацию найма", "target": "IT-компании",
 	})
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("создание заявки = %d: %s", resp.StatusCode, readBody(t, resp))
@@ -202,7 +202,7 @@ func TestCompanyRerunFailedRequest(t *testing.T) {
 
 	resp := do(t, server, http.MethodPost, "/requests", map[string]any{
 		"request_id": requestID, "offer_id": "offer-1", "tenant_id": tenantID,
-		"actor": "client", "content": "Предлагаем автоматизацию найма", "target": "IT-компании",
+		"title": "Повторный запуск", "actor": "client", "content": "Предлагаем автоматизацию найма", "target": "IT-компании",
 	})
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("создание заявки = %d: %s", resp.StatusCode, readBody(t, resp))
@@ -267,7 +267,7 @@ func TestV2CompanyRerunDoesNotCallTemporalAndRejectsActivePredecessor(t *testing
 	t.Cleanup(server.Close)
 	resp := do(t, server, http.MethodPost, "/requests", map[string]any{
 		"request_id": requestID, "offer_id": "offer-1", "tenant_id": tenantID,
-		"actor": "client", "content": "Offer", "target": "IT",
+		"title": "V2 rerun", "actor": "client", "content": "Offer", "target": "IT",
 	})
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("create request=%d: %s", resp.StatusCode, readBody(t, resp))
@@ -339,7 +339,7 @@ func TestCompanyRequestsRenderGolden(t *testing.T) {
 
 	resp := do(t, server, http.MethodPost, "/requests", map[string]any{
 		"request_id": requestID, "offer_id": "offer-1", "tenant_id": tenantID,
-		"actor": "client", "content": "Предлагаем автоматизацию найма", "target": "IT-компании",
+		"title": "Заявка для истории", "actor": "client", "content": "Предлагаем автоматизацию найма", "target": "IT-компании",
 	})
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("создание заявки = %d: %s", resp.StatusCode, readBody(t, resp))

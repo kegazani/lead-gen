@@ -33,6 +33,9 @@ var (
 	// ErrEmptyOfferContent — текст оффера пуст после обрезки пробелов.
 	ErrEmptyOfferContent = errors.New("домен: текст оффера пуст")
 
+	// ErrInvalidRequestTitle — имя заявки пустое или длиннее установленного предела.
+	ErrInvalidRequestTitle = errors.New("домен: имя заявки должно содержать от 1 до 100 символов")
+
 	// ErrTenantImmutable — попытка изменить тенант заявки.
 	ErrTenantImmutable = errors.New("домен: тенант заявки неизменяем")
 

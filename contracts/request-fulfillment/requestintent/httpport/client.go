@@ -92,6 +92,7 @@ func (c *Client) Submit(ctx context.Context, in requestintent.SubmitIntent) (req
 		RequestID:        in.RequestID,
 		OfferID:          in.OfferID,
 		TenantID:         in.TenantID,
+		Title:            in.Title,
 		Actor:            in.Actor,
 		Content:          in.Content,
 		Target:           in.Target,
@@ -163,6 +164,7 @@ func (c *Client) Status(ctx context.Context, q requestintent.StatusQuery) (reque
 	return requestintent.StatusResult{
 		RequestID:     body.RequestID,
 		Status:        body.Status,
+		Title:         body.Title,
 		OfferContent:  body.Offer.Content,
 		OfferTarget:   body.Offer.Target,
 		OfferRevision: body.Offer.Revision,
@@ -198,7 +200,7 @@ func (c *Client) List(ctx context.Context, q requestintent.ListQuery) ([]request
 	}
 	entries := make([]requestintent.ListEntry, 0, len(body))
 	for _, item := range body {
-		entries = append(entries, requestintent.ListEntry{RequestID: item.RequestID, Status: item.Status})
+		entries = append(entries, requestintent.ListEntry{RequestID: item.RequestID, Title: item.Title, Status: item.Status})
 	}
 	return entries, nil
 }
@@ -276,6 +278,7 @@ type submitRequest struct {
 	RequestID        string                               `json:"request_id"`
 	OfferID          string                               `json:"offer_id"`
 	TenantID         string                               `json:"tenant_id"`
+	Title            string                               `json:"title"`
 	Actor            string                               `json:"actor"`
 	Content          string                               `json:"content"`
 	Target           string                               `json:"target,omitempty"`
@@ -299,6 +302,7 @@ type submitResponse struct {
 type statusResponse struct {
 	RequestID    string `json:"RequestID"`
 	Status       string `json:"Status"`
+	Title        string `json:"Title"`
 	Phase        string `json:"Phase"`
 	ErrorReason  string `json:"ErrorReason"`
 	ErrorMessage string `json:"ErrorMessage"`
@@ -313,5 +317,6 @@ type statusResponse struct {
 // совпадают с экспортированными полями представления списка владельца.
 type listEntry struct {
 	RequestID string `json:"RequestID"`
+	Title     string `json:"Title"`
 	Status    string `json:"Status"`
 }

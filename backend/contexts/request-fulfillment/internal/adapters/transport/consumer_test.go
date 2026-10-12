@@ -73,6 +73,7 @@ func mustCampaignRequest(t *testing.T, campaign domain.CampaignID) *domain.Reque
 		ID:       "req-1",
 		OfferID:  "offer-1",
 		TenantID: "tenant-1",
+		Title:    "Кампания",
 		Content:  "Предлагаем автоматизацию",
 		Target:   "IT",
 		Actor:    "actor-1",

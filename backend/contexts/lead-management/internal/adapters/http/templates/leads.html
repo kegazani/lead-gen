@@ -24,7 +24,7 @@
       {{- range .Rows }}
       <tr>
         <td><a class="link" href="{{.Site}}" target="_blank" rel="noopener noreferrer">{{.Site}}</a></td>
-        <td>{{.Name}}</td>
+        <td><span class="cell-truncated" title="{{.Name}}" aria-label="{{.Name}}">{{truncate .Name 100}}</span></td>
         <td><a class="link" href="mailto:{{.Email}}">{{.Email}}</a></td>
       </tr>
       {{- end }}

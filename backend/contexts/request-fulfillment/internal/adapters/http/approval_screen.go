@@ -39,6 +39,7 @@ type approvalQueueRow struct {
 // который уже вышел из очереди ожидания операторского решения.
 type executionHistoryRow struct {
 	RequestID string
+	Title     string
 	Status    domain.RequestStatus
 	Phase     string
 	Execution string
@@ -128,6 +129,7 @@ func (s *Server) handleApprovalQueue(w http.ResponseWriter, r *http.Request) {
 				}
 				view.Executions = append(view.Executions, executionHistoryRow{
 					RequestID: request.RequestID,
+					Title:     request.Title,
 					Status:    request.Status,
 				})
 				continue
@@ -143,6 +145,7 @@ func (s *Server) handleApprovalQueue(w http.ResponseWriter, r *http.Request) {
 			}
 			view.Executions = append(view.Executions, executionHistoryRow{
 				RequestID: request.RequestID,
+				Title:     request.Title,
 				Status:    request.Status,
 				Phase:     status.Phase,
 				Execution: executionStatusLabel(status.Execution),

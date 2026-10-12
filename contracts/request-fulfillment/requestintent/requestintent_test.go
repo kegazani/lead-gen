@@ -9,11 +9,10 @@ import (
 	"lead-gen/contracts/request-fulfillment/requestintent"
 )
 
-// TestSchemaVersionMinorBump — смена схемы наблюдаема: добавлены опциональные
-// purpose и snapshot отправителя.
-func TestSchemaVersionMinorBump(t *testing.T) {
-	if requestintent.SchemaVersion != "1.2.0" {
-		t.Fatalf("SchemaVersion = %q, ожидалась 1.2.0", requestintent.SchemaVersion)
+// TestSchemaVersionMajorBump — обязательное поле имени меняет major версии.
+func TestSchemaVersionMajorBump(t *testing.T) {
+	if requestintent.SchemaVersion != "2.0.0" {
+		t.Fatalf("SchemaVersion = %q, ожидалась 2.0.0", requestintent.SchemaVersion)
 	}
 }
 
@@ -62,7 +61,7 @@ func TestInProcDelegates(t *testing.T) {
 	})
 
 	result, err := port.Submit(context.Background(), requestintent.SubmitIntent{
-		RequestID: "req-1", OfferID: "offer-1", TenantID: "tenant-1", Content: "Оффер",
+		RequestID: "req-1", OfferID: "offer-1", TenantID: "tenant-1", Title: "Заявка", Content: "Оффер",
 	})
 	if err != nil {
 		t.Fatalf("Submit: %v", err)
@@ -70,7 +69,7 @@ func TestInProcDelegates(t *testing.T) {
 	if result.RequestID != "req-1" || result.Status != "submitted" {
 		t.Fatalf("Submit результат = %+v", result)
 	}
-	if gotSubmit.Content != "Оффер" || gotSubmit.TenantID != "tenant-1" {
+	if gotSubmit.Title != "Заявка" || gotSubmit.Content != "Оффер" || gotSubmit.TenantID != "tenant-1" {
 		t.Fatalf("обработчик Submit получил %+v", gotSubmit)
 	}
 

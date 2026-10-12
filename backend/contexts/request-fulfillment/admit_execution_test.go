@@ -154,7 +154,7 @@ func TestAdmissionBlocksUnknownLegacyEvenAfterTargetResolution(t *testing.T) {
 	ids := &admissionIDs{}
 	clock := admissionClock{}
 	created, err := command.NewSubmitRequestHandler(uow, clock, ids).Handle(context.Background(), command.SubmitRequest{
-		RequestID: "request-admission", OfferID: "offer-admission", TenantID: "tenant-1", Content: "offer", Actor: "client",
+		RequestID: "request-admission", OfferID: "offer-admission", TenantID: "tenant-1", Title: "Admission request", Content: "offer", Actor: "client",
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -257,7 +257,7 @@ func createValidatingRequest(t *testing.T, uow ports.UnitOfWork) {
 	ids := &admissionIDs{}
 	clock := admissionClock{}
 	if _, err := command.NewSubmitRequestHandlerWithExecutionHistoryKnown(uow, clock, ids, true).Handle(context.Background(), command.SubmitRequest{
-		RequestID: "request-admission", OfferID: "offer-admission", TenantID: "tenant-1", Content: "offer", Actor: "client",
+		RequestID: "request-admission", OfferID: "offer-admission", TenantID: "tenant-1", Title: "Admission request", Content: "offer", Actor: "client",
 	}); err != nil {
 		t.Fatal(err)
 	}

@@ -29,6 +29,7 @@ func TestWorkflowUnavailableKeepsRequestValidated(t *testing.T) {
 
 	if _, err := slice.SubmitRequest.Handle(ctx, command.SubmitRequest{
 		RequestID: "req-1", OfferID: "offer-1", TenantID: "tenant-1",
+		Title:   "Unavailable workflow",
 		Content: "предлагаем X", Actor: "client",
 	}); err != nil {
 		t.Fatalf("подача заявки: %v", err)

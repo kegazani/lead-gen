@@ -39,7 +39,7 @@ func newScreenServerWithStarter(t *testing.T, starter ports.WorkflowStarter) *ht
 
 	resp := do(t, server, http.MethodPost, "/requests", map[string]any{
 		"request_id": requestID, "offer_id": "offer-1", "tenant_id": tenantID,
-		"actor": "client", "content": "Предлагаем автоматизацию найма", "target": "IT-компании",
+		"title": "Автоматизация найма", "actor": "client", "content": "Предлагаем автоматизацию найма", "target": "IT-компании",
 	})
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("создание заявки = %d: %s", resp.StatusCode, readBody(t, resp))
@@ -76,7 +76,7 @@ func TestValidationQueueScreen(t *testing.T) {
 	client.login(t)
 
 	body := readBody(t, client.get(t, "/validation?tenant_id="+tenantID))
-	if !strings.Contains(body, "Предлагаем автоматизацию найма") {
+	if !strings.Contains(body, "Автоматизация найма") {
 		t.Fatalf("очередь валидации не показала заявку: %s", body)
 	}
 	if !strings.Contains(visibleText(body), "Создана") {
@@ -87,7 +87,7 @@ func TestValidationQueueScreen(t *testing.T) {
 	}
 
 	other := readBody(t, client.get(t, "/validation?tenant_id=tenant-2"))
-	if strings.Contains(other, "Предлагаем автоматизацию найма") {
+	if strings.Contains(other, "Автоматизация найма") {
 		t.Fatal("очередь показала заявку чужого тенанта")
 	}
 }
@@ -409,7 +409,7 @@ func TestV2ApprovalCommitsIntentAndNeverStartsTemporal(t *testing.T) {
 	t.Cleanup(server.Close)
 	resp := do(t, server, http.MethodPost, "/requests", map[string]any{
 		"request_id": requestID, "offer_id": "offer-1", "tenant_id": tenantID,
-		"actor": "client", "content": "Offer", "target": "IT",
+		"title": "Validation request", "actor": "client", "content": "Offer", "target": "IT",
 	})
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("create request=%d: %s", resp.StatusCode, readBody(t, resp))
@@ -501,7 +501,7 @@ func TestV2DirectEndpointRequiresDurableIdempotencyAndDoesNotStartTemporal(t *te
 	t.Cleanup(server.Close)
 	resp := do(t, server, http.MethodPost, "/requests", map[string]any{
 		"request_id": requestID, "offer_id": "offer-1", "tenant_id": tenantID,
-		"actor": "client", "content": "Offer", "target": "IT",
+		"title": "V2 validation request", "actor": "client", "content": "Offer", "target": "IT",
 	})
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("create request=%d: %s", resp.StatusCode, readBody(t, resp))

@@ -20,6 +20,7 @@ func newRequest(t *testing.T) *domain.Request {
 		ID:            "req-1",
 		OfferID:       "offer-1",
 		TenantID:      "tenant-1",
+		Title:         "Запрос на автоматизацию найма",
 		Content:       "Предлагаем автоматизацию найма",
 		Target:        "IT-компании, 100 лидов",
 		Actor:         "actor-1",
@@ -77,6 +78,9 @@ func TestCreation(t *testing.T) {
 	if request.TenantID() != "tenant-1" {
 		t.Fatalf("тенант = %q", request.TenantID())
 	}
+	if request.Title() != "Запрос на автоматизацию найма" {
+		t.Fatalf("имя заявки = %q", request.Title())
+	}
 	if request.Offer().Revision() != 1 {
 		t.Fatalf("ревизия оффера = %d, ожидалась 1", request.Offer().Revision())
 	}
@@ -89,11 +93,48 @@ func TestCreation(t *testing.T) {
 	}
 }
 
+func TestRequestTitleValidation(t *testing.T) {
+	for _, title := range []string{"", " \t\n ", strings.Repeat("я", 101)} {
+		params := domain.NewRequestParams{
+			ID: "req-title", OfferID: "offer-title", TenantID: "tenant-1", Title: title,
+			Content: "Оффер", Actor: "actor-1", At: epoch, EventID: "evt-title",
+		}
+		if _, err := domain.NewRequest(params); !errors.Is(err, domain.ErrInvalidRequestTitle) {
+			t.Errorf("имя длиной %d принято/ошибка %v; ожидалась ErrInvalidRequestTitle", len([]rune(title)), err)
+		}
+	}
+	params := domain.NewRequestParams{
+		ID: "req-title", OfferID: "offer-title", TenantID: "tenant-1", Title: "  " + strings.Repeat("я", 100) + "  ",
+		Content: "Оффер", Actor: "actor-1", At: epoch, EventID: "evt-title",
+	}
+	request, err := domain.NewRequest(params)
+	if err != nil {
+		t.Fatalf("имя из 100 code points отклонено: %v", err)
+	}
+	if request.Title() != strings.Repeat("я", 100) {
+		t.Fatalf("имя из 100 code points не нормализовано: title=%q", request.Title())
+	}
+}
+
+func TestRehydrateLegacyRequestDerivesTitleFromOffer(t *testing.T) {
+	request := newRequest(t)
+	snapshot := request.Snapshot()
+	snapshot.Title = ""
+	rehydrated, err := domain.RehydrateRequest(snapshot)
+	if err != nil {
+		t.Fatalf("rehydrate legacy snapshot: %v", err)
+	}
+	if rehydrated.Title() != request.Offer().Content().Text() {
+		t.Fatalf("legacy title = %q, ожидался fallback из оффера %q", rehydrated.Title(), request.Offer().Content().Text())
+	}
+}
+
 // TestOfferRequired — сценарий «Пустой оффер»: заявка без оффера не создаётся.
 func TestOfferRequired(t *testing.T) {
 	for _, content := range []string{"", "   ", "\n\t"} {
 		_, err := domain.NewRequest(domain.NewRequestParams{
 			ID: "req-x", OfferID: "offer-x", TenantID: "tenant-1",
+			Title:   "Тестовая заявка",
 			Content: content, Actor: "actor-1", At: epoch, EventID: "evt-x",
 		})
 		if !errors.Is(err, domain.ErrOfferRequired) {

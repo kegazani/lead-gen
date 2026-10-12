@@ -44,6 +44,7 @@ func mustRequest(t *testing.T, id domain.RequestID) *domain.Request {
 		ID:       id,
 		OfferID:  domain.OfferID("offer-" + id.String()),
 		TenantID: "tenant-1",
+		Title:    "Заявка " + id.String(),
 		Content:  "Предлагаем автоматизацию найма",
 		Target:   "IT-компании",
 		Actor:    "actor-1",

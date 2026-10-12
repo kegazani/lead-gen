@@ -25,7 +25,7 @@
       <tr>
         <td class="jobs-id">{{ .ID }}</td>
         <td class="jobs-attempts">{{ .Attempts }}</td>
-        <td class="jobs-reason">{{ .Reason }}</td>
+        <td class="jobs-reason"><span class="cell-truncated" title="{{.Reason}}" aria-label="{{.Reason}}">{{truncate .Reason 100}}</span></td>
         <td class="jobs-updated">{{ .UpdatedLabel }}</td>
         <td class="jobs-action">
           <form method="post" action="/reports/exports/{{ .ID }}/retry">

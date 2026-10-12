@@ -138,6 +138,7 @@ func submitAndValidate(t *testing.T, s *requestfulfillment.Slice) {
 	ctx := context.Background()
 	if _, err := s.SubmitRequest.Handle(ctx, command.SubmitRequest{
 		RequestID: "req-1", OfferID: "offer-1", TenantID: "tenant-1",
+		Title:   "Векторный оффер",
 		Content: "Предлагаем автоматизацию найма", Actor: "client",
 	}); err != nil {
 		t.Fatalf("SubmitRequest: %v", err)

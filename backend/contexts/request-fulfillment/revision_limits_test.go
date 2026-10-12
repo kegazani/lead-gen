@@ -24,7 +24,7 @@ func submitByID(t *testing.T, h *harness, id, tenant string) {
 	t.Helper()
 	_, err := h.submit.Handle(context.Background(), command.SubmitRequest{
 		RequestID: domain.RequestID(id), OfferID: domain.OfferID("offer-" + id),
-		TenantID: domain.TenantID(tenant), Content: "Оффер", Target: "IT-компании",
+		TenantID: domain.TenantID(tenant), Title: "Заявка " + id, Content: "Оффер", Target: "IT-компании",
 		Actor: "actor-1",
 	})
 	if err != nil {
@@ -139,6 +139,7 @@ func TestSubmitRequestLimit(t *testing.T) {
 	}
 	_, err := h.submit.Handle(context.Background(), command.SubmitRequest{
 		RequestID: "req-6", OfferID: "offer-6", TenantID: "tenant-1",
+		Title:   "Заявка 6",
 		Content: "Оффер", Actor: "actor-1",
 	})
 	if !errors.Is(err, domain.ErrRequestLimitReached) {

@@ -21,6 +21,7 @@ import (
 // статусной модели, а не шаблон.
 type companyRequestRow struct {
 	RequestID    string
+	Title        string
 	Status       domain.RequestStatus
 	OfferContent string
 	Transitions  []query.TransitionView
@@ -143,6 +144,7 @@ func (s *Server) renderCompanyRequests(w http.ResponseWriter, r *http.Request, s
 		}
 		rows = append(rows, companyRequestRow{
 			RequestID:    view.RequestID,
+			Title:        view.Title,
 			Status:       view.Status,
 			OfferContent: view.Offer.Content,
 			Transitions:  view.Transitions,

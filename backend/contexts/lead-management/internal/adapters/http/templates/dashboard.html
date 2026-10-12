@@ -93,7 +93,7 @@
     {{- range .Leads }}
       <tr>
         <td class="cell-main"><a class="link" href="/cards/{{.ID}}">{{.Name}}</a></td>
-        <td>{{.Description}}</td>
+        <td><span class="cell-truncated" title="{{.Description}}" aria-label="{{.Description}}">{{truncate .Description 100}}</span></td>
       </tr>
     {{- else }}
       <tr><td colspan="2" class="empty">{{ text "lead.home.recent.empty" }}</td></tr>

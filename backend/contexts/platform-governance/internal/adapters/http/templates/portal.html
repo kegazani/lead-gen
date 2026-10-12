@@ -35,7 +35,7 @@
       <ul class="request-tree-list">
         {{- range .View.Requests }}
         <li class="request-tree-node" role="treeitem" data-request-id="{{ .RequestID }}">
-          <span class="request-tree-id">{{ .RequestID }}</span>
+          <span class="request-tree-id">{{ .Title }}</span>
           <span class="status status-{{ .Status }}">{{ label "portal.request.status" .Status }}</span>
         </li>
         {{- end }}

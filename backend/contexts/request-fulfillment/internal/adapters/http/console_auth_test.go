@@ -77,7 +77,7 @@ func TestContractRoutesStayAnonymous(t *testing.T) {
 
 	submit, err := json.Marshal(map[string]any{
 		"request_id": requestID, "offer_id": "offer-1", "tenant_id": tenantID,
-		"actor": "client", "content": "Предлагаем автоматизацию найма", "target": "IT-компании",
+		"title": "Заявка для проверки auth", "actor": "client", "content": "Предлагаем автоматизацию найма", "target": "IT-компании",
 	})
 	if err != nil {
 		t.Fatalf("сериализация: %v", err)
@@ -305,7 +305,7 @@ func newIdleScreenServer(t *testing.T, idle time.Duration, clock *mutableClock) 
 
 	resp := do(t, server, http.MethodPost, "/requests", map[string]any{
 		"request_id": requestID, "offer_id": "offer-1", "tenant_id": tenantID,
-		"actor": "client", "content": "Предлагаем автоматизацию найма", "target": "IT-компании",
+		"title": "Заявка для сессии", "actor": "client", "content": "Предлагаем автоматизацию найма", "target": "IT-компании",
 	})
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("создание заявки = %d: %s", resp.StatusCode, readBody(t, resp))

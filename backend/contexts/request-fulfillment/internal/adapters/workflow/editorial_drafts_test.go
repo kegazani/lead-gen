@@ -17,6 +17,7 @@ func editorialRequestRepository(t *testing.T) *persistence.Repository {
 	repo := persistence.New()
 	request, err := domain.NewRequest(domain.NewRequestParams{
 		ID: "req-editorial-drafts", OfferID: "offer-editorial-drafts", TenantID: "tenant-1",
+		Title:   "Editorial drafts",
 		Content: "Оффер", Target: "B2B", Actor: "client", At: time.Now().UTC(), EventID: "evt-editorial-drafts",
 		ExecutionPurpose: domain.ExecutionPurposeEditorial,
 		SenderCompany:    &domain.SenderCompanySnapshot{CompanyName: "ООО Отправитель", Website: "https://sender.example", Description: "CRM", Services: []domain.SenderServiceSnapshot{{Name: "Внедрение", Short: "Кратко", Full: "Полное описание"}}},

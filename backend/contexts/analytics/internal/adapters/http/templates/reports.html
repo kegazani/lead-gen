@@ -134,7 +134,7 @@
       <tbody>
         {{- range .View.Data.Managers }}
         <tr>
-          <td>{{ .Label }}</td>
+          <td><span class="cell-truncated" title="{{.Label}}" aria-label="{{.Label}}">{{truncate .Label 100}}</span></td>
           <td>{{ .Activity }}</td>
           <td data-metric="manager-volume">{{ .Volume }}</td>
           <td>{{ .Replies }}</td>

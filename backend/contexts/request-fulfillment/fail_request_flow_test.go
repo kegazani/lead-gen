@@ -55,6 +55,7 @@ func (h *failHarness) toProcessing(t *testing.T) {
 	ctx := context.Background()
 	if _, err := h.submit.Handle(ctx, command.SubmitRequest{
 		RequestID: "req-1", OfferID: "offer-1", TenantID: "tenant-1",
+		Title:   "Заявка для проверки сбоя",
 		Content: "Предлагаем автоматизацию найма", Target: "IT-компании", Actor: "actor-1",
 	}); err != nil {
 		t.Fatalf("SubmitRequest: %v", err)

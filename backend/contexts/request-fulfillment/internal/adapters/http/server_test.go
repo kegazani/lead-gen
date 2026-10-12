@@ -86,7 +86,7 @@ func TestHTTPLifecycle(t *testing.T) {
 	// Создание заявки.
 	resp := do(t, server, http.MethodPost, "/requests", map[string]any{
 		"request_id": requestID, "offer_id": "offer-1", "tenant_id": tenantID,
-		"actor": "actor-1", "content": "Предлагаем автоматизацию найма", "target": "IT-компании",
+		"title": "Автоматизация найма", "actor": "actor-1", "content": "Предлагаем автоматизацию найма", "target": "IT-компании",
 	})
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("POST /requests = %d: %s", resp.StatusCode, readBody(t, resp))
@@ -141,7 +141,7 @@ func TestHTTPErrors(t *testing.T) {
 
 	resp := do(t, server, http.MethodPost, "/requests", map[string]any{
 		"request_id": requestID, "offer_id": "offer-1", "tenant_id": tenantID,
-		"actor": "actor-1", "content": "   ",
+		"title": "Пустой оффер", "actor": "actor-1", "content": "   ",
 	})
 	if resp.StatusCode != http.StatusBadRequest {
 		t.Fatalf("пустой оффер = %d, ожидался 400", resp.StatusCode)
@@ -154,7 +154,7 @@ func TestHTTPErrors(t *testing.T) {
 
 	resp = do(t, server, http.MethodPost, "/requests", map[string]any{
 		"request_id": requestID, "offer_id": "offer-1", "tenant_id": tenantID,
-		"actor": "actor-1", "content": "Оффер",
+		"title": "Проверка ошибок", "actor": "actor-1", "content": "Оффер",
 	})
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("создание = %d", resp.StatusCode)
@@ -172,7 +172,7 @@ func TestHTTPFulfillmentUnavailable(t *testing.T) {
 	server := newTestServer(t, nil)
 	resp := do(t, server, http.MethodPost, "/requests", map[string]any{
 		"request_id": requestID, "offer_id": "offer-1", "tenant_id": tenantID,
-		"actor": "actor-1", "content": "Оффер",
+		"title": "Недоступный фулфилмент", "actor": "actor-1", "content": "Оффер",
 	})
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("создание = %d", resp.StatusCode)

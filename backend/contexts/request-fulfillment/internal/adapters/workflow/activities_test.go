@@ -41,6 +41,7 @@ func newValidatedRequest(t *testing.T) (*Activities, *persistence.Repository) {
 
 	if _, err := submit.Handle(ctx, command.SubmitRequest{
 		RequestID: "req-1", OfferID: "offer-1", TenantID: "tenant-1",
+		Title:   "Workflow activity test",
 		Content: "предлагаем X", Target: "крупные производители", Actor: "client", At: clock.Now(),
 	}); err != nil {
 		t.Fatalf("подача заявки: %v", err)

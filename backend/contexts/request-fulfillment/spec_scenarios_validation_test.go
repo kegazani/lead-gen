@@ -31,6 +31,7 @@ func TestSpecScenariosValidation(t *testing.T) {
 		t.Helper()
 		if _, err := s.SubmitRequest.Handle(ctx, command.SubmitRequest{
 			RequestID: "req-1", OfferID: "offer-1", TenantID: "tenant-1",
+			Title:   "Заявка на валидацию",
 			Content: "Предлагаем автоматизацию найма", Target: "IT-компании", Actor: "client",
 		}); err != nil {
 			t.Fatalf("SubmitRequest: %v", err)
@@ -214,6 +215,7 @@ func TestInitiateCallThroughContract(t *testing.T) {
 	}
 	if _, err := built.SubmitRequest.Handle(ctx, command.SubmitRequest{
 		RequestID: "req-1", OfferID: "offer-1", TenantID: "tenant-1",
+		Title:   "Инициирование звонка",
 		Content: "Оффер", Actor: "client",
 	}); err != nil {
 		t.Fatalf("SubmitRequest: %v", err)
@@ -264,7 +266,7 @@ func TestCallContractRunsOutsideTransaction(t *testing.T) {
 		t.Fatal(err)
 	}
 	uow = built.UnitOfWork
-	if _, err = built.SubmitRequest.Handle(ctx, command.SubmitRequest{RequestID: "req-call-outside", OfferID: "offer-call-outside", TenantID: "tenant-1", Content: "Оффер", Actor: "client"}); err != nil {
+	if _, err = built.SubmitRequest.Handle(ctx, command.SubmitRequest{RequestID: "req-call-outside", OfferID: "offer-call-outside", TenantID: "tenant-1", Title: "Call outside", Content: "Оффер", Actor: "client"}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = built.StartValidation.Handle(ctx, command.StartValidation{LifecycleFields: command.LifecycleFields{RequestID: "req-call-outside", TenantID: "tenant-1", Actor: "admin"}}); err != nil {
@@ -285,6 +287,7 @@ func TestInitiateCallUnavailableKeepsRequest(t *testing.T) {
 	}
 	if _, err := built.SubmitRequest.Handle(ctx, command.SubmitRequest{
 		RequestID: "req-1", OfferID: "offer-1", TenantID: "tenant-1",
+		Title:   "Unavailable call",
 		Content: "Оффер", Actor: "client",
 	}); err != nil {
 		t.Fatalf("SubmitRequest: %v", err)

@@ -42,7 +42,7 @@
   <p class="hint">Все заявки выбранной компании с историей переходов. <span class="tenant-label">Клиент: tenant-1</span></p>
   <article class="request-card fact-panel">
     <header>
-      <h2>Предлагаем автоматизацию найма</h2>
+      <h2>Заявка для истории</h2>
       <p class="hint">
         <span class="status status-processing" data-request-id="req-1">В работе</span>
         <span class="request-id">№ req-1</span>

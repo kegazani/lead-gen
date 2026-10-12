@@ -30,6 +30,7 @@ func newRequest(t *testing.T) *domain.Request {
 		ID:       "req-1",
 		OfferID:  "offer-1",
 		TenantID: "tenant-1",
+		Title:    "Заявка автоматизации найма",
 		Content:  "Предлагаем автоматизацию найма",
 		Actor:    "actor-1",
 		At:       time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),

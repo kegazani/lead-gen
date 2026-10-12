@@ -10,7 +10,7 @@
   {{- range .View.Items }}
   <article class="request-card fact-panel">
     <header>
-      <h2>{{ .OfferContent }}</h2>
+      <h2>{{ .Title }}</h2>
       <p class="hint">
         <span class="status status-{{.Status}}" data-request-id="{{ .RequestID }}">{{ label "request.status" .Status }}</span>
         <span class="request-id">{{ text "request.number" }} {{.RequestID}}</span>

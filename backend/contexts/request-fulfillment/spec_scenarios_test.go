@@ -28,6 +28,7 @@ func TestSpecScenarios(t *testing.T) {
 		t.Helper()
 		if _, err := s.SubmitRequest.Handle(ctx, command.SubmitRequest{
 			RequestID: "req-1", OfferID: "offer-1", TenantID: "tenant-1",
+			Title:   "Заявка по сценарию",
 			Content: content, Target: "IT-компании", Actor: "actor-1",
 		}); err != nil {
 			t.Fatalf("SubmitRequest: %v", err)
@@ -42,6 +43,7 @@ func TestSpecScenarios(t *testing.T) {
 		s := slice(t)
 		result, err := s.SubmitRequest.Handle(ctx, command.SubmitRequest{
 			RequestID: "req-1", OfferID: "offer-1", TenantID: "tenant-1",
+			Title:   "Создание заявки",
 			Content: "Оффер", Actor: "actor-1",
 		})
 		if err != nil {

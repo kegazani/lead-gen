@@ -19,6 +19,7 @@ const defaultActor = "client"
 // SubmitClientRequest — команда подачи заявки клиентом: что предлагает и кому.
 type SubmitClientRequest struct {
 	TenantID      string
+	Title         string
 	Content       string
 	Target        string
 	Actor         string
@@ -59,6 +60,7 @@ func (h *SubmitClientRequestHandler) Handle(ctx context.Context, cmd SubmitClien
 		RequestID:        h.ids.NewRequestID(),
 		OfferID:          h.ids.NewOfferID(),
 		TenantID:         tenant,
+		Title:            cmd.Title,
 		Content:          cmd.Content,
 		Target:           cmd.Target,
 		Actor:            actorOrDefault(cmd.Actor),

@@ -18,6 +18,7 @@ func TestExecutionResolutionConcurrentSameID(t *testing.T) {
 	truncateTables(t)
 	request, err := domain.NewRequest(domain.NewRequestParams{
 		ID: "req-resolution-race", OfferID: "offer-resolution-race", TenantID: "tenant-resolution-race",
+		Title:   "Resolution race",
 		Content: "offer", Actor: "test", At: time.Now().UTC(), EventID: "event-resolution-race",
 	})
 	if err != nil {
@@ -97,6 +98,7 @@ func TestExecutionResolutionPostgresTenantCrossAccess(t *testing.T) {
 	truncateTables(t)
 	request, err := domain.NewRequest(domain.NewRequestParams{
 		ID: "req-resolution-tenant", OfferID: "offer-resolution-tenant", TenantID: "tenant-resolution-owner",
+		Title:   "Resolution tenant",
 		Content: "offer", Actor: "test", At: time.Now().UTC(), EventID: "event-resolution-tenant",
 	})
 	if err != nil {

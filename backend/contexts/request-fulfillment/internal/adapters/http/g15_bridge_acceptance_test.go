@@ -63,7 +63,7 @@ func TestG15BridgeV1HandlersAndPostgresAfter0001To0010(t *testing.T) {
 	_, oldServer, _ := newPostgresV1Slice(t, pool)
 	legacyCreate := do(t, oldServer, http.MethodPost, "/requests", map[string]any{
 		"request_id": legacyID, "offer_id": "g15-legacy-offer", "tenant_id": "g15-tenant",
-		"actor": "legacy-client", "content": "Synthetic G1 request", "target": "IT",
+		"title": "G1 legacy request", "actor": "legacy-client", "content": "Synthetic G1 request", "target": "IT",
 	})
 	if legacyCreate.StatusCode != http.StatusCreated {
 		t.Fatalf("pre-upgrade v1 request create = %d: %s", legacyCreate.StatusCode, readBody(t, legacyCreate))
@@ -127,7 +127,7 @@ func TestG15BridgeV1HandlersAndPostgresAfter0001To0010(t *testing.T) {
 	approvalID := "g15-v1-approval"
 	created := do(t, server, http.MethodPost, "/requests", map[string]any{
 		"request_id": approvalID, "offer_id": "g15-approval-offer", "tenant_id": "g15-tenant",
-		"actor": "legacy-client", "content": "Synthetic G1.5 approve fixture", "target": "IT",
+		"title": "G1.5 approval fixture", "actor": "legacy-client", "content": "Synthetic G1.5 approve fixture", "target": "IT",
 	})
 	if created.StatusCode != http.StatusCreated {
 		t.Fatalf("v1 approval request create = %d: %s", created.StatusCode, readBody(t, created))

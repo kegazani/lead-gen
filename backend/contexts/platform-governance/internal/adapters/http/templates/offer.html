@@ -5,6 +5,7 @@
   <p class="notice" role="status">{{.}}</p>
   {{- end }}
   <form method="post" action="/portal/request">
+    {{ template "field" .View.TitleField }}
     {{ template "field" .View.ContentField }}
     {{ template "field" .View.TargetField }}
     <button type="submit">{{ text "portal.offer.submit" }}</button>

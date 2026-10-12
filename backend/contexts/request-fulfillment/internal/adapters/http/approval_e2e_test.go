@@ -198,7 +198,7 @@ func TestApprovalEndToEndApprove(t *testing.T) {
 	// После processing/start исполнение стоит на человеческой паузе: очередь
 	// показывает заявку.
 	queue := readBody(t, client.get(t, "/approvals?tenant_id="+tenantID))
-	if !strings.Contains(queue, "Предлагаем автоматизацию найма") {
+	if !strings.Contains(queue, "Заявка на утверждение") {
 		t.Fatalf("очередь не показала заявку на паузе: %s", queue)
 	}
 	if !strings.Contains(queue, query.ApprovalPhaseAwaitingApproval) {

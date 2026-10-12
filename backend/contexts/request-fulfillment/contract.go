@@ -29,6 +29,7 @@ func NewRequestIntent(slice *Slice) requestintent.Port {
 				RequestID:        domain.RequestID(in.RequestID),
 				OfferID:          domain.OfferID(in.OfferID),
 				TenantID:         domain.TenantID(in.TenantID),
+				Title:            in.Title,
 				Content:          in.Content,
 				Target:           in.Target,
 				ExecutionPurpose: in.ExecutionPurpose,
@@ -55,6 +56,7 @@ func NewRequestIntent(slice *Slice) requestintent.Port {
 			return requestintent.StatusResult{
 				RequestID:     view.RequestID,
 				Status:        string(view.Status),
+				Title:         view.Title,
 				OfferContent:  view.Offer.Content,
 				OfferTarget:   view.Offer.Target,
 				OfferRevision: view.Offer.Revision,
@@ -74,6 +76,7 @@ func NewRequestIntent(slice *Slice) requestintent.Port {
 			for _, item := range items {
 				entries = append(entries, requestintent.ListEntry{
 					RequestID: item.RequestID,
+					Title:     item.Title,
 					Status:    string(item.Status),
 				})
 			}
@@ -109,6 +112,7 @@ func requestIntentError(err error) error {
 		return fmt.Errorf("%w: %v", requestintent.ErrNotFound, err)
 	case errors.Is(err, domain.ErrOfferRequired),
 		errors.Is(err, domain.ErrRequestSubmissionConflict),
+		errors.Is(err, domain.ErrInvalidRequestTitle),
 		errors.Is(err, domain.ErrEmptyOfferContent),
 		errors.Is(err, domain.ErrEmptyID),
 		errors.Is(err, domain.ErrMissingActor),

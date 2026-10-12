@@ -31,6 +31,7 @@ type ApprovalQueue struct {
 type ApprovalItem struct {
 	RequestID string
 	TenantID  string
+	Title     string
 	Offer     OfferView
 	Version   int
 	Phase     string
@@ -86,6 +87,7 @@ func (h *ApprovalQueueHandler) Handle(ctx context.Context, q ApprovalQueue) ([]A
 		items = append(items, ApprovalItem{
 			RequestID: request.ID().String(),
 			TenantID:  request.TenantID().String(),
+			Title:     request.Title(),
 			Offer:     offerView(request.Offer()),
 			Version:   request.Version(),
 			Phase:     status.Phase,

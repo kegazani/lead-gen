@@ -42,7 +42,7 @@ func prepareApprovalClient(t *testing.T, server *httptest.Server) *consoleClient
 	t.Helper()
 	resp := do(t, server, http.MethodPost, "/requests", map[string]any{
 		"request_id": requestID, "offer_id": "offer-1", "tenant_id": tenantID,
-		"actor": "client", "content": "Предлагаем автоматизацию найма", "target": "IT-компании",
+		"title": "Заявка на утверждение", "actor": "client", "content": "Предлагаем автоматизацию найма", "target": "IT-компании",
 	})
 	if resp.StatusCode != http.StatusCreated {
 		t.Fatalf("создание заявки = %d: %s", resp.StatusCode, readBody(t, resp))
@@ -129,7 +129,7 @@ func TestApprovalQueueScreen(t *testing.T) {
 	client := prepareApprovalClient(t, server)
 
 	body := readBody(t, client.get(t, "/approvals?tenant_id="+tenantID))
-	if !strings.Contains(body, "Предлагаем автоматизацию найма") {
+	if !strings.Contains(body, "Заявка на утверждение") {
 		t.Fatalf("очередь утверждения не показала заявку: %s", body)
 	}
 	if !strings.Contains(body, "Найдено лидов: 7") {
@@ -484,7 +484,7 @@ func TestApprovalQueueUsesSelectedTenantCookie(t *testing.T) {
 		t.Fatalf("GET /approvals: %v", err)
 	}
 	page := readBody(t, resp)
-	if !strings.Contains(page, "Предлагаем автоматизацию найма") {
+	if !strings.Contains(page, "Заявка на утверждение") {
 		t.Fatalf("очередь не взяла выбранный тенант из cookie: %s", page)
 	}
 }

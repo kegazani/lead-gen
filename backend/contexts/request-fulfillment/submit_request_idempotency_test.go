@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
-	"lead-gen/backend/contexts/request-fulfillment/internal/app/command"
 	outboxmemory "lead-gen/backend/contexts/request-fulfillment/internal/adapters/outbox/inmemory"
 	persistence "lead-gen/backend/contexts/request-fulfillment/internal/adapters/persistence/inmemory"
+	"lead-gen/backend/contexts/request-fulfillment/internal/app/command"
 	"lead-gen/backend/contexts/request-fulfillment/internal/domain"
 )
 
@@ -28,7 +28,7 @@ func TestSubmitRequestSameIntentRetryIsIdempotentAndPurposeMismatchConflicts(t *
 	ids := &submitTestIDs{}
 	handler := command.NewSubmitRequestHandler(uow, submitTestClock{at: time.Date(2026, 10, 12, 0, 0, 0, 0, time.UTC)}, ids)
 	sender := &domain.SenderCompanySnapshot{CompanyName: "ООО Отправитель", Website: "https://sender.example", Description: "CRM", Services: []domain.SenderServiceSnapshot{{Name: "Внедрение", Short: "Кратко", Full: "Полностью"}}}
-	input := command.SubmitRequest{RequestID: "req-idempotent", OfferID: "offer-idempotent", TenantID: "tenant-1", Content: "Оффер", Target: "B2B", ExecutionPurpose: domain.ExecutionPurposeEditorial, SenderCompany: sender, Actor: "user-1"}
+	input := command.SubmitRequest{RequestID: "req-idempotent", OfferID: "offer-idempotent", TenantID: "tenant-1", Title: "Идемпотентная заявка", Content: "Оффер", Target: "B2B", ExecutionPurpose: domain.ExecutionPurposeEditorial, SenderCompany: sender, Actor: "user-1"}
 	first, err := handler.Handle(context.Background(), input)
 	if err != nil {
 		t.Fatal(err)
@@ -43,6 +43,11 @@ func TestSubmitRequestSameIntentRetryIsIdempotentAndPurposeMismatchConflicts(t *
 	input.ExecutionPurpose = domain.ExecutionPurposeDelivery
 	if _, err := handler.Handle(context.Background(), input); err != domain.ErrRequestSubmissionConflict {
 		t.Fatalf("purpose mismatch = %v, ожидался ErrRequestSubmissionConflict", err)
+	}
+	input.ExecutionPurpose = domain.ExecutionPurposeEditorial
+	input.Title = "Другое имя"
+	if _, err := handler.Handle(context.Background(), input); err != domain.ErrRequestSubmissionConflict {
+		t.Fatalf("title mismatch = %v, ожидался ErrRequestSubmissionConflict", err)
 	}
 	stored, err := repo.FindByID(context.Background(), domain.RequestID(input.RequestID))
 	if err != nil {

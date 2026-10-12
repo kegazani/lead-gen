@@ -517,6 +517,7 @@ type portalView struct {
 // offerView — модель формы заявки: что предлагает клиент и кому.
 type offerView struct {
 	Notice       string
+	TitleField   components.Field
 	ContentField components.Field
 	TargetField  components.Field
 }
@@ -931,7 +932,7 @@ func (s *Server) handleOfferForm(w http.ResponseWriter, r *http.Request) {
 	s.render(w, http.StatusOK, pageOffer, components.Page{
 		Layout:  components.Layout{Title: "Заявка"},
 		Sidebar: portalNav("/portal/request", true),
-		View:    offerModel("", "", ""),
+		View:    offerModel("", "", "", ""),
 	})
 }
 
@@ -949,16 +950,21 @@ func (s *Server) handleOfferSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	tenant := sess.TenantID()
+	title := strings.TrimSpace(r.FormValue("title"))
 	content := strings.TrimSpace(r.FormValue("content"))
 	target := strings.TrimSpace(r.FormValue("target"))
+	if title == "" || len([]rune(title)) > 100 {
+		s.renderOfferError(w, http.StatusBadRequest, title, content, target, "Укажите название заявки длиной не более 100 символов")
+		return
+	}
 
 	if content == "" {
-		s.renderOfferError(w, http.StatusBadRequest, content, target, "Опишите, что вы предлагаете")
+		s.renderOfferError(w, http.StatusBadRequest, title, content, target, "Опишите, что вы предлагаете")
 		return
 	}
 	profile, err := s.deps.TenantProfile.Handle(r.Context(), query.TenantProfile{TenantID: tenant})
 	if err != nil || profile.ProfileStatus != string(domain.ProfileActive) || profile.TenantID != tenant {
-		s.renderOfferError(w, http.StatusForbidden, content, target, "Для подачи заявки нужен активный одобренный профиль")
+		s.renderOfferError(w, http.StatusForbidden, title, content, target, "Для подачи заявки нужен активный одобренный профиль")
 		return
 	}
 	services := make([]requestintent.SenderServiceSnapshot, len(profile.Services))
@@ -972,6 +978,7 @@ func (s *Server) handleOfferSubmit(w http.ResponseWriter, r *http.Request) {
 
 	result, err := s.deps.SubmitClientRequest.Handle(r.Context(), command.SubmitClientRequest{
 		TenantID:      tenant,
+		Title:         title,
 		Content:       content,
 		Target:        target,
 		Actor:         sess.UserID(),
@@ -979,13 +986,13 @@ func (s *Server) handleOfferSubmit(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		if errors.Is(err, app.ErrRejected) {
-			s.renderOfferError(w, http.StatusBadRequest, content, target, err.Error())
+			s.renderOfferError(w, http.StatusBadRequest, title, content, target, err.Error())
 			return
 		}
 		s.render(w, statusForError(err), pageOffer, components.Page{
 			Layout:  components.Layout{Title: "Заявка"},
 			Sidebar: portalNav("/portal/request", true),
-			View:    offerModel(content, target, portalNotice(err)),
+			View:    offerModel(title, content, target, portalNotice(err)),
 		})
 		return
 	}
@@ -1114,11 +1121,11 @@ func (s *Server) renderRegisterError(w http.ResponseWriter, status int, notice s
 }
 
 // renderOfferError рисует форму заявки с сообщением об ошибке.
-func (s *Server) renderOfferError(w http.ResponseWriter, status int, content, target, notice string) {
+func (s *Server) renderOfferError(w http.ResponseWriter, status int, title, content, target, notice string) {
 	s.render(w, status, pageOffer, components.Page{
 		Layout:  components.Layout{Title: "Заявка"},
 		Sidebar: portalNav("/portal/request", true),
-		View:    offerModel(content, target, notice),
+		View:    offerModel(title, content, target, notice),
 	})
 }
 
@@ -1188,9 +1195,13 @@ func loginModel(notice, email string, fieldErrors map[string]string) loginView {
 }
 
 // offerModel собирает модель формы заявки: что предлагает клиент и кому.
-func offerModel(content, target, notice string) offerView {
+func offerModel(title, content, target, notice string) offerView {
 	return offerView{
 		Notice: notice,
+		TitleField: components.Field{
+			ID: "request-title", Name: "title", Label: "Название заявки",
+			Value: title, Required: true, MaxLength: 100,
+		},
 		ContentField: components.Field{
 			ID: "offer-content", Name: "content", Label: "Что вы предлагаете",
 			Type: "textarea", Rows: 6, Value: content, Required: true,

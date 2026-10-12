@@ -82,6 +82,7 @@ type NewRequestParams struct {
 	ID                    RequestID
 	OfferID               OfferID
 	TenantID              TenantID
+	Title                 string
 	Content               string
 	Target                string
 	ExecutionPurpose      string
@@ -113,6 +114,7 @@ type NewRequestParams struct {
 type Request struct {
 	id               RequestID
 	tenantID         TenantID
+	title            string
 	status           RequestStatus
 	executionPurpose string
 	senderCompany    *SenderCompanySnapshot
@@ -153,6 +155,10 @@ func NewRequest(params NewRequestParams) (*Request, error) {
 	if err != nil {
 		return nil, fmt.Errorf("%w: заявка %s: %v", ErrOfferRequired, params.ID, err)
 	}
+	title, err := normalizeRequestTitle(params.Title)
+	if err != nil {
+		return nil, err
+	}
 	offer, err := newOffer(params.OfferID, content, NewRequestTarget(params.Target))
 	if err != nil {
 		return nil, fmt.Errorf("%w: заявка %s: %v", ErrOfferRequired, params.ID, err)
@@ -171,6 +177,7 @@ func NewRequest(params NewRequestParams) (*Request, error) {
 	request := &Request{
 		id:                    params.ID,
 		tenantID:              params.TenantID,
+		title:                 title,
 		status:                StatusSubmitted,
 		executionPurpose:      purpose,
 		senderCompany:         cloneSenderCompany(params.SenderCompany),
@@ -206,6 +213,19 @@ func normalizeExecutionPurpose(purpose string) string {
 	}
 	return strings.TrimSpace(purpose)
 }
+
+const maxRequestTitleRunes = 100
+
+func normalizeRequestTitle(title string) (string, error) {
+	title = strings.TrimSpace(title)
+	if title == "" || len([]rune(title)) > maxRequestTitleRunes {
+		return "", ErrInvalidRequestTitle
+	}
+	return title, nil
+}
+
+// Title возвращает имя заявки для отображения.
+func (r *Request) Title() string { return r.title }
 
 // SenderServiceSnapshot и SenderCompanySnapshot — типы собственного домена;
 // контекст request-fulfillment не хранит DTO соседнего published contract.
@@ -252,6 +272,7 @@ func (r *Request) SenderCompanySnapshot() *SenderCompanySnapshot {
 // входят в ключ сравнения; изменение любого из них не переиспользует заявку.
 func (r *Request) SameSubmission(params NewRequestParams) bool {
 	if r == nil || r.id != params.ID || r.tenantID != params.TenantID ||
+		r.title != strings.TrimSpace(params.Title) ||
 		r.offer.ID() != params.OfferID || r.offer.Content().Text() != params.Content ||
 		r.offer.Target().Description() != params.Target ||
 		normalizeExecutionPurpose(r.executionPurpose) != normalizeExecutionPurpose(params.ExecutionPurpose) ||

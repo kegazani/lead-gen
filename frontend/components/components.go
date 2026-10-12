@@ -150,6 +150,7 @@ type Field struct {
 	Label        string
 	Type         string
 	Value        string
+	MaxLength    int
 	Class        string
 	Error        string
 	Autocomplete string
@@ -244,6 +245,7 @@ func templateFuncs(messages *Messages) template.FuncMap {
 		"label": func(prefix string, code any) string {
 			return messages.Label(prefix, fmt.Sprint(code))
 		},
+		"truncate":       TruncateText,
 		"formatDate":     formatter.Date,
 		"formatDateTime": formatter.DateTime,
 		"formatNumber":   formatter.Number,

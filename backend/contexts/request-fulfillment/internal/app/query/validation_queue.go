@@ -15,6 +15,7 @@ type ValidationQueue struct {
 // ValidationItem — строка очереди валидации: идентификаторы и оффер.
 type ValidationItem struct {
 	RequestID string
+	Title     string
 	Status    domain.RequestStatus
 	Offer     OfferView
 	Version   int
@@ -44,6 +45,7 @@ func (h *ValidationQueueHandler) Handle(ctx context.Context, q ValidationQueue) 
 		}
 		items = append(items, ValidationItem{
 			RequestID: request.ID().String(),
+			Title:     request.Title(),
 			Status:    request.Status(),
 			Offer:     offerView(request.Offer()),
 			Version:   request.Version(),
