@@ -95,3 +95,6 @@
 .rejection-groups .count {
   font-variant-numeric: tabular-nums;
 }
+
+/* В полном наборе не показываем сообщения о пустых отдельных группах. */
+.cards[data-cards-composition="all"] .cards-empty { display: none; }

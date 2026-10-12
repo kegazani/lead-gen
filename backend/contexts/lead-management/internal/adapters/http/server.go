@@ -41,7 +41,7 @@ import (
 // никаких inline-скриптов/стилей. Директива connect-src нужна для HTMX и
 // fetch к своему источнику: без неё она падает до default-src 'none' и режет
 // авто-обновление журнала и перенос лида перетаскиванием (design.md, Решение 11).
-const leadsLimit = 200 // предел списка лидов с email на странице /leads
+const leadsLimit = 200 // предел списка сохранённых лидов на странице /leads
 
 const contentSecurityPolicy = "default-src 'none'; style-src 'self'; script-src 'self'; img-src 'self'; connect-src 'self'; form-action 'self'; base-uri 'none'; frame-ancestors 'none'"
 
@@ -641,7 +641,7 @@ func (s *Server) handleCards(w http.ResponseWriter, r *http.Request) {
 
 	jobID := strings.TrimSpace(r.URL.Query().Get("job"))
 	filter := s.cardsFilterFrom(r, jobID)
-	view := cardsView{Live: consoleLive, Filter: filter}
+	view := cardsView{Live: consoleLive, Filter: filter, TenantID: s.activeTenant(r)}
 	reason, reasonDetail := filterReason(filter)
 	if jobID == "" {
 		rows := cardRowsWithLatestAssessments(cards, s.latestAssessments(r.Context(), cards))
@@ -670,17 +670,20 @@ func (s *Server) handleCards(w http.ResponseWriter, r *http.Request) {
 	s.render(w, http.StatusOK, pageCards, s.pageSection(r, "Карточки", sidebarCards, view))
 }
 
-// handleLeads показывает список лидов с email: по строке на лида — ссылка на
-// сайт, название и адрес. Лиды без email в список не попадают.
+// handleLeads показывает сохранённых лидов, включая компании без email.
 func (s *Server) handleLeads(w http.ResponseWriter, r *http.Request) {
 	cards, err := s.showcase.ListCards(r.Context(), leadsLimit)
 	if err != nil {
 		s.renderNotice(w, http.StatusInternalServerError, "Лиды недоступны", "Не удалось загрузить лидов.")
 		return
 	}
+	rows := allLeadRows(cards)
+	for i := range rows {
+		rows[i].CardHref = components.ConsoleHrefWithContext(rows[i].CardHref, components.ConsoleContext{TenantID: s.activeTenant(r), Actor: consoleActor(r)})
+	}
 	s.render(w, http.StatusOK, pageLeads, s.pageSection(r, "Лиды", sidebarLeads, leadsView{
 		Live: consoleLive,
-		Rows: leadRows(cards),
+		Rows: rows, TenantID: s.activeTenant(r),
 	}))
 }
 

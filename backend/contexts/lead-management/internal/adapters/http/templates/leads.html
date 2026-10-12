@@ -10,7 +10,9 @@
   </p>
 </header>
 
-<section class="panel">
+<p class="hint" role="status" aria-live="polite" data-lead-refresh-status></p>
+<section class="panel" data-lead-results data-tenant-id="{{.TenantID}}" data-refresh-error="{{ text "lead.results.refresh_error" }}" data-refresh-updated="{{ text "lead.results.updated" }}">
+  <p class="hint">{{ text "lead.results.count" }} <strong data-saved-company-count>{{ len .Rows }}</strong></p>
   {{- if .Rows }}
   <table class="table">
     <thead>
@@ -24,8 +26,8 @@
       {{- range .Rows }}
       <tr>
         <td><a class="link" href="{{.Site}}" target="_blank" rel="noopener noreferrer">{{.Site}}</a></td>
-        <td>{{.Name}}</td>
-        <td><a class="link" href="mailto:{{.Email}}">{{.Email}}</a></td>
+        <td><a class="link" href="{{.CardHref}}">{{.Name}}</a></td>
+        <td>{{ if .Email }}<a class="link" href="mailto:{{.Email}}">{{.Email}}</a>{{ else }}<span class="hint">{{ text "lead.company.no_email" }}</span>{{ end }}</td>
       </tr>
       {{- end }}
     </tbody>

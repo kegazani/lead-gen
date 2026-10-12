@@ -17,10 +17,13 @@
   <h1>{{ text "lead.cards.title" }}</h1>
   {{- if .JobScoped }}
   <p class="hint">{{ text "lead.cards.job_scoped" }}: {{.JobQuery}} <span class="job-id">{{.JobID}}</span></p>
+  <p><a class="link" href="/cards?tenant_id={{.TenantID}}">{{ text "lead.cards.show_all" }}</a></p>
   {{- end }}
 </header>
 
-<section class="panel">
+<p class="hint" role="status" aria-live="polite" data-lead-refresh-status></p>
+<section class="panel" data-lead-results data-tenant-id="{{.TenantID}}" data-refresh-error="{{ text "lead.results.refresh_error" }}" data-refresh-updated="{{ text "lead.results.updated" }}">
+  <p class="hint">{{ text "lead.results.count" }} <strong data-saved-company-count>{{ .Counts.Total }}</strong></p>
   {{- with .Filter }}
   <p class="cards-filter" role="status">
     <span>{{ text "lead.cards.filter.title" }}: {{.Label}}</span>
@@ -29,7 +32,8 @@
   {{- end }}
   <div class="cards-toolbar">
     <div class="composition-switch" role="group" aria-label="{{ text "lead.cards.composition_aria" }}">
-      <button type="button" class="view-option{{ if not .Filter }} is-active{{ end }}" data-composition-set="fits" aria-pressed="{{ if not .Filter }}true{{ else }}false{{ end }}">{{ text "lead.verdict.fits" }} <span class="count">{{.Counts.Fits}}</span></button>
+      <button type="button" class="view-option{{ if not .Filter }} is-active{{ end }}" data-composition-set="all" aria-pressed="{{ if not .Filter }}true{{ else }}false{{ end }}">{{ text "lead.cards.all" }} <span class="count">{{.Counts.Total}}</span></button>
+      <button type="button" class="view-option" data-composition-set="fits" aria-pressed="false">{{ text "lead.verdict.fits" }} <span class="count">{{.Counts.Fits}}</span></button>
       <button type="button" class="view-option" data-composition-set="hypothesis" aria-pressed="false">{{ text "lead.verdict.hypothesis" }} <span class="count">{{.Counts.Hypothesis}}</span></button>
       <button type="button" class="view-option" data-composition-set="unsuitable" aria-pressed="false">{{ text "lead.verdict.unsuitable" }} <span class="count">{{.Counts.Unsuitable}}</span></button>
       <button type="button" class="view-option" data-composition-set="unassessed" aria-pressed="false">{{ text "lead.verdict.unassessed" }} <span class="count">{{.Counts.Unassessed}}</span></button>
@@ -40,7 +44,7 @@
     </div>
   </div>
 
-  <div class="cards" data-cards-view="tiles" data-cards-composition="{{ if .Filter }}filter{{ else }}fits{{ end }}"{{ if .Filter }} data-cards-filter="true"{{ end }}>
+  <div class="cards" data-cards-view="tiles" data-cards-composition="{{ if .Filter }}filter{{ else }}all{{ end }}"{{ if .Filter }} data-cards-filter="true"{{ end }}>
     {{ template "cards-group" .Fits }}
     {{ template "cards-group" .Hypothesis }}
     {{ template "cards-group" .Unsuitable }}
@@ -49,16 +53,16 @@
     <p class="empty">{{ text "lead.cards.empty" }}</p>
     {{- else }}
     {{- if not .Fits }}
-    <p class="empty cards-empty" data-group="fits">{{ text "lead.cards.fits_empty" }}</p>
+    <p class="empty cards-empty" data-group="fits">{{ text "lead.cards.fits_empty" }} {{ if .Filter }}<a href="{{ .Filter.Href }}">{{ text "lead.cards.show_all" }}</a>{{ else }}<button type="button" data-composition-set="all">{{ text "lead.cards.show_all" }}</button>{{ end }}</p>
     {{- end }}
     {{- if not .Hypothesis }}
-    <p class="empty cards-empty" data-group="hypothesis">{{ text "lead.cards.hypothesis_empty" }}</p>
+    <p class="empty cards-empty" data-group="hypothesis">{{ text "lead.cards.hypothesis_empty" }} {{ if .Filter }}<a href="{{ .Filter.Href }}">{{ text "lead.cards.show_all" }}</a>{{ else }}<button type="button" data-composition-set="all">{{ text "lead.cards.show_all" }}</button>{{ end }}</p>
     {{- end }}
     {{- if not .Unsuitable }}
-    <p class="empty cards-empty" data-group="unsuitable">{{ text "lead.cards.unsuitable_empty" }}</p>
+    <p class="empty cards-empty" data-group="unsuitable">{{ text "lead.cards.unsuitable_empty" }} {{ if .Filter }}<a href="{{ .Filter.Href }}">{{ text "lead.cards.show_all" }}</a>{{ else }}<button type="button" data-composition-set="all">{{ text "lead.cards.show_all" }}</button>{{ end }}</p>
     {{- end }}
     {{- if not .Unassessed }}
-    <p class="empty cards-empty" data-group="unassessed">{{ text "lead.cards.unassessed_empty" }}</p>
+    <p class="empty cards-empty" data-group="unassessed">{{ text "lead.cards.unassessed_empty" }} {{ if .Filter }}<a href="{{ .Filter.Href }}">{{ text "lead.cards.show_all" }}</a>{{ else }}<button type="button" data-composition-set="all">{{ text "lead.cards.show_all" }}</button>{{ end }}</p>
     {{- end }}
     {{- end }}
   </div>

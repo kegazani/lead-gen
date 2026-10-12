@@ -414,16 +414,18 @@
 	  var cardsCompositionKey = 'leadgen.cardsComposition';
 
 	  // cardsCompositionValue сводит неизвестный состав к значению по умолчанию
-	  // («Подходящие»). Состав — четыре группы; неизвестное или устаревшее значение
+	  // («Все»). Состав — четыре группы и полный набор; неизвестное или устаревшее значение
 	  // (в частности прежнее «other») сводится к группе по умолчанию.
 	  function cardsCompositionValue(raw) {
 	    switch (raw) {
+	      case 'all':
+	      case 'fits':
 	      case 'hypothesis':
 	      case 'unsuitable':
 	      case 'unassessed':
 	        return raw;
 	      default:
-	        return 'fits';
+	        return 'all';
 	    }
 	  }
 
@@ -504,6 +506,60 @@
 	  if (!cardsFilterActive()) {
 	    applyCardsComposition(storedCardsComposition());
 	  }
+
+      // Список не остаётся старым, пока crawl сохраняет новые компании.
+      var leadResults = document.querySelector('[data-lead-results]');
+      if (leadResults) {
+        var leadRefreshStatus = document.querySelector('[data-lead-refresh-status]');
+        var leadResultsURL = new URL(window.location.href);
+        leadResultsURL.hash = '';
+        leadResultsURL.searchParams.set('tenant_id', leadResults.getAttribute('data-tenant-id') || '');
+        var lastLeadMarkup = leadResults.innerHTML;
+        async function refreshLeadResults() {
+          if (!document.contains(leadResults)) return;
+          if (!document.hidden) {
+            var controller = new AbortController();
+            var timeout = setTimeout(function () { controller.abort(); }, 10000);
+            try {
+              var response = await fetch(leadResultsURL.toString(), {credentials: 'same-origin', cache: 'no-store', signal: controller.signal});
+              if (!response.ok) throw new Error('lead refresh failed');
+              var parsed = new DOMParser().parseFromString(await response.text(), 'text/html');
+              var next = parsed.querySelector('[data-lead-results]');
+              if (!next || next.getAttribute('data-tenant-id') !== leadResults.getAttribute('data-tenant-id')) throw new Error('lead context missing');
+              if (lastLeadMarkup !== next.innerHTML) {
+                var container = cardsContainer();
+                var view = container && container.getAttribute('data-cards-view');
+                var composition = container && container.getAttribute('data-cards-composition');
+                var focused = leadResults.contains(document.activeElement) ? document.activeElement : null;
+                lastLeadMarkup = next.innerHTML;
+                leadResults.replaceWith(next);
+                leadResults = next;
+                if (view) applyCardsView(view);
+                if (composition && !cardsFilterActive()) applyCardsComposition(composition);
+                // При обновлении счётчиков фокус кнопки/ссылки остаётся на том же действии.
+                if (focused) {
+                  var same = Array.prototype.slice.call(leadResults.querySelectorAll('button, a')).find(function (candidate) {
+                    return candidate.tagName === focused.tagName &&
+                      candidate.getAttribute('href') === focused.getAttribute('href') &&
+                      candidate.getAttribute('data-composition-set') === focused.getAttribute('data-composition-set') &&
+                      candidate.getAttribute('data-view-set') === focused.getAttribute('data-view-set');
+                  });
+                  if (same) same.focus({preventScroll: true});
+                }
+                leadRefreshStatus.textContent = leadResults.getAttribute('data-refresh-updated');
+              } else {
+                leadRefreshStatus.textContent = '';
+              }
+            } catch (error) {
+              leadRefreshStatus.textContent = leadResults.getAttribute('data-refresh-error');
+            } finally {
+              clearTimeout(timeout);
+            }
+          }
+          setTimeout(refreshLeadResults, 5000);
+        }
+        setTimeout(refreshLeadResults, 5000);
+      }
 
 	  // Скрипт подключён с defer: разметка уже разобрана, начальная синхронизация
 	  // сразу отключает кнопку при пустом выборе и восстанавливает раскрытие строк.

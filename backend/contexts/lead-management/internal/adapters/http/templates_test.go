@@ -300,9 +300,9 @@ func TestConsolePagesCarryThemeBootstrap(t *testing.T) {
 	}
 }
 
-// TestLeadsPageShowsOnlyLeadsWithEmail проверяет страницу лидов: в список попадают
-// только лиды с email, и по каждому — ссылка на сайт, название и адрес.
-func TestLeadsPageShowsOnlyLeadsWithEmail(t *testing.T) {
+// TestLeadsPageShowsCompaniesWithoutEmail проверяет страницу лидов: в список попадают
+// компании с email и без него, с явной пометкой отсутствующего адреса.
+func TestLeadsPageShowsCompaniesWithoutEmail(t *testing.T) {
 	env := newTestEnv()
 	seedCompany(t, env.profiles, "example.com", "Пример Компании", "Описание")
 	seedContact(t, env.contacts, "example.com", "hello@example.com", "+7 999 123-45-67", "основатель")
@@ -323,8 +323,8 @@ func TestLeadsPageShowsOnlyLeadsWithEmail(t *testing.T) {
 			t.Fatalf("страница лидов не содержит %q:\n%s", want, html)
 		}
 	}
-	if strings.Contains(html, "Только Телефон") {
-		t.Fatalf("лид без email не должен попадать на страницу лидов:\n%s", html)
+	if !strings.Contains(html, "Только Телефон") || !strings.Contains(html, "нет email") {
+		t.Fatalf("сохранённая компания без email скрыта:\n%s", html)
 	}
 }
 

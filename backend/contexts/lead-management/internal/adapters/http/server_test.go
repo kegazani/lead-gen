@@ -1112,7 +1112,7 @@ func TestCardsList(t *testing.T) {
 }
 
 // TestCardsCompositionIndependentOfView проверяет две независимые оси списка
-// карточек: состав результатов (по умолчанию «Подходящие», вторая группа —
+// карточек: состав результатов (по умолчанию «Все», вторая группа —
 // переключением) и представление «плитки/строки». Каждая ось ведёт свои атрибуты
 // контейнера и своё переключение: смена одной не сбрасывает другую.
 func TestCardsCompositionIndependentOfView(t *testing.T) {
@@ -1127,7 +1127,7 @@ func TestCardsCompositionIndependentOfView(t *testing.T) {
 	html := readBody(t, client.get(t, "/cards"))
 	for _, want := range []string{
 		"data-cards-view=\"tiles\"",
-		"data-cards-composition=\"fits\"",
+		"data-cards-composition=\"all\"",
 		"data-view-set=\"tiles\"",
 		"data-view-set=\"rows\"",
 		"data-composition-set=\"fits\"",
@@ -2223,7 +2223,7 @@ func TestCardsGroupsShowUnsuitable(t *testing.T) {
 
 	html := readBody(t, client.get(t, "/cards?job="+url.QueryEscape(job.ID)))
 	for _, want := range []string{
-		`data-cards-composition="fits"`,
+		`data-cards-composition="all"`,
 		`href="/cards/fit.example" data-group="fits"`,
 		`href="/cards/hypo.example" data-group="hypothesis"`,
 		`href="/cards/no.example" data-group="unsuitable"`,
@@ -2676,7 +2676,7 @@ func TestCardsGroupCounts(t *testing.T) {
 
 	html := readBody(t, client.get(t, "/cards"))
 	for _, want := range []string{
-		`data-composition-set="fits" aria-pressed="true">Подходит <span class="count">1</span>`,
+		`data-composition-set="fits" aria-pressed="false">Подходит <span class="count">1</span>`,
 		`data-composition-set="hypothesis" aria-pressed="false">Гипотеза <span class="count">1</span>`,
 		`data-composition-set="unsuitable" aria-pressed="false">Не подходит <span class="count">1</span>`,
 		`data-composition-set="unassessed" aria-pressed="false">Не оценено <span class="count">1</span>`,

@@ -393,6 +393,7 @@ type timelinePoint struct {
 // работоспособным без JavaScript. JobScoped отмечает, что список открыт в
 // контексте задания, поэтому несёт его оценки.
 type cardsView struct {
+	TenantID   string
 	Live       components.Live
 	Fits       []cardRow
 	Hypothesis []cardRow
@@ -413,6 +414,10 @@ type cardsCounts struct {
 	Hypothesis int
 	Unsuitable int
 	Unassessed int
+}
+
+func (counts cardsCounts) Total() int {
+	return counts.Fits + counts.Hypothesis + counts.Unsuitable + counts.Unassessed
 }
 
 // cardsFilter — активный фильтр списка карточек по причине отсева: значение
@@ -467,19 +472,21 @@ type cardRow struct {
 	Missings   []string
 }
 
-// leadsView — модель страницы лидов с email.
+// leadsView — модель страницы всех сохранённых лидов.
 type leadsView struct {
-	Live components.Live
-	Rows []leadRow
+	TenantID string
+	Live     components.Live
+	Rows     []leadRow
 }
 
-// leadRow — строка списка лидов с email: ссылка на сайт, домен для подписи,
+// leadRow — строка сохранённого лида: ссылка на сайт, домен для подписи,
 // название и адрес.
 type leadRow struct {
-	Site   string
-	Domain string
-	Name   string
-	Email  string
+	CardHref string
+	Site     string
+	Domain   string
+	Name     string
+	Email    string
 }
 
 // evidenceRow — свидетельство оценки для раскрытия «Почему эта оценка?»:
@@ -1270,15 +1277,24 @@ func cardRows(cards []app.Card) []cardRow {
 // сайт (домен компании), название и адрес. Лиды без email пропускаются.
 func leadRows(cards []app.Card) []leadRow {
 	rows := make([]leadRow, 0, len(cards))
-	for _, c := range cards {
-		if c.Email == "" {
-			continue
+	for _, row := range allLeadRows(cards) {
+		if row.Email != "" {
+			rows = append(rows, row)
 		}
+	}
+	return rows
+}
+
+// allLeadRows не скрывает компанию из-за отсутствующего email.
+func allLeadRows(cards []app.Card) []leadRow {
+	rows := make([]leadRow, 0, len(cards))
+	for _, c := range cards {
 		rows = append(rows, leadRow{
-			Site:   siteURL(c.ID),
-			Domain: siteDomain(c.ID),
-			Name:   c.Name,
-			Email:  c.Email,
+			CardHref: cardHref(c.ID, ""),
+			Site:     siteURL(c.ID),
+			Domain:   siteDomain(c.ID),
+			Name:     c.Name,
+			Email:    c.Email,
 		})
 	}
 	return rows

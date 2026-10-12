@@ -7,6 +7,11 @@ import "lead-gen/frontend/components"
 // разметке: шаблон ссылается на ключ через функцию text. Базовые ключи (навигация,
 // статусы верификации) приходят из общего слоя и не дублируются.
 var leadCatalog = map[components.MessageKey]string{
+	"lead.results.count":         "Показано сохранённых компаний:",
+	"lead.results.refresh_error": "Не удалось обновить список. Показаны последние полученные данные.",
+	"lead.results.updated":       "Список сохранённых компаний обновлён.",
+	"lead.cards.all":             "Все",
+	"lead.cards.show_all":        "Показать все сохранённые компании",
 	// Вход.
 	msgLeadLoginTitle:  "Вход",
 	msgLeadLoginUser:   "Имя пользователя",
@@ -163,13 +168,13 @@ var leadCatalog = map[components.MessageKey]string{
 	msgLeadFunnelEmpty:    "Лидов нет",
 
 	// Лиды с email.
-	msgLeadLeadsTitle:       "Лиды с email",
-	msgLeadLeadsHint:        "Все лиды, у которых найден адрес электронной почты: ссылка на сайт, название и адрес.",
+	msgLeadLeadsTitle:       "Лиды",
+	msgLeadLeadsHint:        "Сохранённые компании, включая те, у которых email ещё не найден. Нажмите название, чтобы открыть карточку. Выгрузки содержат только компании с email.",
 	msgLeadLeadsDownload:    "Скачать HTML-файл",
 	msgLeadLeadsDownloadCSV: "Скачать CSV",
 	msgLeadLeadsHeaderSite:  "Сайт",
 	msgLeadLeadsHeaderName:  "Название",
-	msgLeadLeadsEmpty:       "Лидов с email пока нет",
+	msgLeadLeadsEmpty:       "Сохранённых компаний пока нет",
 
 	// Отправка.
 	msgLeadSendTitle:   "Отправка",

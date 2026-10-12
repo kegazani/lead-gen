@@ -205,3 +205,32 @@ func TestLeadConsoleUsesSelectedTenantCookie(t *testing.T) {
 		t.Fatalf("консоль не взяла выбранный тенант из cookie:\n%s", page)
 	}
 }
+
+// Новая таблица показывает отсутствие email и не теряет tenant при открытии карточки.
+func TestSavedLeadsWithoutEmailKeepTenantScope(t *testing.T) {
+	env := newTestEnv()
+	seedCompanyInTenant(t, env.profiles, "tenant-a", "own.example", "Своя компания", "Описание")
+	seedCompanyInTenant(t, env.profiles, "tenant-b", "foreign.example", "Чужая компания", "Описание")
+	server := httptest.NewServer(env.server)
+	defer server.Close()
+	client := newConsoleClient(server)
+	client.login(t, "operator", "secret")
+	for _, path := range []string{"/leads?tenant_id=tenant-a", "/cards?tenant_id=tenant-a"} {
+		html := readBody(t, client.get(t, path))
+		if !strings.Contains(html, "Своя компания") || strings.Contains(html, "Чужая компания") {
+			t.Fatalf("tenant-изоляция %s", path)
+		}
+		if !strings.Contains(html, `data-tenant-id="tenant-a"`) {
+			t.Fatal("обновление списка потеряло tenant")
+		}
+	}
+	html := readBody(t, client.get(t, "/leads?tenant_id=tenant-a"))
+	if !strings.Contains(html, `href="/cards/own.example?actor=operator&amp;tenant_id=tenant-a"`) || !strings.Contains(html, "нет email") {
+		t.Fatalf("карточка без email не видна или ссылка потеряла tenant: %s", html)
+	}
+	response := client.get(t, "/cards/own.example?tenant_id=tenant-a")
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("карточка не открылась: %d", response.StatusCode)
+	}
+}

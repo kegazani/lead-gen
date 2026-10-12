@@ -668,7 +668,7 @@ func e2eRequireContains(t *testing.T, html string, wants []string) {
 // → поиск → обход → карточка компании → оценка релевантности, сохранённая
 // относительно задания. Распределение вердиктов и основания «Подходит» со ссылкой
 // на источник видны на экране задания, а список карточек в контексте задания несёт
-// «Подходящие» по умолчанию и вторую группу («Гипотеза»/«Не подходит»).
+// «Все» по умолчанию и вторую группу («Гипотеза»/«Не подходит»).
 func TestLeadRelevanceEndToEnd(t *testing.T) {
 	ctx := context.Background()
 	clock := fixedClock{now: time.Date(2026, time.January, 2, 10, 0, 0, 0, time.UTC)}
@@ -780,14 +780,14 @@ func TestLeadRelevanceEndToEnd(t *testing.T) {
 		"прямое заявление",
 	})
 
-	// Список карточек в контексте задания: «Подходящие» по умолчанию, вторая
+	// Список карточек в контексте задания: «Все» по умолчанию, вторая
 	// группа — «Гипотеза» и «Не подходит»; обе группы остаются в разметке.
 	status, cardsHTML := e2eGet(t, client, ts, "/cards?job="+url.QueryEscape(job.ID))
 	if status != http.StatusOK {
 		t.Fatalf("GET /cards?job=%s = %d, ожидался 200", job.ID, status)
 	}
 	e2eRequireContains(t, cardsHTML, []string{
-		`data-cards-composition="fits"`,
+		`data-cards-composition="all"`,
 		`data-cards-view="tiles"`,
 		`data-composition-set="hypothesis"`,
 		`data-view-set="rows"`,
