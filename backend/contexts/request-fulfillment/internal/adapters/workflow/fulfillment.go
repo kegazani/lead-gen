@@ -101,6 +101,9 @@ const (
 	// changeEditorialDraftCompletion separates new portal executions from the
 	// legacy editorial handoff path while preserving replay of existing histories.
 	changeEditorialDraftCompletion = "editorial-draft-completion-v1"
+	// Новые editorial executions фиксируют терминальный статус заявки после
+	// сохранения черновиков; старые истории повторяют прежнее завершение.
+	changeEditorialTerminalCompletion = "editorial-terminal-completion-v1"
 	// changeOutreachHandoff — маркер звена передачи «черновики заявки → очередь
 	// утверждения outreach»: при включённом звене пригодные черновики передаются в
 	// outreach-orchestration. Отдельный маркер нужен, чтобы прежние бегущие
@@ -308,6 +311,7 @@ func Fulfillment(ctx workflow.Context, params Params) (Status, error) {
 		}
 		state.Found = len(seen)
 		if state.Found >= target {
+			state.PartialReason = ""
 			break
 		}
 		if topUpVersion < 1 || round+1 >= maxTopUpRounds {
@@ -378,6 +382,12 @@ func Fulfillment(ctx workflow.Context, params Params) (Status, error) {
 	// store. Маркер сохраняет прежний handoff при replay уже начатых исполнений.
 	if editorial && workflow.GetVersion(ctx, changeEditorialDraftCompletion, workflow.DefaultVersion, 1) >= 1 {
 		state.Phase = PhaseDraftsGenerated
+		if workflow.GetVersion(ctx, changeEditorialTerminalCompletion, workflow.DefaultVersion, 1) >= 1 {
+			if err := workflow.ExecuteActivity(transitionCtx, ActivityFulfillRequest, base).Get(transitionCtx, nil); err != nil {
+				return failStep(ctx, terminalIntentVersion, terminalChecksumVersion, failureCompensation, compensationCtx, params, base, failCodeTransitionRejected, &state, err)
+			}
+			state.Phase = PhaseFulfilled
+		}
 		return state, nil
 	}
 

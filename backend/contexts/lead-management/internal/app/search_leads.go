@@ -237,7 +237,7 @@ func (u *SearchLeadsForRequest) Run(ctx context.Context, in SearchLeadsInput) (S
 		finish(nil)
 		return newSearchLeadsResult(leads, fromPool, 0, partialReason), nil
 	}
-	taskID := searchLeadsTaskScope(in.TenantID, in.RequestID)
+	taskID := searchLeadsTaskScope(in.TenantID, in.RequestID, criteria)
 	task, err := u.Budget.Begin(taskID, u.MaxCredits)
 	if err != nil {
 		finish(err)
@@ -254,7 +254,7 @@ func (u *SearchLeadsForRequest) Run(ctx context.Context, in SearchLeadsInput) (S
 			u.warn("поиск под заявку: завершение budget scope не подтверждено", "reason", "budget_finish_failed")
 		}
 	}()
-	crawled, err := u.crawlDeficit(ctx, task, task, criteria, limit-fromPool, seen, &leads, &partialReason)
+	crawled, err := u.crawlDeficit(ctx, task, in, criteria, limit-fromPool, seen, &leads, &partialReason)
 	if err != nil {
 		finish(err)
 		return SearchLeadsResult{}, fmt.Errorf("app: сохранение результата поиска заявки %s: %w", in.RequestID, err)
@@ -263,14 +263,15 @@ func (u *SearchLeadsForRequest) Run(ctx context.Context, in SearchLeadsInput) (S
 	return newSearchLeadsResult(leads, fromPool, crawled, partialReason), nil
 }
 
-// searchLeadsTaskScope задаёт стабильный scope бюджета из tenant и RequestID.
+// searchLeadsTaskScope задаёт отдельный scope бюджета для каждого тематического
+// раунда заявки. Повтор одного раунда сохраняет тот же ключ.
 // Хэш не раскрывает пользовательский идентификатор в ключе реестра Guard.
-func searchLeadsTaskScope(tenantID, requestID string) string {
+func searchLeadsTaskScope(tenantID, requestID, criteria string) string {
 	requestID = strings.TrimSpace(requestID)
 	if requestID == "" {
 		requestID = fmt.Sprintf("generated-%d", searchLeadsTaskSequence.Add(1))
 	}
-	scope := sha256.Sum256([]byte(strings.TrimSpace(tenantID) + "\x00" + requestID))
+	scope := sha256.Sum256([]byte(strings.TrimSpace(tenantID) + "\x00" + requestID + "\x00" + strings.TrimSpace(criteria)))
 	return "lead-search/" + hex.EncodeToString(scope[:])
 }
 
@@ -286,19 +287,30 @@ func newSearchLeadsResult(leads []SearchLeadRef, fromPool, crawled int, partialR
 }
 
 // crawlDeficit добирает недостающих лидов ограниченным краулингом Firecrawl.
-// Возвращает число добавленных краулингом лидов. Дозабор не запускается, если
-// порты поиска/обхода не подключены, и не роняет результат при сбое движка.
-func (u *SearchLeadsForRequest) crawlDeficit(ctx context.Context, searchPort search.Port, crawlPort crawl.Port, criteria string, need int, seen map[string]struct{}, leads *[]SearchLeadRef, partialReason *string) (int, error) {
+// Каждый сайт имеет собственный budget scope: неизвестный исход обхода одного
+// сайта не закрывает операции для остальных кандидатов. Общий cap раунда
+// сохраняется консервативной оценкой стоимости поиска и каждого обхода.
+func (u *SearchLeadsForRequest) crawlDeficit(ctx context.Context, searchPort search.Port, in SearchLeadsInput, criteria string, need int, seen map[string]struct{}, leads *[]SearchLeadRef, partialReason *string) (int, error) {
 	if need <= 0 {
 		return 0, nil
 	}
-	if searchPort == nil || crawlPort == nil {
+	if searchPort == nil || u.Budget == nil {
 		setSearchPartialReason(partialReason, searchPartialSearchUnavailable)
 		return 0, nil
 	}
 	top := u.maxResults()
-	if top > need {
-		top = need
+	// Часть результатов дублируется по домену или не отвечает на crawl.
+	// Запрашиваем запас кандидатов, оставаясь внутри настроенного предела.
+	candidates := need * 2
+	if candidates < need { // защита от переполнения int
+		candidates = need
+	}
+	if candidates < 10 {
+		// Последний недостающий лид не должен зависеть от двух первых сайтов.
+		candidates = 10
+	}
+	if top > candidates {
+		top = candidates
 	}
 	if top <= 0 {
 		return 0, nil
@@ -326,7 +338,24 @@ func (u *SearchLeadsForRequest) crawlDeficit(ctx context.Context, searchPort sea
 		return 0, nil
 	}
 
+	siteCredits := u.Limits.MaxPages
+	if siteCredits <= 0 {
+		siteCredits = DefaultSearchLeadsMaxPages
+	}
+	maxSites := len(results)
+	if u.MaxCredits > 0 {
+		// Firecrawl Search стоит не более двух кредитов на 10 запрошенных
+		// результатов. Каждый site task ограничен MaxPages кредитами.
+		remaining := u.MaxCredits - 2*((top+9)/10)
+		if remaining < 0 {
+			remaining = 0
+		}
+		if maxSites > remaining/siteCredits {
+			maxSites = remaining / siteCredits
+		}
+	}
 	added := 0
+	attempted := 0
 	for _, res := range results {
 		if added >= need || crawlCtx.Err() != nil {
 			if crawlCtx.Err() != nil {
@@ -337,7 +366,33 @@ func (u *SearchLeadsForRequest) crawlDeficit(ctx context.Context, searchPort sea
 		if strings.TrimSpace(res.URL) == "" {
 			continue
 		}
-		siteAdded, siteErr := u.crawlSite(crawlCtx, crawlPort, res.URL, need-added, seen, leads, partialReason)
+		identity := NormalizeDomain(res.URL)
+		if identity == "" {
+			continue
+		}
+		if _, exists := seen[identity]; exists {
+			continue
+		}
+		if attempted >= maxSites {
+			setSearchPartialReason(partialReason, searchPartialBudgetCapacity)
+			break
+		}
+		attempted++
+		scope := searchLeadsTaskScope(in.TenantID, in.RequestID, criteria+"\x00"+identity)
+		siteTask, beginErr := u.Budget.Begin(scope, siteCredits)
+		if beginErr != nil {
+			if errors.Is(beginErr, budget.ErrRegistryCapacity) {
+				setSearchPartialReason(partialReason, searchPartialBudgetCapacity)
+				break
+			}
+			return added, fmt.Errorf("app: бюджет обхода сайта: %w", beginErr)
+		}
+		siteAdded, siteErr := u.crawlSite(crawlCtx, siteTask, res.URL, need-added, seen, leads, partialReason)
+		finishCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 20*time.Second)
+		if err := u.Budget.Finish(finishCtx, scope); err != nil {
+			u.warn("поиск под заявку: завершение budget scope сайта не подтверждено", "reason", "budget_finish_failed")
+		}
+		cancel()
 		added += siteAdded
 		if siteErr != nil {
 			return added, siteErr

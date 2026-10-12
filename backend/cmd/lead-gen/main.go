@@ -180,8 +180,11 @@ func main() {
 	leadMaxPages := flag.Int("lead-max-pages", 50, "верхний предел страниц обхода на один сайт (внутренний предохранитель; 0 — без предела)")
 	leadMaxDepth := flag.Int("lead-max-depth", 3, "максимальная глубина обхода lead-management")
 	leadMaxTimeSeconds := flag.Int("lead-max-time-seconds", 120, "предельное время обхода lead-management, с")
+	leadSearchMaxResults := flag.Int("lead-search-max-results", 0, "верхний предел кандидатов синхронного поиска под заявку; 0 — значение по умолчанию")
+	leadSearchDeadline := flag.Duration("lead-search-deadline", 0, "предельное время синхронного поиска под заявку; 0 — значение по умолчанию")
 	dialogueMaxTurns := flag.Int("dialogue-max-turns", 8, "предел числа ходов диалога ассистента (0 — значение по умолчанию)")
 	firecrawlMaxCredits := flag.Int("firecrawl-max-credits", 0, "верхний предел кредитов Firecrawl на задачу; 0 — без per-task cap (account admission остаётся обязательным)")
+	firecrawlCrawlInterval := flag.Duration("firecrawl-crawl-interval", 0, "минимальная пауза между запусками crawl; 0 — консервативное значение по умолчанию")
 	smtpHost := flag.String("smtp-host", "localhost", "адрес SMTP-сервера отправки писем")
 	smtpPort := flag.Int("smtp-port", 25, "порт SMTP-сервера отправки писем")
 	smtpUsername := flag.String("smtp-username", "", "имя учётной записи SMTP (пусто — без аутентификации)")
@@ -514,6 +517,9 @@ func main() {
 		leadMaxTimeSeconds:     *leadMaxTimeSeconds,
 		dialogueMaxTurns:       *dialogueMaxTurns,
 		firecrawlMaxCredits:    *firecrawlMaxCredits,
+		firecrawlCrawlInterval: *firecrawlCrawlInterval,
+		leadSearchMaxResults:   *leadSearchMaxResults,
+		leadSearchDeadline:     *leadSearchDeadline,
 		smtpHost:               *smtpHost,
 		smtpPort:               *smtpPort,
 		smtpUsername:           *smtpUsername,

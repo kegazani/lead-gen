@@ -31,10 +31,8 @@ COPY frontend/components/ ./frontend/components/
 
 RUN printf 'go 1.27\n\nuse (\n\t./backend/cmd/lead-gen\n\t./backend/contexts/agent-orchestration\n\t./backend/contexts/analytics\n\t./backend/contexts/audience\n\t./backend/contexts/content-production\n\t./backend/contexts/data-governance\n\t./backend/contexts/engagement-observation\n\t./backend/contexts/integration-platform\n\t./backend/contexts/lead-management\n\t./backend/contexts/message-delivery\n\t./backend/contexts/outreach-orchestration\n\t./backend/contexts/platform-governance\n\t./backend/contexts/request-fulfillment\n\t./backend/platform\n\t./contracts/agent-orchestration\n\t./contracts/analytics\n\t./contracts/audience\n\t./contracts/content-production\n\t./contracts/data-governance\n\t./contracts/engagement-observation\n\t./contracts/integration-platform\n\t./contracts/lead-management\n\t./contracts/message-delivery\n\t./contracts/outreach-orchestration\n\t./contracts/platform-governance\n\t./contracts/request-fulfillment\n\t./frontend/components\n)\n' > go.work
 
-# Внешние зависимости (github.com/jackc/pgx/v5 и транзитивные): скачиваем до сборки,
-# чтобы слой кэшировался. Требует сети.
-RUN go mod download
-
+# Go загружает только зависимости служебного бинарника; workspace содержит также
+# модули вне этого пути, поэтому полный `go mod download` тратит сеть на лишнее.
 RUN go build -ldflags="-s -w" -o /out/lead-gen ./backend/cmd/lead-gen
 RUN mkdir -p /out/release-state && chmod 0700 /out/release-state
 

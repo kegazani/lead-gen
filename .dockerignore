@@ -8,7 +8,8 @@ lead-gen
 
 # Проза и машиночитаемые артефакты планирования — служебному образу не нужны.
 docs/
-architecture/
+architecture/*
+!architecture/domain-catalog.yaml
 openspec/
 deploy/tofu/
 

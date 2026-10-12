@@ -134,9 +134,10 @@ func TestSearchLeadsForRequestCrawlsDeficit(t *testing.T) {
 	if len(searchPort.queries) != 1 || searchPort.queries[0].Text != "разработка" {
 		t.Fatalf("поиск вызван неверно: %+v", searchPort.queries)
 	}
-	// Дефицит равен единице: обходится не больше одного результата поиска.
-	if got := searchPort.queries[0].MaxResults; got != 1 {
-		t.Fatalf("MaxResults = %d, ожидалось 1", got)
+	// Дефицит равен единице: запрос берёт запас на недоступные сайты
+	// в пределах обычного maxResults=5.
+	if got := searchPort.queries[0].MaxResults; got != 5 {
+		t.Fatalf("MaxResults = %d, ожидалось 5", got)
 	}
 	if _, err := profiles.FindByID(context.Background(), domain.CompanyID("crawled.example")); err != nil {
 		t.Fatalf("новая компания не сохранена: %v", err)
@@ -151,8 +152,91 @@ func TestSearchLeadsForRequestCrawlsDeficit(t *testing.T) {
 		t.Fatalf("краул-лид = %+v", crawledLead)
 	}
 	factory := useCase.Budget.(*fakeBudgetFactory)
-	if len(factory.finished) != 1 || factory.finished[0] != factory.begins[0] {
-		t.Fatalf("Finish не вызван для task scope: begins=%v finished=%v", factory.begins, factory.finished)
+	if len(factory.begins) != 2 || factory.begins[0] == factory.begins[1] ||
+		len(factory.finished) != 2 || factory.finished[0] != factory.begins[1] || factory.finished[1] != factory.begins[0] {
+		t.Fatalf("поиск и сайт должны иметь отдельные завершённые scopes: begins=%v finished=%v", factory.begins, factory.finished)
+	}
+}
+
+func TestSearchLeadsContinuesAfterOneSiteTimesOut(t *testing.T) {
+	first := "https://slow.example"
+	second := "https://working.example"
+	searchPort := &fakeSearch{results: []search.Result{{URL: first}, {URL: second}}}
+	crawlPort := &fakeCrawl{
+		crawlErrByURL: map[string]error{first: crawl.ErrTimeout},
+		pages: map[string][]crawl.Page{second: {{
+			URL: second, Markdown: "# Working Co\n\nПрограммный продукт для компаний",
+			Metadata: map[string]string{"title": "Working Co", "description": "Программный продукт для компаний"},
+		}}},
+	}
+	factory := &fakeBudgetFactory{search: searchPort, crawl: crawlPort}
+	u := &SearchLeadsForRequest{
+		Profiles: newMemProfiles(), Contacts: newMemContacts(), Budget: factory,
+		Limits: CrawlLimits{MaxPages: 2, MaxTimeSeconds: 10}, MaxResults: 4, MaxCredits: 10,
+	}
+	result, err := u.Run(context.Background(), SearchLeadsInput{
+		RequestID: "req-site-timeout", TenantID: "tenant-1", Criteria: "программные продукты", Limit: 2,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Found != 1 || result.Leads[0].CompanyID != "working.example" || len(crawlPort.requests) != 2 {
+		t.Fatalf("сбой первого сайта остановил остальные: %+v, calls=%d", result, len(crawlPort.requests))
+	}
+	if len(factory.begins) != 3 || factory.begins[1] == factory.begins[2] {
+		t.Fatalf("сайты не получили отдельные scopes: %v", factory.begins)
+	}
+}
+
+func TestSearchLeadsSiteScopesRespectRoundCreditCap(t *testing.T) {
+	first, second := "https://one.example", "https://two.example"
+	searchPort := &fakeSearch{results: []search.Result{{URL: first}, {URL: second}}}
+	crawlPort := &fakeCrawl{pages: map[string][]crawl.Page{
+		first:  {{URL: first, Markdown: "# One Co\n\nПрограммный продукт для бизнеса", Metadata: map[string]string{"title": "One Co"}}},
+		second: {{URL: second, Markdown: "# Two Co\n\nПрограммный продукт для бизнеса", Metadata: map[string]string{"title": "Two Co"}}},
+	}}
+	factory := &fakeBudgetFactory{search: searchPort, crawl: crawlPort}
+	u := &SearchLeadsForRequest{
+		Profiles: newMemProfiles(), Contacts: newMemContacts(), Budget: factory,
+		Limits: CrawlLimits{MaxPages: 2, MaxTimeSeconds: 10}, MaxResults: 4, MaxCredits: 4,
+	}
+	result, err := u.Run(context.Background(), SearchLeadsInput{RequestID: "req-cap", TenantID: "tenant-1", Criteria: "программные продукты", Limit: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Поиск резервирует 2 кредита, поэтому из cap=4 помещается один обход
+	// по 2 страницы. Второй сайт не должен получить собственный бюджет.
+	if result.Found != 1 || len(crawlPort.requests) != 1 || len(factory.begins) != 2 || result.PartialReason != searchPartialBudgetCapacity {
+		t.Fatalf("общий cap раунда не соблюдён: result=%+v crawls=%d scopes=%v", result, len(crawlPort.requests), factory.begins)
+	}
+}
+
+func TestSearchLeadsRequestsEnoughCandidatesForTwentyFive(t *testing.T) {
+	searchPort := &fakeSearch{}
+	useCase := &SearchLeadsForRequest{
+		Profiles: newMemProfiles(), Contacts: newMemContacts(),
+		Budget:     &fakeBudgetFactory{search: searchPort, crawl: &fakeCrawl{}},
+		MaxResults: 50,
+	}
+	result, err := useCase.Run(context.Background(), SearchLeadsInput{
+		RequestID: "req-25", TenantID: "tenant-1", Criteria: "компании SaaS", Limit: 25,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(searchPort.queries) != 1 || searchPort.queries[0].MaxResults != 50 {
+		t.Fatalf("поиск на 25 лидов ограничен: %+v", searchPort.queries)
+	}
+	if result.Found != 0 {
+		t.Fatalf("без сайтов нельзя выдумывать лидов: %+v", result)
+	}
+	if _, err := useCase.Run(context.Background(), SearchLeadsInput{
+		RequestID: "req-last", TenantID: "tenant-1", Criteria: "компании SaaS", Limit: 1,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(searchPort.queries) != 2 || searchPort.queries[1].MaxResults != 10 {
+		t.Fatalf("для последнего лида нужен запас сайтов: %+v", searchPort.queries)
 	}
 }
 
@@ -229,6 +313,13 @@ func TestSearchLeadsForRequestUsesStableTenantScopedBudgetAndConfiguredCap(t *te
 		}
 		if len(factory.finished) != 2 || factory.finished[0] != factory.begins[0] || factory.finished[1] != factory.begins[1] {
 			t.Fatalf("Finish не вызван для обоих terminal путей: begins=%v finished=%v", factory.begins, factory.finished)
+		}
+		input.Criteria = "производители"
+		if _, err := useCase.Run(context.Background(), input); err != nil {
+			t.Fatalf("следующий тематический раунд (%s): %v", tenant, err)
+		}
+		if len(factory.begins) != 3 || factory.begins[2] == factory.begins[0] {
+			t.Fatalf("следующий раунд не получил отдельный scope: %v", factory.begins)
 		}
 		if factory.lastTask.maxCredits != 0 {
 			t.Fatalf("в фабрику передан cap=%d, ожидалось настроенное значение 0", factory.lastTask.maxCredits)

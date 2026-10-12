@@ -455,6 +455,14 @@ rollback window; автоматической очистки нет, retirement 
 `POSTGRES_PASSWORD` и `FIRECRAWL_API_KEY` (без ключа `lead-management` не собран);
 `LLM_API_KEY` нужен для писем и планирования.
 
+Для демо-заявки на 25 лидов Compose передаёт группе `demand` проверенные
+пределы Firecrawl: 50 кандидатов, 8 минут на раунд поиска, 2 страницы и 15 секунд
+на сайт, до 150 кредитов на раунд и паузу 5 секунд между запусками crawl.
+Параметры переопределяются через `FIRECRAWL_MAX_CREDITS`,
+`FIRECRAWL_CRAWL_INTERVAL`, `LEAD_MAX_PAGES`, `LEAD_MAX_TIME_SECONDS`,
+`LEAD_SEARCH_MAX_RESULTS` и `LEAD_SEARCH_DEADLINE` в `.env`. Число лидов
+зависит от доступности сайтов; итог заявки показывает фактический недобор.
+
 **Эмбеддинги (семантический recall/RAG).** Провайдер эмбеддингов отделён от
 чат-LLM (change `embedding-config-separation`). По умолчанию контур поднимает
 self-hosted сервис **`embeddings`** (Ollama, OpenAI-совместимый

@@ -58,6 +58,20 @@ x-app-command: &app-command
   - ${FIRECRAWL_API_KEY:?задайте FIRECRAWL_API_KEY в .env}
   - -firecrawl-url
   - ${FIRECRAWL_BASE_URL:-}
+  # Проверенный режим синхронного поиска для демо-заявки на 25 лидов.
+  # Все значения можно изменить в .env под лимиты своего аккаунта Firecrawl.
+  - -firecrawl-max-credits
+  - ${FIRECRAWL_MAX_CREDITS:-150}
+  - -firecrawl-crawl-interval
+  - ${FIRECRAWL_CRAWL_INTERVAL:-5s}
+  - -lead-max-pages
+  - ${LEAD_MAX_PAGES:-2}
+  - -lead-max-time-seconds
+  - ${LEAD_MAX_TIME_SECONDS:-15}
+  - -lead-search-max-results
+  - ${LEAD_SEARCH_MAX_RESULTS:-50}
+  - -lead-search-deadline
+  - ${LEAD_SEARCH_DEADLINE:-8m}
   - -llm-base-url
   - ${LLM_BASE_URL:-}
   - -llm-model

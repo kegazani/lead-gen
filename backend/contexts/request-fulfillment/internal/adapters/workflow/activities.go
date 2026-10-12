@@ -112,7 +112,7 @@ func (s ContractSearch) Search(ctx context.Context, in SearchInput) (SearchOutco
 	result, err := s.Contract.Search(ctx, leadsearch.Query{
 		RequestID: in.RequestID,
 		TenantID:  in.TenantID,
-		Criteria:  criteriaFromOffer(request.Offer()),
+		Criteria:  criteriaForRound(request.Offer(), in.Round),
 		Limit:     in.Target,
 	})
 	if err != nil {
@@ -121,17 +121,30 @@ func (s ContractSearch) Search(ctx context.Context, in SearchInput) (SearchOutco
 	return SearchOutcome{Found: result.Found, Leads: result.Leads, PartialReason: result.PartialReason}, nil
 }
 
-// criteriaFromOffer собирает критерий поиска из оффера заявки: текст оффера и,
-// если задана, цель. Целевое число лидов контракт несёт отдельным полем Limit.
+// criteriaFromOffer берёт описание желаемых лидов; оффер нужен письму, но его
+// услуги в поиске приводят к агентствам-конкурентам вместо клиентов.
 func criteriaFromOffer(offer *domain.Offer) string {
 	if offer == nil {
 		return ""
 	}
-	criteria := strings.TrimSpace(offer.Content().Text())
 	if goal := strings.TrimSpace(offer.Target().Description()); goal != "" {
-		criteria = criteria + "\n" + goal
+		return goal
 	}
-	return criteria
+	return strings.TrimSpace(offer.Content().Text())
+}
+
+// criteriaForRound уточняет существующий тематический поиск при доборе. Разные
+// строки дают отдельные budget scopes у владельца и не повторяют топ первого раунда.
+func criteriaForRound(offer *domain.Offer, round int) string {
+	criteria := criteriaFromOffer(offer)
+	switch round {
+	case 1:
+		return criteria + " official company websites"
+	case 2:
+		return criteria + " companies official websites -reddit -linkedin -facebook -youtube"
+	default:
+		return criteria
+	}
 }
 
 // Activities — тонкие адаптеры к application services контекста. Доменной

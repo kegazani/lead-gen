@@ -240,17 +240,20 @@ type buildOptions struct {
 	consolePlatformBase string // префикс консоли platform-governance
 	// consolePrefixes — все префиксы контуров консолей (для исключения из
 	// переписывания ссылок на другие сервисы в пределах единого origin).
-	consolePrefixes     []string
-	leadMaxPages        int    // верхний предел страниц обхода на сайт; 0 — без предела
-	leadMaxDepth        int    // максимальная глубина обхода
-	leadMaxTimeSeconds  int    // предельное время обхода, с
-	dialogueMaxTurns    int    // предел числа ходов диалога ассистента
-	firecrawlMaxCredits int    // per-task cap Firecrawl; 0 — cap не задан
-	smtpHost            string // адрес SMTP-сервера отправки писем
-	smtpPort            int    // порт SMTP-сервера
-	smtpUsername        string // имя учётной записи SMTP
-	smtpPassword        string // пароль учётной записи SMTP
-	smtpFrom            string // адрес отправителя писем
+	consolePrefixes        []string
+	leadMaxPages           int           // верхний предел страниц обхода на сайт; 0 — без предела
+	leadMaxDepth           int           // максимальная глубина обхода
+	leadMaxTimeSeconds     int           // предельное время обхода, с
+	dialogueMaxTurns       int           // предел числа ходов диалога ассистента
+	firecrawlMaxCredits    int           // per-task cap Firecrawl; 0 — cap не задан
+	firecrawlCrawlInterval time.Duration // пауза между запусками Firecrawl crawl
+	leadSearchMaxResults   int           // верхний предел кандидатов поиска под заявку
+	leadSearchDeadline     time.Duration // предельное время поиска под заявку
+	smtpHost               string        // адрес SMTP-сервера отправки писем
+	smtpPort               int           // порт SMTP-сервера
+	smtpUsername           string        // имя учётной записи SMTP
+	smtpPassword           string        // пароль учётной записи SMTP
+	smtpFrom               string        // адрес отправителя писем
 
 	// Параметры повторных окон доставки message-delivery.
 	deliveryRetryInterval time.Duration // интервал тика повторных окон
@@ -1586,9 +1589,10 @@ func buildLeadManagement(opts buildOptions, tracer observ.Tracer, broker amqp.Pu
 	// расхода. Задание без явного бюджета (maxCredits == 0) обрабатывается самой
 	// обёрткой как безлимитное: лимит не применяется, расход фиксируется.
 	guard, err := integrationplatform.NewFirecrawlGuard(integrationplatform.FirecrawlGuardConfig{
-		APIKey:  opts.firecrawlKey,
-		BaseURL: opts.firecrawlURL,
-		Logger:  opts.logger,
+		APIKey:        opts.firecrawlKey,
+		BaseURL:       opts.firecrawlURL,
+		Logger:        opts.logger,
+		CrawlInterval: opts.firecrawlCrawlInterval,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("lead-management: Firecrawl guard: %w", err)
@@ -1705,6 +1709,8 @@ func buildLeadManagement(opts buildOptions, tracer observ.Tracer, broker amqp.Pu
 		Crawl:                   firecrawlClient,
 		Budget:                  firecrawlBudget,
 		FirecrawlMaxCredits:     opts.firecrawlMaxCredits,
+		LeadSearchMaxResults:    opts.leadSearchMaxResults,
+		LeadSearchDeadline:      opts.leadSearchDeadline,
 		Account:                 firecrawlAccount,
 		LLM:                     llmPort,
 		Vector:                  vectorPort,

@@ -150,11 +150,29 @@ func TestSearchLeadsCallsContractWithOfferCriteria(t *testing.T) {
 	if port.query.Limit != 5 {
 		t.Fatalf("лимит = %d, ожидался 5", port.query.Limit)
 	}
-	if !strings.Contains(port.query.Criteria, "предлагаем X") {
-		t.Fatalf("критерий = %q, ожидался текст оффера", port.query.Criteria)
+	if port.query.Criteria != "крупные производители" {
+		t.Fatalf("критерий = %q, ожидалось только описание желаемых лидов", port.query.Criteria)
 	}
-	if !strings.Contains(port.query.Criteria, "крупные производители") {
-		t.Fatalf("критерий = %q, ожидалась цель заявки", port.query.Criteria)
+}
+
+func TestSearchLeadsVariesCriteriaByRound(t *testing.T) {
+	activities, repo := newValidatedRequest(t)
+	port := &stubSearch{}
+	activities.Search = ContractSearch{Requests: repo, Contract: port}
+	seen := map[string]bool{}
+	for round := 0; round < maxTopUpRounds; round++ {
+		if _, err := activities.SearchLeads(context.Background(), searchInput{
+			RequestID: "req-1", TenantID: "tenant-1", Target: 25, Round: round,
+		}); err != nil {
+			t.Fatalf("раунд %d: %v", round, err)
+		}
+		if seen[port.query.Criteria] {
+			t.Fatalf("раунд %d повторил критерий %q", round, port.query.Criteria)
+		}
+		seen[port.query.Criteria] = true
+		if port.query.Limit != 25 || !strings.Contains(port.query.Criteria, "крупные производители") {
+			t.Fatalf("раунд %d потерял цель или аудиторию: %+v", round, port.query)
+		}
 	}
 }
 
