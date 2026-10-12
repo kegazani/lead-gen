@@ -119,11 +119,12 @@ func TestIsValidSemver(t *testing.T) {
 	}
 }
 
-// Ключ идемпотентности — (tenant_id, draft_id, draft_version); повторная
-// доставка того же действия даёт тот же ключ, новая версия — другой.
+// Ключ идемпотентности — (tenant_id, campaign_id, draft_id, draft_version);
+// повторная доставка того же действия даёт тот же ключ, новая версия или другая
+// кампания — другой.
 func TestApprovedAction_IdempotencyKey(t *testing.T) {
 	a := validApprovedAction()
-	if got, want := a.IdempotencyKey(), "tenant-1|draft-1|3"; got != want {
+	if got, want := a.IdempotencyKey(), "tenant-1|camp-1|draft-1|3"; got != want {
 		t.Fatalf("ключ идемпотентности: got %q, want %q", got, want)
 	}
 	b := a
@@ -134,6 +135,37 @@ func TestApprovedAction_IdempotencyKey(t *testing.T) {
 	b.DraftVersion = 4
 	if b.IdempotencyKey() == a.IdempotencyKey() {
 		t.Fatal("новая версия черновика должна менять ключ идемпотентности")
+	}
+	otherCampaign := a
+	otherCampaign.CampaignID = "camp-2"
+	if otherCampaign.IdempotencyKey() == a.IdempotencyKey() {
+		t.Fatal("действие другой кампании должно менять ключ идемпотентности")
+	}
+}
+
+// Идентификатор утверждённого действия уникален в рамках кампании: тот же
+// получатель-черновик в разных кампаниях даёт разные идентификаторы, а повтор
+// одного действия — тот же.
+func TestApprovedActionIdentityScopedToCampaign(t *testing.T) {
+	first := ApprovedActionIdentity("camp-1", "info@norbit.ru", 1)
+	second := ApprovedActionIdentity("camp-2", "info@norbit.ru", 1)
+	if first == second {
+		t.Fatalf("идентификаторы разных кампаний совпали: %q", first)
+	}
+	if repeat := ApprovedActionIdentity("camp-1", "info@norbit.ru", 1); repeat != first {
+		t.Fatalf("повтор действия дал другой идентификатор: %q != %q", repeat, first)
+	}
+	if next := ApprovedActionIdentity("camp-1", "info@norbit.ru", 2); next == first {
+		t.Fatal("новая версия должна давать другой идентификатор")
+	}
+}
+
+// Разделители внутри компонентов не допускают коллизий идентификатора.
+func TestApprovedActionIdentityDoesNotCollideOnSeparator(t *testing.T) {
+	a := ApprovedActionIdentity("a:b", "c", 1)
+	b := ApprovedActionIdentity("a", "b:c", 1)
+	if a == b {
+		t.Fatalf("идентификаторы совпали: %q", a)
 	}
 }
 

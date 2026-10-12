@@ -10,6 +10,7 @@ import (
 	"lead-gen/backend/contexts/lead-management/internal/domain"
 	"lead-gen/backend/contexts/lead-management/internal/ports"
 	"lead-gen/contracts/integration-platform/llm"
+	"lead-gen/contracts/lead-management/emailgeneration"
 )
 
 // ErrInvalidEmailRequest — запрос генерации письма некорректен: пустой оффер,
@@ -35,14 +36,19 @@ type DraftEmailInput struct {
 	// Language — язык письма; пусто — русский.
 	Language string
 	// Tone — желаемый тон письма; пусто — значение по умолчанию промпта.
-	Tone string
+	Tone          string
+	SenderCompany *emailgeneration.SenderCompany
 }
 
-// EmailDraft — сгенерированное письмо прикладного слоя: тема, тело и язык.
+// EmailDraft — сгенерированное письмо прикладного слоя: тема, тело, язык и
+// непрозрачная ссылка на получателя.
 type EmailDraft struct {
 	Subject  string
 	Body     string
 	Language string
+	// RecipientRef — непрозрачная ссылка на получателя: идентификатор контакта
+	// лида с пригодным адресом, а не сам адрес. Пуста, если такого контакта нет.
+	RecipientRef string
 }
 
 // DraftEmailForLead — use case генерации персонализированного письма под лида и
@@ -74,6 +80,10 @@ func (u *DraftEmailForLead) Run(ctx context.Context, in DraftEmailInput) (EmailD
 		return EmailDraft{}, fmt.Errorf("%w: репозиторий карточек не подключён", ErrEmailGenerationUnavailable)
 	}
 
+	// Лид принадлежит тенанту-владельцу пула: область хранения идёт из входа до
+	// адаптеров (порт читает её из контекста).
+	ctx = ports.WithTenant(ctx, in.TenantID)
+
 	company, contact, err := u.leadContext(ctx, leadID)
 	if err != nil {
 		return EmailDraft{}, err
@@ -91,7 +101,20 @@ func (u *DraftEmailForLead) Run(ctx context.Context, in DraftEmailInput) (EmailD
 	if strings.TrimSpace(body) == "" {
 		return EmailDraft{}, fmt.Errorf("%w: LLM не вернул тело письма", ErrEmailGenerationUnavailable)
 	}
-	return EmailDraft{Subject: subject, Body: body, Language: strings.TrimSpace(in.Language)}, nil
+
+	// Получателя прикладывает владелец контактов: непрозрачная ссылка — это
+	// идентификатор найденного контакта с пригодным адресом. Без такого контакта
+	// ссылка честно пуста; адрес в контракт не попадает.
+	recipientRef := ""
+	if contact != nil {
+		recipientRef = contact.ID().String()
+	}
+	return EmailDraft{
+		Subject:      subject,
+		Body:         body,
+		Language:     strings.TrimSpace(in.Language),
+		RecipientRef: recipientRef,
+	}, nil
 }
 
 // leadContext загружает карточку лида и первый контакт с email (для роли).
@@ -136,6 +159,30 @@ func buildEmailPrompt(in DraftEmailInput, company *domain.Company, contact *doma
 		b.WriteString("Домен: " + company.ID().String() + "\n")
 		if desc := strings.TrimSpace(company.Description().Value); desc != "" {
 			b.WriteString("Описание: " + desc + "\n")
+		}
+	}
+	if in.SenderCompany != nil {
+		b.WriteString("\nКомпания-отправитель (контекст предложения):\n")
+		if value := strings.TrimSpace(in.SenderCompany.CompanyName); value != "" {
+			b.WriteString("Название: " + value + "\n")
+		}
+		if value := strings.TrimSpace(in.SenderCompany.Website); value != "" {
+			b.WriteString("Сайт: " + value + "\n")
+		}
+		if value := strings.TrimSpace(in.SenderCompany.Description); value != "" {
+			b.WriteString("Описание: " + value + "\n")
+		}
+		for _, service := range in.SenderCompany.Services {
+			if service.Name == "" && service.Short == "" && service.Full == "" {
+				continue
+			}
+			b.WriteString("Услуга: " + strings.TrimSpace(service.Name) + "\n")
+			if value := strings.TrimSpace(service.Short); value != "" {
+				b.WriteString("Кратко: " + value + "\n")
+			}
+			if value := strings.TrimSpace(service.Full); value != "" {
+				b.WriteString("Подробно: " + value + "\n")
+			}
 		}
 	}
 	if contact != nil {

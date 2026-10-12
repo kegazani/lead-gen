@@ -11,16 +11,25 @@ import (
 	outboxinmemory "lead-gen/backend/contexts/outreach-orchestration/internal/adapters/outbox/inmemory"
 	"lead-gen/backend/contexts/outreach-orchestration/internal/adapters/outbox/relay"
 	persistence "lead-gen/backend/contexts/outreach-orchestration/internal/adapters/persistence/inmemory"
+	"lead-gen/backend/contexts/outreach-orchestration/internal/adapters/riskfacts"
 	"lead-gen/backend/contexts/outreach-orchestration/internal/app/batchlimits"
 	"lead-gen/backend/contexts/outreach-orchestration/internal/app/command"
+	appeditorial "lead-gen/backend/contexts/outreach-orchestration/internal/app/editorialreview"
 	publicationapp "lead-gen/backend/contexts/outreach-orchestration/internal/app/publication"
 	"lead-gen/backend/contexts/outreach-orchestration/internal/app/query"
 	"lead-gen/backend/contexts/outreach-orchestration/internal/app/scheduling"
 	"lead-gen/backend/contexts/outreach-orchestration/internal/domain"
 	"lead-gen/backend/contexts/outreach-orchestration/internal/ports"
 	"lead-gen/backend/contexts/outreach-orchestration/internal/ports/contracts"
+	"lead-gen/backend/platform/composition"
 	"lead-gen/backend/platform/consoleauth"
+	"lead-gen/backend/platform/readiness"
+	"lead-gen/contracts/content-production/contentversion"
+	"lead-gen/contracts/data-governance/suppressionpolicy"
+	"lead-gen/contracts/lead-management/addressverification"
+	"lead-gen/contracts/lead-management/deliverytarget"
 	"lead-gen/contracts/outreach-orchestration/approvedaction"
+	"lead-gen/contracts/platform-governance/accessdecision"
 	"lead-gen/frontend/components"
 )
 
@@ -67,22 +76,40 @@ func (f SinkFunc) Publish(ctx context.Context, action contracts.ApprovedAction) 
 	return f(ctx, action)
 }
 
-// NoUpstreamRiskChecks — предикат-заглушка ТЕКУЩЕГО состояния: он ВСЕГДА
-// возвращает «рисков нет» и потому НЕ выполняет никаких проверок риска.
+// RiskFacts — внешний предикат признаков риска черновика (псевдоним доменного
+// типа). Введён, чтобы точка входа (cmd/lead-gen) задавала поле без импорта
+// внутренних пакетов контекста.
+type RiskFacts = domain.CanBeDecidedInPackage
+
+// RiskFactsPorts — владельческие порты, из которых сборщик берёт факты риска
+// черновика. Каждый порт — опубликованный контракт владельца: адрес получателя
+// (`delivery-target`, lead-management), стоп-лист (`suppression-policy`,
+// data-governance) и статус верификации адреса (`address-verification`,
+// lead-management).
 //
-// Это не политика и не решение, а явно названная дыра в сборке: реальные
-// признаки риска должны приходить от data-governance (processing-authority,
-// правило остановки) и lead-management (свежесть верификации адреса), но эти
-// интеграции ещё НЕ подключены. До их появления все черновики считаются не
-// отмеченными риском.
+// Незаданный порт не подменяется успехом: сборщик честно отказывает при
+// обращении, поэтому пакетное утверждение становится недоступным, а не идёт «без
+// проверки» (AGENTS.md §3).
+type RiskFactsPorts struct {
+	// Recipients — разрешение непрозрачной ссылки получателя в адрес владельца
+	// lead-management (контракт delivery-target).
+	Recipients deliverytarget.Resolver
+	// Suppression — проверка стоп-листа у владельца data-governance (контракт
+	// suppression-policy).
+	Suppression suppressionpolicy.Port
+	// Verification — статус верификации адреса получателя у владельца
+	// lead-management (контракт address-verification).
+	Verification addressverification.Port
+}
+
+// NewRiskFacts собирает внешний предикат признаков риска пакетного пути поверх
+// портов владельцев. Сборщик живёт вне домена: он разрешает адрес получателя,
+// проверяет стоп-лист и статус верификации и передаёт домену только признаки.
 //
-// Заглушка экспортирована и названа отрицанием («никаких проверок upstream»),
-// чтобы при аудите её было видно и нельзя было принять за настоящую политику.
-// Замена этого предиката на реальный — обязательное условие ввода пакетного
-// утверждения в эксплуатацию. Значение передаётся в Params.Risk явно: Build
-// отвергает nil, поэтому случайно вернуться к молчаливому «рисков нет» нельзя.
-var NoUpstreamRiskChecks domain.CanBeDecidedInPackage = func(domain.DraftID, int) []domain.RiskReason {
-	return nil
+// Незаданные порты честно недоступны: предикат возвращает ошибку, а не «рисков
+// нет». Значение передаётся в Params.Risk — предикат риска обязателен и явен.
+func NewRiskFacts(ports RiskFactsPorts) RiskFacts {
+	return riskfacts.New(ports.Recipients, ports.Suppression, ports.Verification).RiskReasons
 }
 
 // Params — параметры сборки среза. Хранилище задаётся через Persistence:
@@ -93,14 +120,24 @@ type Params struct {
 	// Clock — источник времени. nil → SystemClock.
 	Clock ports.Clock
 
-	// Grants — права доступа среза. По умолчанию доступ закрыт.
+	// Grants — права доступа dev/test-двойника. По умолчанию доступ закрыт.
+	// Используются только когда не задан Access (dev-сборка без владельца).
 	Grants []Grant
+
+	// Access — решение о доступе из контракта access-decision владельца
+	// platform-governance. Продуктовый путь задаёт его явно: точка сборки
+	// подключает решение владельца (реальный или честно недоступный). nil —
+	// dev-сборка на правах Grants (тесты/dev); молчаливое «разрешено» не ставится.
+	Access accessdecision.Decider
 
 	// Persistence — адаптеры хранилища среза. Нулевое значение означает
 	// in-memory-сборку (тесты и dev); заполненное — PostgreSQL-адаптеры,
 	// полученные из NewPostgresPersistence. Частично заданная конфигурация
 	// отвергается: собрать половину на in-memory, половину на PostgreSQL нельзя.
 	Persistence Persistence
+	// ContentVersions — точный read source владельца content-production; не
+	// извлекается из campaign latest и не зависит от risk screening.
+	ContentVersions contentversion.Source
 
 	// Sink — назначение публикации approved-action. nil означает, что relay не
 	// собирается: процесс не публикует контракт (например, api).
@@ -131,15 +168,21 @@ type Params struct {
 	// а не транспортному Sink (см. ApprovedActionSink).
 	ApprovedActionConsumer approvedaction.Publisher
 
+	// ApprovedActionCanceller — владелец доставки, которому после commit owner
+	// tombstone синхронно передаётся campaign cancellation fence. Отсутствие
+	// допустимо только для dev/test локального fence; production wiring остаётся
+	// blocker, пока реальный Canceller не подключён composition root.
+	ApprovedActionCanceller approvedaction.Canceller
+
 	// Risk — внешний предикат признаков риска пакетного пути. ОБЯЗАТЕЛЕН:
 	// Build возвращает ошибку, если предикат не задан. Тихий nil-дефолт «рисков
-	// нет» недопустим — домен трактует nil как отсутствие рисков, поэтому
+	// нет» недопустим — домен при nil трактует факты как недоступные, поэтому
 	// незаданный предикат молча отключил бы исключение рисковых черновиков.
 	//
 	// Значение инъецируется вызывающим: composition не вычисляет признаки сам
 	// и не выводит политику. Один и тот же предикат получают все пакетные
-	// сценарии, чтобы решение отвергало то, что исключил состав. Когда реальных
-	// проверок ещё нет, вызывающий осознанно передаёт NoUpstreamRiskChecks.
+	// сценарии, чтобы решение отвергало то, что исключил состав. Реальный
+	// предикат собирает NewRiskFacts поверх портов владельцев.
 	Risk domain.CanBeDecidedInPackage
 
 	// SequenceLimits — ограничения участия лида в цепочках (предел касаний за
@@ -155,6 +198,14 @@ type Params struct {
 	// Console — базовые адреса сервисов консоли для общей навигации по разделам.
 	// Пустая карта даёт относительные пути.
 	Console components.ConsoleBases
+
+	// BasePath — внешний префикс пути консоли под единым origin (admin-proxy).
+	// Пусто — корень origin.
+	BasePath string
+
+	// ExternalPrefixes — префиксы других консолей единого origin: ссылки на них
+	// в навигации не переписываются под собственный префикс.
+	ExternalPrefixes []string
 }
 
 // Slice — собранный контекст среза: порты, use cases, HTTP-обработчики и
@@ -168,7 +219,7 @@ type Slice struct {
 	// UnitOfWork — транзакция записи агрегата и его событий (in-memory или
 	// PostgreSQL).
 	UnitOfWork  ports.UnitOfWork
-	Access      *access.Decider
+	Access      ports.AccessDecision
 	Idempotency *idempotency.Store
 
 	// Relay не равен nil только если при сборке задан Sink.
@@ -202,6 +253,24 @@ type Slice struct {
 	SequenceHistory *query.SequenceHistoryHandler
 	SequenceState   *query.SequenceStateHandler
 
+	// Handoff — приём передачи писем заявки из request-fulfillment (capability
+	// outreach-handoff): создаёт кампанию заявки с черновиками в очереди
+	// утверждения.
+	Handoff         *command.SubmitHandoffHandler
+	EditorialReview *appeditorial.Service
+
+	// SubmitApproval — подача черновика агента в очередь утверждения (контракт
+	// campaign-command, capability company-agent-orchestration): создаёт кампанию
+	// подачи с черновиком в очереди утверждения.
+	SubmitApproval *command.SubmitForApprovalHandler
+
+	// CancelRequest — owner command для durable tombstone отмены заявки.
+	CancelRequest *command.CancelRequestHandler
+
+	// ApprovedAction — чтение утверждённого действия по черновику для шага
+	// отправки (read-контракт draftdecision).
+	ApprovedAction *query.ApprovedActionHandler
+
 	// SequenceEngine — движок последовательностей, который запускает роль
 	// chains: он формирует черновики шагов и продвигает цепочки.
 	SequenceEngine *scheduling.Engine
@@ -224,6 +293,8 @@ type Slice struct {
 	// задан внешний потребитель (Params.ApprovedActionConsumer): тогда встроенной
 	// реализации владельца на пути нет.
 	Publication *publicationapp.Service
+	// Readiness — оценка владельческих зависимостей ролей.
+	Readiness *ReadinessReport
 }
 
 // Build собирает контекст среза из переданного хранилища (in-memory по
@@ -231,13 +302,13 @@ type Slice struct {
 // зависимостей.
 func Build(params Params) (*Slice, error) {
 	// Предикат риска обязателен: nil здесь означал бы молчаливое отключение
-	// исключения рисковых черновиков (домен трактует nil как «рисков нет»).
-	// Ошибка сборки заставляет вызывающий выбрать предикат явно — реальный или
-	// осознанную заглушку NoUpstreamRiskChecks.
+	// исключения рисковых черновиков (домен при nil трактует факты как
+	// недоступные). Ошибка сборки заставляет вызывающий собрать предикат явно —
+	// NewRiskFacts поверх портов владельцев.
 	if params.Risk == nil {
 		return nil, fmt.Errorf(
 			"сборка: не задан предикат признаков риска (Params.Risk): " +
-				"укажите реальный предикат или осознанную заглушку NoUpstreamRiskChecks",
+				"соберите его через NewRiskFacts поверх портов владельцев",
 		)
 	}
 
@@ -272,12 +343,33 @@ func Build(params Params) (*Slice, error) {
 		journal = memoryJournal
 		unitOfWork = outboxinmemory.NewUnitOfWorkWith(memoryRepository, memoryJournal)
 	}
-
-	decider := access.NewDecider()
-	for _, grant := range params.Grants {
-		if err := decider.Grant(grant.Actor, grant.Tenant); err != nil {
-			return nil, fmt.Errorf("сборка: выдача права доступа: %w", err)
+	var editorialStore appeditorial.Store = params.Persistence.Editorial
+	if editorialStore == nil {
+		if params.Persistence.configured() {
+			return nil, fmt.Errorf("сборка: persistence editorial review не подключён")
 		}
+		editorialStore = persistence.NewEditorialStore()
+	}
+	editorialReview := appeditorial.New(editorialStore, params.ContentVersions, clock.Now)
+
+	// Решение о доступе: при заданном Access — тонкий перевод к контракту
+	// владельца (продуктовый путь); иначе dev/test-двойник на правах Grants.
+	// Сборка не выдумывает стартовую политику и не выдаёт двойник за авторизацию.
+	var accessDecision ports.AccessDecision
+	if params.Access != nil {
+		contract, err := access.NewContract(params.Access)
+		if err != nil {
+			return nil, fmt.Errorf("сборка: решение о доступе: %w", err)
+		}
+		accessDecision = contract
+	} else {
+		dev := access.NewDecider()
+		for _, grant := range params.Grants {
+			if err := dev.Grant(grant.Actor, grant.Tenant); err != nil {
+				return nil, fmt.Errorf("сборка: выдача права доступа: %w", err)
+			}
+		}
+		accessDecision = dev
 	}
 
 	// Назначение релиза approved-action. Приоритет: явный Sink, затем
@@ -311,31 +403,31 @@ func Build(params Params) (*Slice, error) {
 		return nil, fmt.Errorf("сборка: лимиты пакета: %w", err)
 	}
 
-	createCampaign := command.NewCreateCampaignHandler(decider, unitOfWork)
-	draftAction := command.NewDraftActionHandler(decider, clock, unitOfWork)
-	approveDraft := command.NewApproveDraftHandler(decider, clock, unitOfWork)
-	rejectDraft := command.NewRejectDraftHandler(decider, clock, unitOfWork)
-	reviseDraft := command.NewReviseDraftHandler(decider, clock, unitOfWork)
-	expireApproval := command.NewExpireApprovalHandler(decider, clock, unitOfWork)
-	approvalQueue := query.NewApprovalQueueHandler(repository, decider)
-	draftDecision := query.NewDraftDecisionHandler(repository, decider)
+	createCampaign := command.NewCreateCampaignHandler(accessDecision, unitOfWork)
+	draftAction := command.NewDraftActionHandler(accessDecision, clock, unitOfWork)
+	approveDraft := command.NewApproveDraftHandler(accessDecision, clock, unitOfWork)
+	rejectDraft := command.NewRejectDraftHandler(accessDecision, clock, unitOfWork)
+	reviseDraft := command.NewReviseDraftHandler(accessDecision, clock, unitOfWork)
+	expireApproval := command.NewExpireApprovalHandler(accessDecision, clock, unitOfWork)
+	approvalQueue := query.NewApprovalQueueHandler(repository, accessDecision)
+	draftDecision := query.NewDraftDecisionHandler(repository, accessDecision)
 
 	// Пакетный путь того же среза: формирование состава окном черновиков,
 	// пакетное утверждение и пакетная проекция очереди. Все три получают один
 	// инъецированный предикат риска; утверждение идёт через тот же UnitOfWork,
 	// поэтому action-approved попадают в outbox в одной транзакции с агрегатом.
-	buildBatch := command.NewBuildBatchHandler(repository, decider, params.Risk)
-	approveBatch := command.NewApproveBatchHandler(decider, clock, unitOfWork, params.Risk)
-	batchQueue := query.NewBatchQueueHandler(repository, params.Risk, decider)
+	buildBatch := command.NewBuildBatchHandler(repository, accessDecision, params.Risk)
+	approveBatch := command.NewApproveBatchHandler(accessDecision, clock, unitOfWork, params.Risk)
+	batchQueue := query.NewBatchQueueHandler(repository, params.Risk, accessDecision)
 
 	// Консоль очереди утверждения рассылок (web-frontend-architecture, срез 4):
 	// чтение очереди с проверками риска, срез зависших и отложение решения.
 	// Читающие запросы используют тот же репозиторий и как перечислитель
 	// кампаний, и тот же предикат риска, что пакетный путь, поэтому решение
 	// отвергает то, что исключил состав.
-	postponeDraft := command.NewPostponeDraftHandler(decider, unitOfWork)
-	draftQueue := query.NewDraftQueueHandler(repository, repository, params.Risk, decider)
-	stalledDrafts := query.NewStalledDraftsHandler(repository, repository, decider)
+	postponeDraft := command.NewPostponeDraftHandler(accessDecision, unitOfWork)
+	draftQueue := query.NewDraftQueueHandler(repository, repository, params.Risk, accessDecision)
+	stalledDrafts := query.NewStalledDraftsHandler(repository, repository, accessDecision)
 
 	// Ограничения участия — конфигурация сборки. Нулевое значение означает
 	// ограничения по умолчанию; частично заданная конфигурация — ошибка сборки.
@@ -349,13 +441,13 @@ func Build(params Params) (*Slice, error) {
 
 	// Движок последовательностей и его сценарии. Движок читает кампании через
 	// репозиторий-листер и пишет изменения в той же транзакции, что и события.
-	defineSequence := command.NewDefineSequenceHandler(decider, unitOfWork)
-	enrollLead := command.NewEnrollLeadHandler(decider, clock, unitOfWork, sequenceLimits)
-	removeLead := command.NewRemoveLeadHandler(decider, clock, unitOfWork)
-	recordOutcome := command.NewRecordOutcomeHandler(decider, clock, unitOfWork)
-	resumeExecution := command.NewResumeExecutionHandler(decider, clock, unitOfWork)
-	sequenceHistory := query.NewSequenceHistoryHandler(repository, decider)
-	sequenceState := query.NewSequenceStateHandler(repository, decider)
+	defineSequence := command.NewDefineSequenceHandler(accessDecision, unitOfWork)
+	enrollLead := command.NewEnrollLeadHandler(accessDecision, clock, unitOfWork, sequenceLimits)
+	removeLead := command.NewRemoveLeadHandler(accessDecision, clock, unitOfWork)
+	recordOutcome := command.NewRecordOutcomeHandler(accessDecision, clock, unitOfWork)
+	resumeExecution := command.NewResumeExecutionHandler(accessDecision, clock, unitOfWork)
+	sequenceHistory := query.NewSequenceHistoryHandler(repository, accessDecision)
+	sequenceState := query.NewSequenceStateHandler(repository, accessDecision)
 	sequenceEngine, err := scheduling.NewEngine(repository, unitOfWork, clock, sequenceLimits)
 	if err != nil {
 		return nil, fmt.Errorf("сборка: движок последовательностей: %w", err)
@@ -388,6 +480,11 @@ func Build(params Params) (*Slice, error) {
 		}
 	}
 
+	handoff := command.NewSubmitHandoffHandler(accessDecision, clock, unitOfWork)
+	submitApproval := command.NewSubmitForApprovalHandler(clock, unitOfWork)
+	cancelRequest := command.NewCancelRequestHandler(unitOfWork, params.ApprovedActionCanceller)
+	approvedAction := query.NewApprovedActionHandler(repository)
+
 	server := httpapi.NewServer(httpapi.Dependencies{
 		CreateCampaign: createCampaign,
 		DraftAction:    draftAction,
@@ -402,11 +499,13 @@ func Build(params Params) (*Slice, error) {
 		CommandKeys:    keys,
 		BatchLimits:    limits,
 
-		PostponeDraft: postponeDraft,
-		DraftQueue:    draftQueue,
-		StalledDrafts: stalledDrafts,
-		Auth:          params.ConsoleAuth,
-		Console:       params.Console,
+		PostponeDraft:    postponeDraft,
+		DraftQueue:       draftQueue,
+		StalledDrafts:    stalledDrafts,
+		Auth:             params.ConsoleAuth,
+		Console:          params.Console,
+		BasePath:         params.BasePath,
+		ExternalPrefixes: params.ExternalPrefixes,
 
 		DefineSequence:  defineSequence,
 		EnrollLead:      enrollLead,
@@ -415,13 +514,25 @@ func Build(params Params) (*Slice, error) {
 		ResumeExecution: resumeExecution,
 		SequenceHistory: sequenceHistory,
 		SequenceState:   sequenceState,
+
+		Handoff:          handoff,
+		EditorialHandoff: editorialReview,
+		EditorialReview:  editorialReview,
+		CancelRequest:    cancelRequest,
+
+		SubmitApproval: submitApproval,
+		ApprovedAction: approvedAction,
+	})
+	readinessReport := NewReadinessReport(params.Persistence, nil)
+	server.SetReadiness(func(ctx context.Context) readiness.Snapshot {
+		return readinessReport.RoleReadiness(ctx, composition.RoleAPI)
 	})
 
 	return &Slice{
 		Repository:     repository,
 		Journal:        journal,
 		UnitOfWork:     unitOfWork,
-		Access:         decider,
+		Access:         accessDecision,
 		Idempotency:    keys,
 		Relay:          publication,
 		Server:         server,
@@ -451,8 +562,14 @@ func Build(params Params) (*Slice, error) {
 		SequenceState:   sequenceState,
 		SequenceEngine:  sequenceEngine,
 		SequenceLimits:  sequenceLimits,
+		Handoff:         handoff,
+		EditorialReview: editorialReview,
+		SubmitApproval:  submitApproval,
+		CancelRequest:   cancelRequest,
+		ApprovedAction:  approvedAction,
 
 		ApprovedActionPublisher: approvedActionPublisher,
 		Publication:             publicationService,
+		Readiness:               readinessReport,
 	}, nil
 }

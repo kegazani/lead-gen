@@ -65,7 +65,7 @@ func TestApprovedActionConsumerReceivesApprovedActionViaRelay(t *testing.T) {
 		Clock:                  fixedClock{now: e2eNow()},
 		Grants:                 []outreachorchestration.Grant{{Actor: e2eOperator, Tenant: e2eTenant}},
 		ApprovedActionConsumer: consumer,
-		Risk:                   outreachorchestration.NoUpstreamRiskChecks,
+		Risk:                   noRiskFacts,
 	})
 	if err != nil {
 		t.Fatalf("сборка среза с внешним потребителем: %v", err)
@@ -119,7 +119,7 @@ func TestApprovedActionSinkReceivesApprovedActionViaRelay(t *testing.T) {
 		Clock:              fixedClock{now: e2eNow()},
 		Grants:             []outreachorchestration.Grant{{Actor: e2eOperator, Tenant: e2eTenant}},
 		ApprovedActionSink: outreachorchestration.SinkFunc(consumer.Publish),
-		Risk:               outreachorchestration.NoUpstreamRiskChecks,
+		Risk:               noRiskFacts,
 	})
 	if err != nil {
 		t.Fatalf("сборка среза с внешним sink: %v", err)
@@ -150,7 +150,7 @@ func TestApprovedActionSinkReceivesApprovedActionViaRelay(t *testing.T) {
 // встроенный publication-сервис владельца остаётся доступен.
 func TestBuildWithoutDeliveryDestinationLeavesRelayUnassembled(t *testing.T) {
 	slice, err := outreachorchestration.Build(outreachorchestration.Params{
-		Risk: outreachorchestration.NoUpstreamRiskChecks,
+		Risk: noRiskFacts,
 	})
 	if err != nil {
 		t.Fatalf("сборка среза по умолчанию: %v", err)
@@ -168,7 +168,7 @@ func TestBuildWithoutDeliveryDestinationLeavesRelayUnassembled(t *testing.T) {
 func TestNewAcceptsApprovedActionSink(t *testing.T) {
 	consumer := &recordingSink{}
 	_, err := outreachorchestration.New(outreachorchestration.Config{
-		Risk:               outreachorchestration.NoUpstreamRiskChecks,
+		Risk:               noRiskFacts,
 		ApprovedActionSink: outreachorchestration.SinkFunc(consumer.Publish),
 		Logger:             observ.NewLoggerWithWriter(io.Discard),
 		Metrics:            observ.NewMetrics(),

@@ -11,6 +11,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 	"sync"
 
 	"lead-gen/backend/contexts/platform-governance/internal/domain"
@@ -26,8 +27,11 @@ type Repository struct {
 	tenants map[domain.TenantID]domain.TenantSnapshot
 }
 
-// Repository реализует порт репозитория тенантов.
-var _ ports.TenantRepository = (*Repository)(nil)
+// Repository реализует порт репозитория тенантов и read-модель списка тенантов.
+var (
+	_ ports.TenantRepository = (*Repository)(nil)
+	_ ports.TenantDirectory  = (*Repository)(nil)
+)
 
 // New создаёт пустой репозиторий.
 func New() *Repository {
@@ -79,6 +83,37 @@ func (r *Repository) ReplaceWith(other *Repository) {
 	r.mu.Unlock()
 }
 
+// List возвращает обзор тенантов для админ-консоли: идентификатор, название
+// компании и состояние — без пользователей и аудита. Порядок устойчив
+// (company_name, затем id): карта памяти неупорядочена, а список экрана должен
+// быть воспроизводим и совпадать с порядком PostgreSQL-адаптера.
+func (r *Repository) List(_ context.Context) ([]ports.TenantSummary, error) {
+	r.mu.RLock()
+	summaries := make([]ports.TenantSummary, 0, len(r.tenants))
+	for _, snapshot := range r.tenants {
+		summaries = append(summaries, ports.TenantSummary{
+			ID:            snapshot.ID,
+			CompanyName:   snapshot.CompanyName,
+			State:         snapshot.State,
+			Description:   snapshot.Description,
+			INN:           snapshot.INN,
+			CompanyEmail:  snapshot.CompanyEmail,
+			Website:       snapshot.Website,
+			LegalData:     snapshot.LegalData,
+			ProfileStatus: snapshot.ProfileStatus,
+			CreatedAt:     snapshot.CreatedAt,
+		})
+	}
+	r.mu.RUnlock()
+	sort.Slice(summaries, func(i, j int) bool {
+		if summaries[i].CompanyName != summaries[j].CompanyName {
+			return summaries[i].CompanyName < summaries[j].CompanyName
+		}
+		return summaries[i].ID < summaries[j].ID
+	})
+	return summaries, nil
+}
+
 // FindByID загружает тенант по идентификатору через domain.RehydrateTenant.
 // Отсутствие тенанта даёт ошибку, для которой истинно errors.Is(err,
 // ports.ErrTenantNotFound).
@@ -94,4 +129,64 @@ func (r *Repository) FindByID(_ context.Context, id domain.TenantID) (*domain.Te
 		return nil, fmt.Errorf("inmemory: восстановление тенанта %s: %w", id, err)
 	}
 	return tenant, nil
+}
+
+// FindByIdentity ищет тенант по идентифицирующим данным компании — ИНН или
+// email компании. Пустые значения не совпадают. Отсутствие даёт
+// ports.ErrTenantNotFound.
+func (r *Repository) FindByIdentity(_ context.Context, inn, companyEmail string) (*domain.Tenant, error) {
+	r.mu.RLock()
+	var found domain.TenantSnapshot
+	var ok bool
+	for _, snapshot := range r.tenants {
+		if (inn != "" && snapshot.INN == inn) || (companyEmail != "" && snapshot.CompanyEmail == companyEmail) {
+			found = snapshot
+			ok = true
+			break
+		}
+	}
+	r.mu.RUnlock()
+	if !ok {
+		return nil, fmt.Errorf("%w: inn=%s email=%s", ports.ErrTenantNotFound, inn, companyEmail)
+	}
+	tenant, err := domain.RehydrateTenant(found)
+	if err != nil {
+		return nil, fmt.Errorf("inmemory: восстановление тенанта %s: %w", found.ID, err)
+	}
+	return tenant, nil
+}
+
+// FindUserByLogin ищет пользователя по логину (email учётной записи) среди всех
+// тенантов и возвращает тенант-владельца и идентификатор пользователя. Пустой
+// логин не совпадает. Отсутствие даёт ports.ErrTenantNotFound.
+func (r *Repository) FindUserByLogin(_ context.Context, login string) (*domain.Tenant, domain.UserID, error) {
+	if login == "" {
+		return nil, "", fmt.Errorf("%w: пустой логин", ports.ErrTenantNotFound)
+	}
+	r.mu.RLock()
+	var found domain.TenantSnapshot
+	var userID domain.UserID
+	var ok bool
+	for _, snapshot := range r.tenants {
+		for _, user := range snapshot.Users {
+			if user.Login == login {
+				found = snapshot
+				userID = user.ID
+				ok = true
+				break
+			}
+		}
+		if ok {
+			break
+		}
+	}
+	r.mu.RUnlock()
+	if !ok {
+		return nil, "", fmt.Errorf("%w: login=%s", ports.ErrTenantNotFound, login)
+	}
+	tenant, err := domain.RehydrateTenant(found)
+	if err != nil {
+		return nil, "", fmt.Errorf("inmemory: восстановление тенанта %s: %w", found.ID, err)
+	}
+	return tenant, userID, nil
 }

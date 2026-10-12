@@ -13,7 +13,12 @@ const ContractName = "approved-action"
 
 // SchemaVersion — текущая версия схемы. Изменять по правилам semver из
 // envelope.go.
-const SchemaVersion = "1.0.0"
+//
+// Версия 1.1.0 добавлена по правилу MINOR: состав, типы и обязательность полей
+// не изменились, а идентификатор утверждённого действия стал уникальным в рамках
+// кампании-владельца (уточнение области уникальности значения; `approved_action_id`
+// остаётся непрозрачной строкой для потребителя).
+const SchemaVersion = "1.1.0"
 
 // Имена каналов исполнения. Значения совпадают с доменным VO action-channel
 // владельца (internal/domain/action_channel.go): контракт не отвергает и не
@@ -51,12 +56,16 @@ func parseChannel(name string) (string, error) {
 // получателя, имя, тело письма и прочие персональные данные здесь запрещены;
 // RecipientRef — непрозрачная ссылка, разрешаемая на стороне получателя.
 //
-// Ключ идемпотентности — (TenantID, DraftID, DraftVersion): повторная доставка
-// того же действия не создаёт второй внешний эффект.
+// Ключ идемпотентности — (TenantID, CampaignID, DraftID, DraftVersion): повторная
+// доставка того же действия не создаёт второй внешний эффект, а действие другой
+// кампании к тому же получателю — не повтор и не сталкивается с ним.
 type ApprovedAction struct {
 	Envelope
 
-	// ApprovedActionID — идентификатор утверждённого действия.
+	// ApprovedActionID — идентификатор утверждённого действия. Уникален в рамках
+	// кампании-владельца: черновик адресует получателя и повторяется между
+	// кампаниями, поэтому идентичность включает кампанию (см.
+	// ApprovedActionIdentity). Непрозрачен для потребителя.
 	ApprovedActionID string `json:"approved_action_id"`
 	// CampaignID — ссылка на кампанию-владельца.
 	CampaignID string `json:"campaign_id"`
@@ -129,6 +138,21 @@ func (a ApprovedAction) Validate() error {
 // IdempotencyKey возвращает ключ идемпотентности контракта. Ключ внутренний и
 // не является частью wire-формата; компоненты кодируются, чтобы разделитель
 // не допускал коллизий.
+//
+// Кампания входит в ключ: идентичность действия уникальна в рамках кампании
+// (черновик адресует получателя и повторяется между кампаниями), поэтому без
+// кампании действия разных кампаний к одному получателю дали бы один ключ и
+// были бы ошибочно приняты за повтор.
 func (a ApprovedAction) IdempotencyKey() string {
-	return fmt.Sprintf("%s|%s|%d", encodeKeyPart(a.TenantID), encodeKeyPart(a.DraftID), a.DraftVersion)
+	return fmt.Sprintf("%s|%s|%s|%d", encodeKeyPart(a.TenantID), encodeKeyPart(a.CampaignID), encodeKeyPart(a.DraftID), a.DraftVersion)
+}
+
+// ApprovedActionIdentity возвращает идентификатор утверждённого действия,
+// уникальный в рамках кампании-владельца. Идентичность — (кампания, черновик,
+// версия): черновик адресует получателя и потому повторяется между кампаниями к
+// одному получателю, поэтому без кампании идентификаторы разных действий
+// столкнулись бы. Компоненты кодируются, чтобы разделители ":"/"@" внутри
+// значений не допускали коллизий между разными тройками.
+func ApprovedActionIdentity(campaignID, draftID string, version int64) string {
+	return fmt.Sprintf("%s:%s@%d", encodeKeyPart(campaignID), encodeKeyPart(draftID), version)
 }

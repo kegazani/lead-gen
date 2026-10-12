@@ -8,6 +8,7 @@ import (
 
 	platformcontracts "lead-gen/backend/platform/contracts"
 	outbox "lead-gen/backend/platform/messaging/outbox"
+	"lead-gen/backend/platform/observability/observ"
 	amqp "lead-gen/backend/platform/transport/amqp"
 
 	"lead-gen/backend/contexts/outreach-orchestration/internal/adapters/outbox/relay"
@@ -43,6 +44,19 @@ func NewAMQPSink(publisher amqp.Publisher, interval time.Duration) *AMQPSink {
 		journal: journal,
 		relay:   outbox.NewRelay(journal, publisher, interval),
 	}
+}
+
+// WithLogger задаёт логгер жизненного цикла публикации транспортного outbox и
+// возвращает адаптер.
+func (s *AMQPSink) WithLogger(logger observ.Logger) *AMQPSink {
+	s.relay = s.relay.WithLogger(logger)
+	return s
+}
+
+// WithMetrics задаёт приёмник метрик для счётчика отказов публикации.
+func (s *AMQPSink) WithMetrics(metrics observ.Metrics) *AMQPSink {
+	s.relay = s.relay.WithMetrics(metrics)
+	return s
 }
 
 // Publish реализует relay.Sink. Контракт проверяется и записывается в outbox;

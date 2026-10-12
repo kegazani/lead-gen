@@ -89,13 +89,15 @@ func New(baseURL string, opts ...Option) (*Client, error) {
 // команды идемпотентен; в запрос он уходит и телом, и ключом Idempotency-Key.
 func (c *Client) Submit(ctx context.Context, in requestintent.SubmitIntent) (requestintent.SubmitResult, error) {
 	payload, err := json.Marshal(submitRequest{
-		RequestID:     in.RequestID,
-		OfferID:       in.OfferID,
-		TenantID:      in.TenantID,
-		Actor:         in.Actor,
-		Content:       in.Content,
-		Target:        in.Target,
-		CorrelationID: in.CorrelationID,
+		RequestID:        in.RequestID,
+		OfferID:          in.OfferID,
+		TenantID:         in.TenantID,
+		Actor:            in.Actor,
+		Content:          in.Content,
+		Target:           in.Target,
+		CorrelationID:    in.CorrelationID,
+		ExecutionPurpose: in.ExecutionPurpose,
+		SenderCompany:    in.SenderCompany,
 	})
 	if err != nil {
 		return requestintent.SubmitResult{}, fmt.Errorf("%w: сборка тела команды: %v", requestintent.ErrUnavailable, err)
@@ -164,7 +166,41 @@ func (c *Client) Status(ctx context.Context, q requestintent.StatusQuery) (reque
 		OfferContent:  body.Offer.Content,
 		OfferTarget:   body.Offer.Target,
 		OfferRevision: body.Offer.Revision,
+		Phase:         body.Phase,
+		ErrorReason:   body.ErrorReason,
+		ErrorMessage:  body.ErrorMessage,
 	}, nil
+}
+
+// List реализует requestintent.Port: читает список заявок тенанта запросом
+// GET {base}/requests?tenant_id=. Тенант обязателен: чужие заявки не попадают в
+// выборку.
+func (c *Client) List(ctx context.Context, q requestintent.ListQuery) ([]requestintent.ListEntry, error) {
+	endpoint := c.baseURL + "/requests?tenant_id=" + url.QueryEscape(q.TenantID)
+	req, err := http.NewRequestWithContext(normalizeContext(ctx), http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, fmt.Errorf("%w: сборка запроса: %v", requestintent.ErrUnavailable, err)
+	}
+
+	resp, err := c.do(req)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, errorForStatus(resp)
+	}
+
+	var body []listEntry
+	if err := decodeBody(resp, &body); err != nil {
+		return nil, err
+	}
+	entries := make([]requestintent.ListEntry, 0, len(body))
+	for _, item := range body {
+		entries = append(entries, requestintent.ListEntry{RequestID: item.RequestID, Status: item.Status})
+	}
+	return entries, nil
 }
 
 // do выполняет запрос, соблюдая контекст вызова, и переводит сбой сети в
@@ -237,13 +273,15 @@ func decodeBody(resp *http.Response, dst any) error {
 // submitRequest — тело команды. Имена полей совпадают с контрактом эндпоинта
 // request-fulfillment POST /requests.
 type submitRequest struct {
-	RequestID     string `json:"request_id"`
-	OfferID       string `json:"offer_id"`
-	TenantID      string `json:"tenant_id"`
-	Actor         string `json:"actor"`
-	Content       string `json:"content"`
-	Target        string `json:"target,omitempty"`
-	CorrelationID string `json:"correlation_id,omitempty"`
+	RequestID        string                               `json:"request_id"`
+	OfferID          string                               `json:"offer_id"`
+	TenantID         string                               `json:"tenant_id"`
+	Actor            string                               `json:"actor"`
+	Content          string                               `json:"content"`
+	Target           string                               `json:"target,omitempty"`
+	CorrelationID    string                               `json:"correlation_id,omitempty"`
+	ExecutionPurpose string                               `json:"execution_purpose,omitempty"`
+	SenderCompany    *requestintent.SenderCompanySnapshot `json:"sender_company,omitempty"`
 }
 
 // submitResponse — ответ владельца на команду (201 Created).
@@ -255,13 +293,25 @@ type submitResponse struct {
 // statusResponse — ответ владельца на запрос состояния (200 OK). Представление
 // владельца не имеет json-тегов, поэтому имена полей — экспортированные имена
 // RequestView. Поля оффера — собственные данные клиента; сырых лидов и контактов
-// здесь нет по определению контракта.
+// здесь нет по определению контракта. Phase/ErrorReason/ErrorMessage — аддитивные
+// опциональные поля (MINOR 1.1.0): старый владелец их не отдаёт, и они остаются
+// пустыми.
 type statusResponse struct {
-	RequestID string `json:"RequestID"`
-	Status    string `json:"Status"`
-	Offer     struct {
+	RequestID    string `json:"RequestID"`
+	Status       string `json:"Status"`
+	Phase        string `json:"Phase"`
+	ErrorReason  string `json:"ErrorReason"`
+	ErrorMessage string `json:"ErrorMessage"`
+	Offer        struct {
 		Content  string `json:"Content"`
 		Target   string `json:"Target"`
 		Revision int    `json:"Revision"`
 	} `json:"Offer"`
+}
+
+// listEntry — строка ответа владельца на запрос списка (200 OK). Имена полей
+// совпадают с экспортированными полями представления списка владельца.
+type listEntry struct {
+	RequestID string `json:"RequestID"`
+	Status    string `json:"Status"`
 }

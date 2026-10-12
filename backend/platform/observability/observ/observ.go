@@ -2,7 +2,7 @@
 // терминов: структурированные логи, метрики RED и noop-трейсер.
 //
 // Примитив не знает имён контрактов и сущностей контекста: он принимает
-// готовые поля корреляции (tenant, correlation, causation, task) и имя
+// готовые поля корреляции (tenant, correlation, causation, task, workflow) и имя
 // операции. Контекст сервиса подставляет свои значения в composition root,
 // поэтому наблюдаемость одного вида работает для всех сервисов платформы.
 package observ
@@ -14,4 +14,5 @@ type Fields struct {
 	CorrelationID string
 	CausationID   string
 	TaskID        string
+	WorkflowID    string
 }

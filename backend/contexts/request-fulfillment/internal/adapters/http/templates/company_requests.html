@@ -1,0 +1,68 @@
+{{- define "content" -}}
+<section class="company-requests" data-tenant="{{ .View.TenantID }}" data-status-labels="{{ .View.StatusLabelsJSON }}">
+  {{ template "live" .View.Live }}
+  <h1>{{ text "request.company.title" }}</h1>
+  <p class="hint">{{ text "request.company.hint" }} <span class="tenant-label">{{ text "request.tenant" }} {{.View.TenantID}}</span></p>
+  {{- with .View.Notice }}
+  <p class="notice" role="status">{{.}}</p>
+  {{- end }}
+
+  {{- range .View.Items }}
+  <article class="request-card fact-panel">
+    <header>
+      <h2>{{ .OfferContent }}</h2>
+      <p class="hint">
+        <span class="status status-{{.Status}}" data-request-id="{{ .RequestID }}">{{ label "request.status" .Status }}</span>
+        <span class="request-id">{{ text "request.number" }} {{.RequestID}}</span>
+      </p>
+    </header>
+
+    {{- if .CanReturn }}
+    <form class="card-section" method="post" action="/requests/{{.RequestID}}/revision">
+      <input type="hidden" name="tenant_id" value="{{$.View.TenantID}}">
+      <input type="hidden" name="csrf" value="{{$.View.CSRF}}">
+      <p class="hint">{{ text "request.company.return.hint" }}</p>
+      <textarea name="reason" required></textarea>
+      <button type="submit" class="button-secondary">{{ text "request.company.return" }}</button>
+    </form>
+    {{- end }}
+
+    {{- if .CanCancel }}
+    <form class="card-section" method="post" action="/requests/{{.RequestID}}/cancel">
+      <input type="hidden" name="tenant_id" value="{{$.View.TenantID}}">
+      <input type="hidden" name="csrf" value="{{$.View.CSRF}}">
+      <p class="hint">{{ text "request.company.cancel.hint" }}</p>
+      <textarea name="reason" required></textarea>
+      <button type="submit" class="button-danger">{{ text "request.company.cancel" }}</button>
+    </form>
+    {{- end }}
+
+    {{- if .CanRerun }}
+    <form class="card-section" method="post" action="/requests/{{.RequestID}}/rerun">
+      <input type="hidden" name="tenant_id" value="{{$.View.TenantID}}">
+      <input type="hidden" name="csrf" value="{{$.View.CSRF}}">
+      <p class="hint">{{ text "request.company.rerun.hint" }}</p>
+      <button type="submit" class="button-secondary">{{ text "request.company.rerun" }}</button>
+    </form>
+    {{- end }}
+
+    <details class="history">
+      <summary>{{ text "request.company.history.title" }}</summary>
+      <ol class="transitions">
+      {{- range .Transitions }}
+        <li class="transition">
+          <span class="transition-path">{{ text "request.company.history.transition" }} {{if .From}}{{.From}} → {{end}}{{.To}}</span>
+          <span class="transition-actor">{{ text "request.company.history.actor" }} {{.Actor}}</span>
+          <span class="transition-at">{{ text "request.company.history.at" }} {{.At}}</span>
+          {{- with .Reason }}<span class="transition-reason">{{ text "request.company.history.reason" }} {{.}}</span>{{- end }}
+        </li>
+      {{- end }}
+      </ol>
+    </details>
+  </article>
+  {{- else }}
+  <p class="queue-empty">{{ text "request.company.empty" }}</p>
+  {{- end }}
+  <script src="/static/company_requests.js" defer></script>
+</section>
+{{- end -}}

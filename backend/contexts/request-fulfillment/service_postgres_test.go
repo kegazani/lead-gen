@@ -22,6 +22,22 @@ func (stubRequestRepository) ListByStatus(context.Context, domain.RequestStatus)
 	return nil, nil
 }
 
+func (stubRequestRepository) FindByCampaign(context.Context, domain.TenantID, domain.CampaignID) (*domain.Request, error) {
+	return nil, ports.ErrRequestNotFound
+}
+
+func (stubRequestRepository) CountByTenant(context.Context, domain.TenantID) (int, error) {
+	return 0, nil
+}
+
+func (stubRequestRepository) CountInWork(context.Context, domain.TenantID) (int, error) {
+	return 0, nil
+}
+
+func (stubRequestRepository) ListByTenant(context.Context, domain.TenantID) ([]*domain.Request, error) {
+	return nil, nil
+}
+
 // TestBuildRequiresUnitOfWorkForPersistentRepository проверяет, что сборка не
 // подменяет персистентный репозиторий in-memory unit-of-work: без явного
 // unit-of-work такая комбинация отвергается, а не даёт молча неверную проводку.

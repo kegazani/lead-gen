@@ -2,16 +2,21 @@ package integrationplatform
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/http"
 	"strings"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	httpapi "lead-gen/backend/contexts/integration-platform/internal/adapters/http"
 	"lead-gen/backend/contexts/integration-platform/internal/adapters/repository/inmemory"
 	"lead-gen/backend/contexts/integration-platform/internal/app"
 	"lead-gen/backend/contexts/integration-platform/internal/ports"
 	composition "lead-gen/backend/platform/composition"
 	"lead-gen/backend/platform/observability/observ"
+	"lead-gen/backend/platform/readiness"
 	"lead-gen/contracts/integration-platform/integrationerror"
 	"lead-gen/contracts/integration-platform/providerport"
 )
@@ -22,6 +27,9 @@ const ServiceID = "integration-platform"
 
 // Config — параметры сборки сервиса, задаваемые точкой входа cmd/lead-gen.
 type Config struct {
+	// APIAddr — адрес внутреннего HTTP-сервера роли api.
+	APIAddr string
+
 	// Provider — порт вызова внешней интеграции. nil означает, что адаптер
 	// поставщика в срезе не подключён: вызов завершается нормализованной ошибкой
 	// окончательного отказа, а не молчаливым успехом.
@@ -55,6 +63,11 @@ type Config struct {
 	Logger  observ.Logger
 	Metrics observ.Metrics
 	Tracer  observ.Tracer
+
+	// Adapters — источник состояния объявленных адаптеров для HTTP-поверхности
+	// роли api (контракт adapter-status). nil — источник не подключён: запрос
+	// состояния честно недоступен (503), пустой список не выдумывается.
+	Adapters ports.AdapterStatusReader
 }
 
 // Slice — собранный контекст среза: порты, адаптеры и use cases.
@@ -66,9 +79,14 @@ type Slice struct {
 	RegisterAdapter   *app.RegisterAdapterHandler
 	SelectAdapter     *app.SelectAdapterHandler
 	InvokeIntegration *app.InvokeIntegrationHandler
+	ListAdapters      *app.ListAdaptersHandler
+
+	// Server — HTTP-поверхность роли api: состояние адаптеров и реестр.
+	Server *httpapi.Server
 
 	// pool — пул PostgreSQL, если сборка создала его по DSN. Закрывается Close.
-	pool *pgxpool.Pool
+	pool               *pgxpool.Pool
+	readinessEvaluator *readiness.Evaluator
 }
 
 // Build собирает контекст среза: репозитории регистраций и вызовов (PostgreSQL по
@@ -122,22 +140,38 @@ func Build(cfg Config) (*Slice, error) {
 		provider = unconfiguredProvider{}
 	}
 
+	listAdapters := app.NewListAdaptersHandler(registrations)
+	readinessEvaluator := readiness.New(readiness.Config{Timeout: time.Second, TTL: 2 * time.Second})
+	server := httpapi.NewServer(httpapi.Dependencies{
+		Statuses:      cfg.Adapters,
+		Registrations: listAdapters,
+		Readiness: func(ctx context.Context) readiness.Snapshot {
+			return evaluateRoleReadiness(ctx, composition.RoleAPI, registrations, readinessEvaluator)
+		},
+	})
+
 	return &Slice{
-		Registrations:     registrations,
-		Invocations:       invocations,
-		Provider:          provider,
-		pool:              pool,
-		RegisterAdapter:   app.NewRegisterAdapterHandler(registrations),
-		SelectAdapter:     app.NewSelectAdapterHandler(registrations),
-		InvokeIntegration: app.NewInvokeIntegrationHandler(registrations, invocations, provider, cfg.Clock),
+		Registrations:      registrations,
+		Invocations:        invocations,
+		Provider:           provider,
+		ListAdapters:       listAdapters,
+		Server:             server,
+		pool:               pool,
+		readinessEvaluator: readinessEvaluator,
+		RegisterAdapter:    app.NewRegisterAdapterHandler(registrations),
+		SelectAdapter:      app.NewSelectAdapterHandler(registrations),
+		InvokeIntegration:  app.NewInvokeIntegrationHandler(registrations, invocations, provider, cfg.Clock),
 	}, nil
 }
 
 // Service — собранный сервис integration-platform. Реализует composition.Service:
 // раннер на каждую объявленную роль.
 type Service struct {
-	slice  *Slice
-	logger observ.Logger
+	slice   *Slice
+	apiAddr string
+	logger  observ.Logger
+	metrics observ.Metrics
+	tracer  observ.Tracer
 }
 
 // New собирает сервис из адаптеров хранилища и переданных зависимостей.
@@ -156,7 +190,7 @@ func New(cfg Config) (*Service, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Service{slice: slice, logger: cfg.Logger}, nil
+	return &Service{slice: slice, apiAddr: cfg.APIAddr, logger: cfg.Logger, metrics: cfg.Metrics, tracer: cfg.Tracer}, nil
 }
 
 // ID реализует composition.Service.
@@ -165,6 +199,47 @@ func (s *Service) ID() string { return ServiceID }
 // Slice возвращает собранный срез контекста. Нужен composition root'у и тестам
 // для прямого вызова сценариев.
 func (s *Service) Slice() *Slice { return s.slice }
+
+// Readiness возвращает owner-local отчёт готовности роли. API требует успешного
+// чтения своего реестра; provider-доступность остаётся отдельным сигналом
+// adapter-status и не является обязательной для HTTP API.
+func (s *Service) Readiness(ctx context.Context, role composition.Role) readiness.Snapshot {
+	if s == nil || s.slice == nil {
+		return readiness.Snapshot{Capability: "integration-platform-api", Status: readiness.StatusUnknown, Ready: false}
+	}
+	return s.slice.RoleReadiness(ctx, role)
+}
+
+// RoleReadiness вычисляет отчёт readiness на уровне процесса для роли контекста.
+// Фоновые роли пока не реализованы и потому честно остаются unknown/not-ready.
+func (sl *Slice) RoleReadiness(ctx context.Context, role composition.Role) readiness.Snapshot {
+	if sl == nil || sl.readinessEvaluator == nil {
+		return readiness.Snapshot{Capability: "integration-platform-api", Status: readiness.StatusUnknown, Ready: false}
+	}
+	return evaluateRoleReadiness(ctx, role, sl.Registrations, sl.readinessEvaluator)
+}
+
+func evaluateRoleReadiness(ctx context.Context, role composition.Role, registrations ports.AdapterRegistrationRepository, evaluator *readiness.Evaluator) readiness.Snapshot {
+	if role != composition.RoleAPI {
+		return readiness.Snapshot{Capability: "integration-platform-" + string(role), Status: readiness.StatusUnknown, Ready: false}
+	}
+	var probe readiness.Probe
+	if registrations != nil {
+		probe = func(ctx context.Context) (readiness.ProbeResult, error) {
+			_, err := registrations.List(ctx)
+			if err != nil {
+				return readiness.ProbeResult{}, err
+			}
+			return readiness.ProbeResult{Status: readiness.StatusUp, Reason: readiness.ReasonNone}, nil
+		}
+	}
+	return evaluator.Evaluate(ctx, readiness.Profile{
+		Capability: "integration-platform-api",
+		Checks: []readiness.CheckSpec{{
+			ID: "adapter-registry", Key: "integration-platform.adapter-registry", Required: true, Probe: probe,
+		}},
+	})
+}
 
 // Close освобождает пул PostgreSQL, если сборка создала его по DSN. Для
 // in-memory сборки ничего не делает.
@@ -200,17 +275,41 @@ func (s *Service) RoleRunner(role composition.Role) (composition.RoleRunner, boo
 	}
 }
 
-// runAPI — каркас роли api. HTTP-сервер контекста в срезе не реализован: роль
-// честно сообщает об этом и завершается по отмене контекста.
+// runAPI поднимает HTTP-поверхность роли api и останавливает её по отмене
+// контекста. Поверхность отдаёт состояние объявленных адаптеров (контракт
+// adapter-status) и реестр зарегистрированных адаптеров; внешних ключей она не
+// требует и интеграцию не выдумывает.
 func (s *Service) runAPI(ctx context.Context) error {
-	s.logger.Warn("api: HTTP-сервер контекста не реализован в срезе", observ.Fields{}, "service", ServiceID)
-	return holdUntilCancelled(ctx)
+	handler := observ.Middleware(s.logger, s.metrics, s.tracer, ServiceID)(s.slice.Server)
+	server := &http.Server{
+		Addr:              s.apiAddr,
+		Handler:           handler,
+		ReadHeaderTimeout: 5 * time.Second,
+	}
+
+	go func() {
+		<-ctx.Done()
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := server.Shutdown(shutdownCtx); err != nil {
+			s.logger.Error("api: останов HTTP-сервера", err, observ.Fields{}, "service", ServiceID)
+		}
+	}()
+
+	s.logger.Info("api: HTTP-сервер контекста запущен", observ.Fields{}, "service", ServiceID, "addr", s.apiAddr)
+	if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		return fmt.Errorf("api: работа HTTP-сервера: %w", err)
+	}
+	return nil
 }
 
-// runIngest — заглушка процесса роли ingest. Публичный приём на отдельном домене
-// в срезе не реализован.
+// runIngest — честное поведение роли ingest. У контекста нет объявленного
+// входящего протокола (ни одной связи с потреблением в каталоге), поэтому роль
+// не поднимает приёмник и не выдаёт себя за принимающую: она сообщает об этом и
+// остаётся в ожидании отмены. Это явное состояние нереализованного контура, а не
+// имитация успеха.
 func (s *Service) runIngest(ctx context.Context) error {
-	s.logger.Warn("ingest: публичный приём не реализован в срезе", observ.Fields{}, "service", ServiceID)
+	s.logger.Warn("ingest: у контекста нет объявленного входящего протокола — роль ничего не принимает", observ.Fields{}, "service", ServiceID)
 	return holdUntilCancelled(ctx)
 }
 
@@ -258,3 +357,7 @@ func (unconfiguredProvider) Invoke(_ context.Context, request providerport.Reque
 
 // Проверка соответствия контракту сервисной сборки на этапе компиляции.
 var _ composition.Service = (*Service)(nil)
+
+// Проверка соответствия источнику состояния адаптеров на этапе компиляции:
+// источник владельца отдаёт состояние в форме контракта adapter-status.
+var _ ports.AdapterStatusReader = (*AdapterStatusSource)(nil)

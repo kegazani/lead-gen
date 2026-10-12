@@ -2,6 +2,7 @@ package contentrequest
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 )
@@ -12,6 +13,25 @@ func TestContractIdentity(t *testing.T) {
 	}
 	if SchemaVersion == "" {
 		t.Error("пустая SchemaVersion")
+	}
+}
+
+func TestVersionOnlyIntentWireFields(t *testing.T) {
+	subject := ""
+	raw, err := json.Marshal(struct {
+		Mode    string  `json:"mode,omitempty"`
+		Subject *string `json:"subject,omitempty"`
+		Body    string  `json:"body"`
+	}{Mode: ModeVersionOnly, Subject: &subject, Body: " exact "})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]any
+	if err := json.Unmarshal(raw, &got); err != nil {
+		t.Fatal(err)
+	}
+	if got["mode"] != ModeVersionOnly || got["subject"] != "" || got["body"] != " exact " {
+		t.Fatalf("точные поля не сериализованы: %s", raw)
 	}
 }
 

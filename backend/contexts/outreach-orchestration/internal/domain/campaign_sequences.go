@@ -39,6 +39,9 @@ type AdvanceReport struct {
 // DefineSequence создаёт сценарий последовательности и добавляет его в кампанию.
 // Сценарий без шагов отвергается, повторный идентификатор — тоже.
 func (c *Campaign) DefineSequence(params SequenceDefinitionParams) (*SequenceDefinition, error) {
+	if c.Purpose() == CampaignPurposeEditorial {
+		return nil, ErrEditorialDeliveryForbidden
+	}
 	if c.state == CampaignStateCompleted {
 		return nil, fmt.Errorf("%w: кампания %s", ErrCampaignCompleted, c.id)
 	}
@@ -71,6 +74,9 @@ type EnrollmentParams struct {
 // Первый черновик формирует очередной проход движка (AdvanceSequences), поэтому
 // задержка первого шага соблюдается и при добавлении.
 func (c *Campaign) EnrollLead(params EnrollmentParams) (*SequenceExecution, error) {
+	if c.Purpose() == CampaignPurposeEditorial {
+		return nil, ErrEditorialDeliveryForbidden
+	}
 	if c.state == CampaignStateCompleted {
 		return nil, fmt.Errorf("%w: кампания %s", ErrCampaignCompleted, c.id)
 	}

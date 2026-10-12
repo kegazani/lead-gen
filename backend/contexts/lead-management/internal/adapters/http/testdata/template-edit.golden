@@ -6,34 +6,41 @@
   <script src="/static/theme.js"></script>
   <title>Библиотека шаблонов</title>
   <link rel="stylesheet" href="/static/console.css">
+  <link rel="stylesheet" href="/static/cards.css">
   <script src="/static/htmx.min.js" defer></script>
   <script src="/static/console.js" defer></script>
   <script src="/static/assistant.js" defer></script>
+  <script src="/static/console-a11y.js" defer></script>
 </head>
 <body>
-  <nav class="sidebar">
+  <a class="skip-link" href="#main-content">Перейти к содержимому</a>
+  <nav class="sidebar" aria-label="Основная навигация">
   <ul class="sidebar-list">
-    <li><a href="/validation">Заявки</a></li>
-    <li><a href="/approvals">Исполнение</a></li>
-    <li><a href="/" class="is-active" aria-current="page">Лиды</a></li>
-    <li><a href="/dashboard">Отчёты</a></li>
+    <li><a href="/validation?actor=operator">Заявки</a></li>
+    <li><a href="/approvals?actor=operator">Исполнение</a></li>
+    <li><a href="/?actor=operator" class="is-active" aria-current="page">Лиды</a></li>
+    <li><a href="/dashboard?actor=operator">Отчёты</a></li>
+    <li><a href="/outreach/drafts?actor=operator">Рассылки</a></li>
+    <li><a href="/console/tenant?actor=operator">Тенант</a></li>
+    <li><a href="/console/users?actor=operator">Пользователи</a></li>
+    <li><a href="/console/registrations?actor=operator">Регистрации</a></li>
+    <li><a href="/console/integrations?actor=operator">Интеграции</a></li>
+    <li><a href="/console/audit?actor=operator">Аудит</a></li>
+    <li><a href="/platform/topology?actor=operator">Топология</a></li>
+    <li><a href="/platform/operations?actor=operator">Операции</a></li>
   </ul>
-  <p class="sidebar-group-label">Экраны лидов</p>
-  <ul class="sidebar-list sidebar-list-group">
-    <li><a href="/">Главная</a></li>
-    <li><a href="/cards">Карточки</a></li>
-    <li><a href="/leads">Лиды</a></li>
-    <li><a href="/funnel">Воронка</a></li>
-    <li><a href="/send" class="is-active" aria-current="page">Отправка</a></li>
-    <li><a href="/assistant">Ассистент</a></li>
-    <li><a href="/forum-signals">Форумы</a></li>
-  </ul>
-  <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Тема оформления">
+  <button class="theme-toggle" id="theme-toggle" type="button"
+    aria-label="Тема оформления"
+    data-theme-label-system="Как в системе"
+    data-theme-label-light="Светлая"
+    data-theme-label-dark="Тёмная"
+    data-theme-aria="Тема оформления: %s. Нажмите, чтобы сменить.">
     <span class="theme-toggle-label">Тема</span>
     <b class="theme-toggle-value" data-theme-name>Как в системе</b>
   </button>
 </nav>
-  <main class="page">
+  <main class="page" id="main-content">
+<p class="live-region" id="console-live" role="status" aria-live="polite" aria-atomic="true" aria-label="Объявления" data-live-region></p>
 <header class="page-head">
   <h1>Библиотека шаблонов</h1>
 </header>
@@ -124,12 +131,12 @@
   </p>
   <p class="actions"><button type="submit">Найти</button></p>
 </form>
-<div id="template-list">
+<div id="template-list" data-live-announce="Список шаблонов обновлён" data-focus-after-swap="#template-list">
 
 <ul class="template-list">
   <li class="template-item">
     <a class="link" href="/templates/intro/edit">Приветствие</a>
-    <span class="template-meta">Тема для {{company}} · ревизия 1</span>
+    <span class="template-meta">Тема для {{company}} · Редакция: 1</span>
   </li>
 </ul>
 </div>

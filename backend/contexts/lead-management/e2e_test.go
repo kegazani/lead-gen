@@ -789,11 +789,11 @@ func TestLeadRelevanceEndToEnd(t *testing.T) {
 	e2eRequireContains(t, cardsHTML, []string{
 		`data-cards-composition="fits"`,
 		`data-cards-view="tiles"`,
-		`data-composition-set="other"`,
+		`data-composition-set="hypothesis"`,
 		`data-view-set="rows"`,
 		`href="/cards/fit.example" data-group="fits"`,
-		`href="/cards/hypo.example" data-group="other"`,
-		`href="/cards/no.example" data-group="other"`,
+		`href="/cards/hypo.example" data-group="hypothesis"`,
+		`href="/cards/no.example" data-group="unsuitable"`,
 		"verdict-unsuitable",
 		"Гипотеза",
 		"Не подходит",
@@ -1138,7 +1138,7 @@ func TestGlobalCardsCompositionEndToEnd(t *testing.T) {
 	}
 	e2eRequireContains(t, html, []string{
 		"data-group=\"fits\"",
-		"data-group=\"other\"",
+		"data-group=\"unsuitable\"",
 		"verdict-unsuitable",
 		"Не подходит",
 		"alpha.example",

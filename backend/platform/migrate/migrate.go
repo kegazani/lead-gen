@@ -8,6 +8,8 @@
 package migrate
 
 import (
+	"crypto/sha256"
+	"encoding/hex"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -36,6 +38,14 @@ type Migration struct {
 	Path string
 	// SQL — содержимое миграции вместе с шапкой.
 	SQL string
+}
+
+// ApprovedMigration — точная release allowlist entry для rollback window.
+// Совместимость проверяется по имени файла и полному SHA-256 содержимого, не по
+// SQL keyword heuristic.
+type ApprovedMigration struct {
+	Name   string
+	SHA256 string
 }
 
 // schemaDirective — обязательная директива принадлежности в шапке файла.
@@ -75,6 +85,46 @@ func Load(dir string, owned Schema) ([]Migration, error) {
 
 	sort.Slice(migrations, func(i, j int) bool { return migrations[i].Name < migrations[j].Name })
 	return migrations, nil
+}
+
+// SelectApprovedMigrationFiles возвращает только явно разрешённые migration files.
+// Каждый entry обязан существовать один раз и совпасть по полному SHA-256.
+func SelectApprovedMigrationFiles(available []Migration, approved []ApprovedMigration) ([]Migration, error) {
+	if len(approved) == 0 {
+		return nil, fmt.Errorf("migrate: пустой approved migration manifest")
+	}
+	byName := make(map[string]Migration, len(available))
+	for _, migration := range available {
+		if _, exists := byName[migration.Name]; exists {
+			return nil, fmt.Errorf("migrate: duplicate migration file %q", migration.Name)
+		}
+		byName[migration.Name] = migration
+	}
+	seen := make(map[string]struct{}, len(approved))
+	selected := make([]Migration, 0, len(approved))
+	for _, item := range approved {
+		if item.Name == "" || len(item.SHA256) != sha256.Size*2 {
+			return nil, fmt.Errorf("migrate: malformed approved migration entry")
+		}
+		if _, err := hex.DecodeString(item.SHA256); err != nil {
+			return nil, fmt.Errorf("migrate: malformed approved migration digest for %q", item.Name)
+		}
+		if _, exists := seen[item.Name]; exists {
+			return nil, fmt.Errorf("migrate: duplicate approved migration %q", item.Name)
+		}
+		seen[item.Name] = struct{}{}
+		migration, exists := byName[item.Name]
+		if !exists {
+			return nil, fmt.Errorf("migrate: approved migration %q is missing", item.Name)
+		}
+		digest := sha256.Sum256([]byte(migration.SQL))
+		if hex.EncodeToString(digest[:]) != item.SHA256 {
+			return nil, fmt.Errorf("migrate: approved migration %q checksum mismatch", item.Name)
+		}
+		selected = append(selected, migration)
+	}
+	sort.Slice(selected, func(i, j int) bool { return selected[i].Name < selected[j].Name })
+	return selected, nil
 }
 
 // declaredSchema ищет директиву принадлежности в шапке файла: она должна быть

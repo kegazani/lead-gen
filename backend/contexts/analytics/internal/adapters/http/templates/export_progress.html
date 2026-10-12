@@ -1,0 +1,46 @@
+{{- define "content" -}}
+<section class="export-progress">
+  {{ template "live" .View.Live }}
+  <h1>{{ text "analytics.export.progress.title" }}</h1>
+  {{ template "export-progress" .View }}
+  <p class="export-progress-back"><a href="/reports?tenant_id={{ .View.TenantID }}">{{ text "analytics.export.job.back" }}</a></p>
+</section>
+{{- end -}}
+
+{{- define "export-progress" -}}
+<article id="export-progress" class="export-progress-panel"{{ if not .Terminal }} hx-get="{{ .FragmentURL }}" hx-trigger="every 2s" hx-swap="outerHTML" data-focus-after-swap="#export-progress" data-live-announce="{{ text "analytics.export.progress.live" }}"{{ end }}>
+  <dl class="export-status">
+    <div><dt>{{ text "analytics.export.job.id" }}</dt><dd>{{ .ID }}</dd></div>
+    <div><dt>{{ text "analytics.export.job.status" }}</dt><dd><span class="status status-{{ .StatusClass }}">{{ .StatusLabel }}</span></dd></div>
+    {{- if .StartedLabel }}
+    <div><dt>{{ text "analytics.export.job.started" }}</dt><dd>{{ .StartedLabel }}</dd></div>
+    {{- end }}
+    {{- if .UpdatedLabel }}
+    <div><dt>{{ text "analytics.export.job.updated" }}</dt><dd>{{ .UpdatedLabel }}</dd></div>
+    {{- end }}
+  </dl>
+
+  {{- if .Failed }}
+  <p class="export-error" role="alert">{{ .Error }}</p>
+  {{- if .ErrorCode }}
+  <p class="export-error-code">{{ text "analytics.export.job.code" }} {{ .ErrorCode }}</p>
+  {{- end }}
+  {{- if .CanRetry }}
+  <form method="post" action="/reports/exports/{{ .ID }}/retry">
+    <button type="submit">{{ text "analytics.export.job.retry" }}</button>
+  </form>
+  {{- end }}
+  {{- else if .ResultAvailable }}
+  <p class="export-result"><a href="{{ .ResultURL }}">{{ text "analytics.export.job.download" }}</a></p>
+  {{- else }}
+  <p class="export-progress-value">
+    <span class="export-progress-label">{{ text "analytics.export.job.progress" }}</span>
+    <progress value="{{ .Progress }}" max="100">{{ .Progress }}%</progress>
+    <span class="export-progress-percent">{{ .Progress }}%</span>
+    {{- if .Step }}
+    <span class="export-step">{{ text "analytics.export.job.step" }} {{ .Step }}</span>
+    {{- end }}
+  </p>
+  {{- end }}
+</article>
+{{- end -}}

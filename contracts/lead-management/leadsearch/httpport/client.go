@@ -120,10 +120,11 @@ func (c *Client) Search(ctx context.Context, query leadsearch.Query) (leadsearch
 		leads = append(leads, leadsearch.LeadRef{ID: lead.ID, Origin: lead.Origin})
 	}
 	return leadsearch.Result{
-		Found:    body.Found,
-		FromPool: body.FromPool,
-		Crawled:  body.Crawled,
-		Leads:    leads,
+		Found:         body.Found,
+		FromPool:      body.FromPool,
+		Crawled:       body.Crawled,
+		Leads:         leads,
+		PartialReason: body.PartialReason,
 	}, nil
 }
 
@@ -207,8 +208,9 @@ type leadRefWire struct {
 
 // searchResponse — ответ владельца на команду поиска (200 OK).
 type searchResponse struct {
-	Found    int           `json:"found"`
-	FromPool int           `json:"from_pool"`
-	Crawled  int           `json:"crawled"`
-	Leads    []leadRefWire `json:"leads"`
+	Found         int           `json:"found"`
+	FromPool      int           `json:"from_pool"`
+	Crawled       int           `json:"crawled"`
+	Leads         []leadRefWire `json:"leads"`
+	PartialReason string        `json:"partial_reason"`
 }

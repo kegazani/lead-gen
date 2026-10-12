@@ -1,0 +1,38 @@
+{{- define "content" -}}
+<section class="cockpit-dashboard" data-fullscreen>
+  <h1>{{ text "cockpit.title.dashboard" }}</h1>
+  {{- with .View.Notice }}
+  <p class="notice" role="status">{{.}}</p>
+  {{- end }}
+  <p class="hint">{{ text "cockpit.dashboard.threshold" }}: {{ .View.Threshold }}</p>
+  {{- if .View.Unavailable }}
+  <p class="notice" role="status">{{ text "cockpit.dashboard.unavailable" }}</p>
+  {{- else if .View.Empty }}
+  <p class="empty">{{ text "cockpit.dashboard.empty" }}</p>
+  {{- else }}
+  <table class="table">
+    <thead>
+      <tr>
+        <th>{{ text "cockpit.col.client" }}</th>
+        {{- range .View.Headers }}
+        <th>{{ . }}</th>
+        {{- end }}
+        <th>{{ text "cockpit.col.anomalies" }}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{- range .View.Rows }}
+      <tr>
+        <td>{{ .ClientID }}</td>
+        {{- range .Cells }}
+        <td><span class="status status-{{ .Class }}"><span aria-hidden="true">{{ .Icon }}</span> {{ .Count }}</span></td>
+        {{- end }}
+        <td>{{ range $i, $anomaly := .AnomalyLabels }}{{ if $i }}, {{ end }}{{ $anomaly }}{{ end }}</td>
+      </tr>
+      {{- end }}
+    </tbody>
+  </table>
+  {{- end }}
+  <p><a href="{{ .View.BackURL }}">{{ text "cockpit.title.operations" }}</a></p>
+</section>
+{{- end -}}

@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
@@ -142,11 +143,11 @@ func TestConsoleRequiresSession(t *testing.T) {
 }
 
 func TestConsoleQueueShowsRiskChecksPerDraft(t *testing.T) {
-	risk := func(id domain.DraftID, _ int) []domain.RiskReason {
-		if id == "draft-risky" {
-			return []domain.RiskReason{domain.RiskPersonalDataDetected}
+	risk := func(_ context.Context, req domain.RiskFactsRequest) ([]domain.RiskReason, error) {
+		if req.DraftID == "draft-risky" {
+			return []domain.RiskReason{domain.RiskStopRuleTriggered}, nil
 		}
-		return nil
+		return nil, nil
 	}
 	fx := newFixtureWithRisk(t, risk)
 	seedCampaign(t, fx, "campaign-1")
@@ -161,7 +162,7 @@ func TestConsoleQueueShowsRiskChecksPerDraft(t *testing.T) {
 	if !strings.Contains(body, "draft-risky") || !strings.Contains(body, "draft-safe") {
 		t.Fatal("очередь не содержит оба черновика")
 	}
-	if !strings.Contains(body, "рисковый") || !strings.Contains(body, "персональные данные") {
+	if !strings.Contains(body, "рисковый") || !strings.Contains(body, "сработало правило остановки") {
 		t.Fatal("результат автоматических проверок по рисковому черновику не показан")
 	}
 	if !strings.Contains(body, "class=\"queue-item is-risky\"") {
@@ -241,11 +242,11 @@ func TestBatchApproveWithPresentedComposition(t *testing.T) {
 }
 
 func TestRiskyDraftExcludedFromPackage(t *testing.T) {
-	risk := func(id domain.DraftID, _ int) []domain.RiskReason {
-		if id == "draft-risky" {
-			return []domain.RiskReason{domain.RiskStopRuleTriggered}
+	risk := func(_ context.Context, req domain.RiskFactsRequest) ([]domain.RiskReason, error) {
+		if req.DraftID == "draft-risky" {
+			return []domain.RiskReason{domain.RiskStopRuleTriggered}, nil
 		}
-		return nil
+		return nil, nil
 	}
 	fx := newFixtureWithRisk(t, risk)
 	seedCampaign(t, fx, "campaign-1")
@@ -395,6 +396,71 @@ func TestStalledQueueNotifiesOperator(t *testing.T) {
 	}
 	if !strings.Contains(body, "неисполненным") {
 		t.Fatal("оператор не уведомлён, что действие не исполнено")
+	}
+}
+
+// TestOutreachSubnavReplacesSidebarGroup проверяет change console-shell-navigation
+// (задачи 3.1–3.2): вторичные переходы раздела «Рассылки» вынесены из общего
+// сайдбара во внутриэкранную панель. Общий сайдбар несёт только канонические
+// разделы; панель отмечает текущий экран активным, а её ссылки сохраняют
+// активные tenant_id и actor, чтобы контекст не терялся при переходе.
+func TestOutreachSubnavReplacesSidebarGroup(t *testing.T) {
+	fx := newFixture(t)
+	seedCampaign(t, fx, "campaign-1")
+	seedDraft(t, fx, "campaign-1", "draft-1", "m1", "s1", "r1", "email")
+	session := loginConsole(t, fx)
+
+	queueHref := `href="/outreach/drafts?actor=operator-1&amp;tenant_id=tenant-1"`
+	stalledHref := `href="/outreach/stalled?actor=operator-1&amp;tenant_id=tenant-1"`
+
+	// Очередь черновиков: сайдбар без вторичной группы, панель активна на очереди.
+	status, page := session.getConsole(t, fx.server.URL+"/outreach/drafts?tenant_id="+string(testTenant))
+	if status != http.StatusOK {
+		t.Fatalf("GET очереди = %d, ожидался 200", status)
+	}
+	if strings.Contains(page, "sidebar-group-label") || strings.Contains(page, "Экраны рассылок") {
+		t.Fatalf("общий сайдбар не должен нести вторичную группу:\n%s", page)
+	}
+	for _, want := range []string{
+		`<nav class="tabs">`,
+		`class="tab is-active" ` + queueHref + ` aria-current="page">Очередь черновиков</a>`,
+		`class="tab" ` + stalledHref + `>Зависшие черновики</a>`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("экран очереди не содержит %q:\n%s", want, page)
+		}
+	}
+
+	// Экран черновика и экран состава пакетов — те же экраны раздела: панель
+	// сохраняется и активна на очереди черновиков.
+	for _, path := range []string{
+		"/outreach/campaigns/campaign-1/drafts/draft-1?tenant_id=" + string(testTenant),
+		"/outreach/campaigns/campaign-1/batches?tenant_id=" + string(testTenant),
+	} {
+		status, page = session.getConsole(t, fx.server.URL+path)
+		if status != http.StatusOK {
+			t.Fatalf("GET %s = %d, ожидался 200", path, status)
+		}
+		if !strings.Contains(page, `<nav class="tabs">`) {
+			t.Errorf("экран %s не вывел внутриэкранную панель раздела:\n%s", path, page)
+		}
+		if !strings.Contains(page, `class="tab is-active" `+queueHref+` aria-current="page">Очередь черновиков</a>`) {
+			t.Errorf("экран %s не отметил активной очередь черновиков:\n%s", path, page)
+		}
+	}
+
+	// Срез зависших: панель активна на зависших, ссылка на очередь сохраняет контекст.
+	status, page = session.getConsole(t, fx.server.URL+"/outreach/stalled?tenant_id="+string(testTenant))
+	if status != http.StatusOK {
+		t.Fatalf("GET зависших = %d, ожидался 200", status)
+	}
+	for _, want := range []string{
+		`class="tab" ` + queueHref + `>Очередь черновиков</a>`,
+		`class="tab is-active" ` + stalledHref + ` aria-current="page">Зависшие черновики</a>`,
+	} {
+		if !strings.Contains(page, want) {
+			t.Errorf("экран зависших не содержит %q:\n%s", want, page)
+		}
 	}
 }
 

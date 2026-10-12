@@ -20,7 +20,7 @@ func TestChangeLeadStageMovesLeadAndRecordsActivity(t *testing.T) {
 		Clock:    fakeClock{t: testTime},
 	}
 
-	if err := u.Change(context.Background(), "example.com", domain.StageEmailSent, "оператор"); err != nil {
+	if err := u.Change(context.Background(), "example.com", domain.StageEmailSent, "оператор", ""); err != nil {
 		t.Fatalf("Change: %v", err)
 	}
 
@@ -46,7 +46,7 @@ func TestChangeLeadStageRejectsUnknownStage(t *testing.T) {
 	seedCompany(profiles, "example.com", "Example Corp")
 
 	u := &ChangeLeadStage{Profiles: profiles, Activity: newMemActivity(), Clock: fakeClock{t: testTime}}
-	if err := u.Change(context.Background(), "example.com", domain.Stage("nope"), "оператор"); !errors.Is(err, domain.ErrInvalidStage) {
+	if err := u.Change(context.Background(), "example.com", domain.Stage("nope"), "оператор", ""); !errors.Is(err, domain.ErrInvalidStage) {
 		t.Fatalf("ожидалась ErrInvalidStage, получено %v", err)
 	}
 }

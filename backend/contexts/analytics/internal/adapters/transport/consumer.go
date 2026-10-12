@@ -1,5 +1,5 @@
 // Package transport реализует транспортный адаптер роли worker контекста
-// analytics: подписку на очередь брокера и перенос нормализованных доменных
+// analytics: подписку на очереди брокера и перенос нормализованных доменных
 // событий в прикладную форму команды применения к проекции дашборда.
 //
 // Адаптер не содержит бизнес-правил: он разбирает тело сообщения, дедуплицирует
@@ -7,6 +7,11 @@
 // делегирует применение сценарию command.ApplyEvent. Проекцию наполняет
 // прикладной слой, а не транспорт. Интерфейс подписки берётся у брокера
 // (platform/transport/amqp.Consumer), поэтому отдельный порт не заводится.
+//
+// Витрину клиента питают два контракта: нормализованный analytics-event (ручные
+// события владельца lead-management) и delivery-event (исходы доставки цикла
+// владельца message-delivery). Декодер контракта передаётся подписчику, поэтому
+// жизненный цикл очереди и дедупликация общие для обоих потоков.
 package transport
 
 import (
@@ -17,6 +22,7 @@ import (
 	"time"
 
 	"lead-gen/backend/contexts/analytics/internal/app/command"
+	"lead-gen/backend/contexts/analytics/internal/readmodel"
 	"lead-gen/backend/platform/messaging/inbox"
 	amqptransport "lead-gen/backend/platform/transport/amqp"
 )
@@ -26,22 +32,54 @@ import (
 // сообщение в очередь этого потребителя.
 const DefaultQueue = "analytics.analytics-event"
 
+// DefaultDeliveryQueue — durable-очередь аналитики на исходы доставки цикла
+// (контракт delivery-event владельца message-delivery). Отдельная очередь, потому
+// что это другой контракт: topic exchange раскладывает его по привязке
+// delivery-event.*. Она питает витрину клиента реальным ходом цикла
+// (найдено → прокоммуницировано → …).
+const DefaultDeliveryQueue = "analytics.delivery-event"
+
+// decoder разбирает доставку очереди в прикладную форму сообщения. Разные
+// контракты имеют разную форму тела, поэтому декодер передаётся подписчику.
+type decoder func(amqptransport.Delivery) (message, error)
+
 // Subscriber читает очередь брокера и применяет нормализованные доменные события
 // к проекции через переданный обработчик.
 type Subscriber struct {
 	consumer amqptransport.Consumer
 	deduper  inbox.Deduper
 	queue    string
+	decode   decoder
 }
 
-// NewSubscriber собирает подписчика. consumer — порт чтения очереди брокера,
-// deduper — журнал обработанных event_id, queue — имя очереди (пустое значение
-// заменяется DefaultQueue).
+// NewSubscriber собирает подписчика на нормализованные события дашборда
+// (контракт analytics-event). consumer — порт чтения очереди брокера, deduper —
+// журнал обработанных event_id, queue — имя очереди (пустое значение заменяется
+// DefaultQueue).
 func NewSubscriber(consumer amqptransport.Consumer, deduper inbox.Deduper, queue string) *Subscriber {
+	return newSubscriber(consumer, deduper, queueOrDefault(queue, DefaultQueue), decodeAnalyticsEvent)
+}
+
+// NewDeliveryEventSubscriber собирает подписчика на исходы доставки (контракт
+// delivery-event владельца message-delivery): доставка нормализуется в проекцию
+// дашборда клиента, поэтому рабочий контур питает витрину реальными событиями
+// цикла. queue — имя очереди (пустое значение заменяется DefaultDeliveryQueue).
+func NewDeliveryEventSubscriber(consumer amqptransport.Consumer, deduper inbox.Deduper, queue string) *Subscriber {
+	return newSubscriber(consumer, deduper, queueOrDefault(queue, DefaultDeliveryQueue), decodeDeliveryEvent)
+}
+
+// newSubscriber — общая сборка подписчика: различие только в имени очереди по
+// умолчанию и декодере контракта.
+func newSubscriber(consumer amqptransport.Consumer, deduper inbox.Deduper, queue string, decode decoder) *Subscriber {
+	return &Subscriber{consumer: consumer, deduper: deduper, queue: queue, decode: decode}
+}
+
+// queueOrDefault возвращает имя очереди или значение по умолчанию.
+func queueOrDefault(queue, fallback string) string {
 	if strings.TrimSpace(queue) == "" {
-		queue = DefaultQueue
+		return fallback
 	}
-	return &Subscriber{consumer: consumer, deduper: deduper, queue: queue}
+	return queue
 }
 
 // Run читает очередь до отмены контекста, вызывая handle для каждого нового
@@ -63,6 +101,10 @@ func (s *Subscriber) Run(ctx context.Context, handle func(context.Context, comma
 		return fmt.Errorf("transport: нет обработчика очереди %q", s.queue)
 	}
 
+	decode := s.decode
+	if decode == nil {
+		decode = decodeAnalyticsEvent
+	}
 	return s.consumer.Consume(ctx, s.queue, func(ctx context.Context, delivery amqptransport.Delivery) error {
 		message, err := decode(delivery)
 		if err != nil {
@@ -102,6 +144,12 @@ type eventDTO struct {
 	Segment    string `json:"segment"`
 	CampaignID string `json:"campaign_id"`
 	ManagerID  string `json:"manager_id"`
+
+	// Поля исхода классификации (kind = lead-assessment): задание, вердикт и
+	// категория причины. Необязательны для прочих видов событий.
+	JobID   string `json:"job_id"`
+	Verdict string `json:"verdict"`
+	Reason  string `json:"reason"`
 }
 
 // message — разобранное сообщение: идентификатор для дедупликации и событие
@@ -111,11 +159,12 @@ type message struct {
 	event   command.ApplyEvent
 }
 
-// decode разбирает тело доставки в прикладную форму. Идентификатор берётся из
-// тела события, а при его отсутствии — из метаданных конверта (Delivery.EventID):
-// конверт переносится брокером отдельно от полезной нагрузки. Событие без
-// event_id отвергается: дедуплицировать нечем.
-func decode(delivery amqptransport.Delivery) (message, error) {
+// decodeAnalyticsEvent разбирает тело доставки нормализованного события дашборда
+// в прикладную форму. Идентификатор берётся из тела события, а при его отсутствии
+// — из метаданных конверта (Delivery.EventID): конверт переносится брокером
+// отдельно от полезной нагрузки. Событие без event_id отвергается:
+// дедуплицировать нечем.
+func decodeAnalyticsEvent(delivery amqptransport.Delivery) (message, error) {
 	var dto eventDTO
 	if err := json.Unmarshal(delivery.Body, &dto); err != nil {
 		return message{}, fmt.Errorf("transport: разбор события: %w", err)
@@ -147,8 +196,75 @@ func decode(delivery amqptransport.Delivery) (message, error) {
 			Segment:    dto.Segment,
 			CampaignID: dto.CampaignID,
 			ManagerID:  dto.ManagerID,
+
+			JobID:   dto.JobID,
+			Verdict: dto.Verdict,
+			Reason:  dto.Reason,
 		},
 	}, nil
+}
+
+// deliveryEventDTO — тело контракта delivery-event (владелец message-delivery).
+// Персональных данных не несёт: получатель — непрозрачная ссылка. Поля конверта
+// (event_id, tenant_id, occurred_at) лежат в том же объекте конверта контракта.
+type deliveryEventDTO struct {
+	EventID      string `json:"event_id"`
+	TenantID     string `json:"tenant_id"`
+	OccurredAt   string `json:"occurred_at"`
+	Outcome      string `json:"outcome"`
+	CampaignID   string `json:"campaign_id"`
+	RecipientRef string `json:"recipient_ref"`
+	MessageID    string `json:"message_id"`
+}
+
+// decodeDeliveryEvent нормализует исход доставки цикла в форму проекции дашборда.
+// Доставленное сообщение учитывается как коммуникация (вид message-sent): она и
+// есть состоявшийся контакт с получателем. Отказ доставки — вид delivery-event с
+// исходом failed (отбой). Идентификатор записи — непрозрачная ссылка получателя;
+// при её отсутствии — идентификатор сообщения. Событие без тенанта или без
+// принадлежности не создаёт запись: проекция не выдумывает срез.
+func decodeDeliveryEvent(delivery amqptransport.Delivery) (message, error) {
+	var dto deliveryEventDTO
+	if err := json.Unmarshal(delivery.Body, &dto); err != nil {
+		return message{}, fmt.Errorf("transport: разбор события доставки: %w", err)
+	}
+	eventID := strings.TrimSpace(dto.EventID)
+	if eventID == "" {
+		eventID = strings.TrimSpace(delivery.EventID)
+	}
+	if eventID == "" {
+		return message{}, fmt.Errorf("transport: событие доставки без event_id")
+	}
+	occurred, err := parseOccurred(dto.OccurredAt)
+	if err != nil {
+		return message{}, err
+	}
+	company := strings.TrimSpace(dto.RecipientRef)
+	if company == "" {
+		company = strings.TrimSpace(dto.MessageID)
+	}
+	event := command.ApplyEvent{
+		TenantID:   strings.TrimSpace(dto.TenantID),
+		CompanyID:  company,
+		Outcome:    strings.TrimSpace(dto.Outcome),
+		OccurredAt: occurred,
+		CampaignID: strings.TrimSpace(dto.CampaignID),
+	}
+	if isDeliveredOutcome(dto.Outcome) {
+		// Доставка = состоявшаяся коммуникация: получатель учитывается как
+		// прокоммуницированный.
+		event.Kind = string(readmodel.KindMessageSent)
+		event.Status = "sent"
+	} else {
+		// Отказ доставки — исход доставки: отбой, а не коммуникация.
+		event.Kind = string(readmodel.KindDeliveryEvent)
+	}
+	return message{eventID: eventID, event: event}, nil
+}
+
+// isDeliveredOutcome сообщает, что исход доставки — успешная доставка.
+func isDeliveredOutcome(outcome string) bool {
+	return strings.EqualFold(strings.TrimSpace(outcome), "delivered")
 }
 
 // parseOccurred разбирает время события: пустая строка — нулевое время (проекция

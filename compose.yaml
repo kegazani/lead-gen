@@ -1,21 +1,285 @@
-# Локальный запуск MVP-среза поиска лидов: PostgreSQL (зелёная и красная зоны)
-# + служебный образ lead-management (роли api и worker).
+# Локальный (dev) контур полного цикла лидогенерации: клиентский портал и дашборд,
+# админские консоли, поиск/письма/утверждение/отправка.
 #
-# Секреты и конфигурация берутся из .env (образец — .env.example).
-# Быстрый старт:
+# Топология. Целевая (раздельная) топология `deploy/services.yaml`: каждая из семи
+# контурных групп — отдельный контейнер того же образа (`LEADGEN_PROCESS`).
+# Группа `agents` (`agent-orchestration`) — отдельный контейнер: изоляция
+# координации агентов от горячего пути кампании (design.md, Решение 14).
+# Синхронные межсервисные контракты идут по сети между контейнерами:
+#   core     (outreach-orchestration, analytics)   → approved-action → delivery
+#   delivery (message-delivery)                    → delivery-target/content-version → demand
+#   demand   (lead-management, audience, content-production)
+#   intake   (request-fulfillment)                 → lead-search/email-generation → demand
+#   agents   (agent-orchestration)                 → lead-search → demand
+#   platform (integration-platform, platform-governance, data-governance)
+#   public   (engagement-observation)
+#
+# Проводка агента в этой ревизии: подключён только контракт lead-search (блок
+# search). Блоки classify/generate-email/await-approval/send имеют исполнителей в
+# контексте (`agent-orchestration`), но адреса контрактов lead-relevance,
+# content-request и утверждения/отправки точка входа пока не читает, поэтому эти
+# шаги честно недоступны (AGENTS.md §3), а не подменяются выдумкой.
+# Порты api-ролей внутри контейнера назначаются от его `LEADGEN_API_PORT_BASE`
+# (нумерация как в совмещённом деплое, поэтому браузерные адреса не меняются).
+#
+# Секреты и параметры — из .env (образец .env.example). Быстрый старт:
 #   cp .env.example .env   # заполнить FIRECRAWL_API_KEY (и, по желанию, LLM_*)
 #   docker compose up --build
-#   открыть http://localhost:8080/
+#
+# Порты api-сервисов на хосте:
+#   8080 outreach-orchestration   8081 analytics            8082 lead-management
+#   8083 audience                 8084 content-production   8085 request-fulfillment
+#   8086 integration-platform     8087 platform-governance  8088 data-governance
+#   ingest engagement-observation — 8090; agent-orchestration api — 8089
+#
+# Браузерные адреса:
+#   единый вход админки http://localhost:8000/ (admin-proxy; префиксы /admin,
+#     /lead-console, /intake, /reporting, /mailing — навигация не покидает origin)
+#   портал клиента  http://localhost:8087/  (не проксируется)
+#   почта (захват)  http://localhost:8025/
+
+# Общая команда запуска: одинаковый набор глобальных параметров для всех групп.
+# Отличия группы (какие процессы, базовый порт api, сетевые адреса контрактов)
+# задаются переменными окружения контейнера, а не разными командами.
+x-app-command: &app-command
+  - -config
+  - /deploy/services.yaml
+  # Хранилища: зелёная/красная зоны + поддержка. Миграции применяет точка сборки.
+  - -lead-green-dsn
+  - postgres://lead_gen:${POSTGRES_PASSWORD:?задайте POSTGRES_PASSWORD в .env}@postgres-green:5432/lead_gen?sslmode=disable
+  - -lead-red-dsn
+  - postgres://lead_gen:${POSTGRES_PASSWORD}@postgres-red:5432/lead_gen?sslmode=disable
+  - -request-green-dsn
+  - postgres://lead_gen:${POSTGRES_PASSWORD}@postgres-green:5432/lead_gen?sslmode=disable
+  - -support-green-dsn
+  - postgres://lead_gen:${POSTGRES_PASSWORD}@postgres-green:5432/lead_gen?sslmode=disable
+  # Поиск/обход и LLM.
+  - -firecrawl-key
+  - ${FIRECRAWL_API_KEY:?задайте FIRECRAWL_API_KEY в .env}
+  - -firecrawl-url
+  - ${FIRECRAWL_BASE_URL:-}
+  - -llm-base-url
+  - ${LLM_BASE_URL:-}
+  - -llm-model
+  - ${LLM_MODEL:-}
+  - -llm-key
+  - ${LLM_API_KEY:-}
+  # Эмбеддинги (отдельно от чата): семантический recall/RAG. По умолчанию —
+  # локальный self-hosted провайдер (сервис embeddings, OpenAI-совместимый
+  # /v1/embeddings); внешний OpenAI-совместимый задаётся переопределением
+  # EMBEDDING_* в .env. EMBEDDING_KEY локального сервера без авторизации —
+  # фиктивные креды `local` (не заглушка функции; design.md, Решение 4).
+  - -embedding-base-url
+  - ${EMBEDDING_BASE_URL:-http://embeddings:11434}
+  - -embedding-model
+  - ${EMBEDDING_MODEL:-bge-m3}
+  - -embedding-key
+  - ${EMBEDDING_KEY:-local}
+  # Реальный поиск в workflow: заглушка шага поиска выключена (AGENTS.md §3).
+  - -workflow-search-stub-leads
+  - "0"
+  # Отправка через локальный приёмник.
+  - -smtp-host
+  - mailpit
+  - -smtp-port
+  - "1025"
+  - -smtp-from
+  - ${SMTP_FROM:-leads@lead.example}
+  # Рантайм durable-исполнения заявок.
+  - -temporal-address
+  - temporal:7233
+  - -temporal-namespace
+  - default
+  - -temporal-task-queue
+  - request-fulfillment
+  # Брокер.
+  - -broker-url
+  - ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672/}
+  # Liveness уровня процесса: слушатель, к которому ходит healthcheck (см. x-app).
+  - -liveness-addr
+  - "127.0.0.1:8091"
+  # Метрики уровня процесса: /metrics для Prometheus (см. сервис prometheus).
+  - -metrics-addr
+  - ":8092"
+  # Prometheus для консоли топологии (владелец platform-governance).
+  - -prometheus-url
+  - http://prometheus:9090
+  # Тенант и оператор.
+  - -tenant
+  - ${TENANT:-demo}
+  - -actor
+  - ${ACTOR:-admin}
+
+# Runtime-only command for intake. Unlike the legacy groups, this command carries
+# no bootstrap/admin, migration or shared DSN; the three runtime credentials are
+# read through read-only secret mounts below.
+x-intake-command: &intake-command
+  - -config
+  - /deploy/services.yaml
+  - -process
+  - intake
+  - -api-port-base
+  - "8085"
+  - -db-policy
+  - runtime-only
+  - -firecrawl-key
+  - ${FIRECRAWL_API_KEY:?задайте FIRECRAWL_API_KEY в .env}
+  - -firecrawl-url
+  - ${FIRECRAWL_BASE_URL:-}
+  - -llm-base-url
+  - ${LLM_BASE_URL:-}
+  - -llm-model
+  - ${LLM_MODEL:-}
+  - -llm-key
+  - ${LLM_API_KEY:-}
+  - -embedding-base-url
+  - ${EMBEDDING_BASE_URL:-http://embeddings:11434}
+  - -embedding-model
+  - ${EMBEDDING_MODEL:-bge-m3}
+  - -embedding-key
+  - ${EMBEDDING_KEY:-local}
+  - -workflow-search-stub-leads
+  - "0"
+  - -smtp-host
+  - mailpit
+  - -smtp-port
+  - "1025"
+  - -smtp-from
+  - ${SMTP_FROM:-leads@lead.example}
+  - -temporal-address
+  - temporal:7233
+  - -temporal-namespace
+  - default
+  - -temporal-task-queue
+  - request-fulfillment
+  - -broker-url
+  - ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672/}
+  - -liveness-addr
+  - "127.0.0.1:8091"
+  - -metrics-addr
+  - ":8092"
+  - -prometheus-url
+  - http://prometheus:9090
+  - -tenant
+  - ${TENANT:-demo}
+  - -actor
+  - ${ACTOR:-admin}
+
+# Общее окружение групп: внешние префиксы путей консолей под единым origin
+# (admin-proxy). Каждый сервис переписывает свои ссылки/редиректы под свой префикс.
+x-app-env: &app-env
+  LEADGEN_SECRET_GENERATION: "${SECRET_GENERATION:?required}"
+  CONSOLE_LEADS_BASE_PATH: ${CONSOLE_LEADS_BASE_PATH:-/lead-console}
+  CONSOLE_REQUESTS_BASE_PATH: ${CONSOLE_REQUESTS_BASE_PATH:-/intake}
+  CONSOLE_REPORTS_BASE_PATH: ${CONSOLE_REPORTS_BASE_PATH:-/reporting}
+  CONSOLE_OUTREACH_BASE_PATH: ${CONSOLE_OUTREACH_BASE_PATH:-/mailing}
+  CONSOLE_PLATFORM_BASE_PATH: ${CONSOLE_PLATFORM_BASE_PATH:-/admin}
+
+# Общая часть группы процессов: образ, зависимость от инфраструктуры и команда.
+x-app: &app
+  build:
+    context: .
+    dockerfile: Dockerfile
+  restart: unless-stopped
+  user: "65532:65532"
+  depends_on:
+    postgres-green:
+      condition: service_healthy
+    postgres-red:
+      condition: service_healthy
+    rabbitmq:
+      condition: service_healthy
+    temporal:
+      condition: service_healthy
+    mailpit:
+      condition: service_started
+  volumes:
+    - ./deploy/services.yaml:/deploy/services.yaml:ro
+  command: *app-command
+  environment: *app-env
+  # Liveness-проба уровня процесса (design.md, Решение 3): тот же статический
+  # бинарник в режиме пробы, отдельно от /readyz (readiness). В distroless нет
+  # shell/curl, поэтому проба — вызов `lead-gen -healthcheck`, а не shell-команда.
+  # Проба проверяет только «процесс жив и отвечает», не здоровье отдельных ролей.
+  healthcheck:
+    test: ["CMD", "/usr/local/bin/lead-gen", "-healthcheck", "-healthcheck-url", "http://127.0.0.1:8091/livez"]
+    interval: 10s
+    timeout: 5s
+    retries: 3
+    start_period: 30s
+
+# Job-контейнеры не являются долгоживущими процессными группами. Их запуск
+# вручную через `--profile db-admin run --rm ...` исключает миграцию при обычном
+# `up` и не монтирует административные файлы ни в один runtime контейнер.
+x-db-job: &db-job
+  build:
+    context: .
+    dockerfile: Dockerfile
+  profiles: [db-admin]
+  restart: "no"
+  user: "65532:65532"
+  environment:
+    LEADGEN_SECRET_GENERATION: "${SECRET_GENERATION:?required}"
+  depends_on:
+    postgres-green:
+      condition: service_healthy
+
+# Одноразовая стадия: root нужен только для записи в отдельный named volume.
+# Нет сети, socket, privileged и иных mounts; host source read-only.
+x-secret-stage: &secret-stage
+  build:
+    context: .
+    dockerfile: Dockerfile
+  entrypoint: ["/usr/local/bin/lead-gen"]
+  user: "0:0"
+  restart: "no"
+  network_mode: none
+  read_only: true
+  security_opt: ["no-new-privileges:true"]
+  cap_drop: ["ALL"]
+  cap_add: ["CHOWN", "FOWNER", "DAC_OVERRIDE"]
+  volumes:
+    - type: bind
+      source: ${LEADGEN_SECRET_DIR:-./deploy/tofu/.secrets}
+      target: /run/secret-source
+      read_only: true
+  command: [-db-job, stage-secrets, -source-dir, /run/secret-source, -volume-dir, /stage, -generation, "${SECRET_GENERATION:?required}"]
+
+# Одноразовая стадия внешнего release trust anchor. Источник — отдельный
+# read-only bind каталога; единственный writable mount — выделенный trust volume.
+x-trust-stage: &trust-stage
+  build:
+    context: .
+    dockerfile: Dockerfile
+  entrypoint: ["/usr/local/bin/lead-gen"]
+  user: "0:0"
+  restart: "no"
+  network_mode: none
+  read_only: true
+  security_opt: ["no-new-privileges:true"]
+  cap_drop: ["ALL"]
+  cap_add: ["CHOWN", "FOWNER", "DAC_OVERRIDE"]
+  volumes:
+    - type: bind
+      source: ${LEADGEN_RELEASE_TRUST_SOURCE_DIR:?required}
+      target: /run/trust-source
+      read_only: true
+  command: [-db-job, stage-trust-anchor, -source-dir, /run/trust-source, -source-name, trusted-release.pub, -volume-dir, /stage, -key-id, "${LEADGEN_RELEASE_TRUST_KEY_ID:?required}"]
 
 services:
   postgres-green:
     image: postgres:17-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_USER: lead_gen
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?задайте POSTGRES_PASSWORD в .env}
       POSTGRES_DB: lead_gen
     volumes:
       - postgres-green-data:/var/lib/postgresql/data
+    # Доступ с хоста для внешних инструментов (DBeaver, psql). Привязка к
+    # loopback — в сеть порт не публикуется.
+    ports:
+      - "127.0.0.1:${POSTGRES_GREEN_PORT:-5433}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U lead_gen -d lead_gen"]
       interval: 5s
@@ -24,25 +288,27 @@ services:
 
   postgres-red:
     image: postgres:17-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_USER: lead_gen
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?задайте POSTGRES_PASSWORD в .env}
       POSTGRES_DB: lead_gen
     volumes:
       - postgres-red-data:/var/lib/postgresql/data
+    # Доступ с хоста для внешних инструментов (DBeaver, psql). Привязка к
+    # loopback — в сеть порт не публикуется.
+    ports:
+      - "127.0.0.1:${POSTGRES_RED_PORT:-5434}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U lead_gen -d lead_gen"]
       interval: 5s
       timeout: 3s
       retries: 20
 
-  # --- Брокер событий (RabbitMQ) ---
-  # Транспорт границы сервисов: события дашборда (контракт analytics-event) идут
-  # через общий topic exchange, очереди — по конвенции <downstream>.<contract>.
-  # Адрес для клиентов — amqp://guest:guest@rabbitmq:5672/. Панель управления —
-  # http://localhost:15672/ (guest/guest, только локально).
+  # Брокер событий: аналитические события дашборда и межсервисные события.
   rabbitmq:
     image: rabbitmq:3-management
+    restart: unless-stopped
     environment:
       RABBITMQ_DEFAULT_USER: guest
       RABBITMQ_DEFAULT_PASS: guest
@@ -56,69 +322,29 @@ services:
       retries: 12
       start_period: 20s
 
-  lead-management:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    depends_on:
-      postgres-green:
-        condition: service_healthy
-      postgres-red:
-        condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
-    # Конфигурация групп процессов — источник истины deploy/services.yaml;
-    # монтируется только на чтение, чтобы правки файла применялись без пересборки.
-    volumes:
-      - ./deploy/services.yaml:/etc/lead-gen/services.yaml:ro
-    environment:
-      # Браузерные (публичные) адреса консолей для навигации; задаются под контур.
-      CONSOLE_LEADS_URL: http://localhost:${LEAD_HTTP_PORT:-8080}
-      CONSOLE_REQUESTS_URL: http://localhost:${REQUEST_FULFILLMENT_HTTP_PORT:-8081}
-      CONSOLE_REPORTS_URL: http://localhost:${DASHBOARD_HTTP_PORT:-8083}
-    command:
-      - -config
-      - /etc/lead-gen/services.yaml
-      - -service
-      - lead-management
-      - -lead-green-dsn
-      - postgres://lead_gen:${POSTGRES_PASSWORD}@postgres-green:5432/lead_gen?sslmode=disable
-      - -lead-red-dsn
-      - postgres://lead_gen:${POSTGRES_PASSWORD}@postgres-red:5432/lead_gen?sslmode=disable
-      - -firecrawl-key
-      - ${FIRECRAWL_API_KEY:?задайте FIRECRAWL_API_KEY в .env}
-      - -firecrawl-url
-      - ${FIRECRAWL_BASE_URL:-}
-      - -llm-base-url
-      - ${LLM_BASE_URL:-}
-      - -llm-model
-      - ${LLM_MODEL:-}
-      - -llm-key
-      - ${LLM_API_KEY:-}
-      - -console-user
-      - ${CONSOLE_USER:-admin}
-      - -console-password
-      - ${CONSOLE_PASSWORD:-admin}
-      - -broker-url
-      - ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672/}
-      - -tenant
-      - ${TENANT:-demo}
-      - -addr
-      - :8080
+  # Локальный приёмник почты: SMTP (1025) + веб-интерфейс (8025). Реальная отправка
+  # идёт сюда — письма видно в интерфейсе или через API /api/v1/messages.
+  mailpit:
+    image: axllent/mailpit:v1.21
+    restart: unless-stopped
     ports:
-      - "${LEAD_HTTP_PORT:-8080}:8080"
+      - "${SMTP_CAPTURE_PORT:-1025}:1025"
+      - "${MAILPIT_UI_PORT:-8025}:8025"
 
-  # --- Self-hosted Temporal (durable-исполнение workflow) ---
-  # Сервер + web-интерфейс + собственная БД. Альтернатива Temporal Cloud из
-  # change temporal-execution-platform; адрес для клиентов — temporal:7233.
+  # Self-hosted Temporal (durable-исполнение workflow) с собственной БД.
   postgres-temporal:
     image: postgres:16-alpine
+    restart: unless-stopped
     environment:
       POSTGRES_USER: temporal
       POSTGRES_PASSWORD: temporal
       POSTGRES_DB: temporal
     volumes:
       - postgres-temporal-data:/var/lib/postgresql/data
+    # Доступ с хоста для внешних инструментов (DBeaver, psql). Привязка к
+    # loopback — в сеть порт не публикуется.
+    ports:
+      - "127.0.0.1:${POSTGRES_TEMPORAL_PORT:-5435}:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U temporal -d temporal"]
       interval: 5s
@@ -127,6 +353,7 @@ services:
 
   temporal:
     image: temporalio/auto-setup:1.26.2
+    restart: unless-stopped
     depends_on:
       postgres-temporal:
         condition: service_healthy
@@ -151,169 +378,535 @@ services:
 
   temporal-ui:
     image: temporalio/ui:2.31.2
+    restart: unless-stopped
     depends_on:
       temporal:
         condition: service_healthy
     environment:
       TEMPORAL_ADDRESS: temporal:7233
-      TEMPORAL_CORS_ORIGINS: http://localhost:3000
     ports:
       - "${TEMPORAL_UI_PORT:-8233}:8080"
 
-  # Сервис request-fulfillment: воркер workflow + внутренний API заявок.
-  # Тот же служебный образ, что и lead-management; роли задаёт конфигурация.
-  request-fulfillment:
-    build:
-      context: .
-      dockerfile: Dockerfile
+  # embeddings — локальный провайдер эмбеддингов (self-hosted Ollama):
+  # OpenAI-совместимый POST /v1/embeddings для семантического recall/RAG.
+  # Внешний ключ не нужен; многоязычная модель (по умолчанию bge-m3) подтягивается
+  # при первом старте, том переживает рестарт. Выбор движка (нативный arm64 на
+  # macOS вместо amd64-only TEI) — design.md, Решение 1.
+  embeddings:
+    image: ollama/ollama:0.35.1
+    restart: unless-stopped
+    environment:
+      # Слушаем все интерфейсы, чтобы сервис был доступен другим контейнерам по
+      # имени embeddings (значение по умолчанию — 127.0.0.1).
+      OLLAMA_HOST: 0.0.0.0:11434
+      # Передаём значение модели как ENV, а не подставляем в shell script.
+      OLLAMA_MODEL: ${EMBEDDING_MODEL:-bge-m3}
+    # При старте поднимаем сервер и подтягиваем модель; при недоступности сети
+    # сервер остаётся жив, а recall честно сообщает об ошибке провайдера.
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        ollama serve &
+        until ollama list >/dev/null 2>&1; do sleep 1; done
+        ollama pull "$$OLLAMA_MODEL"
+        wait
+    volumes:
+      - ollama-models:/root/.ollama
+    ports:
+      # Публикуется на localhost (порт 11435, чтобы не конфликтовать с возможным
+      # нативным Ollama на 11434); внутри сети доступен по имени embeddings.
+      - "127.0.0.1:${EMBEDDINGS_PORT:-11435}:11434"
+    healthcheck:
+      test: ["CMD-SHELL", "ollama list >/dev/null 2>&1 || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 30s
+
+  # core — горячий путь кампании: оркестрация → аналитика. Утверждённые действия
+  # уходят сетью в delivery (сетевой транспорт approved-action).
+  stage-secrets-core:
+    <<: *secret-stage
+    command: [-db-job, stage-secrets, -target, core, -source-dir, /run/secret-source, -volume-dir, /stage, -generation, "${SECRET_GENERATION:?required}"]
+    volumes:
+      - type: bind
+        source: ${LEADGEN_SECRET_DIR:-./deploy/tofu/.secrets}
+        target: /run/secret-source
+        read_only: true
+      - secrets-core:/stage
+  core:
+    <<: *app
     depends_on:
+      stage-secrets-core:
+        condition: service_completed_successfully
       postgres-green:
+        condition: service_healthy
+      postgres-red:
+        condition: service_healthy
+      rabbitmq:
         condition: service_healthy
       temporal:
         condition: service_healthy
-      rabbitmq:
-        condition: service_healthy
-      lead-management:
+      mailpit:
         condition: service_started
     volumes:
-      - ./deploy/services.yaml:/etc/lead-gen/services.yaml:ro
+      - ./deploy/services.yaml:/deploy/services.yaml:ro
+      - secrets-core:/run/secrets:ro
     environment:
-      # Браузерные (публичные) адреса консолей для навигации; задаются под контур.
-      CONSOLE_LEADS_URL: http://localhost:${LEAD_HTTP_PORT:-8080}
-      CONSOLE_REQUESTS_URL: http://localhost:${REQUEST_FULFILLMENT_HTTP_PORT:-8081}
-      CONSOLE_REPORTS_URL: http://localhost:${DASHBOARD_HTTP_PORT:-8083}
-    command:
-      - -config
-      - /etc/lead-gen/services.yaml
-      - -service
-      - request-fulfillment
-      - -addr
-      - :8080
-      - -request-green-dsn
-      - postgres://lead_gen:${POSTGRES_PASSWORD}@postgres-green:5432/lead_gen?sslmode=disable
-      - -lead-search-url
-      - http://lead-management:8080
-      - -email-generation-url
-      - http://lead-management:8080
-      - -temporal-address
-      - temporal:7233
-      - -temporal-namespace
-      - default
-      - -temporal-task-queue
-      - request-fulfillment
-      - -workflow-search-stub-leads
-      - ${WORKFLOW_SEARCH_STUB_LEADS:-1}
-      - -console-user
-      - ${CONSOLE_USER:-admin}
-      - -console-password
-      - ${CONSOLE_PASSWORD:-admin}
-      - -broker-url
-      - ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672/}
+      <<: *app-env
+      CONSOLE_USER: ${CONSOLE_USER:-admin}
+      CONSOLE_PASSWORD_FILE: "/run/secrets/${SECRET_GENERATION:?required}/console-password"
+      LEADGEN_PROCESS: core
+      LEADGEN_API_PORT_BASE: "8080"
+      LEADGEN_APPROVED_ACTION_URL: http://delivery:8090
+      # Владелец правил доступа живёт в группе platform — сетевой accessdecision.
+      LEADGEN_ACCESS_DECISION_URL: http://platform:8087
+      # Риск-скрининг: владельцы фактов живут в группе demand (delivery-target и
+      # address-verification у lead-management) — сетевые клиенты.
+      LEADGEN_DELIVERY_TARGET_URL: http://demand:8082
+      LEADGEN_ADDRESS_VERIFICATION_URL: http://demand:8082
     ports:
-      - "${REQUEST_FULFILLMENT_HTTP_PORT:-8081}:8080"
+      - "${OUTREACH_HTTP_PORT:-8080}:8080"
+      - "${REPORTS_HTTP_PORT:-8081}:8081"
 
-  # --- Два клиентских фронтенда (эпик client-request-domain) ---
-  # Портал клиента (platform-governance) и дашборд клиента (analytics) —
-  # серверный рендер (HTMX + html/template). Портал ходит в сервис заявок по
-  # портал ходит в сервис заявок по
-  # сети через сетевой адаптер контракта request-intent (флаг -request-intent-url),
-  # поэтому его заявки доходят до workflow. Дашборд подписан на очередь брокера
-  # (analytics.analytics-event), а lead-management публикует события дашборда
-  # (lead-workflow при смене стадии, message-sent при отправке письма) в RabbitMQ
-  # через контракт analytics-event. Приём POST /dashboard/events остаётся
-  # dev-путём для проверки проекции без брокера.
-  platform-governance:
-    build:
-      context: .
-      dockerfile: Dockerfile
+  # delivery — изолированный контур отправки. Принимает approved-action сетью,
+  # адрес получателя и материал письма разрешает сетью у demand.
+  delivery:
+    <<: *app
+    environment:
+      <<: *app-env
+      LEADGEN_PROCESS: delivery
+      LEADGEN_APPROVED_ACTION_INTAKE_ADDR: ":8090"
+      LEADGEN_DELIVERY_TARGET_URL: http://demand:8082
+      LEADGEN_CONTENT_VERSION_URL: http://demand:8084
+
+  # demand — подготовка аудитории: лиды → сегменты → контент. Отдаёт контракты
+  # delivery-target и content-version сетью (эндпоинты api-ролей).
+  stage-secrets-demand:
+    <<: *secret-stage
+    command: [-db-job, stage-secrets, -target, demand, -source-dir, /run/secret-source, -volume-dir, /stage, -generation, "${SECRET_GENERATION:?required}"]
+    volumes:
+      - type: bind
+        source: ${LEADGEN_SECRET_DIR:-./deploy/tofu/.secrets}
+        target: /run/secret-source
+        read_only: true
+      - secrets-demand:/stage
+  demand:
+    <<: *app
     depends_on:
-      request-fulfillment:
+      stage-secrets-demand:
+        condition: service_completed_successfully
+      postgres-green:
+        condition: service_healthy
+      postgres-red:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      temporal:
+        condition: service_healthy
+      mailpit:
         condition: service_started
     volumes:
-      - ./deploy/services.yaml:/etc/lead-gen/services.yaml:ro
-    command:
-      - -config
-      - /etc/lead-gen/services.yaml
-      - -service
-      - platform-governance
-      - -addr
-      - :8080
-      - -request-intent-url
-      - http://request-fulfillment:8080
-    ports:
-      - "${PORTAL_HTTP_PORT:-8082}:8080"
-
-  analytics:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    depends_on:
-      rabbitmq:
-        condition: service_healthy
-    volumes:
-      - ./deploy/services.yaml:/etc/lead-gen/services.yaml:ro
+      - ./deploy/services.yaml:/deploy/services.yaml:ro
+      - secrets-demand:/run/secrets:ro
     environment:
-      # Браузерные (публичные) адреса консолей для навигации; задаются под контур.
-      CONSOLE_LEADS_URL: http://localhost:${LEAD_HTTP_PORT:-8080}
-      CONSOLE_REQUESTS_URL: http://localhost:${REQUEST_FULFILLMENT_HTTP_PORT:-8081}
-      CONSOLE_REPORTS_URL: http://localhost:${DASHBOARD_HTTP_PORT:-8083}
-    command:
-      - -config
-      - /etc/lead-gen/services.yaml
-      - -service
-      - analytics
-      - -addr
-      - :8080
-      - -broker-url
-      - ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672/}
+      <<: *app-env
+      CONSOLE_USER: ${CONSOLE_USER:-admin}
+      CONSOLE_PASSWORD_FILE: "/run/secrets/${SECRET_GENERATION:?required}/console-password"
+      LEADGEN_PROCESS: demand
+      LEADGEN_API_PORT_BASE: "8082"
+      # Решение о доступе — у владельца в группе platform, по сети.
+      LEADGEN_ACCESS_DECISION_URL: http://platform:8087
     ports:
-      - "${DASHBOARD_HTTP_PORT:-8083}:8080"
+      - "${LEAD_HTTP_PORT:-8082}:8082"
+      - "${AUDIENCE_HTTP_PORT:-8083}:8083"
+      - "${CONTENT_HTTP_PORT:-8084}:8084"
 
-  # Сервисы с собственной ролью api, вынесенные в отдельные контейнеры: у
-  # каждого свой порт. Тот же служебный образ, роли задаёт конфигурация.
-  billing:
-    build:
-      context: .
-      dockerfile: Dockerfile
+  # intake — приём заявки клиента; поиск и генерация писем идут сетью в demand.
+  stage-trust-anchor:
+    <<: *trust-stage
+    volumes:
+      - type: bind
+        source: ${LEADGEN_RELEASE_TRUST_SOURCE_DIR:?required}
+        target: /run/trust-source
+        read_only: true
+      - release-trust:/stage
+  stage-secrets-intake:
+    <<: *secret-stage
+    command: [-db-job, stage-secrets, -target, intake, -source-dir, /run/secret-source, -volume-dir, /stage, -generation, "${SECRET_GENERATION:?required}"]
+    volumes:
+      - type: bind
+        source: ${LEADGEN_SECRET_DIR:-./deploy/tofu/.secrets}
+        target: /run/secret-source
+        read_only: true
+      - secrets-intake:/stage
+  intake:
+    <<: *app
+    command: *intake-command
     depends_on:
+      stage-trust-anchor:
+        condition: service_completed_successfully
+      stage-secrets-intake:
+        condition: service_completed_successfully
+      postgres-green:
+        condition: service_healthy
       rabbitmq:
         condition: service_healthy
-    volumes:
-      - ./deploy/services.yaml:/etc/lead-gen/services.yaml:ro
-    command:
-      - -config
-      - /etc/lead-gen/services.yaml
-      - -service
-      - billing
-      - -addr
-      - :8080
-      - -broker-url
-      - ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672/}
-    ports:
-      - "${BILLING_HTTP_PORT:-8084}:8080"
-
-  publishing:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    depends_on:
-      rabbitmq:
+      temporal:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
+      embeddings:
         condition: service_healthy
     volumes:
-      - ./deploy/services.yaml:/etc/lead-gen/services.yaml:ro
-    command:
-      - -config
-      - /etc/lead-gen/services.yaml
-      - -service
-      - publishing
-      - -addr
-      - :8080
-      - -broker-url
-      - ${RABBITMQ_URL:-amqp://guest:guest@rabbitmq:5672/}
+      - ./deploy/services.yaml:/deploy/services.yaml:ro
+      - secrets-intake:/run/secrets:ro
+      - release-state:/run/leadgen-release:ro
+      - release-trust:/run/leadgen-trust:ro
+    environment:
+      <<: *app-env
+      CONSOLE_USER: ${CONSOLE_USER:-admin}
+      CONSOLE_PASSWORD_FILE: "/run/secrets/${SECRET_GENERATION:?required}/console-password"
+      LEADGEN_PROCESS: intake
+      LEADGEN_DB_POLICY: runtime-only
+      LEADGEN_REQUEST_RUNTIME_DSN_FILE: "/run/secrets/${SECRET_GENERATION:?required}/request-runtime-dsn"
+      LEADGEN_CONSOLEAUTH_RUNTIME_DSN_FILE: "/run/secrets/${SECRET_GENERATION:?required}/consoleauth-runtime-dsn"
+      LEADGEN_VECTOR_RUNTIME_DSN_FILE: "/run/secrets/${SECRET_GENERATION:?required}/vector-runtime-dsn"
+      LEADGEN_CANDIDATE_MANIFEST_FILE: /run/leadgen-release/active-candidate.json
+      LEADGEN_CANDIDATE_PUBLIC_KEY_FILE: /run/leadgen-trust/active/trusted-release.pub
+      LEADGEN_RELEASE_TRUST_KEY_ID: ${LEADGEN_RELEASE_TRUST_KEY_ID:?required}
+      LEADGEN_API_PORT_BASE: "8085"
+      LEADGEN_LEAD_SEARCH_URL: http://demand:8082
+      LEADGEN_EMAIL_GENERATION_URL: http://demand:8082
+      # Материал письма (content-request) — у content-production в группе demand;
+      # передача писем на утверждение (outreach-handoff) — у outreach в группе core.
+      LEADGEN_CONTENT_REQUEST_URL: http://demand:8084
+      LEADGEN_OUTREACH_HANDOFF_URL: http://core:8080
+      # Решение о доступе — у владельца в группе platform, по сети.
+      LEADGEN_ACCESS_DECISION_URL: http://platform:8087
     ports:
-      - "${PUBLISHING_HTTP_PORT:-8085}:8080"
+      - "${REQUEST_HTTP_PORT:-8085}:8085"
+
+  # Одноразовые DB jobs. Они активируются только явно через профиль db-admin;
+  # runtime контейнеры не получают bootstrap или migration secret mounts.
+  db-provision-request:
+    <<: *db-job
+    depends_on:
+      postgres-green:
+        condition: service_healthy
+      stage-secrets-request-provision:
+        condition: service_completed_successfully
+    command:
+      - -db-job
+      - provision
+      - -db-target
+      - request-fulfillment
+      - -bootstrap-dsn-file
+      - "/run/secrets/${SECRET_GENERATION:?required}/bootstrap-dsn"
+      - -migrator-password-file
+      - "/run/secrets/${SECRET_GENERATION:?required}/migrator-password"
+      - -runtime-password-file
+      - "/run/secrets/${SECRET_GENERATION:?required}/runtime-password"
+    volumes: [secrets-request-provision:/run/secrets:ro]
+
+  stage-secrets-request-provision:
+    <<: *secret-stage
+    profiles: [db-admin]
+    command: [-db-job, stage-secrets, -target, request-provision, -source-dir, /run/secret-source, -volume-dir, /stage, -generation, "${SECRET_GENERATION:?required}"]
+    volumes:
+      - type: bind
+        source: ${LEADGEN_SECRET_DIR:-./deploy/tofu/.secrets}
+        target: /run/secret-source
+        read_only: true
+      - secrets-request-provision:/stage
+
+  db-migrate-request:
+    <<: *db-job
+    command: [-db-job, migrate, -db-target, request-fulfillment, -migration-dsn-file, "/run/secrets/${SECRET_GENERATION:?required}/migration-dsn"]
+    depends_on:
+      postgres-green:
+        condition: service_healthy
+      db-provision-request:
+        condition: service_completed_successfully
+      stage-secrets-request-migrate:
+        condition: service_completed_successfully
+    volumes: [secrets-request-migrate:/run/secrets:ro]
+
+  stage-secrets-request-migrate:
+    <<: *secret-stage
+    profiles: [db-admin]
+    command: [-db-job, stage-secrets, -target, request-migrate, -source-dir, /run/secret-source, -volume-dir, /stage, -generation, "${SECRET_GENERATION:?required}"]
+    volumes:
+      - type: bind
+        source: ${LEADGEN_SECRET_DIR:-./deploy/tofu/.secrets}
+        target: /run/secret-source
+        read_only: true
+      - secrets-request-migrate:/stage
+
+  db-provision-consoleauth:
+    <<: *db-job
+    depends_on:
+      postgres-green:
+        condition: service_healthy
+      stage-secrets-consoleauth-provision:
+        condition: service_completed_successfully
+    command:
+      - -db-job
+      - provision
+      - -db-target
+      - consoleauth
+      - -bootstrap-dsn-file
+      - "/run/secrets/${SECRET_GENERATION:?required}/bootstrap-dsn"
+      - -migrator-password-file
+      - "/run/secrets/${SECRET_GENERATION:?required}/migrator-password"
+      - -runtime-password-file
+      - "/run/secrets/${SECRET_GENERATION:?required}/runtime-password"
+    volumes: [secrets-consoleauth-provision:/run/secrets:ro]
+
+  stage-secrets-consoleauth-provision:
+    <<: *secret-stage
+    profiles: [db-admin]
+    command: [-db-job, stage-secrets, -target, consoleauth-provision, -source-dir, /run/secret-source, -volume-dir, /stage, -generation, "${SECRET_GENERATION:?required}"]
+    volumes:
+      - type: bind
+        source: ${LEADGEN_SECRET_DIR:-./deploy/tofu/.secrets}
+        target: /run/secret-source
+        read_only: true
+      - secrets-consoleauth-provision:/stage
+
+  db-migrate-consoleauth:
+    <<: *db-job
+    command: [-db-job, migrate, -db-target, consoleauth, -migration-dsn-file, "/run/secrets/${SECRET_GENERATION:?required}/migration-dsn"]
+    depends_on:
+      postgres-green:
+        condition: service_healthy
+      db-provision-consoleauth:
+        condition: service_completed_successfully
+      stage-secrets-consoleauth-migrate:
+        condition: service_completed_successfully
+    volumes: [secrets-consoleauth-migrate:/run/secrets:ro]
+
+  stage-secrets-consoleauth-migrate:
+    <<: *secret-stage
+    profiles: [db-admin]
+    command: [-db-job, stage-secrets, -target, consoleauth-migrate, -source-dir, /run/secret-source, -volume-dir, /stage, -generation, "${SECRET_GENERATION:?required}"]
+    volumes:
+      - type: bind
+        source: ${LEADGEN_SECRET_DIR:-./deploy/tofu/.secrets}
+        target: /run/secret-source
+        read_only: true
+      - secrets-consoleauth-migrate:/stage
+
+  db-provision-integration-platform:
+    <<: *db-job
+    depends_on:
+      postgres-green:
+        condition: service_healthy
+      stage-secrets-integration-platform-provision:
+        condition: service_completed_successfully
+    command:
+      - -db-job
+      - provision
+      - -db-target
+      - integration-platform
+      - -bootstrap-dsn-file
+      - "/run/secrets/${SECRET_GENERATION:?required}/bootstrap-dsn"
+      - -migrator-password-file
+      - "/run/secrets/${SECRET_GENERATION:?required}/migrator-password"
+      - -runtime-password-file
+      - "/run/secrets/${SECRET_GENERATION:?required}/runtime-password"
+      - -additional-runtime-password-file
+      - "/run/secrets/${SECRET_GENERATION:?required}/additional-runtime-password"
+    volumes: [secrets-integration-platform-provision:/run/secrets:ro]
+
+  stage-secrets-integration-platform-provision:
+    <<: *secret-stage
+    profiles: [db-admin]
+    command: [-db-job, stage-secrets, -target, integration-platform-provision, -source-dir, /run/secret-source, -volume-dir, /stage, -generation, "${SECRET_GENERATION:?required}"]
+    volumes:
+      - type: bind
+        source: ${LEADGEN_SECRET_DIR:-./deploy/tofu/.secrets}
+        target: /run/secret-source
+        read_only: true
+      - secrets-integration-platform-provision:/stage
+
+  db-migrate-integration-platform:
+    <<: *db-job
+    command: [-db-job, migrate, -db-target, integration-platform, -migration-dsn-file, "/run/secrets/${SECRET_GENERATION:?required}/migration-dsn"]
+    depends_on:
+      postgres-green:
+        condition: service_healthy
+      db-provision-integration-platform:
+        condition: service_completed_successfully
+      stage-secrets-integration-platform-migrate:
+        condition: service_completed_successfully
+    volumes: [secrets-integration-platform-migrate:/run/secrets:ro]
+
+  stage-secrets-integration-platform-migrate:
+    <<: *secret-stage
+    profiles: [db-admin]
+    command: [-db-job, stage-secrets, -target, integration-platform-migrate, -source-dir, /run/secret-source, -volume-dir, /stage, -generation, "${SECRET_GENERATION:?required}"]
+    volumes:
+      - type: bind
+        source: ${LEADGEN_SECRET_DIR:-./deploy/tofu/.secrets}
+        target: /run/secret-source
+        read_only: true
+      - secrets-integration-platform-migrate:/stage
+
+  # public — публичный контур: приём внешних событий наблюдения.
+  public:
+    <<: *app
+    environment:
+      <<: *app-env
+      LEADGEN_PROCESS: public
+      LEADGEN_INGEST_ADDR: ":8090"
+    ports:
+      - "${INGEST_HTTP_PORT:-8090}:8090"
+
+  # platform — общий фундамент: интеграционные порты и правила доступа/данных.
+  # Портал клиента обращается к заявкам сетью в intake.
+  stage-secrets-platform:
+    <<: *secret-stage
+    command: [-db-job, stage-secrets, -target, platform, -source-dir, /run/secret-source, -volume-dir, /stage, -generation, "${SECRET_GENERATION:?required}"]
+    volumes:
+      - type: bind
+        source: ${LEADGEN_SECRET_DIR:-./deploy/tofu/.secrets}
+        target: /run/secret-source
+        read_only: true
+      - secrets-platform:/stage
+  platform:
+    <<: *app
+    depends_on:
+      stage-secrets-platform:
+        condition: service_completed_successfully
+      postgres-green:
+        condition: service_healthy
+      postgres-red:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      temporal:
+        condition: service_healthy
+      mailpit:
+        condition: service_started
+    volumes:
+      - ./deploy/services.yaml:/deploy/services.yaml:ro
+      - secrets-platform:/run/secrets:ro
+    environment:
+      <<: *app-env
+      CONSOLE_USER: ${CONSOLE_USER:-admin}
+      CONSOLE_PASSWORD_FILE: "/run/secrets/${SECRET_GENERATION:?required}/console-password"
+      LEADGEN_PROCESS: platform
+      LEADGEN_API_PORT_BASE: "8086"
+      LEADGEN_INGEST_ADDR: ":8090"
+      LEADGEN_REQUEST_INTENT_URL: http://intake:8085
+    ports:
+      - "${INTEGRATIONS_HTTP_PORT:-8086}:8086"
+      - "${PORTAL_HTTP_PORT:-8087}:8087"
+      - "${GOVERNANCE_HTTP_PORT:-8088}:8088"
+
+  # agents — автономная обработка компаний (context agent-orchestration).
+  # Отдельный контейнер изолирует координацию от горячего пути кампании
+  # (design.md, Решение 14). Роли: api — команды и лента запусков, worker/chains —
+  # исполнение, schedule — разбор очереди тенанта. Первый пайплайн публикуется
+  # разово по флагу bootstrap для тенанта расписания.
+  agents:
+    <<: *app
+    environment:
+      <<: *app-env
+      LEADGEN_PROCESS: agents
+      LEADGEN_API_PORT_BASE: "8089"
+      # Отдельная очередь задач воркера агентов (не делит очередь с заявками).
+      LEADGEN_AGENT_WORKFLOW_TASK_QUEUE: agent-orchestration
+      # Разовая публикация первого пайплайна и разбор очереди для тенанта.
+      LEADGEN_AGENT_BOOTSTRAP_PIPELINE: "1"
+      LEADGEN_AGENT_SCHEDULE_TENANTS: ${TENANT:-demo}
+      # Контракты владельцев блоков. Шаг указывает владельцу данных по сети:
+      # поиск и оценка релевантности — lead-management (demand), материал письма —
+      # content-production (demand), подача черновика и чтение решения —
+      # outreach-orchestration (core), приём утверждённого действия —
+      # message-delivery (delivery). Незаданный адрес оставляет блок честно
+      # недоступным, а не подменяется выдумкой (AGENTS.md §3).
+      LEADGEN_LEAD_SEARCH_URL: http://demand:8082
+      LEADGEN_LEAD_RELEVANCE_URL: http://demand:8082
+      LEADGEN_CONTENT_REQUEST_URL: http://demand:8084
+      LEADGEN_CAMPAIGN_COMMAND_URL: http://core:8080
+      LEADGEN_DRAFT_DECISION_URL: http://core:8080
+      LEADGEN_APPROVED_ACTION_URL: http://delivery:8090
+      # Решение о доступе — у владельца в группе platform, по сети.
+      LEADGEN_ACCESS_DECISION_URL: http://platform:8087
+    ports:
+      - "${AGENT_HTTP_PORT:-8089}:8089"
+
+  # prometheus — сбор метрик процесса: скрейпит /metrics всех групп контура по
+  # статическим целям docker-сети. Порт наружу не публикуется (design.md): консоль
+  # топологии читает его по внутреннему адресу http://prometheus:9090.
+  prometheus:
+    image: prom/prometheus:v3.1.0
+    restart: unless-stopped
+    command:
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --storage.tsdb.retention.time=15d
+    volumes:
+      - ./deploy/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - prometheus-data:/prometheus
+    healthcheck:
+      test: ["CMD", "wget", "--spider", "-q", "http://localhost:9090/-/healthy"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # admin-proxy — единый вход всех админских консолей под одним origin: портал
+  # оператора открывается на одном порту, а навигация не уводит на другие порты.
+  # Маршрутизация по префиксам путей (deploy/nginx/admin-proxy.conf); префикс
+  # снимается сервисами общим middleware, ссылки/редиректы переписываются обратно
+  # под префикс. Клиентский портал остаётся на platform:8087 и не проксируется.
+  admin-proxy:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    depends_on:
+      - core
+      - demand
+      - intake
+      - platform
+    ports:
+      - "${ADMIN_HTTP_PORT:-8000}:8000"
+    volumes:
+      - ./deploy/nginx/admin-proxy.conf:/etc/nginx/conf.d/default.conf:ro
 
 volumes:
   postgres-green-data:
+    external: true
+    name: "${POSTGRES_GREEN_DATA_VOLUME:?required}"
   postgres-red-data:
   postgres-temporal-data:
+  ollama-models:
+  prometheus-data:
+  secrets-intake:
+    name: "${COMPOSE_PROJECT_NAME:-lead-gen}-${DEPLOY_ENVIRONMENT:-local}-${DEPLOYMENT_ID:-local}-secrets-intake-${SECRET_GENERATION:?required}"
+  secrets-core:
+    name: "${COMPOSE_PROJECT_NAME:-lead-gen}-${DEPLOY_ENVIRONMENT:-local}-${DEPLOYMENT_ID:-local}-secrets-core-${SECRET_GENERATION:?required}"
+  secrets-demand:
+    name: "${COMPOSE_PROJECT_NAME:-lead-gen}-${DEPLOY_ENVIRONMENT:-local}-${DEPLOYMENT_ID:-local}-secrets-demand-${SECRET_GENERATION:?required}"
+  secrets-platform:
+    name: "${COMPOSE_PROJECT_NAME:-lead-gen}-${DEPLOY_ENVIRONMENT:-local}-${DEPLOYMENT_ID:-local}-secrets-platform-${SECRET_GENERATION:?required}"
+  secrets-request-provision:
+    name: "${COMPOSE_PROJECT_NAME:-lead-gen}-${DEPLOY_ENVIRONMENT:-local}-${DEPLOYMENT_ID:-local}-secrets-request-provision-${SECRET_GENERATION:?required}"
+  secrets-request-migrate:
+    name: "${COMPOSE_PROJECT_NAME:-lead-gen}-${DEPLOY_ENVIRONMENT:-local}-${DEPLOYMENT_ID:-local}-secrets-request-migrate-${SECRET_GENERATION:?required}"
+  secrets-consoleauth-provision:
+    name: "${COMPOSE_PROJECT_NAME:-lead-gen}-${DEPLOY_ENVIRONMENT:-local}-${DEPLOYMENT_ID:-local}-secrets-consoleauth-provision-${SECRET_GENERATION:?required}"
+  secrets-consoleauth-migrate:
+    name: "${COMPOSE_PROJECT_NAME:-lead-gen}-${DEPLOY_ENVIRONMENT:-local}-${DEPLOYMENT_ID:-local}-secrets-consoleauth-migrate-${SECRET_GENERATION:?required}"
+  secrets-integration-platform-provision:
+    name: "${COMPOSE_PROJECT_NAME:-lead-gen}-${DEPLOY_ENVIRONMENT:-local}-${DEPLOYMENT_ID:-local}-secrets-integration-platform-provision-${SECRET_GENERATION:?required}"
+  secrets-integration-platform-migrate:
+    name: "${COMPOSE_PROJECT_NAME:-lead-gen}-${DEPLOY_ENVIRONMENT:-local}-${DEPLOYMENT_ID:-local}-secrets-integration-platform-migrate-${SECRET_GENERATION:?required}"
+  release-state:
+    external: true
+    name: "${LEADGEN_RELEASE_STATE_VOLUME:?required}"
+  release-trust:
+    external: true
+    name: "${LEADGEN_RELEASE_TRUST_VOLUME:?required}"

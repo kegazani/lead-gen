@@ -16,9 +16,13 @@ type DeliveryCommand struct {
 	CommandID        CommandID
 	TenantID         TenantID
 	ApprovedActionID ApprovedActionID
-	RecipientRef     RecipientRef
-	Address          DeliveryAddress
-	SenderDomain     SenderDomain
+	// CampaignID — непрозрачная ссылка на кампанию-владельца, унаследованная от
+	// утверждённого действия. Может быть пустой (старые команды): тогда событие
+	// доставки публикуется без ссылки на кампанию. Персональных данных не несёт.
+	CampaignID   string
+	RecipientRef RecipientRef
+	Address      DeliveryAddress
+	SenderDomain SenderDomain
 	// Subject и Body — содержимое письма, переданное вызывающим. Реальному
 	// провайдеру нужны тема и тело; без них отправка возможна лишь как честный
 	// отказ. Материал разрешается адаптером контракта content-version до сборки
@@ -54,7 +58,9 @@ func (c DeliveryCommand) validate() error {
 
 // IdempotencyKey возвращает ключ идемпотентности команды: (tenant_id,
 // approved_action_id). Повторная отправка того же утверждённого действия не
-// создаёт второго сообщения и второго внешнего эффекта. Компоненты кодируются,
+// создаёт второго сообщения и второго внешнего эффекта. Идентификатор
+// утверждённого действия уникален в рамках кампании-владельца, поэтому действия
+// разных кампаний к одному получателю дают разные ключи. Компоненты кодируются,
 // чтобы разделитель не допускал коллизий.
 func (c DeliveryCommand) IdempotencyKey() string {
 	return fmt.Sprintf("%s|%s", url.QueryEscape(string(c.TenantID)), url.QueryEscape(string(c.ApprovedActionID)))

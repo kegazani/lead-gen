@@ -19,6 +19,7 @@ type GetContent struct {
 type VersionView struct {
 	VersionID domain.ContentVersionID
 	Revision  int
+	Subject   string
 	Body      string
 	CreatedAt time.Time
 	CreatedBy domain.ActorID
@@ -95,6 +96,7 @@ func buildContent(pkg *domain.ContentPackage) ContentView {
 		view.Versions = append(view.Versions, VersionView{
 			VersionID: version.ID(),
 			Revision:  version.Revision(),
+			Subject:   version.Subject(),
 			Body:      version.Body(),
 			CreatedAt: version.CreatedAt(),
 			CreatedBy: version.CreatedBy(),

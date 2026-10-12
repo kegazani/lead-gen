@@ -2,63 +2,66 @@ package ports
 
 import "context"
 
-// AdapterHealth — состояние адаптера интеграции из фиксированного набора.
-type AdapterHealth string
-
+// Нормализованный словарь состояния адаптера интеграции. Консоль показывает
+// оператору только состояния из этого набора; значение вне набора сводится к
+// AdapterStateUnknown — состояние «в норме» не выдумывается, в том числе когда
+// адаптер не сконфигурирован (пустое состояние).
 const (
-	// AdapterHealthy — адаптер отвечает штатно.
-	AdapterHealthy AdapterHealth = "up"
-	// AdapterDegraded — адаптер отвечает с деградацией.
-	AdapterDegraded AdapterHealth = "degraded"
-	// AdapterDown — адаптер недоступен.
-	AdapterDown AdapterHealth = "down"
-	// AdapterUnknown — состояние определить нельзя: консоль не подставляет «в норме».
-	AdapterUnknown AdapterHealth = "unknown"
+	// AdapterStateUp — адаптер отвечает штатно.
+	AdapterStateUp = "up"
+	// AdapterStateDegraded — адаптер отвечает с деградацией.
+	AdapterStateDegraded = "degraded"
+	// AdapterStateDown — адаптер недоступен.
+	AdapterStateDown = "down"
+	// AdapterStateUnknown — состояние определить нельзя.
+	AdapterStateUnknown = "unknown"
 )
 
-// AdapterReason — нормализованная причина состояния адаптера из закрытого
-// набора. Свободного текста здесь нет намеренно: произвольная строка (в том
-// числе с токеном или внутренним адресом) не может попасть в разметку по типу.
-// Незнакомая причина сводится к пустой. Причину называет владелец адаптеров.
-type AdapterReason string
-
+// Нормализованный словарь причины состояния адаптера. Свободного текста здесь нет
+// намеренно: произвольная строка (в том числе с токеном, ключом или внутренним
+// адресом) не проходит в разметку и в сообщения об ошибках. Незнакомая причина
+// сводится к AdapterReasonNone.
 const (
 	// AdapterReasonNone — причина не указана.
-	AdapterReasonNone AdapterReason = ""
+	AdapterReasonNone = ""
 	// AdapterReasonUnreachable — адаптер не отвечает.
-	AdapterReasonUnreachable AdapterReason = "unreachable"
+	AdapterReasonUnreachable = "unreachable"
 	// AdapterReasonAuthFailed — отказ аутентификации у адаптера.
-	AdapterReasonAuthFailed AdapterReason = "auth-failed"
+	AdapterReasonAuthFailed = "auth-failed"
 	// AdapterReasonRateLimited — адаптер ограничил частоту обращений.
-	AdapterReasonRateLimited AdapterReason = "rate-limited"
+	AdapterReasonRateLimited = "rate-limited"
 	// AdapterReasonDegraded — адаптер отвечает с деградацией.
-	AdapterReasonDegraded AdapterReason = "degraded"
+	AdapterReasonDegraded = "degraded"
 	// AdapterReasonMisconfigured — объявление адаптера некорректно.
-	AdapterReasonMisconfigured AdapterReason = "misconfigured"
+	AdapterReasonMisconfigured = "misconfigured"
 )
 
-// AdapterState — нормализованное состояние адаптера интеграции для раздела
-// «Интеграции» консоли. Поля суть только то, что можно показывать оператору:
-// имя адаптера, версия набора возможностей, состояние и нормализованная причина.
-// Секретов (токенов, ключей, учётных данных) здесь быть не может по построению.
-type AdapterState struct {
-	// Name — имя адаптера.
-	Name string
-	// CapabilitySetVersion — версия набора возможностей (semver); пусто, если не
-	// объявлена.
-	CapabilitySetVersion string
-	// Health — состояние адаптера.
-	Health AdapterHealth
-	// Reason — нормализованная причина состояния.
-	Reason AdapterReason
+// AdapterStatus — элемент состояния адаптера интеграции в нормализованной форме,
+// пригодной для показа оператору. Поля — строки: имя адаптера, состояние и
+// нормализованная причина.
+//
+// Свободные каналы (State, Reason) прикладной слой сводит к закрытым словарям
+// выше, поэтому секретов (токенов, ключей, учётных данных) и технических деталей
+// здесь быть не может. Adapter — объявленный идентификатор адаптера, а не
+// произвольный текст; разметка экранирует его при выводе.
+type AdapterStatus struct {
+	// Adapter — имя адаптера.
+	Adapter string
+	// State — состояние адаптера из словаря AdapterState*.
+	State string
+	// Reason — причина состояния из словаря AdapterReason*.
+	Reason string
 }
 
-// AdapterCatalog — порт чтения состояния адаптеров интеграций. Владелец
-// адаптеров — контекст integration-platform; реализацию подставляет точка
-// сборки. nil-реализация означает, что владелец не подключён: раздел честно
-// сообщает о недоступности, а не выдумывает список адаптеров.
+// AdapterCatalog — порт-интерфейс потребителя (platform-governance) для чтения
+// состояния адаптеров интеграций. Владелец данных — контекст
+// integration-platform: порт объявлен потребителем, а реализацию подставляет
+// точка сборки, поэтому консоль не заводит собственного реестра адаптеров.
+//
+// nil-реализация означает, что владелец не подключён: раздел честно сообщает о
+// недоступности, а не выдумывает список адаптеров.
 type AdapterCatalog interface {
 	// States возвращает текущее состояние адаптеров. Ошибка означает
 	// недоступность источника; вызывающий отличает её через errors.Is.
-	States(ctx context.Context) ([]AdapterState, error)
+	States(ctx context.Context) ([]AdapterStatus, error)
 }

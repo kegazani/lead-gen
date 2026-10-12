@@ -14,6 +14,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"lead-gen/backend/platform/observability/observ"
 )
 
 // Status — состояние задания.
@@ -74,16 +76,74 @@ var ErrNotFound = errors.New("jobs: задание не найдено")
 // защищает терминальные состояния от перезаписи поздним завершением.
 var ErrTransitionRejected = errors.New("jobs: переход состояния отклонён")
 
-// CodedError — ошибка задания, несущая стабильный машинный код и сообщение для
-// оператора. Примитив различает код и сообщение, но не знает их значений: коды
-// определяет прикладной слой. Обычная ошибка без этого интерфейса даёт пустой код
-// и свой текст как сообщение.
+// CodedError — ошибка задания, несущая стабильный машинный код. Её исходное
+// сообщение не журналируется: безопасную формулировку выбирает нормализатор.
 type CodedError interface {
 	error
 	// Code — стабильный машинный код исхода.
 	Code() string
 	// Message — сообщение для оператора (бизнес-формулировка).
 	Message() string
+}
+
+// Failure — безопасное представление ошибки задания для хранения и логирования.
+type Failure struct {
+	Code       string
+	Message    string
+	Diagnostic string
+}
+
+// FailureNormalizer — узкая владельческая политика, переводящая ошибку в
+// безопасную запись. Реализация не должна копировать исходный текст ошибки.
+type FailureNormalizer interface {
+	Normalize(error) Failure
+}
+
+// FailureRule задаёт разрешённую формулировку и диагностику для стабильного кода.
+type FailureRule struct {
+	Message    string
+	Diagnostic string
+}
+
+// CatalogFailureNormalizer — неизменяемый конечный каталог правил.
+type CatalogFailureNormalizer struct {
+	rules    map[string]FailureRule
+	fallback Failure
+}
+
+// NewCatalogFailureNormalizer копирует каталог, чтобы runtime не мог его
+// расширить или изменить после сборки.
+func NewCatalogFailureNormalizer(rules map[string]FailureRule, fallback Failure) CatalogFailureNormalizer {
+	copy := make(map[string]FailureRule, len(rules))
+	for code, rule := range rules {
+		copy[code] = rule
+	}
+	if fallback.Code == "" {
+		fallback.Code = "job.failed"
+	}
+	if fallback.Message == "" {
+		fallback.Message = "Ошибка задания"
+	}
+	if fallback.Diagnostic == "" {
+		fallback.Diagnostic = "unknown"
+	}
+	return CatalogFailureNormalizer{rules: copy, fallback: fallback}
+}
+
+// Normalize применяет только заранее собранный каталог. Ни CodedError.Message,
+// ни Error/Unwrap источника не используются как текст.
+func (n CatalogFailureNormalizer) Normalize(err error) Failure {
+	if err == nil {
+		return Failure{}
+	}
+	var coded CodedError
+	if errors.As(err, &coded) {
+		code := coded.Code()
+		if rule, ok := n.rules[code]; ok {
+			return Failure{Code: code, Message: rule.Message, Diagnostic: rule.Diagnostic}
+		}
+	}
+	return n.fallback
 }
 
 // Job — задание. Payload непрозрачен для примитива: его разбирает обработчик.
@@ -101,6 +161,18 @@ type Job struct {
 	// ErrorCode — стабильный машинный код отказа (для failed). Пуст для ошибок без
 	// кода и для прочих состояний.
 	ErrorCode string
+	// StartedAt — момент взятия задания в обработку; нулевое, пока задание в
+	// очереди или пока хранилище не заполнило поле. Заполняется при переходе в
+	// running.
+	StartedAt time.Time
+	// Progress — доля выполнения задания в процентах, 0..100. 0 — задание не
+	// начато, 100 — завершено. Обновляется через UpdateProgress (ProgressStore);
+	// при переходе в done хранилище выставляет 100. Значение вне диапазона
+	// приводится к границам (ClampProgress).
+	Progress int
+	// Step — текущий шаг обработки в формулировке для оператора (например,
+	// «обход сайта»). Пустая строка, если шаг не сообщён.
+	Step string
 	// CancelRequested — для выполняющегося задания: запрошена ли его отмена.
 	// Задание в очереди при запросе отмены сразу переходит в cancelled, поэтому
 	// для него флаг не выставляется.
@@ -147,6 +219,14 @@ type Store interface {
 	ReconcileRunning(ctx context.Context, staleBefore time.Time, maxAttempts int, failCode, failReason string) (ReconcileResult, error)
 }
 
+// LeaseOwnerStore — необязательное расширение Store для fenced heartbeat и
+// завершения только своей попытки. attempts служит поколением владельца lease,
+// поэтому отдельная lease-колонка не требуется.
+type LeaseOwnerStore interface {
+	RenewLease(ctx context.Context, id string, attempt int) error
+	UpdateOwnedStatus(ctx context.Context, id string, attempt int, to Status, reason, code string) error
+}
+
 // ReconcileResult — счётчики исходов согласования осиротевших заданий: сколько
 // возвращено в очередь, отменено и завершено отказом.
 type ReconcileResult struct {
@@ -182,8 +262,14 @@ type Runner struct {
 	Signals *CancelRegistry
 	// Rejected, если задан, вызывается, когда завершение задания отклонено
 	// охраной перехода (задание уже терминально). nil — исход игнорируется.
-	// Сам примитив сообщения не пишет: наблюдаемость — дело прикладного слоя.
 	Rejected func(jobID string, to Status)
+	// Logger, если задан, получает жизненный цикл задания (взятие, успех,
+	// неудачу) с task_id. Значение подставляет composition root; nil — жизненный
+	// цикл не логируется примитивом.
+	Logger observ.Logger
+	// FailureNormalizer — конечный каталог безопасных причин, внедрённый
+	// владельцем кодов через composition root. nil использует безопасный fallback.
+	FailureNormalizer FailureNormalizer
 	// LeaseTTL — срок аренды задания: осиротевшими считаются задания, активность
 	// по которым не обновлялась дольше этого срока. Неположительное значение
 	// заменяется значением по умолчанию.
@@ -241,21 +327,31 @@ func (r *Runner) RunOnce(ctx context.Context) (int, error) {
 	stopWatch := r.watchCancellation(jobCtx, job.ID, markCancelled)
 	defer stopWatch()
 
-	handlerErr := r.Handler(jobCtx, *job)
+	r.logJob("задание взято", job.ID)
 
-	status, reason, code := StatusDone, "", ""
+	var leaseLost atomic.Bool
+	stopHeartbeat := r.startLeaseHeartbeat(jobCtx, cancel, job.ID, job.Attempts, &leaseLost)
+	defer stopHeartbeat()
+	handlerErr := r.Handler(jobCtx, *job)
+	stopHeartbeat()
+	if leaseLost.Load() {
+		// Не завершаем задание от имени владельца, lease которого не подтверждён.
+		// Его разберёт следующий периодический reconcile после истечения аренды.
+		return 0, nil
+	}
+
+	status := StatusDone
+	reason, code := "", ""
+	var failure Failure
 	switch {
 	case cancelRequested.Load():
 		status = StatusCancelled
 	case handlerErr != nil:
 		status = StatusFailed
-		reason = handlerErr.Error()
-		if ce, ok := handlerErr.(CodedError); ok {
-			reason = ce.Message()
-			code = ce.Code()
-		}
+		failure = r.normalizeFailure(handlerErr)
+		code, reason = failure.Code, failure.Message
 	}
-	if err := r.finish(ctx, job.ID, status, reason, code); err != nil {
+	if err := r.finishOwned(ctx, job.ID, job.Attempts, status, reason, code); err != nil {
 		// Отклонённый переход — не сбой: задание уже терминально (например,
 		// отменено в хранилище раньше, чем обработчик успел завершиться).
 		if errors.Is(err, ErrTransitionRejected) {
@@ -266,7 +362,88 @@ func (r *Runner) RunOnce(ctx context.Context) (int, error) {
 		}
 		return 0, err
 	}
+	r.logOutcome(job.ID, status, failure)
 	return 1, nil
+}
+
+// logJob пишет информационную запись жизненного цикла задания с task_id.
+func (r *Runner) logJob(msg, taskID string) {
+	if r.Logger == nil {
+		return
+	}
+	r.Logger.Info(msg, observ.Fields{TaskID: taskID})
+}
+
+// logOutcome фиксирует терминальный исход задания: успех, неудачу или отмену.
+// Неудача несёт причину, отмена — нет (отмена не является ошибкой).
+func (r *Runner) logOutcome(taskID string, status Status, failure Failure) {
+	if r.Logger == nil {
+		return
+	}
+	switch status {
+	case StatusDone:
+		r.Logger.Info("задание выполнено", observ.Fields{TaskID: taskID})
+	case StatusCancelled:
+		r.Logger.Info("задание отменено", observ.Fields{TaskID: taskID})
+	case StatusFailed:
+		r.Logger.Error("задание не выполнено", nil, observ.Fields{TaskID: taskID}, "error_code", failure.Code, "reason", failure.Message, "diagnostic", failure.Diagnostic)
+	}
+}
+
+// startLeaseHeartbeat поддерживает активную попытку и отменяет её контекст,
+// если lease потерян либо хранилище не подтвердило продление.
+func (r *Runner) startLeaseHeartbeat(ctx context.Context, cancel context.CancelFunc, id string, attempt int, leaseLost *atomic.Bool) func() {
+	owner, ok := r.Store.(LeaseOwnerStore)
+	if !ok {
+		return func() {}
+	}
+	interval := r.leaseHeartbeatInterval()
+	heartbeatCtx, stop := context.WithCancel(ctx)
+	done := make(chan struct{})
+	var stopping atomic.Bool
+	go func() {
+		defer close(done)
+		ticker := time.NewTicker(interval)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-heartbeatCtx.Done():
+				return
+			case <-ticker.C:
+				if err := owner.RenewLease(heartbeatCtx, id, attempt); err != nil {
+					if stopping.Load() && heartbeatCtx.Err() != nil && (errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded)) {
+						return
+					}
+					leaseLost.Store(true)
+					cancel()
+					return
+				}
+			}
+		}
+	}()
+	var once sync.Once
+	return func() {
+		once.Do(func() {
+			stopping.Store(true)
+			stop()
+			<-done
+		})
+	}
+}
+
+func (r *Runner) leaseHeartbeatInterval() time.Duration {
+	lease := r.LeaseTTL
+	if lease <= 0 {
+		lease = defaultLeaseTTL
+	}
+	interval := lease / 3
+	if interval > time.Minute {
+		interval = time.Minute
+	}
+	if interval <= 0 {
+		interval = time.Millisecond
+	}
+	return interval
 }
 
 // watchCancellation следит за состоянием задания в хранилище, пока обработчик
@@ -330,6 +507,22 @@ func (r *Runner) finish(ctx context.Context, id string, status Status, reason, c
 	return r.Store.UpdateStatus(ctx, id, StatusRunning, status, reason, code)
 }
 
+func (r *Runner) finishOwned(ctx context.Context, id string, attempt int, status Status, reason, code string) error {
+	if owner, ok := r.Store.(LeaseOwnerStore); ok {
+		return owner.UpdateOwnedStatus(ctx, id, attempt, status, reason, code)
+	}
+	return r.finish(ctx, id, status, reason, code)
+}
+
+// normalizeFailure применяет внедрённый конечный каталог, иначе фиксированный
+// безопасный результат. Исходное сообщение ошибки не читается.
+func (r *Runner) normalizeFailure(err error) Failure {
+	if r.FailureNormalizer != nil {
+		return r.FailureNormalizer.Normalize(err)
+	}
+	return NewCatalogFailureNormalizer(nil, Failure{}).Normalize(err)
+}
+
 // Run обрабатывает задания в цикле до отмены контекста. Ошибка опроса
 // хранилища останавливает цикл; ошибка обработчика — нет.
 func (r *Runner) Run(ctx context.Context) error {
@@ -347,6 +540,15 @@ func (r *Runner) Run(ctx context.Context) error {
 		case <-ctx.Done():
 			return nil
 		case <-ticker.C:
+			// Only stores that renew active attempt ownership can be periodically
+			// reconciled safely. Legacy job stores keep their startup-only
+			// reconciliation semantics and cannot have a live long-running task
+			// mistaken for an orphan merely because it does not heartbeat leases.
+			if _, hasLeaseOwnership := r.Store.(LeaseOwnerStore); hasLeaseOwnership {
+				if _, err := r.Reconcile(ctx); err != nil {
+					return err
+				}
+			}
 			if _, err := r.RunOnce(ctx); err != nil {
 				return err
 			}

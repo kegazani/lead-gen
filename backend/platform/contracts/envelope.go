@@ -37,6 +37,10 @@ type Envelope struct {
 	// CausationID — идентификатор сообщения-причины. Допускается пустым только
 	// у корневого сообщения, у которого нет сообщения-причины.
 	CausationID string `json:"causation_id,omitempty"`
+	// WorkflowID — идентификатор исполнения workflow, если сообщение рождено
+	// внутри durable-исполнения. Опционален: синхронные команды без workflow
+	// его не несут.
+	WorkflowID string `json:"workflow_id,omitempty"`
 	// Name — имя контракта (например, approved-action).
 	Name string `json:"name"`
 	// SchemaVersion — версия схемы контракта в формате semver.

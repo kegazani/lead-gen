@@ -63,13 +63,18 @@ func TestRenderNav(t *testing.T) {
 		t.Fatalf("RenderNav: %v", err)
 	}
 
-	want := `<nav class="sidebar">
+	want := `<nav class="sidebar" aria-label="Основная навигация">
   <ul class="sidebar-list">
     <li><a href="/">Главная</a></li>
     <li><a href="/funnel" class="is-active" aria-current="page">Воронка</a></li>
     <li><a href="/cards">Карточки</a></li>
   </ul>
-  <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Тема оформления">
+  <button class="theme-toggle" id="theme-toggle" type="button"
+    aria-label="Тема оформления"
+    data-theme-label-system="Как в системе"
+    data-theme-label-light="Светлая"
+    data-theme-label-dark="Тёмная"
+    data-theme-aria="Тема оформления: %s. Нажмите, чтобы сменить.">
     <span class="theme-toggle-label">Тема</span>
     <b class="theme-toggle-value" data-theme-name>Как в системе</b>
   </button>

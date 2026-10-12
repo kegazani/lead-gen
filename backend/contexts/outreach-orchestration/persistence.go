@@ -6,10 +6,12 @@
 package outreachorchestration
 
 import (
+	"context"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"lead-gen/backend/contexts/outreach-orchestration/internal/adapters/outbox/relay"
 	"lead-gen/backend/contexts/outreach-orchestration/internal/adapters/persistence/postgres"
+	appeditorial "lead-gen/backend/contexts/outreach-orchestration/internal/app/editorialreview"
 	"lead-gen/backend/contexts/outreach-orchestration/internal/ports"
 )
 
@@ -38,6 +40,12 @@ type Persistence struct {
 	// Journal — журнал outbox со стороны публикации: неподтверждённые события
 	// переживают рестарт и доставляются relay.
 	Journal relay.Source
+	// Ping проверяет доступность того же PostgreSQL-пула без чтения или записи
+	// бизнес-данных. Отсутствие callback не считается успешной проверкой.
+	Ping func(context.Context) error
+	// Editorial — отдельный durable store для editorial campaign/decision; он
+	// не является outbox approved-action.
+	Editorial appeditorial.Store
 }
 
 // NewPostgresPersistence собирает PostgreSQL-адаптеры хранилища
@@ -49,6 +57,8 @@ func NewPostgresPersistence(pool *pgxpool.Pool) Persistence {
 		Campaigns:  postgres.New(pool),
 		UnitOfWork: postgres.NewUnitOfWork(pool),
 		Journal:    postgres.NewJournal(pool),
+		Editorial:  postgres.NewEditorialStore(pool),
+		Ping:       pool.Ping,
 	}
 }
 

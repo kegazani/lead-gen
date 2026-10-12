@@ -15,25 +15,26 @@
 {{- range . }}
   <li class="evidence-item">
     <dl class="evidence-facts">
-      <dt>Критерий</dt><dd>{{.Criterion}}</dd>
-      {{- with .Fact }}<dt>Факт</dt><dd>{{.}}</dd>{{ end }}
-      {{- with .SourceURL }}<dt>Источник</dt><dd><a class="link" href="{{.}}" rel="noopener noreferrer">{{.}}</a></dd>{{ end }}
-      {{- with .Reasoning }}<dt>Объяснение связи</dt><dd>{{.}}</dd>{{ end }}
-      <dt>Тип сигнала</dt><dd>{{.SignalLabel}}</dd>
-      {{- with .Missing }}<dt>Не хватает</dt><dd>{{.}}</dd>{{ end }}
-      {{- with .Mismatch }}<dt>Несоответствие</dt><dd>{{.}}</dd>{{ end }}
+      <dt>{{ text "lead.evidence.criterion" }}</dt><dd>{{.Criterion}}</dd>
+      {{- with .Fact }}<dt>{{ text "lead.evidence.fact" }}</dt><dd>{{.}}</dd>{{ end }}
+      {{- with .Reasoning }}<dt>{{ text "lead.evidence.reasoning" }}</dt><dd>{{.}}</dd>{{ end }}
+      <dt>{{ text "lead.evidence.signal" }}</dt><dd>{{.SignalLabel}}</dd>
+      {{- with .Missing }}<dt>{{ text "lead.evidence.missing" }}</dt><dd>{{.}}</dd>{{ end }}
+      {{- with .Mismatch }}<dt>{{ text "lead.evidence.mismatch" }}</dt><dd>{{.}}</dd>{{ end }}
+      {{- with .SourceURL }}<dt>{{ text "lead.evidence.source" }}</dt><dd><a class="link" href="{{.}}" rel="noopener noreferrer">{{.}}</a></dd>{{ end }}
     </dl>
   </li>
 {{- else }}
-  <li class="empty">Свидетельств нет</li>
+  <li class="empty">{{ text "lead.evidence.empty" }}</li>
 {{- end }}
 </ul>
 {{- end -}}
 
 {{- define "content" -}}
 {{- with .View -}}
+{{ template "live" .Live }}
 <header class="page-head">
-  <h1>Карточка</h1>
+  <h1>{{ text "lead.card.title" }}</h1>
 </header>
 
 <article class="card">
@@ -42,7 +43,7 @@
     <p class="card-source">
       {{ template "status-badge" .Card.StageBadge }}
       {{ template "provenance" .Card.Source }}
-      {{- if .Card.Snoozed }} <span class="status status-queued">Отложен</span>{{- end }}
+      {{- if .Card.Snoozed }} <span class="status status-queued">{{ text "lead.card.snoozed" }}</span>{{- end }}
     </p>
   </header>
 
@@ -51,33 +52,33 @@
   {{- end }}
 
   <section class="card-section">
-    <h3>Стадия</h3>
+    <h3>{{ text "lead.card.stage" }}</h3>
     {{ template "timeline" .Card.StagePoints }}
   </section>
 
-  {{/* Раскрытие «Почему эта оценка?»: критерий, факт, источник, объяснение, тип
-       сигнала; для гипотезы — недостающее свидетельство, для «Не подходит» —
-       несоответствие. Оценка существует только в контексте задания, поэтому без
-       задания она не подставляется. */}}
   <section class="card-section assessment">
-    <h3>Почему эта оценка?</h3>
+    <h3>{{ text "lead.card.assessment_title" }}</h3>
     {{- if .Assessment }}
     <p class="assessment-verdict">
       <span class="verdict verdict-{{.Assessment.VerdictClass}}">{{.Assessment.VerdictLabel}}</span>
-      <span class="assessment-signal">Тип сигнала: {{.Assessment.SignalLabel}}</span>
+      <span class="assessment-signal">{{ text "lead.card.signal_prefix" }} {{.Assessment.SignalLabel}}</span>
       {{- if .JobScoped }} <span class="assessment-context job-id">{{.JobID}}</span>{{ end }}
     </p>
     {{ template "evidence-list" .Assessment.Evidence }}
     {{- else if .JobScoped }}
-    <p class="hint">В этом задании оценка компании не определена.</p>
+    <p class="assessment-verdict">
+      <span class="verdict verdict-unknown">{{ text "lead.verdict.unassessed" }}</span>
+      <span class="assessment-context job-id">{{.JobID}}</span>
+    </p>
+    <p class="hint">{{ text "lead.card.no_assessment" }}</p>
     {{- else }}
-    <p class="hint">Оценка привязана к заданию: откройте карточку из результатов задания, чтобы увидеть вердикт и свидетельства.</p>
+    <p class="hint">{{ text "lead.card.assessment_scoped" }}</p>
     {{- end }}
   </section>
 
   {{- if .Card.Socials }}
   <section class="card-section">
-    <h3>Соцсети</h3>
+    <h3>{{ text "lead.card.socials" }}</h3>
     <ul class="socials">
     {{- range .Card.Socials }}
       <li><a class="link" href="{{.}}" rel="noopener noreferrer">{{.}}</a></li>
@@ -87,10 +88,10 @@
   {{- end }}
 
   <section class="card-section">
-    <h3>Контакты</h3>
+    <h3>{{ text "lead.card.contacts" }}</h3>
     <table class="table">
       <thead>
-        <tr><th>Email</th><th>Телефон</th><th>Роль</th><th>Источник</th></tr>
+        <tr><th>{{ text "lead.header.email" }}</th><th>{{ text "lead.header.phone" }}</th><th>{{ text "lead.header.role" }}</th><th>{{ text "lead.header.source" }}</th><th>{{ text "lead.header.verification" }}</th></tr>
       </thead>
       <tbody>
       {{- range .Card.Contacts }}
@@ -102,16 +103,19 @@
             {{ template "provenance" .Source }}
             {{- with .Method }}<span class="method">{{.}}</span>{{- end }}
           </td>
+          <td>
+            {{- if .Email }}{{ .Verification }}{{ else }}—{{ end }}
+          </td>
         </tr>
       {{- else }}
-        <tr><td colspan="4" class="empty">Контактов пока нет</td></tr>
+        <tr><td colspan="5" class="empty">{{ text "lead.card.contacts_empty" }}</td></tr>
       {{- end }}
       </tbody>
     </table>
   </section>
 
   <section class="card-section">
-    <h3>Переписка</h3>
+    <h3>{{ text "lead.card.history" }}</h3>
     {{- if .Card.History }}
     <ul class="history-list">
     {{- range .Card.History }}
@@ -127,34 +131,34 @@
     {{- end }}
     </ul>
     {{- else }}
-    <p class="empty">Переписки пока нет</p>
+    <p class="empty">{{ text "lead.card.history_empty" }}</p>
     {{- end }}
   </section>
 
   <details class="disclosure">
-    <summary>Отложить</summary>
+    <summary>{{ text "lead.card.snooze" }}</summary>
     <div class="reveal"><div class="disclosure-body">
       <form method="post" action="/cards/{{.Card.ID}}/snooze">
         <input type="hidden" name="csrf" value="{{.CSRF}}">
         <p class="field">
-          <label for="days">Дней</label>
+          <label for="days">{{ text "lead.card.days" }}</label>
           <input id="days" name="days" type="text" value="7">
         </p>
-        <p class="actions"><button class="button-secondary" type="submit">Отложить</button></p>
+        <p class="actions"><button class="button-secondary" type="submit">{{ text "lead.card.snooze_submit" }}</button></p>
       </form>
     </div></div>
   </details>
 
   <details class="disclosure">
-    <summary>Отправить письмо</summary>
+    <summary>{{ text "lead.card.send" }}</summary>
     <div class="reveal"><div class="disclosure-body">
       <form method="post" action="/cards/{{.Card.ID}}/send">
         <input type="hidden" name="key" value="{{.SendKey}}">
         <input type="hidden" name="csrf" value="{{.CSRF}}">
         <p class="field">
-          <label for="template">Шаблон</label>
+          <label for="template">{{ text "lead.card.template" }}</label>
           <select id="template" name="template">
-            <option value="">— выберите шаблон —</option>
+            <option value="">{{ text "lead.card.template_choose" }}</option>
             {{- range .Options }}
             <option value="{{.ID}}"{{if .Selected}} selected{{end}}>{{.Name}}</option>
             {{- end }}
@@ -162,27 +166,27 @@
         </p>
         {{ .ValuesHTML }}
         <p class="actions">
-          <button type="button" class="button-secondary" hx-post="/cards/{{.Card.ID}}/send/preview" hx-include="closest form" hx-target="#email-preview">Предпросмотр</button>
-          <button type="submit">Отправить</button>
+          <button type="button" class="button-secondary" hx-post="/cards/{{.Card.ID}}/send/preview" hx-include="closest form" hx-target="#email-preview">{{ text "lead.card.preview" }}</button>
+          <button type="submit">{{ text "lead.card.send_submit" }}</button>
         </p>
       </form>
-      <div id="email-preview">{{ .Preview }}</div>
+      <div id="email-preview" data-live-announce="{{ text "lead.live.card" }}" data-focus-after-swap="#email-preview">{{ .Preview }}</div>
     </div></div>
   </details>
 
   <section class="card-section">
-    <h3>Библиотека шаблонов</h3>
+    <h3>{{ text "lead.card.template_library" }}</h3>
     {{ .TemplateList }}
   </section>
 
   <footer class="card-actions">
     <form method="post" action="/cards/{{.Card.ID}}/hide">
       <input type="hidden" name="csrf" value="{{.CSRF}}">
-      <button class="button-secondary" type="submit">Скрыть</button>
+      <button class="button-secondary" type="submit">{{ text "lead.card.hide" }}</button>
     </form>
     <form method="post" action="/cards/{{.Card.ID}}/delete">
       <input type="hidden" name="csrf" value="{{.CSRF}}">
-      <button class="button-danger" type="submit">Удалить</button>
+      <button class="button-danger" type="submit">{{ text "lead.card.delete" }}</button>
     </form>
   </footer>
 </article>

@@ -24,14 +24,34 @@ type DecideAccess struct {
 // решение.
 type DecideAccessHandler struct {
 	tenants ports.TenantRepository
+	// operators — субъекты платформенного масштаба: им разрешено действовать в
+	// любом активном тенанте. Состав задаёт точка входа, а не доменное правило:
+	// это оператор платформы, а не роль тенанта.
+	operators map[domain.ActorID]struct{}
 }
 
 // DecideAccessHandler реализует порт проверки доступа.
 var _ ports.AccessDecision = (*DecideAccessHandler)(nil)
 
-// NewDecideAccessHandler собирает use case из репозитория тенантов.
-func NewDecideAccessHandler(tenants ports.TenantRepository) *DecideAccessHandler {
-	return &DecideAccessHandler{tenants: tenants}
+// NewDecideAccessHandler собирает use case из репозитория тенантов. Операторы —
+// субъекты платформенного масштаба (обычно один оператор консолей); пустой
+// список оставляет прежнее поведение: доступ решают только роли тенанта.
+func NewDecideAccessHandler(tenants ports.TenantRepository, operators ...string) *DecideAccessHandler {
+	set := make(map[domain.ActorID]struct{}, len(operators))
+	for _, operator := range operators {
+		if id := domain.ActorID(strings.TrimSpace(operator)); id != "" {
+			set[id] = struct{}{}
+		}
+	}
+	return &DecideAccessHandler{tenants: tenants, operators: set}
+}
+
+// IsOperator сообщает, действует ли субъект в платформенном масштабе. Экспорт
+// нужен консоли: список тенантов открывается без активного тенанта, и право на
+// него решает принадлежность к операторам, а не роль в конкретном тенанте.
+func (h *DecideAccessHandler) IsOperator(actor domain.ActorID) bool {
+	_, ok := h.operators[actor]
+	return ok
 }
 
 // Handle выдаёт решение доступа по ролям актора в тенанте.
@@ -47,6 +67,11 @@ func (h *DecideAccessHandler) Handle(ctx context.Context, q DecideAccess) (bool,
 	tenant, err := h.tenants.FindByID(ctx, tenantID)
 	if err != nil {
 		return false, err
+	}
+	// Платформенный оператор действует в любом активном тенанте; отключённый
+	// тенант закрыт и для него.
+	if h.IsOperator(actor) {
+		return tenant.State() == domain.TenantActive, nil
 	}
 	return tenant.DecideAccess(actor)
 }
@@ -77,6 +102,13 @@ func (h *DecideAccessHandler) Roles(ctx context.Context, tenant domain.TenantID,
 	}
 	if t.State() != domain.TenantActive {
 		return domain.RoleSet{}, nil
+	}
+	if h.IsOperator(actor) {
+		roles, err := domain.NewRoleSet(domain.RoleAdmin)
+		if err != nil {
+			return domain.RoleSet{}, err
+		}
+		return roles, nil
 	}
 	for _, user := range t.Users() {
 		if user.ID() == domain.UserID(actor) {

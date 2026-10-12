@@ -50,11 +50,12 @@ type SendResult struct {
 
 // Send отправляет письмо лиду по шаблону библиотеки. templateID — идентификатор
 // шаблона; idempotencyKey — ключ идемпотентности формы отправки (идентификатор
-// сообщения). overrides переопределяют значения объявленных переменных, если
-// оператор отредактировал их при отправке. Возвращает ErrLeadSuppressed, если
-// лид подавлен исходами прошлых сообщений, и ErrTemplateNotFound, если шаблон
-// отсутствует.
-func (u *SendToLead) Send(ctx context.Context, leadID, templateID string, overrides map[string]string, idempotencyKey string) (SendResult, error) {
+// сообщения). tenantID — активный тенант запроса; пусто — берётся тенант
+// конфигурации сценария (TenantID). overrides переопределяют значения объявленных
+// переменных, если оператор отредактировал их при отправке. Возвращает
+// ErrLeadSuppressed, если лид подавлен исходами прошлых сообщений, и
+// ErrTemplateNotFound, если шаблон отсутствует.
+func (u *SendToLead) Send(ctx context.Context, leadID, templateID string, overrides map[string]string, idempotencyKey, tenantID string) (SendResult, error) {
 	company, err := u.Profiles.FindByID(ctx, domain.CompanyID(leadID))
 	if errors.Is(err, ports.ErrProfileNotFound) {
 		return SendResult{}, ErrCardNotFound
@@ -96,7 +97,7 @@ func (u *SendToLead) Send(ctx context.Context, leadID, templateID string, overri
 		return SendResult{}, err
 	}
 
-	if err := u.Mail.Send(ctx, mail.Message{From: u.From, To: recipient, Subject: subject, Body: body}); err != nil {
+	if err := u.Mail.Send(ctx, mail.Message{MessageID: message.ID().String(), From: u.From, To: recipient, Subject: subject, Body: body}); err != nil {
 		u.Metrics.Incr("downstream_errors_total", map[string]string{"service": u.ServiceName, "engine": "mail"})
 		message.MarkFailed(err.Error(), u.now())
 		if saveErr := u.Messages.Save(ctx, message); saveErr != nil {
@@ -109,20 +110,20 @@ func (u *SendToLead) Send(ctx context.Context, leadID, templateID string, overri
 	if err := u.Messages.Save(ctx, message); err != nil {
 		return SendResult{}, err
 	}
-	u.publishSent(ctx, company.ID().String(), message)
+	u.publishSent(ctx, company.ID().String(), message, tenantID)
 	return SendResult{MessageID: message.ID().String(), Status: message.Status()}, nil
 }
 
-// publishSent публикует событие message-sent дашборда. Публикация — вторичный
-// эффект: письмо уже ушло, и её сбой не отменяет отправку. Ошибка фиксируется
-// метрикой и логом, а не возвращается вызывающему.
-func (u *SendToLead) publishSent(ctx context.Context, companyID string, message *domain.OutboundMessage) {
+// publishSent публикует событие message-sent дашборда в срезе активного тенанта
+// запроса. Публикация — вторичный эффект: письмо уже ушло, и её сбой не отменяет
+// отправку. Ошибка фиксируется метрикой и логом, а не возвращается вызывающему.
+func (u *SendToLead) publishSent(ctx context.Context, companyID string, message *domain.OutboundMessage, tenantID string) {
 	if u.Events == nil {
 		return
 	}
 	event := ports.AnalyticsEvent{
 		EventID:    message.ID().String(),
-		TenantID:   u.TenantID,
+		TenantID:   tenantOrDefault(tenantID, u.TenantID),
 		Kind:       ports.AnalyticsKindMessageSent,
 		CompanyID:  companyID,
 		Status:     string(domain.MessageStatusSent),
@@ -218,7 +219,7 @@ func (u *SendToSegment) Send(ctx context.Context, leadIDs []string, templateID, 
 			return result, err
 		}
 
-		if err := u.Mail.Send(ctx, mail.Message{From: u.From, To: recipient, Subject: subject, Body: body}); err != nil {
+		if err := u.Mail.Send(ctx, mail.Message{MessageID: message.ID().String(), From: u.From, To: recipient, Subject: subject, Body: body}); err != nil {
 			u.Metrics.Incr("downstream_errors_total", map[string]string{"service": u.ServiceName, "engine": "mail"})
 			message.MarkFailed(err.Error(), u.now())
 			_ = u.Messages.Save(ctx, message)

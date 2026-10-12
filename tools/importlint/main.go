@@ -22,6 +22,10 @@
 //	   lead-gen/contracts/<owner>. Импорт чужого lead-gen/backend/contexts/<owner>/internal/
 //	   запрещён; чужое хранилище .../internal/adapters/persistence/** запрещено
 //	   отдельной формулировкой; чужой корневой пакет контекста запрещён тоже.
+//	b') HTTP-адаптер консоли (lead-gen/backend/contexts/<ctx>/internal/adapters/http/**)
+//	   не импортирует чужие внутренние слои: ни domain/app, ни прочие layers
+//	   чужого контекста. Данные другого контекста приходят только через
+//	   опубликованный контракт lead-gen/contracts/<owner>.
 //	c) Публичный edge (lead-gen/frontend/public/...) не импортирует
 //	   lead-gen/backend/contexts/... вообще и не импортирует пакеты-адаптеры хранилищ
 //	   (любой путь lead-gen/.../adapters/persistence).
@@ -109,6 +113,17 @@ func isStorageAdapter(role Role) bool {
 	return role.Kind == kindContext && role.Layer == "adapters" && isPersistence(role.Subpath)
 }
 
+// isHTTPAdapter сообщает, что пакет — HTTP-адаптер консоли
+// (lead-gen/backend/contexts/<ctx>/internal/adapters/http[/<subpath>]).
+// Экран консоли принадлежит контексту-владельцу агрегата и живёт в этом
+// слое; design.md (Решение 3) задаёт для него отдельную границу импортов.
+func isHTTPAdapter(role Role) bool {
+	if role.Kind != kindContext || !role.Internal || role.Layer != "adapters" {
+		return false
+	}
+	return role.Subpath == "http" || strings.HasPrefix(role.Subpath, "http/")
+}
+
 // isWorkspacePackage сообщает, что путь принадлежит workspace (совпадает с базовым
 // префиксом модуля или вложен в него), а не внешнему модулю.
 func isWorkspacePackage(module, importPath string) bool {
@@ -142,6 +157,32 @@ func externalImportReason(module string, importerRole Role, importPath string) s
 	}
 	return fmt.Sprintf("внешний модуль (SDK поставщика, драйвер) допустим только в adapters: слой %q не импортирует его",
 		importerRole.Layer)
+}
+
+// consoleAdapterReason объясняет запрет для HTTP-адаптера консоли: экран
+// принадлежит контексту-владельцу агрегата и не тянет чужие внутренние слои —
+// ни domain/app, ни прочие layers; данные другого контекста приходят только
+// через опубликованный контракт lead-gen/contracts/<owner>. Пакет вне layers
+// adapters или импорт своего контекста правилом не затрагиваются. Пустая
+// строка — ребро допустимо.
+func consoleAdapterReason(importerRole, importedRole Role) string {
+	if !isHTTPAdapter(importerRole) {
+		return ""
+	}
+	if importedRole.Kind != kindContext || importedRole.Context == importerRole.Context {
+		return ""
+	}
+	switch {
+	case importedRole.Internal && (importedRole.Layer == "domain" || importedRole.Layer == "app"):
+		return fmt.Sprintf("HTTP-адаптер консоли (контекст %q) не импортирует %s чужого контекста %q: межконтекстный доступ только через lead-gen/contracts/<owner>",
+			importerRole.Context, importedRole.Layer, importedRole.Context)
+	case importedRole.Internal:
+		return fmt.Sprintf("HTTP-адаптер консоли (контекст %q) не импортирует внутренний слой %q чужого контекста %q: межконтекстный доступ только через lead-gen/contracts/<owner>",
+			importerRole.Context, importedRole.Layer, importedRole.Context)
+	default:
+		return fmt.Sprintf("HTTP-адаптер консоли (контекст %q) не импортирует публичную поверхность чужого контекста %q: межконтекстный доступ только через lead-gen/contracts/<owner>",
+			importerRole.Context, importedRole.Context)
+	}
 }
 
 // crossContextReason объясняет запрет импорта чужого контекста. Контекст вправе
@@ -194,6 +235,12 @@ func forbiddenLayer(importerRole, importedRole Role) string {
 
 	// Межконтекстные импорты разрешены только через lead-gen/contracts/<owner>.
 	if importedRole.Kind == kindContext && importedRole.Context != importerRole.Context {
+		// HTTP-адаптер консоли ограничен отдельным, именованным правилом
+		// (design.md, Решение 3): чужие внутренние слои и публичная поверхность
+		// запрещены с явной причиной, остальное — общим правилом.
+		if reason := consoleAdapterReason(importerRole, importedRole); reason != "" {
+			return reason
+		}
 		return crossContextReason(importerRole, importedRole)
 	}
 

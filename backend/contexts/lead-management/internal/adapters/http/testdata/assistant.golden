@@ -6,34 +6,41 @@
   <script src="/static/theme.js"></script>
   <title>Ассистент</title>
   <link rel="stylesheet" href="/static/console.css">
+  <link rel="stylesheet" href="/static/cards.css">
   <script src="/static/htmx.min.js" defer></script>
   <script src="/static/console.js" defer></script>
   <script src="/static/assistant.js" defer></script>
+  <script src="/static/console-a11y.js" defer></script>
 </head>
 <body>
-  <nav class="sidebar">
+  <a class="skip-link" href="#main-content">Перейти к содержимому</a>
+  <nav class="sidebar" aria-label="Основная навигация">
   <ul class="sidebar-list">
-    <li><a href="/validation">Заявки</a></li>
-    <li><a href="/approvals">Исполнение</a></li>
-    <li><a href="/" class="is-active" aria-current="page">Лиды</a></li>
-    <li><a href="/dashboard">Отчёты</a></li>
+    <li><a href="/validation?actor=operator">Заявки</a></li>
+    <li><a href="/approvals?actor=operator">Исполнение</a></li>
+    <li><a href="/?actor=operator" class="is-active" aria-current="page">Лиды</a></li>
+    <li><a href="/dashboard?actor=operator">Отчёты</a></li>
+    <li><a href="/outreach/drafts?actor=operator">Рассылки</a></li>
+    <li><a href="/console/tenant?actor=operator">Тенант</a></li>
+    <li><a href="/console/users?actor=operator">Пользователи</a></li>
+    <li><a href="/console/registrations?actor=operator">Регистрации</a></li>
+    <li><a href="/console/integrations?actor=operator">Интеграции</a></li>
+    <li><a href="/console/audit?actor=operator">Аудит</a></li>
+    <li><a href="/platform/topology?actor=operator">Топология</a></li>
+    <li><a href="/platform/operations?actor=operator">Операции</a></li>
   </ul>
-  <p class="sidebar-group-label">Экраны лидов</p>
-  <ul class="sidebar-list sidebar-list-group">
-    <li><a href="/">Главная</a></li>
-    <li><a href="/cards">Карточки</a></li>
-    <li><a href="/leads">Лиды</a></li>
-    <li><a href="/funnel">Воронка</a></li>
-    <li><a href="/send">Отправка</a></li>
-    <li><a href="/assistant" class="is-active" aria-current="page">Ассистент</a></li>
-    <li><a href="/forum-signals">Форумы</a></li>
-  </ul>
-  <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Тема оформления">
+  <button class="theme-toggle" id="theme-toggle" type="button"
+    aria-label="Тема оформления"
+    data-theme-label-system="Как в системе"
+    data-theme-label-light="Светлая"
+    data-theme-label-dark="Тёмная"
+    data-theme-aria="Тема оформления: %s. Нажмите, чтобы сменить.">
     <span class="theme-toggle-label">Тема</span>
     <b class="theme-toggle-value" data-theme-name>Как в системе</b>
   </button>
 </nav>
-  <main class="page">
+  <main class="page" id="main-content">
+<p class="live-region" id="console-live" role="status" aria-live="polite" aria-atomic="true" aria-label="Объявления" data-live-region></p>
 <header class="page-head">
   <h1>Ассистент</h1>
   <p class="hint">Опишите, каких клиентов ищете. Ассистент задаст уточняющие вопросы и соберёт план. Операторские параметры — глубина и время работы в секундах — согласуются в разговоре, а цели, целевое число компаний и лимит поиска можно править прямо в панели плана перед запуском.</p>
@@ -71,7 +78,6 @@
 
 <section class="panel" data-interpretation-section>
   <h2>Как система поняла запрос</h2>
-  
   <div data-interpretation-body>
     <p class="hint" data-interpretation-uncertainty>Не удалось определить критерии: провайдер интерпретации недоступен</p>
   </div>
@@ -86,7 +92,6 @@
     <li class="chip"><span class="chip-label">Глубина</span> <span class="chip-value">3</span></li>
     <li class="chip"><span class="chip-label">Время, с</span> <span class="chip-value">120</span></li>
   </ul>
-  
   <div class="plan-edit" data-plan-edit>
     <p class="field">
       <label for="targetCompanies">Сколько найти компаний</label>

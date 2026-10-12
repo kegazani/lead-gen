@@ -6,34 +6,41 @@
   <script src="/static/theme.js"></script>
   <title>Форумы</title>
   <link rel="stylesheet" href="/static/console.css">
+  <link rel="stylesheet" href="/static/cards.css">
   <script src="/static/htmx.min.js" defer></script>
   <script src="/static/console.js" defer></script>
   <script src="/static/assistant.js" defer></script>
+  <script src="/static/console-a11y.js" defer></script>
 </head>
 <body>
-  <nav class="sidebar">
+  <a class="skip-link" href="#main-content">Перейти к содержимому</a>
+  <nav class="sidebar" aria-label="Основная навигация">
   <ul class="sidebar-list">
-    <li><a href="/validation">Заявки</a></li>
-    <li><a href="/approvals">Исполнение</a></li>
-    <li><a href="/" class="is-active" aria-current="page">Лиды</a></li>
-    <li><a href="/dashboard">Отчёты</a></li>
+    <li><a href="/validation?actor=operator">Заявки</a></li>
+    <li><a href="/approvals?actor=operator">Исполнение</a></li>
+    <li><a href="/?actor=operator" class="is-active" aria-current="page">Лиды</a></li>
+    <li><a href="/dashboard?actor=operator">Отчёты</a></li>
+    <li><a href="/outreach/drafts?actor=operator">Рассылки</a></li>
+    <li><a href="/console/tenant?actor=operator">Тенант</a></li>
+    <li><a href="/console/users?actor=operator">Пользователи</a></li>
+    <li><a href="/console/registrations?actor=operator">Регистрации</a></li>
+    <li><a href="/console/integrations?actor=operator">Интеграции</a></li>
+    <li><a href="/console/audit?actor=operator">Аудит</a></li>
+    <li><a href="/platform/topology?actor=operator">Топология</a></li>
+    <li><a href="/platform/operations?actor=operator">Операции</a></li>
   </ul>
-  <p class="sidebar-group-label">Экраны лидов</p>
-  <ul class="sidebar-list sidebar-list-group">
-    <li><a href="/">Главная</a></li>
-    <li><a href="/cards">Карточки</a></li>
-    <li><a href="/leads">Лиды</a></li>
-    <li><a href="/funnel">Воронка</a></li>
-    <li><a href="/send">Отправка</a></li>
-    <li><a href="/assistant">Ассистент</a></li>
-    <li><a href="/forum-signals" class="is-active" aria-current="page">Форумы</a></li>
-  </ul>
-  <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Тема оформления">
+  <button class="theme-toggle" id="theme-toggle" type="button"
+    aria-label="Тема оформления"
+    data-theme-label-system="Как в системе"
+    data-theme-label-light="Светлая"
+    data-theme-label-dark="Тёмная"
+    data-theme-aria="Тема оформления: %s. Нажмите, чтобы сменить.">
     <span class="theme-toggle-label">Тема</span>
     <b class="theme-toggle-value" data-theme-name>Как в системе</b>
   </button>
 </nav>
-  <main class="page">
+  <main class="page" id="main-content">
+<p class="live-region" id="console-live" role="status" aria-live="polite" aria-atomic="true" aria-label="Объявления" data-live-region></p>
 <header class="page-head">
   <h1>Форумы</h1>
 </header>
@@ -53,11 +60,11 @@
   <ul class="signal-list">
     <li class="signal">
       <p class="signal-topic">Тема 1</p><p class="signal-summary">Выжимка 1</p>
-      <p class="signal-meta"><a class="link" href="https://reddit.com/t/1" rel="noopener noreferrer">https://reddit.com/t/1</a> · 2026-01-02</p>
+      <p class="signal-meta"><a class="link" href="https://reddit.com/t/1" rel="noopener noreferrer">https://reddit.com/t/1</a> · 02.01.2026</p>
     </li>
     <li class="signal">
       <p class="signal-topic">Тема 2</p>
-      <p class="signal-meta"><a class="link" href="https://news.ycombinator.com/item?id=1" rel="noopener noreferrer">https://news.ycombinator.com/item?id=1</a> · 2026-01-02</p>
+      <p class="signal-meta"><a class="link" href="https://news.ycombinator.com/item?id=1" rel="noopener noreferrer">https://news.ycombinator.com/item?id=1</a> · 02.01.2026</p>
     </li>
   </ul>
 </section>

@@ -1,0 +1,44 @@
+{{- define "content" -}}
+<section class="profile">
+  <h1>{{ text "portal.profile.title" }}</h1>
+  {{- with .View.Notice }}
+  <p class="notice" role="status">{{.}}</p>
+  {{- end }}
+
+  {{- if .View.IsPending }}
+  <p class="notice" role="status">{{ text "portal.profile.pending" }}</p>
+  <article class="profile-readonly fact-panel">
+    <dl class="facts">
+      <div><dt>{{ text "portal.profile.description" }}</dt><dd>{{ .View.ReadOnlyDescription }}</dd></div>
+      <div><dt>{{ text "portal.profile.target" }}</dt><dd>{{ .View.ReadOnlyTarget }}</dd></div>
+    </dl>
+    <h2>{{ text "portal.profile.services" }}</h2>
+    {{- range .View.ReadOnlyServices }}
+    <details class="service">
+      <summary>{{ .Name }} — {{ .Short }}</summary>
+      <p>{{ .Full }}</p>
+    </details>
+    {{- end }}
+  </article>
+  {{- else }}
+  <form method="post" action="/profile/save">
+    {{ template "field" .View.Description }}
+    {{ template "field" .View.Target }}
+    <h2>{{ text "portal.profile.services" }}</h2>
+    {{- range .View.Services }}
+    <fieldset class="service-field">
+      <legend>{{ .Title }}</legend>
+      <p class="field"><label for="service-name-{{ .Index }}">{{ text "portal.profile.service.name" }}</label>
+        <input id="service-name-{{ .Index }}" name="service_name_{{ .Index }}" type="text" value="{{ .Name }}"></p>
+      <p class="field"><label for="service-short-{{ .Index }}">{{ text "portal.profile.service.short" }}</label>
+        <input id="service-short-{{ .Index }}" name="service_short_{{ .Index }}" type="text" value="{{ .Short }}"></p>
+      <p class="field"><label for="service-full-{{ .Index }}">{{ text "portal.profile.service.full" }}</label>
+        <textarea id="service-full-{{ .Index }}" name="service_full_{{ .Index }}" rows="3">{{ .Full }}</textarea></p>
+    </fieldset>
+    {{- end }}
+    <button type="submit">{{ text "portal.profile.save" }}</button>
+    <button type="submit" formaction="/profile/submit">{{ text "portal.profile.submit" }}</button>
+  </form>
+  {{- end }}
+</section>
+{{- end -}}

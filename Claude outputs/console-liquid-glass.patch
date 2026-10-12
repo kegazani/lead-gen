@@ -1,0 +1,4576 @@
+diff --git a/backend/contexts/lead-management/internal/adapters/http/server_test.go b/backend/contexts/lead-management/internal/adapters/http/server_test.go
+index 050bbf7..997347b 100644
+--- a/backend/contexts/lead-management/internal/adapters/http/server_test.go
++++ b/backend/contexts/lead-management/internal/adapters/http/server_test.go
+@@ -1359,8 +1359,8 @@ func TestCardShowsStatusAndHistory(t *testing.T) {
+ 		t.Fatalf("GET /cards/example.com = %d, ожидался 200", resp.StatusCode)
+ 	}
+ 	html := readBody(t, resp)
+-	if !strings.Contains(html, "not warmed") {
+-		t.Fatalf("карточка не показывает стадию «not warmed»:\n%s", html)
++	if !strings.Contains(html, `status-not-warmed">Не прогрет`) {
++		t.Fatalf("карточка не показывает стадию «Не прогрет» читаемой подписью:\n%s", html)
+ 	}
+ 	if !strings.Contains(html, "intro") {
+ 		t.Fatalf("карточка не показывает шаблон письма в истории:\n%s", html)
+diff --git a/backend/contexts/lead-management/internal/adapters/http/templates/leads-export.html b/backend/contexts/lead-management/internal/adapters/http/templates/leads-export.html
+index 7623811..b0964ac 100644
+--- a/backend/contexts/lead-management/internal/adapters/http/templates/leads-export.html
++++ b/backend/contexts/lead-management/internal/adapters/http/templates/leads-export.html
+@@ -8,67 +8,89 @@
+ <style>
+   *, *::before, *::after { box-sizing: border-box; }
+   :root {
+-    --glass: rgba(255, 255, 255, 0.06);
+-    --glass-strong: rgba(255, 255, 255, 0.12);
+-    --line: rgba(255, 255, 255, 0.10);
+-    --line-strong: rgba(255, 255, 255, 0.22);
+-    --ink: #f2f4ff;
+-    --ink-soft: rgba(226, 231, 255, 0.62);
+-    --accent: #8b9cff;
+-    --accent-2: #f2a2ff;
+-    --ok: #6bd6a6;
+-    --radius: 18px;
+-    --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
++    color-scheme: light dark;
++    --paper: #eef1f5;
++    --glass: rgba(255, 255, 255, 0.55);
++    --glass-strong: rgba(255, 255, 255, 0.85);
++    --glass-border: rgba(255, 255, 255, 0.75);
++    --glass-hi: rgba(255, 255, 255, 0.95);
++    --fill: rgba(118, 118, 128, 0.12);
++    --line: rgba(60, 60, 67, 0.12);
++    --ink: #1c1c1e;
++    --ink-soft: #595d68;
++    --accent: #1c1c1e;
++    --accent-ink: #ffffff;
++    --accent-soft: rgba(28, 28, 30, 0.1);
++    --ok: #34c759;
++    --wall-1: #b7d0f0;
++    --wall-2: #f1d6b0;
++    --wall-3: #b6e2d6;
++    --shadow: 0 2px 6px rgba(16, 24, 40, 0.05), 0 18px 48px rgba(16, 24, 40, 0.12);
++    --radius: 20px;
++    --ease: cubic-bezier(0.32, 0.72, 0, 1);
++  }
++  @media (prefers-color-scheme: dark) {
++    :root {
++      --paper: #0d0f12;
++      --glass: rgba(34, 36, 42, 0.55);
++      --glass-strong: rgba(70, 72, 80, 0.62);
++      --glass-border: rgba(255, 255, 255, 0.11);
++      --glass-hi: rgba(255, 255, 255, 0.22);
++      --fill: rgba(118, 118, 128, 0.26);
++      --line: rgba(255, 255, 255, 0.09);
++      --ink: #f5f5f7;
++      --ink-soft: #a3a6af;
++      --accent: #f5f5f7;
++      --accent-ink: #1c1c1e;
++      --accent-soft: rgba(255, 255, 255, 0.12);
++      --ok: #30d158;
++      --wall-1: #17345a;
++      --wall-2: #4a3417;
++      --wall-3: #0f3d35;
++      --shadow: 0 2px 6px rgba(0, 0, 0, 0.4), 0 18px 48px rgba(0, 0, 0, 0.55);
++    }
+   }
+ 
+   html { -webkit-text-size-adjust: 100%; }
+   body {
+     margin: 0;
+     min-height: 100vh;
+-    padding: clamp(1.5rem, 4vw, 3.5rem) clamp(0.75rem, 3vw, 2rem);
+-    font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
++    padding: clamp(1.5rem, 4vw, 3.5rem) clamp(1rem, 3vw, 2rem);
++    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+     color: var(--ink);
+-    background: #0b1024;
++    background-color: var(--paper);
+     background-image:
+-      radial-gradient(60vw 60vw at 12% -10%, rgba(139, 156, 255, 0.28), transparent 60%),
+-      radial-gradient(50vw 50vw at 105% 0%, rgba(242, 162, 255, 0.22), transparent 55%),
+-      radial-gradient(70vw 70vw at 50% 120%, rgba(107, 214, 166, 0.16), transparent 60%),
+-      linear-gradient(160deg, #0b1024 0%, #101331 50%, #0a0e20 100%);
++      radial-gradient(48vw 42vw at 4% -6%, var(--wall-1), transparent 70%),
++      radial-gradient(36vw 34vw at 102% 18%, var(--wall-2), transparent 70%),
++      radial-gradient(46vw 40vw at 46% 112%, var(--wall-3), transparent 70%);
+     background-attachment: fixed;
+     -webkit-font-smoothing: antialiased;
+   }
+ 
+-  .wrap { max-width: 66rem; margin: 0 auto; animation: rise 0.7s var(--ease) both; }
++  .wrap { max-width: 66rem; margin: 0 auto; animation: rise 0.6s var(--ease) both; }
+ 
+   header.head {
+     display: flex;
+     flex-wrap: wrap;
+     align-items: center;
+-    gap: 1rem;
++    gap: 0.9rem;
+     margin-bottom: 1.4rem;
+   }
+   h1 {
+     margin: 0;
+-    font-size: clamp(1.4rem, 3.5vw, 2rem);
+-    letter-spacing: -0.02em;
+-    font-weight: 700;
+-    background: linear-gradient(100deg, #fff 10%, var(--accent) 55%, var(--accent-2) 95%);
+-    -webkit-background-clip: text;
+-    background-clip: text;
+-    color: transparent;
++    font: 700 clamp(1.6rem, 3.5vw, 2.1rem)/1.15 -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", system-ui, sans-serif;
++    letter-spacing: -0.025em;
+   }
+   .badge {
+-    padding: 0.35rem 0.8rem;
+-    border: 1px solid var(--line-strong);
++    padding: 0.3rem 0.8rem;
+     border-radius: 999px;
+-    background: var(--glass);
+-    backdrop-filter: blur(10px);
+-    -webkit-backdrop-filter: blur(10px);
++    background: var(--fill);
+     font-size: 0.85rem;
+     color: var(--ink-soft);
+     white-space: nowrap;
++    font-variant-numeric: tabular-nums;
+   }
+-  .badge b { color: var(--ink); font-weight: 700; }
++  .badge b { color: var(--ink); font-weight: 650; }
+ 
+   .search {
+     position: relative;
+@@ -77,103 +99,92 @@
+   }
+   .search svg {
+     position: absolute;
+-    left: 0.9rem;
++    left: 0.95rem;
+     top: 50%;
+     transform: translateY(-50%);
+-    width: 1.05rem;
+-    height: 1.05rem;
++    width: 1rem;
++    height: 1rem;
+     stroke: var(--ink-soft);
+     pointer-events: none;
+   }
+   #q {
+     width: 100%;
+-    padding: 0.7rem 0.95rem 0.7rem 2.6rem;
+-    border: 1px solid var(--line-strong);
++    padding: 0.65rem 2.4rem 0.65rem 2.5rem;
++    border: 1px solid var(--glass-border);
+     border-radius: 999px;
+     background: var(--glass);
+-    backdrop-filter: blur(12px);
+-    -webkit-backdrop-filter: blur(12px);
++    -webkit-backdrop-filter: blur(20px) saturate(180%);
++    backdrop-filter: blur(20px) saturate(180%);
++    box-shadow: inset 1px 1px 0 var(--glass-hi), var(--shadow);
+     color: var(--ink);
+     font: inherit;
+-    font-size: 0.95rem;
+     outline: none;
+-    transition: border-color 0.25s var(--ease), box-shadow 0.25s var(--ease), background 0.25s var(--ease);
++    transition: box-shadow 0.25s var(--ease), background 0.25s var(--ease);
+   }
+   #q::placeholder { color: var(--ink-soft); }
+   #q:focus {
+-    border-color: var(--accent);
+     background: var(--glass-strong);
+-    box-shadow: 0 0 0 4px rgba(139, 156, 255, 0.18);
++    box-shadow: inset 1px 1px 0 var(--glass-hi), 0 0 0 4px var(--accent-soft), var(--shadow);
+   }
+   #clear {
+     position: absolute;
+-    right: 0.55rem;
++    right: 0.5rem;
+     top: 50%;
+     transform: translateY(-50%);
+-    width: 1.7rem;
+-    height: 1.7rem;
++    width: 1.6rem;
++    height: 1.6rem;
+     border: 0;
+     border-radius: 50%;
+-    background: transparent;
++    background: var(--fill);
+     color: var(--ink-soft);
+-    font-size: 1.1rem;
++    font-size: 1rem;
+     line-height: 1;
+     cursor: pointer;
+     opacity: 0;
+     pointer-events: none;
+-    transition: opacity 0.2s var(--ease), background 0.2s var(--ease);
++    transition: opacity 0.2s var(--ease);
+   }
+   #clear.show { opacity: 1; pointer-events: auto; }
+-  #clear:hover { background: var(--glass-strong); color: var(--ink); }
++  #clear:hover { color: var(--ink); }
+ 
+   .panel {
+-    border: 1px solid var(--line);
++    border: 1px solid var(--glass-border);
+     border-radius: var(--radius);
+-    background: rgba(255, 255, 255, 0.045);
+-    backdrop-filter: blur(20px) saturate(140%);
+-    -webkit-backdrop-filter: blur(20px) saturate(140%);
+-    box-shadow: 0 24px 60px rgba(3, 6, 20, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.08);
++    background: var(--glass);
++    -webkit-backdrop-filter: blur(20px) saturate(180%);
++    backdrop-filter: blur(20px) saturate(180%);
++    box-shadow: inset 1px 1px 0 var(--glass-hi), var(--shadow);
+     overflow: hidden;
+   }
+   table { width: 100%; border-collapse: collapse; }
+   thead th {
+-    position: sticky;
+-    top: 0;
+-    z-index: 2;
+     text-align: left;
+-    padding: 0.85rem 1.1rem;
+-    font-size: 0.74rem;
+-    font-weight: 600;
+-    letter-spacing: 0.08em;
+-    text-transform: uppercase;
++    padding: 0.8rem 1.1rem;
++    font-size: 0.8rem;
++    font-weight: 560;
+     color: var(--ink-soft);
+-    background: rgba(16, 19, 49, 0.72);
+-    backdrop-filter: blur(14px);
+-    -webkit-backdrop-filter: blur(14px);
+-    border-bottom: 1px solid var(--line-strong);
++    border-bottom: 1px solid var(--line);
+   }
+   tbody td { padding: 0.8rem 1.1rem; border-bottom: 1px solid var(--line); vertical-align: middle; }
+   tbody tr {
+-    animation: rise 0.5s var(--ease) both;
+-    animation-delay: calc(var(--i, 0) * 35ms);
+-    transition: background 0.22s var(--ease);
++    animation: rise 0.45s var(--ease) both;
++    animation-delay: calc(var(--i, 0) * 30ms);
++    transition: background 0.2s var(--ease);
+   }
+-  tbody tr:hover { background: rgba(255, 255, 255, 0.05); }
++  tbody tr:hover { background: var(--fill); }
+   tbody tr:last-child td { border-bottom: 0; }
+ 
+   .email {
+     display: inline-flex;
+     align-items: center;
+-    gap: 0.5rem;
++    gap: 0.55rem;
+     font-weight: 600;
+     color: var(--ink);
+     text-decoration: none;
+-    font-variant-numeric: tabular-nums;
+   }
+   .dot {
+-    width: 7px; height: 7px; border-radius: 50%;
++    width: 8px; height: 8px; border-radius: 50%;
+     background: var(--ok);
+-    box-shadow: 0 0 0 4px rgba(107, 214, 166, 0.16);
+     flex: none;
+   }
+   .company { font-weight: 600; }
+@@ -181,37 +192,30 @@
+ 
+   .actions { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+   .btn {
+-    --btn-glow: rgba(139, 156, 255, 0.45);
+     display: inline-flex;
+     align-items: center;
+     gap: 0.4rem;
+-    padding: 0.42rem 0.85rem;
+-    border: 1px solid var(--line-strong);
++    padding: 0.42rem 0.9rem;
++    border: 1px solid var(--glass-border);
+     border-radius: 999px;
+-    background: var(--glass);
+-    backdrop-filter: blur(10px);
+-    -webkit-backdrop-filter: blur(10px);
++    background: var(--glass-strong);
++    box-shadow: inset 1px 1px 0 var(--glass-hi), 0 2px 8px rgba(0, 0, 0, 0.06);
+     color: var(--ink);
+     font-size: 0.85rem;
+     font-weight: 600;
+     text-decoration: none;
+     white-space: nowrap;
+-    transition: transform 0.2s var(--ease), background 0.2s var(--ease), border-color 0.2s var(--ease), box-shadow 0.3s var(--ease);
++    transition: transform 0.15s var(--ease), box-shadow 0.25s var(--ease);
+   }
+   .btn svg { width: 0.95rem; height: 0.95rem; stroke: currentColor; }
+-  .btn:hover {
+-    background: var(--glass-strong);
+-    border-color: var(--accent);
+-    transform: translateY(-2px);
+-    box-shadow: 0 10px 24px -10px var(--btn-glow);
+-  }
+-  .btn:active { transform: translateY(0) scale(0.97); }
++  .btn:hover { box-shadow: inset 1px 1px 0 var(--glass-hi), 0 6px 18px rgba(0, 0, 0, 0.12); }
++  .btn:active { transform: scale(0.97); }
+   .btn.primary {
+     border-color: transparent;
+-    background: linear-gradient(120deg, rgba(139, 156, 255, 0.9), rgba(242, 162, 255, 0.85));
+-    color: #0b1024;
++    background: var(--accent);
++    color: var(--accent-ink);
++    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 4px 14px rgba(0, 0, 0, 0.16);
+   }
+-  .btn.primary:hover { box-shadow: 0 12px 30px -8px rgba(242, 162, 255, 0.6); }
+   .btn:focus-visible, .email:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+ 
+   .empty {
+@@ -222,7 +226,7 @@
+   footer.foot { margin-top: 1rem; text-align: right; color: var(--ink-soft); font-size: 0.8rem; }
+ 
+   @keyframes rise {
+-    from { opacity: 0; transform: translateY(10px); }
++    from { opacity: 0; transform: translateY(8px); }
+     to { opacity: 1; transform: translateY(0); }
+   }
+ 
+@@ -231,7 +235,6 @@
+     tbody tr { display: block; padding: 0.85rem 1rem; border-bottom: 1px solid var(--line); }
+     tbody tr:hover { background: transparent; }
+     tbody td { display: block; padding: 0.15rem 0; border: 0; }
+-    .company { order: -1; }
+     .actions { margin-top: 0.55rem; }
+   }
+ 
+diff --git a/backend/contexts/lead-management/internal/adapters/http/testdata/card-unsuitable.golden b/backend/contexts/lead-management/internal/adapters/http/testdata/card-unsuitable.golden
+index 1b5d273..404d846 100644
+--- a/backend/contexts/lead-management/internal/adapters/http/testdata/card-unsuitable.golden
++++ b/backend/contexts/lead-management/internal/adapters/http/testdata/card-unsuitable.golden
+@@ -48,7 +48,7 @@
+   <header class="card-head">
+     <h2>Пример Компании</h2>
+     <p class="card-source">
+-      <span class="status status-not-warmed">not warmed</span>
++      <span class="status status-not-warmed">Не прогрет</span>
+       <span class="provenance"><a href="https://example.com" rel="noopener noreferrer">https://example.com</a> <time datetime="02.01.2026">02.01.2026</time></span>
+     </p>
+   </header>
+diff --git a/backend/contexts/lead-management/internal/adapters/http/testdata/card.golden b/backend/contexts/lead-management/internal/adapters/http/testdata/card.golden
+index 7182e2f..f611fdb 100644
+--- a/backend/contexts/lead-management/internal/adapters/http/testdata/card.golden
++++ b/backend/contexts/lead-management/internal/adapters/http/testdata/card.golden
+@@ -48,7 +48,7 @@
+   <header class="card-head">
+     <h2>Пример Компании</h2>
+     <p class="card-source">
+-      <span class="status status-not-warmed">not warmed</span>
++      <span class="status status-not-warmed">Не прогрет</span>
+       <span class="provenance"><a href="https://example.com" rel="noopener noreferrer">https://example.com</a> <time datetime="02.01.2026">02.01.2026</time></span>
+     </p>
+   </header>
+diff --git a/backend/contexts/lead-management/internal/adapters/http/testdata/job.golden b/backend/contexts/lead-management/internal/adapters/http/testdata/job.golden
+index 47bed08..d28c90a 100644
+--- a/backend/contexts/lead-management/internal/adapters/http/testdata/job.golden
++++ b/backend/contexts/lead-management/internal/adapters/http/testdata/job.golden
+@@ -49,7 +49,7 @@
+     <h2>Запрос</h2>
+     <p class="job-query">агентства автоматизации B2B</p>
+     <p class="card-source">
+-      <span class="status status-done" title="найдено компаний 2">done</span>
++      <span class="status status-done" title="найдено компаний 2">Готово</span>
+       <span class="job-id">job-1</span>
+     </p>
+   </header>
+diff --git a/backend/contexts/lead-management/internal/adapters/http/views.go b/backend/contexts/lead-management/internal/adapters/http/views.go
+index 53d19da..1f7b165 100644
+--- a/backend/contexts/lead-management/internal/adapters/http/views.go
++++ b/backend/contexts/lead-management/internal/adapters/http/views.go
+@@ -609,7 +609,7 @@ func jobRows(list []ports.SearchJob) []jobRow {
+ 			ID:         j.ID,
+ 			Query:      j.Query,
+ 			ShortQuery: shortQuery(j.Query),
+-			Badge:      statusBadge{Label: string(j.Status), Class: components.StatusClass(string(j.Status)), Title: statusTitle(j)},
++			Badge:      statusBadge{Label: jobStatusLabel(j.Status), Class: components.StatusClass(string(j.Status)), Title: statusTitle(j)},
+ 			Progress:   progressOrQueue(j),
+ 			Created:    formatDate(j.CreatedAt),
+ 			Error:      errorText(j),
+@@ -686,7 +686,7 @@ func jobFrom(detail app.JobDetail, assessments []*domain.LeadAssessment, assessm
+ 		Live:         consoleLive,
+ 		ID:           j.ID,
+ 		Query:        j.Query,
+-		Badge:        statusBadge{Label: string(j.Status), Class: components.StatusClass(string(j.Status)), Title: statusTitle(j)},
++		Badge:        statusBadge{Label: jobStatusLabel(j.Status), Class: components.StatusClass(string(j.Status)), Title: statusTitle(j)},
+ 		Created:      formatDateTime(j.CreatedAt),
+ 		Updated:      formatDateTime(j.UpdatedAt),
+ 		Result:       resultCount(j.ResultRef),
+@@ -1540,7 +1540,7 @@ func cardDetailFrom(card app.Card, history []app.CardMessage) cardDetail {
+ 		Description: card.Description,
+ 		Socials:     card.Socials,
+ 		Source:      provenanceView{Source: card.SourceURL, Date: formatDate(card.ExtractedAt)},
+-		StageBadge:  statusBadge{Label: stage, Class: components.StatusClass(stage)},
++		StageBadge:  statusBadge{Label: stageLabel(card.Stage), Class: components.StatusClass(stage)},
+ 		Stage:       stage,
+ 		StagePoints: stageTimeline(stage),
+ 		Contacts:    contacts,
+@@ -1554,7 +1554,7 @@ func cardDetailFrom(card app.Card, history []app.CardMessage) cardDetail {
+ 		rows = append(rows, historyRow{
+ 			Recipient: m.Recipient,
+ 			Template:  m.Template,
+-			Status:    statusBadge{Label: m.Status, Class: components.StatusClass(m.Status)},
++			Status:    statusBadge{Label: messageStatusLabel(m.Status), Class: components.StatusClass(m.Status)},
+ 			Reason:    m.Reason,
+ 			Created:   formatDate(m.CreatedAt),
+ 			Points:    messageTimeline(m.Status, m.Reason),
+@@ -1594,6 +1594,47 @@ func funnelLeadIDs(stages []app.FunnelStage) []string {
+ 	return ids
+ }
+ 
++// jobStatusLabel — читаемая подпись состояния задания поиска для бейджа. Код
++// остаётся в классе бейджа (оформление), а оператор видит слово, а не код.
++// Неизвестное состояние показывается как есть, чтобы новое значение не пропало.
++func jobStatusLabel(status jobs.Status) string {
++	switch status {
++	case jobs.StatusQueued:
++		return "В очереди"
++	case jobs.StatusRunning:
++		return "Выполняется"
++	case jobs.StatusDone:
++		return "Готово"
++	case jobs.StatusFailed:
++		return "Ошибка"
++	case jobs.StatusCancelled:
++		return "Отменено"
++	default:
++		return string(status)
++	}
++}
++
++// messageStatusLabel — читаемая подпись состояния исходящего письма в истории
++// переписки карточки.
++func messageStatusLabel(status string) string {
++	switch domain.MessageStatus(status) {
++	case domain.MessageStatusQueued:
++		return "В очереди"
++	case domain.MessageStatusSent:
++		return "Отправлено"
++	case domain.MessageStatusFailed:
++		return "Не отправлено"
++	case domain.MessageStatusBounced:
++		return "Возврат"
++	case domain.MessageStatusUnsubscribed:
++		return "Отписка"
++	case domain.MessageStatusRejected:
++		return "Отклонено"
++	default:
++		return status
++	}
++}
++
+ // stageLabel — читаемая подпись стадии воронки для колонки.
+ func stageLabel(stage domain.Stage) string {
+ 	switch stage {
+diff --git a/backend/contexts/outreach-orchestration/internal/adapters/http/messages.go b/backend/contexts/outreach-orchestration/internal/adapters/http/messages.go
+index 7793af6..d769478 100644
+--- a/backend/contexts/outreach-orchestration/internal/adapters/http/messages.go
++++ b/backend/contexts/outreach-orchestration/internal/adapters/http/messages.go
+@@ -94,6 +94,16 @@ var outreachCatalog = map[components.MessageKey]string{
+ 	msgStalledNotify:     "Оператор уведомляется: зависших черновиков",
+ 	msgStalledNotifyTail: "Срок истёк, но действие осталось неисполненным.",
+ 	msgStalledEmpty:      "Зависших черновиков нет",
++
++	// Читаемые подписи состояний черновика (change console-liquid-glass):
++	// шаблон берёт их функцией label, неизвестное состояние показывается как есть.
++	"outreach.draft.state.proposed":         "Предложен",
++	"outreach.draft.state.pending-approval": "Ждёт утверждения",
++	"outreach.draft.state.approved":         "Утверждён",
++	"outreach.draft.state.rejected":         "Отклонён",
++	"outreach.draft.state.expired":          "Истёк срок",
++	"outreach.draft.state.executed":         "Отправлен",
++	"outreach.draft.state.failed":           "Сбой",
+ }
+ 
+ // Ключи каталога консоли рассылок.
+diff --git a/backend/contexts/outreach-orchestration/internal/adapters/http/templates/stalled_queue.html b/backend/contexts/outreach-orchestration/internal/adapters/http/templates/stalled_queue.html
+index 59acc67..bad97f9 100644
+--- a/backend/contexts/outreach-orchestration/internal/adapters/http/templates/stalled_queue.html
++++ b/backend/contexts/outreach-orchestration/internal/adapters/http/templates/stalled_queue.html
+@@ -24,7 +24,7 @@
+         <td>{{.Version}}</td>
+         <td>{{.Channel}}</td>
+         <td>{{.RecipientID}}</td>
+-        <td><span class="status status-{{.State}}">{{.State}}</span></td>
++        <td><span class="status status-{{.State}}">{{ label "outreach.draft.state" .State }}</span></td>
+       </tr>
+     {{- else }}
+       <tr><td colspan="6" class="queue-empty">{{ text "outreach.stalled.empty" }}</td></tr>
+diff --git a/backend/contexts/platform-governance/internal/adapters/http/messages.go b/backend/contexts/platform-governance/internal/adapters/http/messages.go
+index f5fc562..13fceab 100644
+--- a/backend/contexts/platform-governance/internal/adapters/http/messages.go
++++ b/backend/contexts/platform-governance/internal/adapters/http/messages.go
+@@ -570,6 +570,16 @@ var consoleCatalog = map[components.MessageKey]string{
+ 	msgCockpitNoticeCSRF:              "Отсутствует или неверен токен CSRF",
+ 	msgCockpitNoticeBadPanel:          "Неизвестная панель",
+ 	msgCockpitNoticePanelsUnavailable: "Настройки панелей недоступны",
++
++	// Читаемые подписи статусов заявки в портале клиента (change
++	// console-liquid-glass): шаблон берёт их функцией label.
++	"portal.request.status.submitted":  "Принята",
++	"portal.request.status.validating": "На проверке",
++	"portal.request.status.validated":  "Проверена",
++	"portal.request.status.processing": "В работе",
++	"portal.request.status.fulfilled":  "Выполнена",
++	"portal.request.status.rejected":   "Отклонена",
++	"portal.request.status.cancelled":  "Отменена",
+ }
+ 
+ // consoleMessages возвращает каталог контекста поверх общего каталога.
+diff --git a/backend/contexts/platform-governance/internal/adapters/http/templates/portal.html b/backend/contexts/platform-governance/internal/adapters/http/templates/portal.html
+index 6617a91..640cfb7 100644
+--- a/backend/contexts/platform-governance/internal/adapters/http/templates/portal.html
++++ b/backend/contexts/platform-governance/internal/adapters/http/templates/portal.html
+@@ -5,13 +5,15 @@
+   <p class="notice" role="status">{{.}}</p>
+   {{- end }}
+   {{- if .View.HasRequest }}
+-  <article class="request-state">
+-    <p class="request-id">{{ text "portal.request.id" }}: {{ .View.RequestID }}</p>
+-    <p>{{ text "portal.request.status" }}: <span class="status status-{{ .View.Status }}">{{ .View.Status }}</span></p>
++  <article class="request-state fact-panel">
++    <dl class="facts">
++      <div><dt>{{ text "portal.request.id" }}</dt><dd class="request-id">{{ .View.RequestID }}</dd></div>
++      <div><dt>{{ text "portal.request.status" }}</dt><dd><span class="status status-{{ .View.Status }}">{{ label "portal.request.status" .View.Status }}</span></dd></div>
++    </dl>
+   </article>
+   {{- else }}
+   <p class="portal-empty">{{ text "portal.request.empty" }}</p>
+   {{- end }}
+-  <p><a href="/portal/request?tenant_id={{ urlquery .View.TenantID }}">{{ text "portal.request.submit" }}</a></p>
++  <p class="actions"><a class="button" href="/portal/request?tenant_id={{ urlquery .View.TenantID }}">{{ text "portal.request.submit" }}</a></p>
+ </section>
+ {{- end -}}
+diff --git a/backend/contexts/request-fulfillment/internal/adapters/http/approval_screen.go b/backend/contexts/request-fulfillment/internal/adapters/http/approval_screen.go
+index 9bb9dd6..69222fa 100644
+--- a/backend/contexts/request-fulfillment/internal/adapters/http/approval_screen.go
++++ b/backend/contexts/request-fulfillment/internal/adapters/http/approval_screen.go
+@@ -19,10 +19,33 @@ type approvalQueueView struct {
+ 	Live        components.Live
+ 	TenantID    string
+ 	Actor       string
+-	Items       []query.ApprovalItem
++	Items       []approvalQueueRow
+ 	Unavailable bool
+ }
+ 
++// approvalQueueRow — строка очереди утверждения: элемент очереди и раскрытый
++// недобор. Недобор в элементе — указатель (nil — цель не задана); шаблон не
++// разыменовывает указатели, поэтому признак и значение готовит владелец экрана.
++type approvalQueueRow struct {
++	query.ApprovalItem
++	HasShortfall   bool
++	ShortfallCount int
++}
++
++// approvalQueueRows раскрывает элементы очереди в строки экрана.
++func approvalQueueRows(items []query.ApprovalItem) []approvalQueueRow {
++	rows := make([]approvalQueueRow, 0, len(items))
++	for _, item := range items {
++		row := approvalQueueRow{ApprovalItem: item}
++		if item.Shortfall != nil {
++			row.HasShortfall = true
++			row.ShortfallCount = *item.Shortfall
++		}
++		rows = append(rows, row)
++	}
++	return rows
++}
++
+ // approvalView — модель экрана утверждения одной заявки: заявка и наблюдаемое
+ // состояние исполнения. Фазу, найденное число, цель и недобор решает владелец
+ // экрана, а не шаблон. HasShortfall отличает «недобор рассчитан» от «цель не
+@@ -58,7 +81,7 @@ func (s *Server) handleApprovalQueue(w http.ResponseWriter, r *http.Request) {
+ 		items, err := s.deps.ApprovalQueue.Handle(r.Context(), query.ApprovalQueue{TenantID: domain.TenantID(tenant)})
+ 		switch {
+ 		case err == nil:
+-			view.Items = items
++			view.Items = approvalQueueRows(items)
+ 		case errors.Is(err, query.ErrApprovalRuntimeUnavailable):
+ 			// Рантайм недоступен — это не пустая очередь: показываем исход честно.
+ 			view.Unavailable = true
+diff --git a/backend/contexts/request-fulfillment/internal/adapters/http/approval_screen_test.go b/backend/contexts/request-fulfillment/internal/adapters/http/approval_screen_test.go
+index 37f7bec..8f6e91d 100644
+--- a/backend/contexts/request-fulfillment/internal/adapters/http/approval_screen_test.go
++++ b/backend/contexts/request-fulfillment/internal/adapters/http/approval_screen_test.go
+@@ -183,8 +183,8 @@ func TestApprovalScreen(t *testing.T) {
+ 	server := newApprovalServer(t, stubWorkflow{status: awaitingStatus(7)}, stubWorkflow{})
+ 	client := prepareApprovalClient(t, server)
+ 
+-	body := readBody(t, client.get(t, approvalScreenPath()))
+-	for _, want := range []string{"awaiting-approval", "Найдено лидов: 7", "Утвердить", "Отклонить", "Предлагаем автоматизацию найма"} {
++	body := visibleText(readBody(t, client.get(t, approvalScreenPath())))
++	for _, want := range []string{"Ждёт решения", "Найдено лидов: 7", "Утвердить", "Отклонить", "Предлагаем автоматизацию найма"} {
+ 		if !strings.Contains(body, want) {
+ 			t.Fatalf("экран утверждения не содержит %q: %s", want, body)
+ 		}
+@@ -197,7 +197,7 @@ func TestApprovalScreenUnavailable(t *testing.T) {
+ 	server := newApprovalServer(t, nil, nil)
+ 	client := prepareApprovalClient(t, server)
+ 
+-	body := readBody(t, client.get(t, approvalScreenPath()))
++	body := visibleText(readBody(t, client.get(t, approvalScreenPath())))
+ 	if !strings.Contains(body, "недоступно") {
+ 		t.Fatalf("экран не сообщил о недоступности исполнения: %s", body)
+ 	}
+@@ -433,7 +433,7 @@ func TestApprovalScreenShowsShortfall(t *testing.T) {
+ 	server := newApprovalServer(t, stubWorkflow{status: shortfallStatus(5, 2, 3)}, stubWorkflow{})
+ 	client := prepareApprovalClient(t, server)
+ 
+-	body := readBody(t, client.get(t, approvalScreenPath()))
++	body := visibleText(readBody(t, client.get(t, approvalScreenPath())))
+ 	for _, want := range []string{
+ 		"Цель по лидам: 5",
+ 		"Найдено лидов: 2",
+@@ -452,7 +452,7 @@ func TestApprovalScreenShortfallNoLeads(t *testing.T) {
+ 	server := newApprovalServer(t, stubWorkflow{status: shortfallStatus(3, 0, 3)}, stubWorkflow{})
+ 	client := prepareApprovalClient(t, server)
+ 
+-	body := readBody(t, client.get(t, approvalScreenPath()))
++	body := visibleText(readBody(t, client.get(t, approvalScreenPath())))
+ 	for _, want := range []string{
+ 		"Цель по лидам: 3",
+ 		"Найдено лидов: 0",
+@@ -471,7 +471,7 @@ func TestApprovalScreenShortfallReached(t *testing.T) {
+ 	server := newApprovalServer(t, stubWorkflow{status: shortfallStatus(5, 5, 0)}, stubWorkflow{})
+ 	client := prepareApprovalClient(t, server)
+ 
+-	body := readBody(t, client.get(t, approvalScreenPath()))
++	body := visibleText(readBody(t, client.get(t, approvalScreenPath())))
+ 	for _, want := range []string{"Цель по лидам: 5", "Найдено лидов: 5", "Недобор: 0", "Цель достигнута"} {
+ 		if !strings.Contains(body, want) {
+ 			t.Fatalf("экран утверждения не содержит %q: %s", want, body)
+@@ -485,7 +485,7 @@ func TestApprovalScreenNoTargetHidesShortfall(t *testing.T) {
+ 	server := newApprovalServer(t, stubWorkflow{status: awaitingStatus(7)}, stubWorkflow{})
+ 	client := prepareApprovalClient(t, server)
+ 
+-	body := readBody(t, client.get(t, approvalScreenPath()))
++	body := visibleText(readBody(t, client.get(t, approvalScreenPath())))
+ 	if strings.Contains(body, "Недобор:") || strings.Contains(body, "Цель по лидам:") {
+ 		t.Fatalf("экран показал недобор при незаданной цели: %s", body)
+ 	}
+@@ -498,7 +498,7 @@ func TestApprovalScreenShortfallNotFabricated(t *testing.T) {
+ 	server := newApprovalServer(t, stubWorkflow{status: shortfallStatus(3, 1, 2)}, stubWorkflow{})
+ 	client := prepareApprovalClient(t, server)
+ 
+-	body := readBody(t, client.get(t, approvalScreenPath()))
++	body := visibleText(readBody(t, client.get(t, approvalScreenPath())))
+ 	if !strings.Contains(body, "Найдено лидов: 1") || !strings.Contains(body, "Недобор: 2") {
+ 		t.Fatalf("экран не показал наблюдаемые найдено/недобор: %s", body)
+ 	}
+@@ -516,7 +516,7 @@ func TestApprovalScreenUnavailableNoShortfallCause(t *testing.T) {
+ 	server := newApprovalServer(t, nil, nil)
+ 	client := prepareApprovalClient(t, server)
+ 
+-	body := readBody(t, client.get(t, approvalScreenPath()))
++	body := visibleText(readBody(t, client.get(t, approvalScreenPath())))
+ 	if !strings.Contains(body, "недоступно") {
+ 		t.Fatalf("экран не сообщил о недоступности исполнения: %s", body)
+ 	}
+diff --git a/backend/contexts/request-fulfillment/internal/adapters/http/messages.go b/backend/contexts/request-fulfillment/internal/adapters/http/messages.go
+index 70a2d54..321796e 100644
+--- a/backend/contexts/request-fulfillment/internal/adapters/http/messages.go
++++ b/backend/contexts/request-fulfillment/internal/adapters/http/messages.go
+@@ -14,7 +14,7 @@ var requestCatalog = map[components.MessageKey]string{
+ 	msgReqLoginError:  "Неверный логин или пароль.",
+ 
+ 	msgReqValidationQueueTitle: "Очередь валидации",
+-	msgReqValidationQueueHint:  "Заявки в статусе submitted. Тенант:",
++	msgReqValidationQueueHint:  "Новые заявки клиентов: проверьте оффер и решите, брать ли заявку в работу.",
+ 	msgReqValidationQueueEmpty: "Заявок на валидацию нет",
+ 
+ 	msgReqValidationTitlePrefix: "Валидация заявки",
+@@ -36,16 +36,16 @@ var requestCatalog = map[components.MessageKey]string{
+ 	msgReqLeadTargetHint:        "Необязательно; пусто или 0 — без цели",
+ 
+ 	msgReqApprovalQueueTitle: "Очередь утверждения",
+-	msgReqApprovalQueueHint:  "Заявки, чьё исполнение стоит в фазе awaiting-approval. Тенант:",
+-	msgReqRuntimeUnavailable: "Исполнение недоступно: рантайм workflow не подключён",
++	msgReqApprovalQueueHint:  "Поиск по этим заявкам завершён и ждёт вашего решения: утвердить результат или отклонить.",
++	msgReqRuntimeUnavailable: "Исполнение недоступно: исполнитель заявок не подключён",
+ 	msgReqFoundLeads:         "Найдено лидов:",
+ 	msgReqApprovalQueueEmpty: "Заявок, ожидающих утверждения, нет",
+ 
+ 	msgReqApprovalTitlePrefix: "Утверждение заявки",
+ 	msgReqApproveAction:       "Утвердить",
+ 	msgReqExecutionTitle:      "Исполнение",
+-	msgReqExecutionState:      "Состояние:",
+-	msgReqExecutionPhase:      "Фаза:",
++	msgReqExecutionState:      "Состояние исполнения:",
++	msgReqExecutionPhase:      "Этап:",
+ 	msgReqShortfallTarget:     "Цель по лидам:",
+ 	msgReqShortfallLabel:      "Недобор:",
+ 	msgReqShortfallReached:    "Цель достигнута",
+@@ -53,6 +53,56 @@ var requestCatalog = map[components.MessageKey]string{
+ 	msgReqShortfallPartial:    "Поиск остановился, не достигнув цели заявки: найдено меньше целевого числа компаний.",
+ 	msgReqLiveOffer:           "Состояние заявки обновлено",
+ 	msgReqLiveWorkflow:        "Состояние исполнения обновлено",
++
++	// Общие подписи экранов заявок (change console-liquid-glass).
++	msgReqTenant:       "Клиент:",
++	msgReqNumber:       "№",
++	msgReqVersion:      "версия",
++	msgReqQueueOpen:    "Открыть",
++	msgReqColRequest:   "Заявка",
++	msgReqColPhase:     "Этап",
++	msgReqColStatus:    "Статус",
++	msgReqColFound:     "Найдено / цель",
++	msgReqColShortfall: "Недобор",
++	msgReqColAction:    "Действие",
++	msgReqDecisionNote: "Решение необратимо: после утверждения заявка уходит в исполнение, после отклонения — отменяется.",
++	msgReqEditTitle:    "Правка оффера",
++	msgReqDecideTitle:  "Решение по заявке",
++	msgReqTakeHint:     "Возьмите заявку в работу, чтобы проверить оффер и принять решение.",
++	msgReqCallHint:     "Если оффер неясен, уточните его у клиента звонком.",
++
++	// Читаемые подписи машинных кодов: статусы заявки, этапы и состояние
++	// исполнения, исходы валидации. Шаблон берёт их функцией label; неизвестный
++	// код показывается как есть, а не прячется.
++	"request.status.submitted":  "Новая",
++	"request.status.validating": "На проверке",
++	"request.status.validated":  "Проверена",
++	"request.status.processing": "В работе",
++	"request.status.fulfilled":  "Выполнена",
++	"request.status.rejected":   "Отклонена",
++	"request.status.cancelled":  "Отменена",
++
++	"request.phase.starting-processing": "Запуск",
++	"request.phase.searching":           "Поиск",
++	"request.phase.drafting":            "Подготовка писем",
++	"request.phase.handoff":             "Передача в рассылку",
++	"request.phase.no-leads":            "Лидов не найдено",
++	"request.phase.awaiting-approval":   "Ждёт решения",
++	"request.phase.fulfilling":          "Исполнение",
++	"request.phase.fulfilled":           "Выполнена",
++	"request.phase.cancelled":           "Отменена",
++
++	"request.execution.running":          "Выполняется",
++	"request.execution.completed":        "Завершено",
++	"request.execution.failed":           "Сбой",
++	"request.execution.canceled":         "Отменено",
++	"request.execution.cancelled":        "Отменено",
++	"request.execution.terminated":       "Остановлено",
++	"request.execution.timed-out":        "Истёк срок",
++	"request.execution.continued-as-new": "Перезапущено",
++
++	"request.decision.approved": "Одобрена",
++	"request.decision.rejected": "Отклонена",
+ }
+ 
+ // Ключи каталога экранов заявок.
+@@ -103,6 +153,22 @@ const (
+ 	msgReqShortfallPartial    components.MessageKey = "request.approval.shortfall.partial"
+ 	msgReqLiveOffer           components.MessageKey = "request.live.offer"
+ 	msgReqLiveWorkflow        components.MessageKey = "request.live.workflow"
++
++	msgReqTenant       components.MessageKey = "request.tenant"
++	msgReqNumber       components.MessageKey = "request.number"
++	msgReqVersion      components.MessageKey = "request.version"
++	msgReqQueueOpen    components.MessageKey = "request.queue.open"
++	msgReqColRequest   components.MessageKey = "request.queue.col.request"
++	msgReqColPhase     components.MessageKey = "request.queue.col.phase"
++	msgReqColStatus    components.MessageKey = "request.queue.col.status"
++	msgReqColFound     components.MessageKey = "request.queue.col.found"
++	msgReqColShortfall components.MessageKey = "request.queue.col.shortfall"
++	msgReqColAction    components.MessageKey = "request.queue.col.action"
++	msgReqDecisionNote components.MessageKey = "request.approval.decision.note"
++	msgReqEditTitle    components.MessageKey = "request.validation.edit.title"
++	msgReqDecideTitle  components.MessageKey = "request.validation.decide.title"
++	msgReqTakeHint     components.MessageKey = "request.validation.take.hint"
++	msgReqCallHint     components.MessageKey = "request.validation.call.hint"
+ )
+ 
+ // consoleMessages возвращает каталог сообщений экранов заявок: базовый каталог
+diff --git a/backend/contexts/request-fulfillment/internal/adapters/http/server_test.go b/backend/contexts/request-fulfillment/internal/adapters/http/server_test.go
+index 5962330..bcb3dc7 100644
+--- a/backend/contexts/request-fulfillment/internal/adapters/http/server_test.go
++++ b/backend/contexts/request-fulfillment/internal/adapters/http/server_test.go
+@@ -3,9 +3,11 @@ package httpapi_test
+ import (
+ 	"bytes"
+ 	"encoding/json"
++	"html"
+ 	"io"
+ 	"net/http"
+ 	"net/http/httptest"
++	"regexp"
+ 	"strings"
+ 	"testing"
+ 
+@@ -237,3 +239,12 @@ func decodeView(t *testing.T, resp *http.Response) map[string]any {
+ 	}
+ 	return out
+ }
++
++// visibleText возвращает видимый текст страницы: теги заменяются пробелом,
++// пробельные символы схлопываются. Экраны показывают сведения парами «подпись —
++// значение» в разных элементах (dt/dd), поэтому проверка «Найдено лидов: 7»
++// идёт по тексту, который видит оператор, а не по разметке.
++func visibleText(page string) string {
++	withoutTags := regexp.MustCompile(`(?s)<[^>]*>`).ReplaceAllString(page, " ")
++	return strings.Join(strings.Fields(html.UnescapeString(withoutTags)), " ")
++}
+diff --git a/backend/contexts/request-fulfillment/internal/adapters/http/templates/approval_queue.html b/backend/contexts/request-fulfillment/internal/adapters/http/templates/approval_queue.html
+index 286abc4..0352203 100644
+--- a/backend/contexts/request-fulfillment/internal/adapters/http/templates/approval_queue.html
++++ b/backend/contexts/request-fulfillment/internal/adapters/http/templates/approval_queue.html
+@@ -2,24 +2,52 @@
+ <section class="approval-queue">
+   {{ template "live" .View.Live }}
+   <h1>{{ text "request.approval_queue.title" }}</h1>
+-  <p class="hint">{{ text "request.approval_queue.hint" }} {{.View.TenantID}}</p>
++  <p class="hint">{{ text "request.approval_queue.hint" }} <span class="tenant-label">{{ text "request.tenant" }} {{.View.TenantID}}</span></p>
+   {{- if .View.Unavailable }}
+   <p class="watermark" role="status">{{ text "request.approval_queue.unavailable" }}</p>
+   {{- else }}
+-  <ul class="queue">
+-  {{- range .View.Items }}
+-    <li class="queue-item">
+-      <a href="/requests/{{.RequestID}}/approval?tenant_id={{urlquery $.View.TenantID}}">{{.Offer.Content}}</a>
+-      <span class="status status-{{.Phase}}">{{.Phase}}</span>
+-      <span class="found">{{ text "request.approval_queue.found" }} {{.Found}}</span>
+-      {{- if .Shortfall }}
+-      <span class="shortfall">{{ text "request.approval.shortfall" }} {{.Shortfall}}</span>
+-      {{- end }}
+-    </li>
+-  {{- else }}
+-    <li class="queue-empty">{{ text "request.approval_queue.empty" }}</li>
+-  {{- end }}
+-  </ul>
++  <table class="table queue">
++    <thead>
++      <tr>
++        <th scope="col">{{ text "request.queue.col.request" }}</th>
++        <th scope="col">{{ text "request.queue.col.phase" }}</th>
++        <th scope="col">{{ text "request.queue.col.found" }}</th>
++        <th scope="col">{{ text "request.queue.col.shortfall" }}</th>
++        <th scope="col"><span class="live-region">{{ text "request.queue.col.action" }}</span></th>
++      </tr>
++    </thead>
++    <tbody>
++    {{- range .View.Items }}
++      <tr class="queue-item">
++        <td>
++          <a class="cell-main" href="/requests/{{.RequestID}}/approval?tenant_id={{urlquery $.View.TenantID}}">{{.Offer.Content}}</a>
++          <span class="cell-sub">{{ text "request.number" }} {{.RequestID}} · {{ text "request.version" }} {{.Version}}</span>
++        </td>
++        <td><span class="status status-{{.Phase}}">{{ label "request.phase" .Phase }}</span></td>
++        <td>
++          <span class="progress{{if gt .ShortfallCount 0}} is-short{{end}}" aria-label="{{ text "request.approval_queue.found" }} {{.Found}}">
++            {{- if gt .Target 0 }}
++            <progress value="{{.Found}}" max="{{.Target}}"></progress>
++            <span class="num">{{.Found}} / {{.Target}}</span>
++            {{- else }}
++            <span class="num">{{.Found}}</span>
++            {{- end }}
++          </span>
++        </td>
++        <td>
++          {{- if .HasShortfall }}
++          <span class="shortfall status {{if gt .ShortfallCount 0}}status-pending{{else}}status-done{{end}}">{{ text "request.approval.shortfall" }} {{.ShortfallCount}}</span>
++          {{- else }}
++          <span class="cell-sub">—</span>
++          {{- end }}
++        </td>
++        <td><a class="button button-secondary" href="/requests/{{.RequestID}}/approval?tenant_id={{urlquery $.View.TenantID}}">{{ text "request.queue.open" }}</a></td>
++      </tr>
++    {{- else }}
++      <tr><td colspan="5" class="queue-empty">{{ text "request.approval_queue.empty" }}</td></tr>
++    {{- end }}
++    </tbody>
++  </table>
+   {{- end }}
+ </section>
+ {{- end -}}
+diff --git a/backend/contexts/request-fulfillment/internal/adapters/http/templates/approval_screen.html b/backend/contexts/request-fulfillment/internal/adapters/http/templates/approval_screen.html
+index 7507c2e..ab0e1b8 100644
+--- a/backend/contexts/request-fulfillment/internal/adapters/http/templates/approval_screen.html
++++ b/backend/contexts/request-fulfillment/internal/adapters/http/templates/approval_screen.html
+@@ -1,36 +1,46 @@
+ {{- define "content" -}}
+ <section class="approval-screen" hx-boost="true">
+   {{ template "live" .View.Live }}
+-  <h1>{{ text "request.approval.title" }} {{.View.Request.RequestID}}</h1>
+-  <p>{{ text "request.validation.status" }} <span class="status status-{{.View.Request.Status}}">{{.View.Request.Status}}</span></p>
++  <h1>{{ text "request.approval.title" }}</h1>
++  <p class="hint">
++    <span class="status status-{{.View.Request.Status}}">{{ label "request.status" .View.Request.Status }}</span>
++    <span class="request-id">{{ text "request.number" }} {{.View.Request.RequestID}}</span>
++  </p>
+   {{- with .View.Notice }}
+   <p class="notice" role="status">{{.}}</p>
+   {{- end }}
+ 
+-  <section id="workflow" hx-target="this" hx-swap="innerHTML" data-focus-after-swap="#workflow" data-live-announce="{{ text "request.live.workflow" }}">
+-    {{ template "approval-status" .View }}
+-  </section>
++  <div class="split">
++    <article class="offer">
++      <h2>{{ text "request.offer.title" }}</h2>
++      <p class="offer-content">{{.View.Request.Offer.Content}}</p>
++      <dl class="facts">
++        {{- with .View.Request.Offer.Target }}
++        <div><dt>{{ text "request.offer.target" }}</dt><dd class="offer-target">{{.}}</dd></div>
++        {{- end }}
++        <div><dt>{{ text "request.offer.revision" }}</dt><dd class="offer-revision">{{.View.Request.Offer.Revision}}</dd></div>
++      </dl>
++    </article>
+ 
+-  <article class="offer">
+-    <h2>{{ text "request.offer.title" }}</h2>
+-    <p class="offer-content">{{.View.Request.Offer.Content}}</p>
+-    {{- with .View.Request.Offer.Target }}
+-    <p class="offer-target">{{ text "request.offer.target" }} {{.}}</p>
+-    {{- end }}
+-    <p class="offer-revision">{{ text "request.offer.revision" }} {{.View.Request.Offer.Revision}}</p>
+-  </article>
++    <section id="workflow" hx-target="this" hx-swap="innerHTML" data-focus-after-swap="#workflow" data-live-announce="{{ text "request.live.workflow" }}">
++      {{ template "approval-status" .View }}
++    </section>
++  </div>
+ 
+   {{- if .View.CanDecide }}
+-  <form method="post" action="/requests/{{.View.Request.RequestID}}/approval/approve">
+-    <input type="hidden" name="tenant_id" value="{{.View.TenantID}}">
+-    <input type="hidden" name="csrf" value="{{.View.CSRF}}">
+-    <button type="submit">{{ text "request.approval.approve" }}</button>
+-  </form>
+-  <form method="post" action="/requests/{{.View.Request.RequestID}}/approval/reject">
+-    <input type="hidden" name="tenant_id" value="{{.View.TenantID}}">
+-    <input type="hidden" name="csrf" value="{{.View.CSRF}}">
+-    <button type="submit">{{ text "request.validation.reject" }}</button>
+-  </form>
++  <div class="decision-bar">
++    <p class="decision-note">{{ text "request.approval.decision.note" }}</p>
++    <form method="post" action="/requests/{{.View.Request.RequestID}}/approval/reject">
++      <input type="hidden" name="tenant_id" value="{{.View.TenantID}}">
++      <input type="hidden" name="csrf" value="{{.View.CSRF}}">
++      <button type="submit" class="button-danger">{{ text "request.validation.reject" }}</button>
++    </form>
++    <form method="post" action="/requests/{{.View.Request.RequestID}}/approval/approve">
++      <input type="hidden" name="tenant_id" value="{{.View.TenantID}}">
++      <input type="hidden" name="csrf" value="{{.View.CSRF}}">
++      <button type="submit">{{ text "request.approval.approve" }}</button>
++    </form>
++  </div>
+   {{- end }}
+ </section>
+ {{- end -}}
+@@ -41,15 +51,19 @@
+   {{- if .Unavailable }}
+   <p class="watermark" role="status">{{ text "request.approval_queue.unavailable" }}</p>
+   {{- else }}
+-  <p class="phase">{{ text "request.approval.execution.phase" }} <span class="status status-{{.Phase}}">{{.Phase}}</span></p>
+-  <p class="execution">{{ text "request.approval.execution.state" }} {{.Execution}}</p>
+-  {{- if .HasShortfall }}
+-  <p class="target">{{ text "request.approval.target" }} {{.Target}}</p>
+-  {{- end }}
+-  <p class="found">{{ text "request.approval_queue.found" }} {{.Found}}</p>
++  <dl class="facts">
++    <div><dt>{{ text "request.approval.execution.phase" }}</dt><dd class="phase"><span class="status status-{{.Phase}}">{{ label "request.phase" .Phase }}</span></dd></div>
++    <div><dt>{{ text "request.approval.execution.state" }}</dt><dd class="execution">{{ label "request.execution" .Execution }}</dd></div>
++    {{- if .HasShortfall }}
++    <div><dt>{{ text "request.approval.target" }}</dt><dd class="target num">{{.Target}}</dd></div>
++    {{- end }}
++    <div><dt>{{ text "request.approval_queue.found" }}</dt><dd class="found num">{{.Found}}</dd></div>
++    {{- if .HasShortfall }}
++    <div><dt>{{ text "request.approval.shortfall" }}</dt><dd class="shortfall num">{{.Shortfall}}</dd></div>
++    {{- end }}
++  </dl>
+   {{- if .HasShortfall }}
+-  <p class="shortfall">{{ text "request.approval.shortfall" }} {{.Shortfall}}</p>
+-  {{- with .Diagnosis }}<p class="shortfall-diagnosis" role="status">{{.}}</p>{{- end }}
++  {{- with .Diagnosis }}<p class="shortfall-diagnosis hint" role="status">{{.}}</p>{{- end }}
+   {{- end }}
+   {{- end }}
+ </article>
+diff --git a/backend/contexts/request-fulfillment/internal/adapters/http/templates/validation_queue.html b/backend/contexts/request-fulfillment/internal/adapters/http/templates/validation_queue.html
+index 9f30f7c..b90090c 100644
+--- a/backend/contexts/request-fulfillment/internal/adapters/http/templates/validation_queue.html
++++ b/backend/contexts/request-fulfillment/internal/adapters/http/templates/validation_queue.html
+@@ -2,16 +2,29 @@
+ <section class="validation-queue">
+   {{ template "live" .View.Live }}
+   <h1>{{ text "request.validation_queue.title" }}</h1>
+-  <p class="hint">{{ text "request.validation_queue.hint" }} {{.View.TenantID}}</p>
+-  <ul class="queue">
+-  {{- range .View.Items }}
+-    <li class="queue-item">
+-      <a href="/requests/{{.RequestID}}/validation?tenant_id={{urlquery $.View.TenantID}}">{{.Offer.Content}}</a>
+-      <span class="status status-{{.Status}}">{{.Status}}</span>
+-    </li>
+-  {{- else }}
+-    <li class="queue-empty">{{ text "request.validation_queue.empty" }}</li>
+-  {{- end }}
+-  </ul>
++  <p class="hint">{{ text "request.validation_queue.hint" }} <span class="tenant-label">{{ text "request.tenant" }} {{.View.TenantID}}</span></p>
++  <table class="table queue">
++    <thead>
++      <tr>
++        <th scope="col">{{ text "request.queue.col.request" }}</th>
++        <th scope="col">{{ text "request.queue.col.status" }}</th>
++        <th scope="col"><span class="live-region">{{ text "request.queue.col.action" }}</span></th>
++      </tr>
++    </thead>
++    <tbody>
++    {{- range .View.Items }}
++      <tr class="queue-item">
++        <td>
++          <a class="cell-main" href="/requests/{{.RequestID}}/validation?tenant_id={{urlquery $.View.TenantID}}">{{.Offer.Content}}</a>
++          <span class="cell-sub">{{ text "request.number" }} {{.RequestID}}</span>
++        </td>
++        <td><span class="status status-{{.Status}}">{{ label "request.status" .Status }}</span></td>
++        <td><a class="button button-secondary" href="/requests/{{.RequestID}}/validation?tenant_id={{urlquery $.View.TenantID}}">{{ text "request.queue.open" }}</a></td>
++      </tr>
++    {{- else }}
++      <tr><td colspan="3" class="queue-empty">{{ text "request.validation_queue.empty" }}</td></tr>
++    {{- end }}
++    </tbody>
++  </table>
+ </section>
+ {{- end -}}
+diff --git a/backend/contexts/request-fulfillment/internal/adapters/http/templates/validation_screen.html b/backend/contexts/request-fulfillment/internal/adapters/http/templates/validation_screen.html
+index 0e63ac9..77383fa 100644
+--- a/backend/contexts/request-fulfillment/internal/adapters/http/templates/validation_screen.html
++++ b/backend/contexts/request-fulfillment/internal/adapters/http/templates/validation_screen.html
+@@ -1,74 +1,92 @@
+ {{- define "content" -}}
+ <section class="validation-screen" hx-boost="true">
+   {{ template "live" .View.Live }}
+-  <h1>{{ text "request.validation.title" }} {{.View.Request.RequestID}}</h1>
+-  <p>{{ text "request.validation.status" }} <span class="status status-{{.View.Request.Status}}">{{.View.Request.Status}}</span></p>
++  <h1>{{ text "request.validation.title" }}</h1>
++  <p class="hint">
++    <span class="status status-{{.View.Request.Status}}">{{ label "request.status" .View.Request.Status }}</span>
++    <span class="request-id">{{ text "request.number" }} {{.View.Request.RequestID}}</span>
++  </p>
+   {{- with .View.Notice }}
+   <p class="notice" role="status">{{.}}</p>
+   {{- end }}
+ 
+-  <section id="offer" hx-target="this" hx-swap="innerHTML" data-focus-after-swap="#offer" data-live-announce="{{ text "request.live.offer" }}">
+-    {{ template "offer-fragment" .View }}
+-  </section>
++  <div class="split">
++    <div>
++      <section id="offer" hx-target="this" hx-swap="innerHTML" data-focus-after-swap="#offer" data-live-announce="{{ text "request.live.offer" }}">
++        {{ template "offer-fragment" .View }}
++      </section>
+ 
+-  {{- if .View.CanEditOffer }}
+-  <form method="post" action="/requests/{{.View.Request.RequestID}}/validation/offer">
+-    <input type="hidden" name="tenant_id" value="{{.View.TenantID}}">
+-    <input type="hidden" name="csrf" value="{{.View.CSRF}}">
+-    {{ template "field" .View.OfferField }}
+-    {{ template "field" .View.TargetField }}
+-    <button type="submit">{{ text "request.validation.save_offer" }}</button>
+-  </form>
+-  {{- end }}
++      {{- if .View.CanEditOffer }}
++      <form class="fact-panel" method="post" action="/requests/{{.View.Request.RequestID}}/validation/offer">
++        <h2>{{ text "request.validation.edit.title" }}</h2>
++        <input type="hidden" name="tenant_id" value="{{.View.TenantID}}">
++        <input type="hidden" name="csrf" value="{{.View.CSRF}}">
++        {{ template "field" .View.OfferField }}
++        {{ template "field" .View.TargetField }}
++        <button type="submit" class="button-secondary">{{ text "request.validation.save_offer" }}</button>
++      </form>
++      {{- end }}
++    </div>
+ 
+-  {{- if .View.CanTake }}
+-  <form method="post" action="/requests/{{.View.Request.RequestID}}/validation/take">
+-    <input type="hidden" name="tenant_id" value="{{.View.TenantID}}">
+-    <input type="hidden" name="csrf" value="{{.View.CSRF}}">
+-    <button type="submit">{{ text "request.validation.take" }}</button>
+-  </form>
+-  {{- end }}
++    <div>
++      {{- if .View.CanTake }}
++      <form class="fact-panel" method="post" action="/requests/{{.View.Request.RequestID}}/validation/take">
++        <h2>{{ text "request.validation.decide.title" }}</h2>
++        <p class="hint">{{ text "request.validation.take.hint" }}</p>
++        <input type="hidden" name="tenant_id" value="{{.View.TenantID}}">
++        <input type="hidden" name="csrf" value="{{.View.CSRF}}">
++        <button type="submit">{{ text "request.validation.take" }}</button>
++      </form>
++      {{- end }}
+ 
+-  {{- if .View.CanDecide }}
+-  <form method="post" action="/requests/{{.View.Request.RequestID}}/validation/call">
+-    <input type="hidden" name="tenant_id" value="{{.View.TenantID}}">
+-    <input type="hidden" name="csrf" value="{{.View.CSRF}}">
+-    <input type="hidden" name="correlation_id" value="{{.View.Request.RequestID}}">
+-    <button type="submit">{{ text "request.validation.call" }}</button>
+-  </form>
++      {{- if .View.CanDecide }}
++      <div class="fact-panel">
++        <h2>{{ text "request.validation.decide.title" }}</h2>
++        <form method="post" action="/requests/{{.View.Request.RequestID}}/validation/approve">
++          <input type="hidden" name="tenant_id" value="{{.View.TenantID}}">
++          <input type="hidden" name="csrf" value="{{.View.CSRF}}">
++          <p class="field">
++            <label for="{{.View.LeadTargetField.ID}}">{{.View.LeadTargetField.Label}}</label>
++            <input id="{{.View.LeadTargetField.ID}}" name="{{.View.LeadTargetField.Name}}" type="number" min="0" step="1" value="{{.View.LeadTargetField.Value}}">
++            <span class="field-hint">{{ text "request.validation.lead_target_hint" }}</span>
++          </p>
++          <button type="submit">{{ text "request.validation.approve" }}</button>
++        </form>
+ 
+-  <form method="post" action="/requests/{{.View.Request.RequestID}}/validation/approve">
+-    <input type="hidden" name="tenant_id" value="{{.View.TenantID}}">
+-    <input type="hidden" name="csrf" value="{{.View.CSRF}}">
+-    <p class="field">
+-      <label for="{{.View.LeadTargetField.ID}}">{{.View.LeadTargetField.Label}}</label>
+-      <input id="{{.View.LeadTargetField.ID}}" name="{{.View.LeadTargetField.Name}}" type="number" min="0" step="1" value="{{.View.LeadTargetField.Value}}">
+-      <span class="field-hint">{{ text "request.validation.lead_target_hint" }}</span>
+-    </p>
+-    <button type="submit">{{ text "request.validation.approve" }}</button>
+-  </form>
++        <form class="card-section" method="post" action="/requests/{{.View.Request.RequestID}}/validation/call">
++          <input type="hidden" name="tenant_id" value="{{.View.TenantID}}">
++          <input type="hidden" name="csrf" value="{{.View.CSRF}}">
++          <input type="hidden" name="correlation_id" value="{{.View.Request.RequestID}}">
++          <p class="hint">{{ text "request.validation.call.hint" }}</p>
++          <button type="submit" class="button-secondary">{{ text "request.validation.call" }}</button>
++        </form>
+ 
+-  <form method="post" action="/requests/{{.View.Request.RequestID}}/validation/reject">
+-    <input type="hidden" name="tenant_id" value="{{.View.TenantID}}">
+-    <input type="hidden" name="csrf" value="{{.View.CSRF}}">
+-    {{ template "field" .View.ReasonField }}
+-    <button type="submit">{{ text "request.validation.reject" }}</button>
+-  </form>
+-  {{- end }}
++        <form class="card-section" method="post" action="/requests/{{.View.Request.RequestID}}/validation/reject">
++          <input type="hidden" name="tenant_id" value="{{.View.TenantID}}">
++          <input type="hidden" name="csrf" value="{{.View.CSRF}}">
++          {{ template "field" .View.ReasonField }}
++          <button type="submit" class="button-danger">{{ text "request.validation.reject" }}</button>
++        </form>
++      </div>
++      {{- end }}
+ 
+-  {{- with .View.Request.ValidationDecision }}
+-  <section class="validation-decision">
+-    <h2>{{ text "request.validation.decision.title" }}</h2>
+-    <p>{{ text "request.validation.decision.outcome" }} {{.Outcome}}</p>
+-    <p>{{ text "request.validation.decision.actor" }} {{.Actor}}</p>
+-    <p>{{ text "request.validation.decision.at" }} {{.At}}</p>
+-    {{- with .Reason }}<p>{{ text "request.validation.decision.reason" }} {{.}}</p>{{- end }}
+-  </section>
+-  {{- end }}
++      {{- with .View.Request.ValidationDecision }}
++      <section class="validation-decision fact-panel">
++        <h2>{{ text "request.validation.decision.title" }}</h2>
++        <dl class="facts">
++          <div><dt>{{ text "request.validation.decision.outcome" }}</dt><dd>{{ label "request.decision" .Outcome }}</dd></div>
++          <div><dt>{{ text "request.validation.decision.actor" }}</dt><dd>{{.Actor}}</dd></div>
++          <div><dt>{{ text "request.validation.decision.at" }}</dt><dd>{{.At}}</dd></div>
++          {{- with .Reason }}<div><dt>{{ text "request.validation.decision.reason" }}</dt><dd>{{.}}</dd></div>{{- end }}
++        </dl>
++      </section>
++      {{- end }}
+ 
+-  {{- with .View.Request.CallID }}
+-  <p class="call-ref">{{ text "request.validation.call_ref" }} {{.}}</p>
+-  {{- end }}
++      {{- with .View.Request.CallID }}
++      <p class="call-ref hint">{{ text "request.validation.call_ref" }} {{.}}</p>
++      {{- end }}
++    </div>
++  </div>
+ </section>
+ {{- end -}}
+ 
+@@ -76,9 +94,11 @@
+ <article class="offer">
+   <h2>{{ text "request.offer.title" }}</h2>
+   <p class="offer-content">{{.Request.Offer.Content}}</p>
+-  {{- with .Request.Offer.Target }}
+-  <p class="offer-target">{{ text "request.offer.target" }} {{.}}</p>
+-  {{- end }}
+-  <p class="offer-revision">{{ text "request.offer.revision" }} {{.Request.Offer.Revision}}</p>
++  <dl class="facts">
++    {{- with .Request.Offer.Target }}
++    <div><dt>{{ text "request.offer.target" }}</dt><dd class="offer-target">{{.}}</dd></div>
++    {{- end }}
++    <div><dt>{{ text "request.offer.revision" }}</dt><dd class="offer-revision">{{.Request.Offer.Revision}}</dd></div>
++  </dl>
+ </article>
+ {{- end -}}
+diff --git a/backend/contexts/request-fulfillment/internal/adapters/http/testdata/approval-queue-empty.golden b/backend/contexts/request-fulfillment/internal/adapters/http/testdata/approval-queue-empty.golden
+index 1c6a5bc..4fe1a0b 100644
+--- a/backend/contexts/request-fulfillment/internal/adapters/http/testdata/approval-queue-empty.golden
++++ b/backend/contexts/request-fulfillment/internal/adapters/http/testdata/approval-queue-empty.golden
+@@ -32,10 +32,21 @@
+ <section class="approval-queue">
+   <p class="live-region" id="console-live" role="status" aria-live="polite" aria-atomic="true" aria-label="Объявления" data-live-region></p>
+   <h1>Очередь утверждения</h1>
+-  <p class="hint">Заявки, чьё исполнение стоит в фазе awaiting-approval. Тенант: tenant-1</p>
+-  <ul class="queue">
+-    <li class="queue-empty">Заявок, ожидающих утверждения, нет</li>
+-  </ul>
++  <p class="hint">Поиск по этим заявкам завершён и ждёт вашего решения: утвердить результат или отклонить. <span class="tenant-label">Клиент: tenant-1</span></p>
++  <table class="table queue">
++    <thead>
++      <tr>
++        <th scope="col">Заявка</th>
++        <th scope="col">Этап</th>
++        <th scope="col">Найдено / цель</th>
++        <th scope="col">Недобор</th>
++        <th scope="col"><span class="live-region">Действие</span></th>
++      </tr>
++    </thead>
++    <tbody>
++      <tr><td colspan="5" class="queue-empty">Заявок, ожидающих утверждения, нет</td></tr>
++    </tbody>
++  </table>
+ </section>
+   </main>
+ </body>
+diff --git a/backend/contexts/request-fulfillment/internal/adapters/http/testdata/approval-queue-unavailable.golden b/backend/contexts/request-fulfillment/internal/adapters/http/testdata/approval-queue-unavailable.golden
+index 14b0c0a..3cf824a 100644
+--- a/backend/contexts/request-fulfillment/internal/adapters/http/testdata/approval-queue-unavailable.golden
++++ b/backend/contexts/request-fulfillment/internal/adapters/http/testdata/approval-queue-unavailable.golden
+@@ -32,8 +32,8 @@
+ <section class="approval-queue">
+   <p class="live-region" id="console-live" role="status" aria-live="polite" aria-atomic="true" aria-label="Объявления" data-live-region></p>
+   <h1>Очередь утверждения</h1>
+-  <p class="hint">Заявки, чьё исполнение стоит в фазе awaiting-approval. Тенант: tenant-1</p>
+-  <p class="watermark" role="status">Исполнение недоступно: рантайм workflow не подключён</p>
++  <p class="hint">Поиск по этим заявкам завершён и ждёт вашего решения: утвердить результат или отклонить. <span class="tenant-label">Клиент: tenant-1</span></p>
++  <p class="watermark" role="status">Исполнение недоступно: исполнитель заявок не подключён</p>
+ </section>
+   </main>
+ </body>
+diff --git a/backend/contexts/request-fulfillment/internal/adapters/http/testdata/approval-queue.golden b/backend/contexts/request-fulfillment/internal/adapters/http/testdata/approval-queue.golden
+index 96fc4f2..746360d 100644
+--- a/backend/contexts/request-fulfillment/internal/adapters/http/testdata/approval-queue.golden
++++ b/backend/contexts/request-fulfillment/internal/adapters/http/testdata/approval-queue.golden
+@@ -32,14 +32,36 @@
+ <section class="approval-queue">
+   <p class="live-region" id="console-live" role="status" aria-live="polite" aria-atomic="true" aria-label="Объявления" data-live-region></p>
+   <h1>Очередь утверждения</h1>
+-  <p class="hint">Заявки, чьё исполнение стоит в фазе awaiting-approval. Тенант: tenant-1</p>
+-  <ul class="queue">
+-    <li class="queue-item">
+-      <a href="/requests/req-1/approval?tenant_id=tenant-1">Предлагаем автоматизацию найма</a>
+-      <span class="status status-awaiting-approval">awaiting-approval</span>
+-      <span class="found">Найдено лидов: 7</span>
+-    </li>
+-  </ul>
++  <p class="hint">Поиск по этим заявкам завершён и ждёт вашего решения: утвердить результат или отклонить. <span class="tenant-label">Клиент: tenant-1</span></p>
++  <table class="table queue">
++    <thead>
++      <tr>
++        <th scope="col">Заявка</th>
++        <th scope="col">Этап</th>
++        <th scope="col">Найдено / цель</th>
++        <th scope="col">Недобор</th>
++        <th scope="col"><span class="live-region">Действие</span></th>
++      </tr>
++    </thead>
++    <tbody>
++      <tr class="queue-item">
++        <td>
++          <a class="cell-main" href="/requests/req-1/approval?tenant_id=tenant-1">Предлагаем автоматизацию найма</a>
++          <span class="cell-sub">№ req-1 · версия 4</span>
++        </td>
++        <td><span class="status status-awaiting-approval">Ждёт решения</span></td>
++        <td>
++          <span class="progress" aria-label="Найдено лидов: 7">
++            <span class="num">7</span>
++          </span>
++        </td>
++        <td>
++          <span class="cell-sub">—</span>
++        </td>
++        <td><a class="button button-secondary" href="/requests/req-1/approval?tenant_id=tenant-1">Открыть</a></td>
++      </tr>
++    </tbody>
++  </table>
+ </section>
+   </main>
+ </body>
+diff --git a/backend/contexts/request-fulfillment/internal/adapters/http/testdata/approval-shortfall.golden b/backend/contexts/request-fulfillment/internal/adapters/http/testdata/approval-shortfall.golden
+index 36ef3d9..4738a00 100644
+--- a/backend/contexts/request-fulfillment/internal/adapters/http/testdata/approval-shortfall.golden
++++ b/backend/contexts/request-fulfillment/internal/adapters/http/testdata/approval-shortfall.golden
+@@ -31,36 +31,48 @@
+   <main class="page" id="main-content">
+ <section class="approval-screen" hx-boost="true">
+   <p class="live-region" id="console-live" role="status" aria-live="polite" aria-atomic="true" aria-label="Объявления" data-live-region></p>
+-  <h1>Утверждение заявки req-1</h1>
+-  <p>Статус: <span class="status status-processing">processing</span></p>
++  <h1>Утверждение заявки</h1>
++  <p class="hint">
++    <span class="status status-processing">В работе</span>
++    <span class="request-id">№ req-1</span>
++  </p>
+ 
+-  <section id="workflow" hx-target="this" hx-swap="innerHTML" data-focus-after-swap="#workflow" data-live-announce="Состояние исполнения обновлено">
+-    <article class="approval-status">
++  <div class="split">
++    <article class="offer">
++      <h2>Оффер</h2>
++      <p class="offer-content">Предлагаем автоматизацию найма</p>
++      <dl class="facts">
++        <div><dt>Цель:</dt><dd class="offer-target">IT-компании</dd></div>
++        <div><dt>Версия оффера:</dt><dd class="offer-revision">1</dd></div>
++      </dl>
++    </article>
++
++    <section id="workflow" hx-target="this" hx-swap="innerHTML" data-focus-after-swap="#workflow" data-live-announce="Состояние исполнения обновлено">
++      <article class="approval-status">
+   <h2>Исполнение</h2>
+-  <p class="phase">Фаза: <span class="status status-awaiting-approval">awaiting-approval</span></p>
+-  <p class="execution">Состояние: RUNNING</p>
+-  <p class="target">Цель по лидам: 5</p>
+-  <p class="found">Найдено лидов: 2</p>
+-  <p class="shortfall">Недобор: 3</p><p class="shortfall-diagnosis" role="status">Поиск остановился, не достигнув цели заявки: найдено меньше целевого числа компаний.</p>
++  <dl class="facts">
++    <div><dt>Этап:</dt><dd class="phase"><span class="status status-awaiting-approval">Ждёт решения</span></dd></div>
++    <div><dt>Состояние исполнения:</dt><dd class="execution">Выполняется</dd></div>
++    <div><dt>Цель по лидам:</dt><dd class="target num">5</dd></div>
++    <div><dt>Найдено лидов:</dt><dd class="found num">2</dd></div>
++    <div><dt>Недобор:</dt><dd class="shortfall num">3</dd></div>
++  </dl><p class="shortfall-diagnosis hint" role="status">Поиск остановился, не достигнув цели заявки: найдено меньше целевого числа компаний.</p>
+ </article>
+-  </section>
+-
+-  <article class="offer">
+-    <h2>Оффер</h2>
+-    <p class="offer-content">Предлагаем автоматизацию найма</p>
+-    <p class="offer-target">Цель: IT-компании</p>
+-    <p class="offer-revision">Версия оффера: 1</p>
+-  </article>
+-  <form method="post" action="/requests/req-1/approval/approve">
+-    <input type="hidden" name="tenant_id" value="tenant-1">
+-    <input type="hidden" name="csrf" value="TOKEN">
+-    <button type="submit">Утвердить</button>
+-  </form>
+-  <form method="post" action="/requests/req-1/approval/reject">
+-    <input type="hidden" name="tenant_id" value="tenant-1">
+-    <input type="hidden" name="csrf" value="TOKEN">
+-    <button type="submit">Отклонить</button>
+-  </form>
++    </section>
++  </div>
++  <div class="decision-bar">
++    <p class="decision-note">Решение необратимо: после утверждения заявка уходит в исполнение, после отклонения — отменяется.</p>
++    <form method="post" action="/requests/req-1/approval/reject">
++      <input type="hidden" name="tenant_id" value="tenant-1">
++      <input type="hidden" name="csrf" value="TOKEN">
++      <button type="submit" class="button-danger">Отклонить</button>
++    </form>
++    <form method="post" action="/requests/req-1/approval/approve">
++      <input type="hidden" name="tenant_id" value="tenant-1">
++      <input type="hidden" name="csrf" value="TOKEN">
++      <button type="submit">Утвердить</button>
++    </form>
++  </div>
+ </section>
+   </main>
+ </body>
+diff --git a/backend/contexts/request-fulfillment/internal/adapters/http/testdata/approval-status.golden b/backend/contexts/request-fulfillment/internal/adapters/http/testdata/approval-status.golden
+index 8d460fd..539dbe6 100644
+--- a/backend/contexts/request-fulfillment/internal/adapters/http/testdata/approval-status.golden
++++ b/backend/contexts/request-fulfillment/internal/adapters/http/testdata/approval-status.golden
+@@ -1,6 +1,8 @@
+ <article class="approval-status">
+   <h2>Исполнение</h2>
+-  <p class="phase">Фаза: <span class="status status-awaiting-approval">awaiting-approval</span></p>
+-  <p class="execution">Состояние: RUNNING</p>
+-  <p class="found">Найдено лидов: 4</p>
++  <dl class="facts">
++    <div><dt>Этап:</dt><dd class="phase"><span class="status status-awaiting-approval">Ждёт решения</span></dd></div>
++    <div><dt>Состояние исполнения:</dt><dd class="execution">Выполняется</dd></div>
++    <div><dt>Найдено лидов:</dt><dd class="found num">4</dd></div>
++  </dl>
+ </article>
+\ No newline at end of file
+diff --git a/backend/contexts/request-fulfillment/internal/adapters/http/testdata/validation-screen.golden b/backend/contexts/request-fulfillment/internal/adapters/http/testdata/validation-screen.golden
+index e58c584..83a7747 100644
+--- a/backend/contexts/request-fulfillment/internal/adapters/http/testdata/validation-screen.golden
++++ b/backend/contexts/request-fulfillment/internal/adapters/http/testdata/validation-screen.golden
+@@ -31,57 +31,74 @@
+   <main class="page" id="main-content">
+ <section class="validation-screen" hx-boost="true">
+   <p class="live-region" id="console-live" role="status" aria-live="polite" aria-atomic="true" aria-label="Объявления" data-live-region></p>
+-  <h1>Валидация заявки req-1</h1>
+-  <p>Статус: <span class="status status-validating">validating</span></p>
++  <h1>Валидация заявки</h1>
++  <p class="hint">
++    <span class="status status-validating">На проверке</span>
++    <span class="request-id">№ req-1</span>
++  </p>
+ 
+-  <section id="offer" hx-target="this" hx-swap="innerHTML" data-focus-after-swap="#offer" data-live-announce="Состояние заявки обновлено">
+-    <article class="offer">
++  <div class="split">
++    <div>
++      <section id="offer" hx-target="this" hx-swap="innerHTML" data-focus-after-swap="#offer" data-live-announce="Состояние заявки обновлено">
++        <article class="offer">
+   <h2>Оффер</h2>
+   <p class="offer-content">Предлагаем автоматизацию найма</p>
+-  <p class="offer-target">Цель: IT-компании</p>
+-  <p class="offer-revision">Версия оффера: 1</p>
++  <dl class="facts">
++    <div><dt>Цель:</dt><dd class="offer-target">IT-компании</dd></div>
++    <div><dt>Версия оффера:</dt><dd class="offer-revision">1</dd></div>
++  </dl>
+ </article>
+-  </section>
+-  <form method="post" action="/requests/req-1/validation/offer">
+-    <input type="hidden" name="tenant_id" value="tenant-1">
+-    <input type="hidden" name="csrf" value="TOKEN">
+-    <p class="field">
++      </section>
++      <form class="fact-panel" method="post" action="/requests/req-1/validation/offer">
++        <h2>Правка оффера</h2>
++        <input type="hidden" name="tenant_id" value="tenant-1">
++        <input type="hidden" name="csrf" value="TOKEN">
++        <p class="field">
+   <label for="offer-content">Оффер</label>
+   <textarea id="offer-content" name="content" rows="6" required>Предлагаем автоматизацию найма</textarea>
+ </p>
+-    <p class="field">
++        <p class="field">
+   <label for="offer-target">Цель заявки</label>
+   <input id="offer-target" name="target" type="text" value="IT-компании">
+ </p>
+-    <button type="submit">Сохранить правку</button>
+-  </form>
+-  <form method="post" action="/requests/req-1/validation/call">
+-    <input type="hidden" name="tenant_id" value="tenant-1">
+-    <input type="hidden" name="csrf" value="TOKEN">
+-    <input type="hidden" name="correlation_id" value="req-1">
+-    <button type="submit">Инициировать звонок-уточнение</button>
+-  </form>
++        <button type="submit" class="button-secondary">Сохранить правку</button>
++      </form>
++    </div>
+ 
+-  <form method="post" action="/requests/req-1/validation/approve">
+-    <input type="hidden" name="tenant_id" value="tenant-1">
+-    <input type="hidden" name="csrf" value="TOKEN">
+-    <p class="field">
+-      <label for="lead-target">Цель по числу лидов</label>
+-      <input id="lead-target" name="lead_target" type="number" min="0" step="1" value="">
+-      <span class="field-hint">Необязательно; пусто или 0 — без цели</span>
+-    </p>
+-    <button type="submit">Одобрить</button>
+-  </form>
++    <div>
++      <div class="fact-panel">
++        <h2>Решение по заявке</h2>
++        <form method="post" action="/requests/req-1/validation/approve">
++          <input type="hidden" name="tenant_id" value="tenant-1">
++          <input type="hidden" name="csrf" value="TOKEN">
++          <p class="field">
++            <label for="lead-target">Цель по числу лидов</label>
++            <input id="lead-target" name="lead_target" type="number" min="0" step="1" value="">
++            <span class="field-hint">Необязательно; пусто или 0 — без цели</span>
++          </p>
++          <button type="submit">Одобрить</button>
++        </form>
+ 
+-  <form method="post" action="/requests/req-1/validation/reject">
+-    <input type="hidden" name="tenant_id" value="tenant-1">
+-    <input type="hidden" name="csrf" value="TOKEN">
+-    <p class="field">
++        <form class="card-section" method="post" action="/requests/req-1/validation/call">
++          <input type="hidden" name="tenant_id" value="tenant-1">
++          <input type="hidden" name="csrf" value="TOKEN">
++          <input type="hidden" name="correlation_id" value="req-1">
++          <p class="hint">Если оффер неясен, уточните его у клиента звонком.</p>
++          <button type="submit" class="button-secondary">Инициировать звонок-уточнение</button>
++        </form>
++
++        <form class="card-section" method="post" action="/requests/req-1/validation/reject">
++          <input type="hidden" name="tenant_id" value="tenant-1">
++          <input type="hidden" name="csrf" value="TOKEN">
++          <p class="field">
+   <label for="reject-reason">Причина отклонения</label>
+   <input id="reject-reason" name="reason" type="text" value="" required>
+ </p>
+-    <button type="submit">Отклонить</button>
+-  </form>
++          <button type="submit" class="button-danger">Отклонить</button>
++        </form>
++      </div>
++    </div>
++  </div>
+ </section>
+   </main>
+ </body>
+diff --git a/backend/contexts/request-fulfillment/internal/adapters/http/validation_screen_test.go b/backend/contexts/request-fulfillment/internal/adapters/http/validation_screen_test.go
+index 295dbdd..c8f65ef 100644
+--- a/backend/contexts/request-fulfillment/internal/adapters/http/validation_screen_test.go
++++ b/backend/contexts/request-fulfillment/internal/adapters/http/validation_screen_test.go
+@@ -137,7 +137,7 @@ func TestValidationScreenLifecycle(t *testing.T) {
+ 	resp.Body.Close()
+ 
+ 	screen = readBody(t, client.get(t, validationScreenPath()))
+-	if !strings.Contains(screen, "Решение валидации") || !strings.Contains(screen, "approved") {
++	if !strings.Contains(screen, "Решение валидации") || !strings.Contains(screen, "Одобрена") {
+ 		t.Fatalf("экран не показал решение валидации: %s", screen)
+ 	}
+ }
+diff --git a/docs/progress-log.md b/docs/progress-log.md
+index fb3ee5e..3c41865 100644
+--- a/docs/progress-log.md
++++ b/docs/progress-log.md
+@@ -1,6 +1,6 @@
+ # Журнал прогресса (handoff для агентов)
+ 
+-**Фокус сейчас:** `local-embedding-provider` и `embedding-config-separation` завершены и заархивированы (`2026-10-06-local-embedding-provider`, `2026-10-06-embedding-config-separation`): семантический recall/RAG заработал на локальном self-hosted провайдере эмбеддингов (Ollama `0.35.1`, OpenAI-совместимый `/v1/embeddings`, многоязычная модель `bge-m3`), без внешнего ключа и без DeepSeek. Создан change (skip_specs: инфраструктура/проводка), в `compose.yaml` добавлен сервис `embeddings`, заданы дефолты `EMBEDDING_*`; живой прогон подтвердил recall и строки в `"integration-platform".vector_document`, задача 2.2 `embedding-config-separation` закрыта (`- [x]`). Гейт зелёный. Прежнее (заархивировано): `analytics-delivery-feed`, `address-verification-network-transport`, `campaign-scoped-approved-action-id`; недавнее — `database-schema-reference` (справочник физической модели данных, docs-only). Открыто у других change: `email-verification`/`company-size-assessment` (внешние провайдеры не выбраны).
++**Фокус сейчас:** `console-liquid-glass` (2026-10-06) — новое оформление серверных экранов «матовое жидкое стекло» с графитовым акцентом вместо фиолетовых градиентов (общий слой `frontend/components/static/console.css`, выгрузка `leads-export.html`) и читаемые подписи машинных кодов через функцию шаблонов `label` (`Messages.Label`); экраны заявок — таблицы, пары «подпись — значение», панель решения. Тесты затронутых модулей, importlint, archlint и `openspec validate --strict` зелёные в облачной копии (Go 1.27); открыта задача 5.2 — `make check` на машине разработчика. Не коммитил. Прежний фокус: `local-embedding-provider` и `embedding-config-separation` завершены и заархивированы (`2026-10-06-local-embedding-provider`, `2026-10-06-embedding-config-separation`): семантический recall/RAG заработал на локальном self-hosted провайдере эмбеддингов (Ollama `0.35.1`, OpenAI-совместимый `/v1/embeddings`, многоязычная модель `bge-m3`), без внешнего ключа и без DeepSeek. Создан change (skip_specs: инфраструктура/проводка), в `compose.yaml` добавлен сервис `embeddings`, заданы дефолты `EMBEDDING_*`; живой прогон подтвердил recall и строки в `"integration-platform".vector_document`, задача 2.2 `embedding-config-separation` закрыта (`- [x]`). Гейт зелёный. Прежнее (заархивировано): `analytics-delivery-feed`, `address-verification-network-transport`, `campaign-scoped-approved-action-id`; недавнее — `database-schema-reference` (справочник физической модели данных, docs-only). Открыто у других change: `email-verification`/`company-size-assessment` (внешние провайдеры не выбраны).
+ 
+ **Зачем этот файл.** Контекстное окно агента конечно. Этот журнал — точка подхвата:
+ новый агент читает его первым и понимает, где остановилась работа и какой следующий
+diff --git a/frontend/components/components.go b/frontend/components/components.go
+index 18af410..f763dee 100644
+--- a/frontend/components/components.go
++++ b/frontend/components/components.go
+@@ -226,7 +226,7 @@ func FieldError(errors map[string]string, name string) string {
+ }
+ 
+ // templateFuncs собирает функции шаблонов общего слоя: доступ к каталогу
+-// сообщений (`text`) и локализованные форматы (`formatDate`, `formatDateTime`,
++// сообщений (`text`, `label`) и локализованные форматы (`formatDate`, `formatDateTime`,
+ // `formatNumber`, `formatCurrency`, `formatTimeZone`). Благодаря этому шаблоны не
+ // содержат пользовательских строк и не форматируют значения сами.
+ func templateFuncs(messages *Messages) template.FuncMap {
+@@ -238,6 +238,12 @@ func templateFuncs(messages *Messages) template.FuncMap {
+ 		"text": func(key string) string {
+ 			return messages.Text(MessageKey(key))
+ 		},
++		// label — читаемая подпись машинного кода по каталогу (см. Messages.Label).
++		// Код принимается любого строкового типа (доменные статусы — именованные
++		// строки), поэтому приводится через fmt.Sprint.
++		"label": func(prefix string, code any) string {
++			return messages.Label(prefix, fmt.Sprint(code))
++		},
+ 		"formatDate":     formatter.Date,
+ 		"formatDateTime": formatter.DateTime,
+ 		"formatNumber":   formatter.Number,
+diff --git a/frontend/components/messages.go b/frontend/components/messages.go
+index 8d87792..16b4b8c 100644
+--- a/frontend/components/messages.go
++++ b/frontend/components/messages.go
+@@ -161,6 +161,25 @@ func (m *Messages) Text(key MessageKey) string {
+ 	return string(key)
+ }
+ 
++// Label возвращает читаемую подпись машинного кода (статуса, фазы, состояния):
++// ключ каталога собирается как prefix + "." + нормализованный код (та же
++// нормализация, что у StatusClass: нижний регистр, разделители — дефис), поэтому
++// "RUNNING", "awaiting-approval" и "not warmed" находят ключи "….running",
++// "….awaiting-approval" и "….not-warmed". Неизвестный код не маскируется и не
++// превращается в ключ: возвращается сам код, чтобы новое состояние было видно, а
++// не пропадало.
++func (m *Messages) Label(prefix, code string) string {
++	normalized := StatusClass(code)
++	if normalized == "" {
++		return code
++	}
++	key := MessageKey(prefix + "." + normalized)
++	if m.Has(key) {
++		return m.Text(key)
++	}
++	return code
++}
++
+ // Has сообщает, объявлен ли ключ в каталоге.
+ func (m *Messages) Has(key MessageKey) bool {
+ 	if m != nil {
+diff --git a/frontend/components/messages_test.go b/frontend/components/messages_test.go
+index eaa4260..d4e333d 100644
+--- a/frontend/components/messages_test.go
++++ b/frontend/components/messages_test.go
+@@ -93,3 +93,26 @@ func TestWithMessagesMergesConsumerKeys(t *testing.T) {
+ 		t.Fatalf("совпадающий ключ не перекрыт: %q", got)
+ 	}
+ }
++
++// TestMessagesLabel проверяет, что машинный код получает читаемую подпись по
++// каталогу независимо от регистра и разделителей, а неизвестный код остаётся
++// видимым как есть (change console-liquid-glass).
++func TestMessagesLabel(t *testing.T) {
++	messages := WithMessages(DefaultMessages(), map[MessageKey]string{
++		"demo.phase.awaiting-approval": "Ждёт решения",
++		"demo.phase.not-warmed":        "Не прогрет",
++		"demo.execution.running":       "Выполняется",
++	})
++	cases := []struct{ prefix, code, want string }{
++		{"demo.phase", "awaiting-approval", "Ждёт решения"},
++		{"demo.phase", "not warmed", "Не прогрет"},
++		{"demo.execution", "RUNNING", "Выполняется"},
++		{"demo.phase", "unknown-phase", "unknown-phase"},
++		{"demo.phase", "", ""},
++	}
++	for _, c := range cases {
++		if got := messages.Label(c.prefix, c.code); got != c.want {
++			t.Errorf("Label(%q, %q) = %q, ожидалось %q", c.prefix, c.code, got, c.want)
++		}
++	}
++}
+diff --git a/frontend/components/static/console.css b/frontend/components/static/console.css
+index 2e6dee0..fca2fcd 100644
+--- a/frontend/components/static/console.css
++++ b/frontend/components/static/console.css
+@@ -1,9 +1,9 @@
+-/* Оформление консоли оператора lead-management. Направление — «термальная
+-   прозрачность» с хромом из выгрузки лидов (change console-theme-switcher):
+-   градиентное полотно, стеклянные поверхности и кнопки, а температура лида
+-   остаётся главным смысловым цветом. Тёмная тема — переопределение тех же
+-   ролей под :root[data-theme="dark"]; режим «как в системе» разрешается до
+-   отрисовки скриптом theme.js.
++/* Оформление серверных экранов (консоль оператора, клиентский портал, дашборд).
++   Направление — «матовое жидкое стекло» (change console-liquid-glass): спокойная
++   подложка из размытых пятен без фиолетового, полупрозрачные поверхности с
++   бликом по краю, графитовый акцент. Цвет в интерфейсе несут только статусы.
++   Тёмная тема — переопределение тех же ролей под :root[data-theme="dark"];
++   режим «как в системе» разрешается до отрисовки скриптом theme.js.
+ 
+    Отдельный файл, а не встроенный стиль: CSP консоли запрещает inline-стили и
+    скрипты. Ни один компонент не задаёт цвет напрямую — только через токен. */
+@@ -13,65 +13,79 @@
+ :root {
+   color-scheme: light;
+ 
+-  /* Служебные роли поверхности и текста (почти бесцветны). */
+-  --paper: #eef1f9;
+-  --paper-2: #e6eaf5;
+-  --surface: #ffffff;
+-  --glass: rgba(255, 255, 255, 0.62);
+-  --glass-border: rgba(255, 255, 255, 0.6);
+-  --ink: #14161f;
+-  --ink-soft: #5f6577;
+-  --line: rgba(20, 22, 40, 0.10);
+-  --line-strong: rgba(20, 22, 40, 0.20);
+-  --shadow: 0 10px 30px -22px rgba(20, 22, 30, 0.5);
+-
+-  /* Градиент фона — «полотно» консоли. */
+-  --bg-1: #eef1fb;
+-  --bg-2: #f6f2fd;
+-  --bg-3: #eaf0fb;
+-
+-  /* Акцент хрома: ссылки, активные пункты, кнопки. Не несёт доменного смысла. */
+-  --accent: #5560ea;
+-  --accent-2: #a04fe0;
+-  --accent-soft: rgba(85, 96, 234, 0.14);
+-
+-  /* Стадии воронки — «температура» лида. Чем теплее стадия, тем насыщеннее. */
+-  --stage-notwarmed: #576c80;
+-  --stage-notwarmed-soft: rgba(87, 108, 128, 0.16);
+-  --stage-email: #5a45d0;
+-  --stage-email-soft: rgba(90, 69, 208, 0.14);
+-  --stage-warming: #8f5f10;
+-  --stage-warming-soft: rgba(143, 95, 16, 0.16);
+-  --stage-cold: #2a63a3;
+-  --stage-cold-soft: rgba(42, 99, 163, 0.14);
+-
+-  /* Светофор исходов письма и вердиктов оценки. */
+-  --ok: #157a4b;
+-  --ok-soft: rgba(21, 122, 75, 0.14);
+-  --warn: #8f5f10;
+-  --warn-soft: rgba(143, 95, 16, 0.16);
+-  --bad: #b73636;
+-  --bad-soft: rgba(183, 54, 54, 0.14);
+-  --neutral: #616a7d;
+-  --neutral-soft: rgba(97, 106, 125, 0.16);
+-
+-  /* Чернила бейджей статусов: подпись читается на своей мягкой подложке с
+-     контрастом WCAG AA. Отдельны от базовых ролей, чтобы правка контраста не
+-     задевала декор (границы, точки, фоны вне бейджа). */
+-  --status-ink-ok: #0f6a40;
+-  --status-ink-warn: #7a5006;
+-  --status-ink-bad: #b73636;
+-  --status-ink-neutral: #525a6b;
+-  --status-ink-notwarmed: #47596b;
+-  --status-ink-email: #4a39b8;
+-  --status-ink-cold: #2a63a3;
++  /* Полотно и поверхности. --surface — непрозрачный эквивалент стекла на
++     подложке: по нему считается контраст и им заменяется стекло, если браузер
++     не умеет backdrop-filter. */
++  --paper: #eef1f5;
++  --paper-2: #e3e7ed;
++  --surface: #f8f9fb;
++  --glass: rgba(255, 255, 255, 0.55);
++  --glass-strong: rgba(255, 255, 255, 0.82);
++  --glass-border: rgba(255, 255, 255, 0.75);
++  --glass-hi: rgba(255, 255, 255, 0.95);
++  --glass-lo: rgba(255, 255, 255, 0.45);
++  --glass-blur: 20px;
++  --fill: rgba(118, 118, 128, 0.12);
++  --fill-2: rgba(118, 118, 128, 0.07);
++  --ink: #1c1c1e;
++  --ink-soft: #595d68;
++  --line: rgba(60, 60, 67, 0.12);
++  --line-strong: rgba(60, 60, 67, 0.24);
++  --shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 10px 30px rgba(16, 24, 40, 0.08);
++  --shadow-float: 0 2px 6px rgba(16, 24, 40, 0.05), 0 18px 48px rgba(16, 24, 40, 0.12);
++
++  /* Подложка: небо, тёплый песок и мята — неяркие пятна, чтобы стекло читалось. */
++  --wall-1: #b7d0f0;
++  --wall-2: #f1d6b0;
++  --wall-3: #b6e2d6;
++  --bg-1: var(--wall-1);
++  --bg-2: var(--wall-2);
++  --bg-3: var(--wall-3);
++
++  /* Акцент хрома — графит: кнопки, активные пункты, фокус. Не несёт смысла. */
++  --accent: #1c1c1e;
++  --accent-2: #3a3a3c;
++  --accent-soft: rgba(28, 28, 30, 0.08);
++  --btn-fg: #ffffff;
++
++  /* Стадии воронки — «температура» лида. */
++  --stage-notwarmed: #8e8e93;
++  --stage-notwarmed-soft: rgba(142, 142, 147, 0.18);
++  --stage-email: #007aff;
++  --stage-email-soft: rgba(0, 122, 255, 0.12);
++  --stage-warming: #ff9500;
++  --stage-warming-soft: rgba(255, 149, 0, 0.16);
++  --stage-cold: #30b0c7;
++  --stage-cold-soft: rgba(48, 176, 199, 0.16);
++
++  /* Светофор исходов письма и вердиктов оценки (системная палитра). */
++  --ok: #34c759;
++  --ok-soft: rgba(52, 199, 89, 0.16);
++  --warn: #ff9500;
++  --warn-soft: rgba(255, 149, 0, 0.16);
++  --bad: #ff3b30;
++  --bad-soft: rgba(255, 59, 48, 0.12);
++  --neutral: #8e8e93;
++  --neutral-soft: rgba(142, 142, 147, 0.18);
++
++  /* Чернила подписей статусов: затемнённые варианты, чтобы подпись читалась на
++     своей мягкой подложке с контрастом WCAG AA. Отдельны от базовых ролей, чтобы
++     правка контраста не задевала декор (точки, полосы, фоны вне бейджа). */
++  --status-ink-ok: #18692f;
++  --status-ink-warn: #8a4600;
++  --status-ink-bad: #b0201a;
++  --status-ink-neutral: #4e5058;
++  --status-ink-notwarmed: #4c5059;
++  --status-ink-email: #0052b8;
++  --status-ink-cold: #0b5f70;
+ 
+   /* Геометрия и ритм. */
+   --spacing: 1.25rem;
+-  --radius: 0.9rem;
+-  --radius-sm: 0.55rem;
+-  --sidebar-w: minmax(12.5rem, 15rem);
+-  --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
++  --radius: 1.15rem;
++  --radius-sm: 0.75rem;
++  --radius-xl: 1.6rem;
++  --sidebar-w: 15.5rem;
++  --ease: cubic-bezier(0.32, 0.72, 0, 1);
+ }
+ 
+ /* Тёмный режим — переопределение тех же ролей, а не инверсия значений: любой
+@@ -79,42 +93,49 @@
+ :root[data-theme="dark"] {
+   color-scheme: dark;
+ 
+-  --paper: #0b1024;
+-  --paper-2: #070a18;
+-  --surface: #141a2e;
+-  --glass: rgba(28, 34, 58, 0.55);
+-  --glass-border: rgba(255, 255, 255, 0.10);
+-  --ink: #eef1ff;
+-  --ink-soft: #9aa3bd;
+-  --line: rgba(255, 255, 255, 0.10);
+-  --line-strong: rgba(255, 255, 255, 0.22);
+-  --shadow: 0 18px 48px -28px rgba(0, 0, 0, 0.9);
+-
+-  --bg-1: #0c1024;
+-  --bg-2: #171233;
+-  --bg-3: #0a1420;
+-
+-  --accent: #8b9cff;
+-  --accent-2: #d79bff;
+-  --accent-soft: rgba(139, 156, 255, 0.18);
+-
+-  --stage-notwarmed: #9fb2c6;
+-  --stage-notwarmed-soft: rgba(159, 178, 198, 0.16);
+-  --stage-email: #9a8cff;
+-  --stage-email-soft: rgba(154, 140, 255, 0.16);
+-  --stage-warming: #f0b65a;
+-  --stage-warming-soft: rgba(240, 182, 90, 0.16);
+-  --stage-cold: #5aa2e6;
+-  --stage-cold-soft: rgba(90, 162, 230, 0.16);
+-
+-  --ok: #4fc98a;
+-  --ok-soft: rgba(79, 201, 138, 0.16);
+-  --warn: #f0b65a;
+-  --warn-soft: rgba(240, 182, 90, 0.16);
+-  --bad: #f0655f;
+-  --bad-soft: rgba(240, 101, 95, 0.16);
+-  --neutral: #8b95ad;
+-  --neutral-soft: rgba(139, 149, 173, 0.16);
++  --paper: #0d0f12;
++  --paper-2: #1b1e23;
++  --surface: #1a1d22;
++  --glass: rgba(34, 36, 42, 0.55);
++  --glass-strong: rgba(70, 72, 80, 0.62);
++  --glass-border: rgba(255, 255, 255, 0.11);
++  --glass-hi: rgba(255, 255, 255, 0.24);
++  --glass-lo: rgba(255, 255, 255, 0.08);
++  --fill: rgba(118, 118, 128, 0.26);
++  --fill-2: rgba(118, 118, 128, 0.16);
++  --ink: #f5f5f7;
++  --ink-soft: #a3a6af;
++  --line: rgba(255, 255, 255, 0.09);
++  --line-strong: rgba(255, 255, 255, 0.2);
++  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 30px rgba(0, 0, 0, 0.4);
++  --shadow-float: 0 2px 6px rgba(0, 0, 0, 0.4), 0 18px 48px rgba(0, 0, 0, 0.55);
++
++  --wall-1: #17345a;
++  --wall-2: #4a3417;
++  --wall-3: #0f3d35;
++
++  --accent: #f5f5f7;
++  --accent-2: #d1d1d6;
++  --accent-soft: rgba(255, 255, 255, 0.1);
++  --btn-fg: #1c1c1e;
++
++  --stage-notwarmed: #aeb2bb;
++  --stage-notwarmed-soft: rgba(174, 178, 187, 0.16);
++  --stage-email: #4da3ff;
++  --stage-email-soft: rgba(77, 163, 255, 0.16);
++  --stage-warming: #ffb340;
++  --stage-warming-soft: rgba(255, 179, 64, 0.16);
++  --stage-cold: #5ad1e6;
++  --stage-cold-soft: rgba(90, 209, 230, 0.15);
++
++  --ok: #30d158;
++  --ok-soft: rgba(48, 209, 88, 0.16);
++  --warn: #ffb340;
++  --warn-soft: rgba(255, 179, 64, 0.16);
++  --bad: #ff6961;
++  --bad-soft: rgba(255, 105, 97, 0.16);
++  --neutral: #a1a1a8;
++  --neutral-soft: rgba(161, 161, 168, 0.16);
+ 
+   /* В тёмной теме базовые роли уже читаются на мягких подложках. */
+   --status-ink-ok: var(--ok);
+@@ -126,9 +147,8 @@
+   --status-ink-cold: var(--stage-cold);
+ }
+ 
+-/* Совместимость: прежние имена указывают на новые роли (см. использование в
+-   оформлении). Ссылки через var() разрешаются в контексте темы, поэтому
+-   достаточно объявить их один раз. */
++/* Совместимость: прежние имена указывают на новые роли. Ссылки через var()
++   разрешаются в контексте темы, поэтому достаточно объявить их один раз. */
+ :root {
+   --cold: var(--accent);
+   --warming: var(--warn);
+@@ -140,6 +160,7 @@
+   --sent-soft: var(--ok-soft);
+   --cooled-soft: var(--stage-cold-soft);
+   --fail-soft: var(--bad-soft);
++  --muted: var(--ink-soft);
+ }
+ 
+ /* ============================================================= База */
+@@ -150,54 +171,97 @@
+ 
+ body {
+   margin: 0;
+-  background: var(--paper);
++  min-height: 100vh;
+   color: var(--ink);
+-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+-  line-height: 1.55;
++  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
++  font-size: 0.9375rem;
++  line-height: 1.5;
+   -webkit-font-smoothing: antialiased;
++  /* Подложка под стеклом: без неё прозрачность не видна. Пятна размыты и
++     неярки, поэтому не спорят с содержимым. */
++  background-color: var(--paper);
++  background-image:
++    radial-gradient(48vw 42vw at 4% -6%, var(--wall-1), transparent 70%),
++    radial-gradient(36vw 34vw at 102% 18%, var(--wall-2), transparent 70%),
++    radial-gradient(46vw 40vw at 46% 112%, var(--wall-3), transparent 70%);
++  background-attachment: fixed;
+ }
+ 
+-/* Каркас с боковым меню: меню — отдельный слой над полотном. Гейт :has() не
+-   трогает страницы без меню (вход, уведомление, публичный edge). */
++/* Каркас с боковым меню: меню — плавающая стеклянная панель над полотном.
++   Гейт :has() не трогает страницы без меню (вход, уведомление, публичный edge). */
+ body:has(> .sidebar) {
+   display: grid;
+-  grid-template-columns: var(--sidebar-w) 1fr;
++  grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
+   align-items: start;
+ }
+ 
+ h1,
+ h2,
+ h3 {
+-  font-weight: 660;
+   letter-spacing: -0.02em;
+   line-height: 1.2;
++  color: var(--ink);
+ }
+ 
+ h1 {
+-  font-size: clamp(1.45rem, 1.15rem + 1vw, 1.9rem);
+-  margin: 0 0 0.75rem;
++  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", system-ui, sans-serif;
++  font-size: clamp(1.7rem, 1.35rem + 1vw, 2.1rem);
++  font-weight: 700;
++  letter-spacing: -0.025em;
++  margin: 0.25rem 0 0.5rem;
+ }
+ 
+ h2 {
+-  font-size: 1.1rem;
+-  margin: 0 0 0.75rem;
++  font-size: 1.15rem;
++  font-weight: 680;
++  margin: 1.75rem 0 0.75rem;
+ }
+ 
+ h3 {
+   font-size: 0.95rem;
+-  margin: 0 0 0.5rem;
+-  color: var(--ink-soft);
+-  font-weight: 600;
++  font-weight: 640;
++  margin: 1.25rem 0 0.5rem;
++}
++
++.panel > h2:first-child,
++.card > h2:first-child,
++.cockpit-panel > h2:first-child,
++.panel > h3:first-child,
++.card > h3:first-child {
++  margin-top: 0;
++}
++
++p {
++  margin: 0.5rem 0;
++}
++
++a {
++  color: var(--ink);
++  text-decoration-color: var(--line-strong);
++  text-underline-offset: 3px;
++}
++
++a:hover {
++  text-decoration-color: var(--ink);
++}
++
++code {
++  font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
++  font-size: 0.85em;
++  padding: 0.05rem 0.35rem;
++  border-radius: 0.35rem;
++  background: var(--fill);
+ }
+ 
+ .page {
+   margin: 0 auto;
+-  max-width: 74rem;
++  max-width: 76rem;
+   padding: var(--spacing);
+ }
+ 
+ body:has(> .sidebar) .page {
+-  padding: clamp(1.25rem, 1rem + 1.5vw, 2.5rem);
++  width: 100%;
++  padding: 1.75rem clamp(1rem, 0.5rem + 2vw, 2.5rem) 3rem;
+ }
+ 
+ .page-head {
+@@ -207,43 +271,98 @@ body:has(> .sidebar) .page {
+ .hint {
+   color: var(--ink-soft);
+   font-size: 0.9rem;
+-  margin: 0.75rem 0 0;
++  margin: 0.25rem 0 1rem;
+ }
+ 
+ .error-text {
+-  color: var(--fail);
++  color: var(--status-ink-bad);
+   font-size: 0.88rem;
+ }
+ 
+-/* ============================================================= Боковое меню */
++/* ============================================================= Материал стекла */
+ 
+-.sidebar {
+-  position: sticky;
+-  top: 0;
+-  align-self: start;
+-  height: 100vh;
+-  overflow-y: auto;
+-  padding: 1.4rem 1rem;
++/* Матовое стекло: полупрозрачная заливка, размытие подложки, яркий кант по краю
++   (блик сверху-слева, отражение снизу-справа) и мягкое внутреннее свечение. */
++.sidebar,
++.panel,
++.card,
++.notice,
++.stage-col,
++.cockpit-panel,
++.cockpit-agent-row,
++.cockpit-figure,
++.topology-figure,
++.kpi-card,
++.cards-item,
++.offer,
++.approval-status,
++.export-progress-panel,
++.decision-bar,
++.fact-panel,
++.queue,
++.page table,
++.watermark,
++.timeline-detail {
+   background: var(--glass);
+-  border-right: 1px solid var(--line);
+-  /* Стекло = слоистость: меню лежит над полотном (design.md, Решение 4). */
+-  backdrop-filter: blur(14px) saturate(150%);
+-  -webkit-backdrop-filter: blur(14px) saturate(150%);
++  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(180%);
++  backdrop-filter: blur(var(--glass-blur)) saturate(180%);
++  border: 1px solid var(--glass-border);
++  box-shadow:
++    inset 1px 1px 0 var(--glass-hi),
++    inset -1px -1px 0 var(--glass-lo),
++    var(--shadow);
+ }
+ 
+ @supports not (backdrop-filter: blur(1px)) {
+-  .sidebar {
++  .sidebar,
++  .panel,
++  .card,
++  .notice,
++  .stage-col,
++  .cockpit-panel,
++  .cockpit-agent-row,
++  .cockpit-figure,
++  .topology-figure,
++  .kpi-card,
++  .cards-item,
++  .offer,
++  .approval-status,
++  .export-progress-panel,
++  .decision-bar,
++  .fact-panel,
++  .queue,
++  .page table,
++  .watermark {
+     background: var(--surface);
+   }
+ }
+ 
++/* ============================================================= Боковое меню */
++
++.sidebar {
++  position: sticky;
++  top: 0.75rem;
++  align-self: start;
++  display: flex;
++  flex-direction: column;
++  height: calc(100vh - 1.5rem);
++  margin: 0.75rem 0 0.75rem 0.75rem;
++  overflow-y: auto;
++  padding: 1rem 0.75rem;
++  border-radius: var(--radius-xl);
++  box-shadow:
++    inset 1px 1px 0 var(--glass-hi),
++    inset -1px -1px 0 var(--glass-lo),
++    var(--shadow-float);
++}
++
+ .sidebar-list {
+   list-style: none;
+   margin: 0;
+   padding: 0;
+   display: flex;
+   flex-direction: column;
+-  gap: 0.12rem;
++  gap: 0.15rem;
+ }
+ 
+ .sidebar-list li {
+@@ -259,76 +378,96 @@ body:has(> .sidebar) .page {
+ .sidebar-list a {
+   position: relative;
+   display: block;
+-  padding: 0.52rem 0.7rem;
+-  border-radius: var(--radius-sm);
+-  color: var(--ink-soft);
++  padding: 0.55rem 0.8rem;
++  border-radius: 0.8rem;
++  color: var(--ink);
++  font-weight: 500;
+   text-decoration: none;
+-  transition: color 0.18s var(--ease), background 0.18s var(--ease);
++  transition: background 0.2s var(--ease), box-shadow 0.2s var(--ease);
+ }
+ 
+ .sidebar-list a:hover {
+-  color: var(--ink);
+-  background: var(--paper-2);
++  background: var(--fill-2);
+ }
+ 
++/* Активный пункт — приподнятая «линза»: светлее стекла и с тенью. */
+ .sidebar-list a.is-active {
+-  color: var(--ink);
+-  font-weight: 620;
+-  background: var(--paper-2);
+-}
+-
+-/* Активный пункт помечается термальной полосой — единственное место, где
+-   рампа работает как «направление», а не как статус. */
+-.sidebar-list a.is-active::before {
+-  content: "";
+-  position: absolute;
+-  left: -0.5rem;
+-  top: 0.45rem;
+-  bottom: 0.45rem;
+-  width: 3px;
+-  border-radius: 3px;
+-  background: linear-gradient(var(--cold), var(--warming));
++  font-weight: 640;
++  background: var(--glass-strong);
++  box-shadow: inset 1px 1px 0 var(--glass-hi), 0 1px 3px rgba(0, 0, 0, 0.08), 0 4px 14px rgba(0, 0, 0, 0.06);
+ }
+ 
+ /* Вторичная группа под общим разделом: подпункты экранов сервиса. */
+ .sidebar-group-label {
+   margin: 1rem 0 0.3rem;
+-  padding: 0 0.7rem;
+-  font-size: 0.72rem;
+-  letter-spacing: 0.08em;
+-  text-transform: uppercase;
++  padding: 0 0.8rem;
++  font-size: 0.75rem;
++  font-weight: 600;
+   color: var(--ink-soft);
+ }
+ 
+ .sidebar-list-group a {
+-  padding-left: 1.2rem;
++  padding-left: 1.3rem;
++}
++
++/* Переключатель темы в подвале меню — капсула. */
++.theme-toggle {
++  margin-top: auto;
++  display: flex;
++  align-items: center;
++  gap: 0.5rem;
++  width: 100%;
++  padding: 0.55rem 0.9rem;
++  border: 0;
++  border-radius: 999px;
++  background: var(--fill);
++  color: var(--ink);
++  font: inherit;
++  font-size: 0.85rem;
++  cursor: pointer;
++  box-shadow: none;
++  transition: background 0.2s var(--ease), transform 0.15s var(--ease);
++}
++
++.theme-toggle:hover {
++  background: var(--glass-strong);
++  transform: none;
++  box-shadow: inset 1px 1px 0 var(--glass-hi), 0 2px 8px rgba(0, 0, 0, 0.06);
++}
++
++.theme-toggle-label {
++  color: var(--ink-soft);
++}
++
++.theme-toggle-value {
++  margin-left: auto;
++  font-weight: 620;
+ }
+ 
+ /* ============================================================= Поверхности */
+ 
+-/* Роли поверхностей различаются, а не сливаются в одинаковые плашки
+-   (design.md, Решение 8): секция, карточка сущности, строка списка, уведомление. */
++/* Роли поверхностей различаются: секция, карточка сущности, строка списка,
++   уведомление. Все — стекло, различие в радиусе, отступах и тени. */
+ 
+ .panel {
+-  background: var(--surface);
+-  border: 1px solid var(--line);
+   border-radius: var(--radius);
+   padding: var(--spacing);
+   margin-bottom: var(--spacing);
+ }
+ 
+-/* Карточка сущности — старшая по иерархии: крупнее радиус, мягкая тень. */
++/* Карточка сущности — старшая по иерархии: крупнее радиус и тень. */
+ .card {
+-  background: var(--surface);
+-  border: 1px solid var(--line);
+-  border-radius: calc(var(--radius) + 0.2rem);
+-  box-shadow: var(--shadow);
+-  padding: calc(var(--spacing) * 1.15);
++  border-radius: calc(var(--radius) + 0.25rem);
++  padding: calc(var(--spacing) * 1.2);
+   margin-bottom: var(--spacing);
++  box-shadow:
++    inset 1px 1px 0 var(--glass-hi),
++    inset -1px -1px 0 var(--glass-lo),
++    var(--shadow-float);
+ }
+ 
+ .card-head h2 {
+-  margin-bottom: 0.25rem;
++  margin: 0 0 0.25rem;
+ }
+ 
+ .card-source {
+@@ -351,30 +490,155 @@ body:has(> .sidebar) .page {
+ 
+ .card-actions {
+   display: flex;
++  flex-wrap: wrap;
+   gap: 0.5rem;
+   margin-top: var(--spacing);
+   padding-top: var(--spacing);
+   border-top: 1px solid var(--line);
+ }
+ 
+-/* Уведомление — отдельная роль: тёплая левая грань, без тени. */
++/* Уведомление — отдельная роль: тёплая полоса слева. */
+ .notice {
+-  border: 1px solid var(--line);
+-  border-left: 4px solid var(--warming);
+-  background: var(--surface);
++  position: relative;
+   border-radius: var(--radius);
+-  padding: var(--spacing);
++  padding: 0.9rem var(--spacing) 0.9rem calc(var(--spacing) + 0.25rem);
++  margin: 0.75rem 0;
++}
++
++.notice::before {
++  content: "";
++  position: absolute;
++  left: 0.6rem;
++  top: 0.8rem;
++  bottom: 0.8rem;
++  width: 3px;
++  border-radius: 3px;
++  background: var(--warn);
+ }
+ 
+ .notice h1 {
+   margin-top: 0;
+ }
+ 
+-/* ============================================================= Раскрытие (карточки) */
++/* Честное «недоступно» (рантайм не подключён, источник молчит): заметная, но
++   спокойная плашка, а не пустой экран и не ноль. */
++.watermark {
++  display: flex;
++  align-items: center;
++  gap: 0.6rem;
++  border-radius: var(--radius);
++  padding: 0.9rem var(--spacing);
++  color: var(--ink-soft);
++  margin: 0.75rem 0;
++}
++
++.watermark::before {
++  content: "";
++  flex: none;
++  width: 0.55rem;
++  height: 0.55rem;
++  border-radius: 50%;
++  border: 2px solid var(--neutral);
++}
++
++/* Блок «поле — значение»: сведения о сущности одной сеткой, подпись слева. */
++.facts,
++.job-facts,
++.export-status,
++.ops,
++.cockpit-agent-summary {
++  display: grid;
++  grid-template-columns: minmax(9rem, max-content) 1fr;
++  gap: 0.55rem 1.5rem;
++  margin: 0.75rem 0 0;
++}
++
++.facts > div,
++.export-status > div,
++.ops > div {
++  display: contents;
++}
++
++.facts dt,
++.job-facts dt,
++.export-status dt,
++.ops dt,
++.cockpit-agent-summary dt {
++  color: var(--ink-soft);
++  font-size: 0.88rem;
++}
++
++.facts dd,
++.job-facts dd,
++.export-status dd,
++.ops dd,
++.cockpit-agent-summary dd {
++  margin: 0;
++  overflow-wrap: anywhere;
++}
++
++.fact-panel,
++.offer,
++.approval-status,
++.export-progress-panel {
++  border-radius: var(--radius);
++  padding: var(--spacing);
++  margin: 0 0 var(--spacing);
++}
++
++.offer h2,
++.approval-status h2,
++.fact-panel h2 {
++  margin-top: 0;
++}
++
++.offer-content {
++  font-size: 1.05rem;
++  font-weight: 560;
++}
++
++.offer-target,
++.offer-revision {
++  color: var(--ink-soft);
++  font-size: 0.9rem;
++}
++
++/* Панель решения: необратимое действие отделено от прочего, «отклонить» слева,
++   основное действие справа. */
++.decision-bar {
++  display: flex;
++  flex-wrap: wrap;
++  align-items: center;
++  justify-content: flex-end;
++  gap: 0.6rem;
++  border-radius: var(--radius);
++  padding: 0.85rem var(--spacing);
++  margin: 0 0 var(--spacing);
++}
++
++.decision-bar form {
++  margin: 0;
++}
++
++.decision-note {
++  margin: 0 auto 0 0;
++  color: var(--ink-soft);
++  font-size: 0.85rem;
++  max-width: 30rem;
++}
++
++/* Сетка из двух колонок для экранов с карточкой и сведениями. */
++.split {
++  display: grid;
++  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
++  gap: var(--spacing);
++  align-items: start;
++}
++
++/* ============================================================= Раскрытие */
+ 
+-/* Анимация открытия/закрытия — по действию пользователя, не по таймеру
+-   (design.md, Решения 8–9). Механизм grid-template-rows даёт плавную высоту
+-   без измерения из скрипта. */
++/* Анимация открытия/закрытия — по действию пользователя, не по таймеру.
++   Механизм grid-template-rows даёт плавную высоту без измерения из скрипта. */
+ .reveal {
+   display: grid;
+   grid-template-rows: 0fr;
+@@ -392,19 +656,20 @@ details[open] > .reveal {
+ 
+ .disclosure {
+   border: 1px solid var(--line);
+-  border-radius: var(--radius);
++  border-radius: var(--radius-sm);
++  background: var(--fill-2);
+   overflow: hidden;
+-  margin-top: var(--spacing);
++  margin-top: 0.75rem;
+ }
+ 
+ .disclosure > summary {
+   cursor: pointer;
+-  padding: 0.75rem var(--spacing);
++  padding: 0.7rem var(--spacing);
+   font-weight: 600;
+   list-style: none;
+   display: flex;
+   align-items: center;
+-  gap: 0.5rem;
++  gap: 0.6rem;
+   transition: background 0.18s var(--ease);
+ }
+ 
+@@ -414,8 +679,8 @@ details[open] > .reveal {
+ 
+ .disclosure > summary::before {
+   content: "";
+-  width: 0.5rem;
+-  height: 0.5rem;
++  width: 0.45rem;
++  height: 0.45rem;
+   border-right: 2px solid var(--ink-soft);
+   border-bottom: 2px solid var(--ink-soft);
+   transform: rotate(-45deg);
+@@ -427,7 +692,7 @@ details[open] > .reveal {
+ }
+ 
+ .disclosure > summary:hover {
+-  background: var(--paper-2);
++  background: var(--fill-2);
+ }
+ 
+ .disclosure-body {
+@@ -437,41 +702,91 @@ details[open] > .reveal {
+ /* ============================================================= Формы */
+ 
+ .field {
+-  margin-bottom: 0.75rem;
++  margin: 0 0 0.9rem;
+ }
+ 
+-.field label {
++.field label,
++.filters label,
++.page form > label {
+   display: block;
+-  font-weight: 600;
+-  margin-bottom: 0.3rem;
++  font-size: 0.88rem;
++  font-weight: 560;
++  color: var(--ink-soft);
++  margin-bottom: 0.35rem;
+ }
+ 
+ .field input[type="text"],
+ .field input[type="password"],
+ .field textarea,
+-.field select {
++.field select,
++.page input[type="text"],
++.page input[type="password"],
++.page input[type="number"],
++.page input[type="email"],
++.page input[type="search"],
++.page input[type="url"],
++.page input:not([type]),
++.page textarea,
++.page select {
+   width: 100%;
+-  border: 1px solid var(--line-strong);
++  border: 1px solid var(--line);
+   border-radius: var(--radius-sm);
+-  padding: 0.55rem 0.7rem;
++  padding: 0.6rem 0.85rem;
+   font: inherit;
+-  background: var(--surface);
++  background: var(--glass-strong);
+   color: var(--ink);
++  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.04);
+   transition: border-color 0.16s var(--ease), box-shadow 0.16s var(--ease);
+ }
+ 
++.page textarea {
++  min-height: 6rem;
++  resize: vertical;
++}
++
++.page select {
++  appearance: none;
++  padding-right: 2.2rem;
++  background-image:
++    linear-gradient(45deg, transparent 50%, var(--ink-soft) 50%),
++    linear-gradient(135deg, var(--ink-soft) 50%, transparent 50%);
++  background-position: calc(100% - 1.05rem) 55%, calc(100% - 0.75rem) 55%;
++  background-size: 0.3rem 0.3rem;
++  background-repeat: no-repeat;
++}
++
++.page input:focus,
++.page textarea:focus,
++.page select:focus {
++  outline: none;
++  border-color: var(--accent);
++  box-shadow: 0 0 0 4px var(--accent-soft);
++}
++
++.page input[type="checkbox"],
++.page input[type="radio"] {
++  width: auto;
++  accent-color: var(--accent);
++}
++
+ .field input:focus-visible,
+ .field textarea:focus-visible,
+ .field select:focus-visible,
+ button:focus-visible,
+ a:focus-visible,
+ summary:focus-visible {
+-  outline: 2px solid var(--cold);
++  outline: 2px solid var(--accent);
+   outline-offset: 2px;
+ }
+ 
+-/* Скип-ссылка: доступна с клавиатуры, скрыта, пока не получила фокус.
+-   Клавиатурный обход начинается с перехода к содержимому. */
++.field-hint {
++  display: block;
++  color: var(--ink-soft);
++  font-size: 0.82rem;
++  margin-top: 0.3rem;
++}
++
++/* Скип-ссылка: доступна с клавиатуры, скрыта, пока не получила фокус. */
+ .skip-link {
+   position: absolute;
+   left: -9999px;
+@@ -479,15 +794,15 @@ summary:focus-visible {
+   z-index: 10;
+   padding: 0.5rem 0.9rem;
+   border: 1px solid var(--line-strong);
+-  border-radius: var(--radius-sm);
++  border-radius: 999px;
+   background: var(--surface);
+   color: var(--ink);
+   text-decoration: none;
+ }
+ 
+ .skip-link:focus {
+-  left: 0.5rem;
+-  top: 0.5rem;
++  left: 0.75rem;
++  top: 0.75rem;
+ }
+ 
+ /* Область живых объявлений: визуально скрыта, но читается ассистентами. */
+@@ -506,19 +821,24 @@ summary:focus-visible {
+ 
+ .field input[aria-invalid="true"],
+ .field textarea[aria-invalid="true"] {
+-  border-color: var(--fail);
++  border-color: var(--bad);
++  box-shadow: 0 0 0 4px var(--bad-soft);
+ }
+ 
+ .field-error {
+-  color: var(--fail);
++  display: block;
++  margin-top: 0.3rem;
++  color: var(--status-ink-bad);
+   font-size: 0.85rem;
+ }
+ 
+-.search-form {
++.search-form,
++.filters {
+   display: flex;
+   align-items: flex-end;
+-  gap: 1rem;
++  gap: 0.75rem 1rem;
+   flex-wrap: wrap;
++  margin: 0 0 var(--spacing);
+ }
+ 
+ .search-form .field {
+@@ -526,82 +846,146 @@ summary:focus-visible {
+   margin: 0;
+ }
+ 
++.filters label {
++  flex: 1 1 10rem;
++  margin: 0;
++}
++
+ .actions {
+   display: flex;
+   gap: 0.5rem;
+   flex-wrap: wrap;
+-  margin: 0.75rem 0 0;
++  margin: 0.9rem 0 0;
+ }
+ 
+-/* Кнопки нейтральны: термо-рампа не тратится на действие. */
+-button {
+-  background: var(--ink);
+-  color: var(--paper);
+-  border: 1px solid var(--ink);
+-  border-radius: var(--radius-sm);
+-  padding: 0.55rem 1rem;
++/* ============================================================= Кнопки */
++
++/* Основная кнопка — графитовая капсула; вторичная — стекло; опасная — мягкая
++   красная подложка. Цвет акцента не несёт смысла, смысл — в подписи. */
++button,
++.button {
++  display: inline-flex;
++  align-items: center;
++  justify-content: center;
++  gap: 0.45rem;
++  background: var(--accent);
++  color: var(--btn-fg);
++  border: 1px solid transparent;
++  border-radius: 999px;
++  padding: 0.55rem 1.15rem;
+   font: inherit;
+   font-weight: 600;
++  letter-spacing: -0.005em;
++  text-decoration: none;
+   cursor: pointer;
+-  transition: transform 0.12s var(--ease), opacity 0.16s var(--ease);
++  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 4px 14px rgba(0, 0, 0, 0.14);
++  transition: transform 0.15s var(--ease), box-shadow 0.25s var(--ease), opacity 0.16s var(--ease), background 0.2s var(--ease);
+ }
+ 
+-button:hover {
+-  opacity: 0.9;
++button:hover,
++.button:hover {
++  opacity: 0.92;
++  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 6px 20px rgba(0, 0, 0, 0.18);
+ }
+ 
+-button:active {
+-  transform: translateY(1px);
++button:active,
++.button:active {
++  transform: scale(0.97);
+ }
+ 
+ button:disabled {
+-  opacity: 0.45;
++  opacity: 0.4;
+   cursor: not-allowed;
++  transform: none;
+ }
+ 
+ .button-secondary {
+-  background: transparent;
++  background: var(--glass-strong);
+   color: var(--ink);
+-  border: 1px solid var(--line-strong);
++  border: 1px solid var(--glass-border);
++  box-shadow: inset 1px 1px 0 var(--glass-hi), 0 2px 8px rgba(0, 0, 0, 0.06);
++  -webkit-backdrop-filter: blur(12px);
++  backdrop-filter: blur(12px);
++}
++
++.button-secondary:hover {
++  opacity: 1;
++  background: var(--glass-strong);
++  box-shadow: inset 1px 1px 0 var(--glass-hi), 0 4px 14px rgba(0, 0, 0, 0.1);
+ }
+ 
+ .button-danger {
+-  background: transparent;
+-  color: var(--fail);
+-  border: 1px solid var(--fail);
++  background: var(--bad-soft);
++  color: var(--status-ink-bad);
++  border: 1px solid transparent;
++  box-shadow: none;
++}
++
++.button-danger:hover {
++  opacity: 1;
++  box-shadow: 0 0 0 4px var(--bad-soft);
+ }
+ 
+ /* ============================================================= Таблицы */
+ 
+-.table {
++.table,
++.page table {
+   width: 100%;
+-  border-collapse: collapse;
++  border-collapse: separate;
++  border-spacing: 0;
++}
++
++/* Таблица — стеклянная поверхность с закруглением; строки разделены линией. */
++.page table {
++  border-radius: var(--radius);
++  overflow: hidden;
++  margin: 0 0 var(--spacing);
++}
++
++.panel .table,
++.card .table,
++.panel table,
++.card table,
++.cockpit-panel table {
++  background: transparent;
++  border: 0;
++  box-shadow: none;
++  -webkit-backdrop-filter: none;
++  backdrop-filter: none;
++  border-radius: 0;
++  margin: 0;
+ }
+ 
+ .table th,
+-.table td {
++.table td,
++.page th,
++.page td {
+   text-align: left;
+-  padding: 0.6rem 0.75rem;
++  padding: 0.75rem 1rem;
+   border-bottom: 1px solid var(--line);
+-  vertical-align: top;
++  vertical-align: middle;
+ }
+ 
+-.table th {
++.table th,
++.page th {
+   color: var(--ink-soft);
+-  font-size: 0.78rem;
+-  font-weight: 600;
+-  letter-spacing: 0.02em;
++  font-size: 0.8rem;
++  font-weight: 560;
++  white-space: nowrap;
+ }
+ 
+-.table tbody tr {
++.table tbody tr,
++.page tbody tr {
+   transition: background 0.16s var(--ease);
+ }
+ 
+-.table tbody tr:hover {
+-  background: var(--paper-2);
++.table tbody tr:hover,
++.page tbody tr:hover {
++  background: var(--fill-2);
+ }
+ 
+-.table tbody tr:last-child td {
++.table tbody tr:last-child td,
++.page tbody tr:last-child td {
+   border-bottom: 0;
+ }
+ 
+@@ -646,7 +1030,7 @@ button:disabled {
+ }
+ 
+ .journal-row:hover {
+-  background: var(--paper-2);
++  background: var(--fill-2);
+ }
+ 
+ .journal-item {
+@@ -658,9 +1042,10 @@ button:disabled {
+   display: flex;
+   align-items: center;
+   gap: 0.75rem;
+-  padding: 0.6rem 0.75rem;
++  padding: 0.65rem 0.75rem;
+   cursor: pointer;
+   list-style: none;
++  border-radius: var(--radius-sm);
+   transition: background 0.16s var(--ease);
+ }
+ 
+@@ -668,7 +1053,7 @@ button:disabled {
+   display: none;
+ }
+ 
+-/* Указатель раскрытия — тот же треугольник, что у общего disclosure. */
++/* Указатель раскрытия — тот же уголок, что у общего disclosure. */
+ .journal-summary::before {
+   content: "";
+   flex: none;
+@@ -685,7 +1070,7 @@ button:disabled {
+ }
+ 
+ .journal-summary:hover {
+-  background: var(--paper-2);
++  background: var(--fill-2);
+ }
+ 
+ .journal-date {
+@@ -728,6 +1113,14 @@ button:disabled {
+   font-weight: 600;
+ }
+ 
++.cell-sub {
++  display: block;
++  color: var(--ink-soft);
++  font-size: 0.82rem;
++  font-weight: 400;
++  margin-top: 0.1rem;
++}
++
+ .cell-select {
+   flex: none;
+   width: 2.2rem;
+@@ -735,36 +1128,128 @@ button:disabled {
+   text-align: center;
+ }
+ 
+-/* ============================================================= Экран задания */
++.num {
++  font-variant-numeric: tabular-nums;
++}
+ 
+-.job-query {
+-  margin: 0;
+-  font-size: 1.02rem;
++/* Очередь — список строк на стеклянной поверхности (для списков, а не таблиц). */
++ul.queue {
++  list-style: none;
++  padding: 0;
++  margin: 0 0 var(--spacing);
++  border-radius: var(--radius);
++  overflow: hidden;
++}
++
++ul.queue .queue-item {
++  display: flex;
++  flex-wrap: wrap;
++  align-items: center;
++  gap: 0.5rem 1rem;
++  padding: 0.8rem 1rem;
++  border-bottom: 1px solid var(--line);
++}
++
++ul.queue .queue-item:last-child {
++  border-bottom: 0;
++}
++
++ul.queue .queue-item > a:first-child {
++  flex: 1 1 16rem;
+   font-weight: 600;
+-  overflow-wrap: anywhere;
++  text-decoration: none;
+ }
+ 
+-.job-id {
++.queue-empty,
++.portal-empty,
++.jobs-empty {
+   color: var(--ink-soft);
+-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+-  font-size: 0.82rem;
++  text-align: center;
++  padding: 1.5rem 1rem;
++  list-style: none;
+ }
+ 
+-.job-facts {
+-  display: grid;
+-  grid-template-columns: auto 1fr;
+-  gap: 0.35rem 1rem;
++tr.is-risky td:first-child {
++  box-shadow: inset 3px 0 0 var(--warn);
++}
++
++/* Полоса прогресса: найдено относительно цели. */
++.progress {
++  display: inline-flex;
++  align-items: center;
++  gap: 0.6rem;
++  min-width: 9rem;
++}
++
++.progress-track,
++.funnel-track {
++  flex: 1;
++  display: block;
++  height: 6px;
++  min-width: 4rem;
++  border-radius: 99px;
++  background: var(--fill);
++  overflow: hidden;
++}
++
++.progress-bar,
++.funnel-bar {
++  display: block;
++  height: 100%;
++  border-radius: 99px;
++  background: var(--accent);
++}
++
++.progress.is-short .progress-bar {
++  background: var(--warn);
++}
++
++progress {
++  appearance: none;
++  -webkit-appearance: none;
++  height: 6px;
++  width: 12rem;
++  border: 0;
++  border-radius: 99px;
++  background: var(--fill);
++  overflow: hidden;
++  vertical-align: middle;
++}
++
++progress::-webkit-progress-bar {
++  background: var(--fill);
++  border-radius: 99px;
++}
++
++progress::-webkit-progress-value {
++  background: var(--accent);
++  border-radius: 99px;
++}
++
++progress::-moz-progress-bar {
++  background: var(--accent);
++  border-radius: 99px;
++}
++
++/* ============================================================= Экран задания */
++
++.job-query {
+   margin: 0;
++  font-size: 1.05rem;
++  font-weight: 600;
++  overflow-wrap: anywhere;
+ }
+ 
+-.job-facts dt {
++.job-id,
++.request-id {
+   color: var(--ink-soft);
+-  font-size: 0.85rem;
++  font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
++  font-size: 0.8rem;
+ }
+ 
+-.job-facts dd {
++.job-facts {
++  gap: 0.4rem 1.25rem;
+   margin: 0;
+-  overflow-wrap: anywhere;
+ }
+ 
+ .empty {
+@@ -800,27 +1285,32 @@ button:disabled {
+ .method {
+   display: inline-block;
+   margin-left: 0.4rem;
+-  padding: 0.05rem 0.4rem;
+-  border-radius: 0.3rem;
+-  background: var(--paper-2);
++  padding: 0.05rem 0.45rem;
++  border-radius: 999px;
++  background: var(--fill);
+   color: var(--ink-soft);
+   font-size: 0.75rem;
+ }
+ 
+-/* Вкладки (для экранов, где они появятся). */
++/* Вкладки раздела — сегментированный переключатель-капсула. */
+ .tabs {
+-  display: flex;
+-  gap: 0.25rem;
+-  border-bottom: 1px solid var(--line);
++  display: inline-flex;
++  flex-wrap: wrap;
++  gap: 0.15rem;
++  padding: 0.2rem;
+   margin-bottom: var(--spacing);
++  border-radius: 999px;
++  background: var(--fill);
+ }
+ 
+ .tab {
+-  padding: 0.6rem 1rem;
++  padding: 0.4rem 1rem;
++  border-radius: 999px;
+   text-decoration: none;
+   color: var(--ink-soft);
+-  border-bottom: 2px solid transparent;
+-  transition: color 0.16s var(--ease);
++  font-size: 0.9rem;
++  font-weight: 560;
++  transition: color 0.16s var(--ease), background 0.2s var(--ease);
+ }
+ 
+ .tab:hover {
+@@ -829,25 +1319,25 @@ button:disabled {
+ 
+ .tab.is-active {
+   color: var(--ink);
+-  border-bottom-color: var(--warming);
+   font-weight: 620;
++  background: var(--glass-strong);
++  box-shadow: inset 1px 1px 0 var(--glass-hi), 0 1px 3px rgba(0, 0, 0, 0.08), 0 3px 10px rgba(0, 0, 0, 0.06);
+ }
+ 
+ /* ============================================================= Бейдж статуса */
+ 
+-/* Форма маркера кодирует тип, цвет — температуру. Статус читается без цвета
+-   (design.md, Решение 5). */
++/* Форма маркера кодирует тип, цвет — смысл. Статус читается без цвета. */
+ .status {
+   display: inline-flex;
+   align-items: center;
+   gap: 0.4rem;
+-  padding: 0.15rem 0.6rem;
++  padding: 0.18rem 0.65rem 0.18rem 0.55rem;
+   border-radius: 999px;
+   font-size: 0.78rem;
+   font-weight: 600;
+   white-space: nowrap;
+-  background: var(--paper-2);
+-  color: var(--ink-soft);
++  background: var(--neutral-soft);
++  color: var(--status-ink-neutral);
+ }
+ 
+ .status::before {
+@@ -860,8 +1350,7 @@ button:disabled {
+ }
+ 
+ /* Цифра-статус экрана операций — ссылка на срез: подчёркивание убрано, чтобы
+-   бейдж не распадался на текст и линию; кликабельность видна курсором, фокус —
+-   общим outline. */
++   бейдж не распадался на текст и линию. */
+ a.status {
+   text-decoration: none;
+ }
+@@ -872,19 +1361,21 @@ a.status {
+   color: var(--status-ink-neutral);
+ }
+ 
+-/* Не прогрет — полый круг, бледный серо-голубой (тепла ещё нет). */
++/* Не прогрет — полый круг, серый (тепла ещё нет). */
+ .status-not-warmed {
+   background: var(--stage-notwarmed-soft);
+   color: var(--status-ink-notwarmed);
+ }
+ 
+ .status-queued::before,
+-.status-not-warmed::before {
++.status-not-warmed::before,
++.status-validating::before,
++.status-received::before {
+   background: transparent;
+   border: 2px solid currentColor;
+ }
+ 
+-/* Прогрев — заполненный круг. */
++/* В работе — заполненный круг тёплого тона. */
+ .status-running {
+   background: var(--warn-soft);
+   color: var(--status-ink-warn);
+@@ -895,39 +1386,81 @@ a.status {
+   color: var(--status-ink-warn);
+ }
+ 
+-/* Отправлено — заполненный круг. */
++/* Ждёт решения человека — треугольник «внимание». */
++.status-awaiting-approval,
++.status-pending,
++.status-stalled {
++  background: var(--warn-soft);
++  color: var(--status-ink-warn);
++}
++
++.status-awaiting-approval::before,
++.status-pending::before,
++.status-stalled::before {
++  width: 0;
++  height: 0;
++  border-radius: 0;
++  background: transparent;
++  border-left: 0.3rem solid transparent;
++  border-right: 0.3rem solid transparent;
++  border-bottom: 0.52rem solid currentColor;
++}
++
++/* Процесс идёт — круг с мягким ореолом. */
++.status-processing,
++.status-searching,
++.status-starting-processing,
++.status-fulfilling,
++.status-approved {
++  background: var(--stage-email-soft);
++  color: var(--status-ink-email);
++}
++
++.status-processing::before,
++.status-searching::before,
++.status-starting-processing::before,
++.status-fulfilling::before {
++  box-shadow: 0 0 0 2px var(--stage-email-soft);
++}
++
++/* Готово — заполненный круг. */
+ .status-done,
+-.status-sent {
++.status-sent,
++.status-fulfilled,
++.status-delivered {
+   background: var(--ok-soft);
+   color: var(--status-ink-ok);
+ }
+ 
+ /* Результат процесса на экране операций — терминальное положительное состояние:
+-   та же семантика, что у «отправлено», поэтому общие с ним подложка и чернила.
+-   Класс приходит от владельца экрана (categoryStateClass). */
++   та же семантика, что у «отправлено». Класс приходит от владельца экрана. */
+ .status-active {
+   background: var(--ok-soft);
+   color: var(--status-ink-ok);
+ }
+ 
+-/* Письмо отправлено — фиалковый: действие, а не температура. */
++/* Письмо отправлено — синий: действие, а не температура. */
+ .status-email-sent {
+   background: var(--stage-email-soft);
+   color: var(--status-ink-email);
+ }
+ 
+-/* Остыл — заполненный круг, холодный синий. */
++/* Остыл — квадрат, холодный бирюзовый. */
+ .status-cold {
+   background: var(--stage-cold-soft);
+   color: var(--status-ink-cold);
+ }
+ 
++.status-cold::before {
++  border-radius: 2px;
++}
++
+ /* Сбой — ромб. Красный используется только здесь. */
+ .status-failed,
+ .status-bounced,
+ .status-rejected,
+ .status-unsubscribed {
+-  background: var(--fail-soft);
++  background: var(--bad-soft);
+   color: var(--status-ink-bad);
+ }
+ 
+@@ -939,27 +1472,31 @@ a.status {
+   transform: rotate(45deg);
+ }
+ 
++/* Отменено — перечёркнутый полый круг: нейтрально, без тревоги. */
+ .status-cancelled {
+-  background: var(--paper-2);
+-  color: var(--ink-soft);
++  background: var(--neutral-soft);
++  color: var(--status-ink-neutral);
++}
++
++.status-cancelled::before {
++  background: linear-gradient(135deg, transparent 42%, currentColor 42%, currentColor 58%, transparent 58%);
++  border: 1.5px solid currentColor;
+ }
+ 
+ /* ============================================================= Верификация адреса */
+ 
+-/* Словарь BRD §3.18: смысл несут подпись и значок, цвет только дополняет.
+-   Отдельный бейдж, а не status: статус доставляемости не смешивается с
+-   состояниями жизненного цикла. */
++/* Словарь BRD §3.18: смысл несут подпись и значок, цвет только дополняет. */
+ .verify {
+   display: inline-flex;
+   align-items: center;
+   gap: 0.4rem;
+-  padding: 0.15rem 0.6rem;
++  padding: 0.18rem 0.65rem;
+   border-radius: 999px;
+   font-size: 0.78rem;
+   font-weight: 600;
+   white-space: nowrap;
+-  background: var(--paper-2);
+-  color: var(--ink-soft);
++  background: var(--neutral-soft);
++  color: var(--status-ink-neutral);
+ }
+ 
+ .verify-icon {
+@@ -983,7 +1520,7 @@ a.status {
+ }
+ 
+ .verify-invalid {
+-  background: var(--fail-soft);
++  background: var(--bad-soft);
+   color: var(--status-ink-bad);
+ }
+ 
+@@ -994,8 +1531,7 @@ a.status {
+ 
+ /* ============================================================= Таймлайн статусов */
+ 
+-/* Прямой линейный таймлайн: позиция точки = этап, форма маркера = тип
+-   (design.md, Решение 6). */
++/* Прямой линейный таймлайн: позиция точки = этап, форма маркера = тип. */
+ .timeline {
+   display: flex;
+   align-items: flex-start;
+@@ -1017,11 +1553,11 @@ a.status {
+ .timeline-point::before {
+   content: "";
+   position: absolute;
+-  top: 7px;
++  top: 8px;
+   left: 0;
+   right: 0;
+   height: 2px;
+-  background: var(--line-strong);
++  background: var(--fill);
+ }
+ 
+ .timeline-point:first-child::before {
+@@ -1035,8 +1571,8 @@ a.status {
+ .timeline-dot {
+   position: relative;
+   z-index: 1;
+-  width: 16px;
+-  height: 16px;
++  width: 18px;
++  height: 18px;
+   border-radius: 50%;
+   border: 2px solid var(--line-strong);
+   background: var(--surface);
+@@ -1044,8 +1580,8 @@ a.status {
+ }
+ 
+ .timeline-point.is-done .timeline-dot {
+-  border-color: var(--ok);
+-  background: var(--ok);
++  border-color: var(--accent);
++  background: var(--accent);
+ }
+ 
+ .timeline-point.is-current .timeline-dot {
+@@ -1064,7 +1600,7 @@ a.status {
+ 
+ .timeline-label {
+   margin-top: 0.45rem;
+-  font-size: 0.76rem;
++  font-size: 0.78rem;
+   color: var(--ink-soft);
+ }
+ 
+@@ -1096,17 +1632,13 @@ a.status {
+   pointer-events: none;
+   transition: opacity 0.18s var(--ease), transform 0.18s var(--ease);
+   max-width: 16rem;
+-  padding: 0.5rem 0.7rem;
+-  font-size: 0.78rem;
++  padding: 0.5rem 0.75rem;
++  font-size: 0.8rem;
+   font-weight: 400;
+   color: var(--ink);
+   text-align: left;
+-  background: var(--glass);
+-  border: 1px solid var(--glass-border);
+   border-radius: var(--radius-sm);
+-  box-shadow: var(--shadow);
+-  backdrop-filter: blur(12px) saturate(150%);
+-  -webkit-backdrop-filter: blur(12px) saturate(150%);
++  background: var(--glass-strong);
+ }
+ 
+ /* Компактный таймлайн в строке истории переписки. */
+@@ -1124,6 +1656,10 @@ a.status {
+   height: 12px;
+ }
+ 
++.timeline-inline .timeline-point::before {
++  top: 5px;
++}
++
+ .timeline-inline .timeline-label {
+   font-size: 0.72rem;
+ }
+@@ -1138,8 +1674,6 @@ a.status {
+ }
+ 
+ .stage-col {
+-  background: var(--surface);
+-  border: 1px solid var(--line);
+   border-radius: var(--radius);
+   padding: 0.9rem;
+   transition: border-color 0.18s var(--ease), box-shadow 0.18s var(--ease), background 0.18s var(--ease);
+@@ -1147,8 +1681,8 @@ a.status {
+ 
+ /* Зона приёма нагревается под перетаскиваемым лидом. */
+ .stage-col.is-over {
+-  border-color: var(--warming);
+-  box-shadow: 0 0 0 3px var(--warming-soft);
++  border-color: var(--warn);
++  box-shadow: 0 0 0 4px var(--warn-soft);
+ }
+ 
+ .stage-col.is-heating {
+@@ -1176,17 +1710,18 @@ a.status {
+   background: var(--line-strong);
+ }
+ 
+-.stage-col[data-stage="not warmed"] .stage-dot { background: var(--stage-notwarmed); }
++.stage-col[data-stage="not warmed"] .stage-dot { background: transparent; border: 2px solid var(--stage-notwarmed); }
+ .stage-col[data-stage="email sent"] .stage-dot { background: var(--stage-email); }
+ .stage-col[data-stage="warming"] .stage-dot { background: var(--stage-warming); }
+-.stage-col[data-stage="cold"] .stage-dot { background: var(--stage-cold); }
++.stage-col[data-stage="cold"] .stage-dot { background: var(--stage-cold); border-radius: 3px; }
+ 
+ .stage-count {
+   font-size: 0.78rem;
++  font-weight: 600;
+   color: var(--ink-soft);
+-  background: var(--paper-2);
++  background: var(--fill);
+   border-radius: 999px;
+-  padding: 0.05rem 0.5rem;
++  padding: 0.05rem 0.55rem;
+ }
+ 
+ .lead-list {
+@@ -1199,17 +1734,18 @@ a.status {
+ }
+ 
+ .lead {
+-  background: var(--paper);
+-  border: 1px solid var(--line);
++  background: var(--glass-strong);
++  border: 1px solid var(--glass-border);
+   border-radius: var(--radius-sm);
+-  padding: 0.55rem 0.65rem;
++  padding: 0.6rem 0.7rem;
+   cursor: grab;
++  box-shadow: inset 1px 1px 0 var(--glass-hi);
+   transition: transform 0.14s var(--ease), box-shadow 0.14s var(--ease), opacity 0.14s var(--ease);
+ }
+ 
+ .lead:hover {
+   transform: translateY(-1px);
+-  box-shadow: var(--shadow);
++  box-shadow: inset 1px 1px 0 var(--glass-hi), var(--shadow);
+ }
+ 
+ .lead.is-dragging {
+@@ -1238,20 +1774,16 @@ a.status {
+   clip: rect(0 0 0 0);
+ }
+ 
+-.lead-move select {
++.page .lead-move select {
+   flex: 1;
+   min-width: 0;
+-  border: 1px solid var(--line-strong);
+-  border-radius: var(--radius-sm);
+-  padding: 0.3rem 0.4rem;
+-  font: inherit;
++  width: auto;
++  padding: 0.3rem 1.8rem 0.3rem 0.6rem;
+   font-size: 0.82rem;
+-  background: var(--surface);
+-  color: var(--ink);
+ }
+ 
+ .lead-move button {
+-  padding: 0.3rem 0.55rem;
++  padding: 0.3rem 0.7rem;
+   font-size: 0.82rem;
+ }
+ 
+@@ -1269,7 +1801,8 @@ a.status {
+ .history-item {
+   border: 1px solid var(--line);
+   border-radius: var(--radius-sm);
+-  padding: 0.6rem 0.75rem;
++  background: var(--fill-2);
++  padding: 0.65rem 0.8rem;
+ }
+ 
+ .history-head {
+@@ -1301,26 +1834,33 @@ a.status {
+ 
+ .dialogue li {
+   max-width: 44rem;
+-  padding: 0.6rem 0.85rem;
+-  border-radius: var(--radius);
++  padding: 0.6rem 0.95rem;
++  border-radius: 1.1rem;
+   animation: turn-in 0.26s var(--ease) both;
+ }
+ 
++/* Реплика оператора — графитовый «пузырь» справа, ассистента — стекло слева. */
+ .dialogue-operator {
+   align-self: flex-end;
+-  background: var(--cold-soft);
+-  border: 1px solid var(--line);
++  background: var(--accent);
++  color: var(--btn-fg);
++  border-bottom-right-radius: 0.35rem;
+ }
+ 
+ .dialogue-agent {
+   align-self: flex-start;
+-  background: var(--paper-2);
+-  border: 1px solid var(--line);
++  background: var(--glass-strong);
++  border: 1px solid var(--glass-border);
++  border-bottom-left-radius: 0.35rem;
++}
++
++.dialogue-error {
++  color: var(--status-ink-bad);
+ }
+ 
+ .plan-limits {
+   border: 1px solid var(--line);
+-  border-radius: var(--radius);
++  border-radius: var(--radius-sm);
+   padding: 0.75rem var(--spacing) var(--spacing);
+   margin: 0 0 var(--spacing);
+ }
+@@ -1350,11 +1890,10 @@ a.status {
+   display: inline-flex;
+   align-items: baseline;
+   gap: 0.35rem;
+-  padding: 0.2rem 0.6rem;
+-  border: 1px solid var(--line-strong);
++  padding: 0.22rem 0.7rem;
+   border-radius: 999px;
+   font-size: 0.82rem;
+-  background: var(--paper);
++  background: var(--fill);
+ }
+ 
+ .chip-label {
+@@ -1394,92 +1933,21 @@ a.status {
+ .signal-meta {
+   margin: 0.25rem 0 0;
+   font-size: 0.82rem;
+-  color: var(--ink-soft);
+-}
+-
+-.socials {
+-  list-style: none;
+-  margin: 0;
+-  padding: 0;
+-}
+-
+-.socials li {
+-  margin-bottom: 0.25rem;
+-}
+-
+-/* ============================================================= Движение */
+-
+-/* Движение только в ответ на действие; один оркестрованный момент — «нагрев»
+-   лида (design.md, Решение 9). */
+-@keyframes rail-in {
+-  from {
+-    opacity: 0;
+-    transform: translateX(-6px);
+-  }
+-  to {
+-    opacity: 1;
+-    transform: none;
+-  }
+-}
+-
+-@keyframes turn-in {
+-  from {
+-    opacity: 0;
+-    transform: translateY(4px);
+-  }
+-  to {
+-    opacity: 1;
+-    transform: none;
+-  }
+-}
+-
+-@keyframes heat {
+-  0%,
+-  100% {
+-    box-shadow: 0 0 0 3px var(--warming-soft);
+-  }
+-  50% {
+-    box-shadow: 0 0 0 7px var(--warming-soft);
+-  }
+-}
+-
+-/* Обязательное уважение пользовательской настройки: переходы мгновенны, но
+-   действия остаются доступны. */
+-@media (prefers-reduced-motion: reduce) {
+-  *,
+-  *::before,
+-  *::after {
+-    animation-duration: 0.001ms !important;
+-    animation-iteration-count: 1 !important;
+-    transition-duration: 0.001ms !important;
+-    scroll-behavior: auto !important;
+-  }
+-}
+-
+-/* ============================================================= Адаптив */
+-
+-@media (max-width: 52rem) {
+-  body:has(> .sidebar) {
+-    grid-template-columns: 1fr;
+-  }
++  color: var(--ink-soft);
++}
+ 
+-  .sidebar {
+-    position: static;
+-    height: auto;
+-    border-right: 0;
+-    border-bottom: 1px solid var(--line);
+-  }
++.socials {
++  list-style: none;
++  margin: 0;
++  padding: 0;
++}
+ 
+-  .sidebar-list {
+-    flex-direction: row;
+-    flex-wrap: wrap;
+-  }
++.socials li {
++  margin-bottom: 0.25rem;
+ }
+ 
+ /* ============================================================= Библиотека шаблонов */
+ 
+-/* Список шаблонов — строка списка (design.md, Решение 8): то же полотно, что у
+-   панелей, но без рамки-плашки; активная строка помечается фоновой ролью. */
+ .template-list {
+   list-style: none;
+   margin: 0;
+@@ -1493,14 +1961,14 @@ a.status {
+   display: flex;
+   flex-direction: column;
+   gap: 0.12rem;
+-  padding: 0.5rem 0.7rem;
++  padding: 0.55rem 0.8rem;
+   border-radius: var(--radius-sm);
+   border: 1px solid transparent;
+ }
+ 
+ .template-item.is-selected {
+-  background: var(--paper-2);
+-  border-color: var(--line-strong);
++  background: var(--glass-strong);
++  border-color: var(--glass-border);
+ }
+ 
+ .template-meta {
+@@ -1542,12 +2010,10 @@ a.status {
+   min-width: 11rem;
+ }
+ 
+-.variable-row input[type="text"] {
+-  padding: 0.4rem 0.6rem;
+-  border: 1px solid var(--line-strong);
+-  border-radius: var(--radius-sm);
+-  background: var(--paper);
+-  color: var(--ink);
++.page .variable-row input[type="text"] {
++  width: auto;
++  flex: 1 1 10rem;
++  padding: 0.4rem 0.7rem;
+ }
+ 
+ /* Предпросмотр собранного письма. */
+@@ -1568,56 +2034,68 @@ a.status {
+ /* ============================================================= Витрина карточек */
+ 
+ /* Список карточек в двух представлениях: одна модель карточки, различие —
+-   контейнер и его класс data-cards-view (design.md, Решение 1). */
++   контейнер и его класс data-cards-view. */
+ .cards-toolbar {
+   display: flex;
+   justify-content: space-between;
+   align-items: center;
+   gap: 0.75rem;
+   flex-wrap: wrap;
+-  margin-bottom: 0.75rem;
++  margin-bottom: 0.9rem;
+ }
+ 
++/* Переключатели состава и представления — сегментированные капсулы. */
+ .composition-switch,
+ .view-switch {
+   display: inline-flex;
+-  border: 1px solid var(--line-strong);
+-  border-radius: var(--radius-sm);
+-  overflow: hidden;
++  flex-wrap: wrap;
++  gap: 0.15rem;
++  padding: 0.2rem;
++  border-radius: 999px;
++  background: var(--fill);
+ }
+ 
+ .view-option {
+   margin: 0;
+   border: 0;
+-  border-radius: 0;
+-  background: var(--paper);
++  border-radius: 999px;
++  background: transparent;
+   color: var(--ink-soft);
+-  padding: 0.35rem 0.85rem;
++  padding: 0.35rem 0.9rem;
+   font: inherit;
++  font-size: 0.88rem;
++  font-weight: 560;
+   cursor: pointer;
++  box-shadow: none;
++  transition: color 0.16s var(--ease), background 0.2s var(--ease);
+ }
+ 
+ .view-option + .view-option {
+-  border-left: 1px solid var(--line-strong);
++  border-left: 0;
+ }
+ 
+ .view-option:hover {
+-  background: var(--paper-2);
++  opacity: 1;
++  color: var(--ink);
++  background: transparent;
++  box-shadow: none;
+ }
+ 
+ .view-option.is-active {
+-  background: var(--cold-soft);
++  background: var(--glass-strong);
+   color: var(--ink);
++  font-weight: 620;
++  box-shadow: inset 1px 1px 0 var(--glass-hi), 0 1px 3px rgba(0, 0, 0, 0.08), 0 3px 10px rgba(0, 0, 0, 0.06);
+ }
+ 
+ .view-option:focus-visible {
+-  outline: 2px solid var(--cold);
+-  outline-offset: -2px;
++  outline: 2px solid var(--accent);
++  outline-offset: 1px;
+ }
+ 
+ .cards {
+   display: grid;
+-  gap: 0.6rem;
++  gap: 0.7rem;
+   align-items: stretch;
+ }
+ 
+@@ -1629,27 +2107,27 @@ a.status {
+   grid-template-columns: 1fr;
+ }
+ 
+-/* Карточка — строка списка (design.md, Решение 8): то же полотно, что у панелей,
+-   но кликабельная целиком и без внешней тени. */
++/* Карточка — строка списка: стекло, кликабельная целиком. */
+ .cards-item {
+   display: grid;
+   gap: 0.3rem;
+-  padding: 0.85rem 1rem;
+-  border: 1px solid var(--line);
++  padding: 0.9rem 1.05rem;
+   border-radius: var(--radius);
+-  background: var(--surface);
+   color: inherit;
+   text-decoration: none;
+-  transition: border-color 0.18s var(--ease), box-shadow 0.18s var(--ease);
++  transition: transform 0.18s var(--ease), box-shadow 0.18s var(--ease);
+ }
+ 
+ .cards-item:hover {
+-  border-color: var(--line-strong);
+-  box-shadow: var(--shadow);
++  transform: translateY(-1px);
++  box-shadow:
++    inset 1px 1px 0 var(--glass-hi),
++    inset -1px -1px 0 var(--glass-lo),
++    var(--shadow-float);
+ }
+ 
+ .cards-item:focus-visible {
+-  outline: 2px solid var(--cold);
++  outline: 2px solid var(--accent);
+   outline-offset: 2px;
+ }
+ 
+@@ -1659,17 +2137,17 @@ a.status {
+ 
+ .cards-item .card-desc {
+   color: var(--ink-soft);
+-  font-size: 0.85rem;
++  font-size: 0.86rem;
+ }
+ 
+ .cards-item .card-email {
+   color: var(--ink-soft);
+-  font-size: 0.85rem;
++  font-size: 0.86rem;
+   word-break: break-all;
+ }
+ 
+ .cards-item .card-no-email {
+-  color: var(--fail);
++  color: var(--status-ink-bad);
+   font-weight: 600;
+ }
+ 
+@@ -1684,21 +2162,21 @@ a.status {
+   align-items: baseline;
+ }
+ 
+-/* Карточка без email выделяется красным. Цвет — не единственный носитель
+-   смысла: отсутствие письма озвучено меткой «нет email» в строке и aria-label на
+-   карточке (design.md, Решение 6). */
++/* Карточка без email выделяется красной полосой слева и подписью «нет email»;
++   цвет — не единственный носитель смысла (метка и aria-label). */
+ .cards-item.is-no-email {
+-  border-color: var(--fail);
+-  background: var(--fail-soft);
++  box-shadow:
++    inset 3px 0 0 var(--bad),
++    inset 1px 1px 0 var(--glass-hi),
++    var(--shadow);
+ }
+ 
+ .cards-item.is-no-email .card-name {
+-  color: var(--fail);
++  color: var(--status-ink-bad);
+ }
+ 
+ /* Строка найденной компании на экране задания: email рядом с идентификатором и
+-   та же красная подсветка «нет email», что и в списке карточек. Отсутствие письма
+-   — не только цвет: рядом стоит метка «нет email» и aria-label на строке. */
++   та же красная пометка «нет email», что и в списке карточек. */
+ .job-company {
+   display: flex;
+   align-items: baseline;
+@@ -1707,16 +2185,16 @@ a.status {
+ }
+ 
+ .job-company.is-no-email {
+-  border-color: var(--fail);
+-  background: var(--fail-soft);
++  border-color: var(--bad);
++  background: var(--bad-soft);
+ }
+ 
+ .job-company.is-no-email .link {
+-  color: var(--fail);
++  color: var(--status-ink-bad);
+ }
+ 
+ .job-company .card-no-email {
+-  color: var(--fail);
++  color: var(--status-ink-bad);
+   font-weight: 600;
+ }
+ 
+@@ -1741,34 +2219,35 @@ a.status {
+ /* Вердикт оценки: цвет — не единственный носитель смысла, рядом всегда стоит
+    текстовая подпись вердикта. */
+ .verdict {
+-  display: inline-block;
+-  padding: 0.1rem 0.5rem;
++  display: inline-flex;
++  align-items: center;
++  gap: 0.35rem;
++  padding: 0.15rem 0.6rem;
+   border-radius: 999px;
+-  border: 1px solid var(--line-strong);
+   font-size: 0.78rem;
++  font-weight: 600;
+   white-space: nowrap;
++  background: var(--neutral-soft);
++  color: var(--status-ink-neutral);
+ }
+ 
+ .verdict-fits {
+   background: var(--ok-soft);
+-  border-color: var(--ok);
+-  color: var(--ok);
++  color: var(--status-ink-ok);
+ }
+ 
+ .verdict-hypothesis {
+   background: var(--warn-soft);
+-  border-color: var(--warn);
+-  color: var(--warn);
++  color: var(--status-ink-warn);
+ }
+ 
+ .verdict-unsuitable {
+   background: var(--neutral-soft);
+-  border-color: var(--line-strong);
+-  color: var(--neutral);
++  color: var(--status-ink-neutral);
+ }
+ 
+ .verdict-unknown {
+-  background: var(--paper-2);
++  background: var(--fill);
+   color: var(--ink-soft);
+ }
+ 
+@@ -1800,21 +2279,21 @@ a.status {
+ 
+ .evidence-item {
+   border: 1px solid var(--line);
+-  border-radius: var(--radius);
+-  padding: 0.6rem 0.8rem;
+-  background: var(--surface);
++  border-radius: var(--radius-sm);
++  padding: 0.7rem 0.9rem;
++  background: var(--fill-2);
+ }
+ 
+ .evidence-facts {
+   display: grid;
+   grid-template-columns: minmax(6rem, 10rem) 1fr;
+-  gap: 0.2rem 0.75rem;
++  gap: 0.25rem 0.9rem;
+   margin: 0;
+ }
+ 
+ .evidence-facts dt {
+   color: var(--ink-soft);
+-  font-size: 0.8rem;
++  font-size: 0.82rem;
+ }
+ 
+ .evidence-facts dd {
+@@ -1832,8 +2311,9 @@ a.status {
+ 
+ .fit-item {
+   border: 1px solid var(--line);
+-  border-radius: var(--radius);
+-  padding: 0.6rem 0.8rem;
++  border-radius: var(--radius-sm);
++  background: var(--fill-2);
++  padding: 0.7rem 0.9rem;
+ }
+ 
+ .verdict-distribution {
+@@ -1880,140 +2360,154 @@ a.status {
+   color: var(--ink-soft);
+ }
+ 
+-/* ============================================================= Хром консоли
+-   Вид из выгрузки лидов (change console-theme-switcher): градиентное полотно,
+-   стеклянные поверхности и кнопки, мягкие анимации по действию. */
+-
+-/* Цвет текста на акцентной кнопке различается по теме. */
+-:root {
+-  --btn-fg: #ffffff;
+-}
+-
+-:root[data-theme="dark"] {
+-  --btn-fg: #0b1024;
+-}
++/* ============================================================= Отчёты и дашборд */
+ 
+-body {
+-  background-color: var(--paper);
+-  background-image:
+-    radial-gradient(55vw 55vw at 8% -10%, var(--accent-soft), transparent 60%),
+-    radial-gradient(50vw 50vw at 105% 4%, var(--accent-soft), transparent 55%),
+-    linear-gradient(160deg, var(--bg-1), var(--bg-2) 55%, var(--bg-3));
+-  background-attachment: fixed;
++/* Плитки ключевых цифр: подпись сверху, крупное число, доля мелко. */
++.kpi-cards {
++  list-style: none;
++  margin: 0 0 var(--spacing);
++  padding: 0;
++  display: grid;
++  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
++  gap: 0.9rem;
+ }
+ 
+-/* Меню — колонка, переключатель темы прижат к низу. */
+-.sidebar {
++.kpi-card {
+   display: flex;
+   flex-direction: column;
++  gap: 0.2rem;
++  padding: 1rem 1.15rem;
++  border-radius: var(--radius);
+ }
+ 
+-/* Активный пункт — акцент хрома, а не термо-рампа. */
+-.sidebar-list a.is-active::before {
+-  background: linear-gradient(var(--accent), var(--accent-2));
++.kpi-label {
++  color: var(--ink-soft);
++  font-size: 0.86rem;
+ }
+ 
+-.panel,
+-.stage-col,
+-.cockpit-panel {
+-  background: var(--glass);
+-  border: 1px solid var(--line);
+-  backdrop-filter: blur(18px) saturate(140%);
+-  -webkit-backdrop-filter: blur(18px) saturate(140%);
+-  box-shadow: 0 24px 60px -36px rgba(3, 6, 20, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.06);
++.kpi-value {
++  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", system-ui, sans-serif;
++  font-size: 1.9rem;
++  font-weight: 700;
++  letter-spacing: -0.02em;
++  font-variant-numeric: tabular-nums;
+ }
+ 
+-@supports not (backdrop-filter: blur(1px)) {
+-  .panel,
+-  .stage-col,
+-  .cockpit-panel {
+-    background: var(--surface);
+-  }
++.kpi-share {
++  color: var(--ink-soft);
++  font-size: 0.82rem;
+ }
+ 
+-button {
+-  background: linear-gradient(120deg, var(--accent), var(--accent-2));
+-  color: var(--btn-fg);
+-  border: 1px solid transparent;
+-  box-shadow: 0 10px 24px -16px var(--accent);
+-  transition: transform 0.18s var(--ease), box-shadow 0.25s var(--ease), opacity 0.16s var(--ease);
++.growth {
++  margin: 0 0 var(--spacing);
+ }
+ 
+-button:hover {
+-  opacity: 1;
+-  transform: translateY(-1px);
+-  box-shadow: 0 14px 30px -12px var(--accent);
++.growth figcaption {
++  color: var(--ink-soft);
++  font-size: 0.86rem;
++  margin-bottom: 0.5rem;
+ }
+ 
+-button:active {
+-  transform: translateY(1px) scale(0.99);
++.growth-chart {
++  display: block;
++  width: 100%;
++  height: auto;
+ }
+ 
+-.button-secondary {
+-  background: var(--glass);
+-  color: var(--ink);
+-  border: 1px solid var(--line-strong);
+-  backdrop-filter: blur(10px);
+-  -webkit-backdrop-filter: blur(10px);
++.growth-line {
++  fill: none;
++  stroke: var(--accent);
++  stroke-width: 2;
+ }
+ 
+-.button-secondary:hover {
+-  border-color: var(--accent);
+-  box-shadow: 0 10px 24px -12px var(--accent);
++.growth-area {
++  fill: var(--accent-soft);
+ }
+ 
+-.button-danger {
+-  background: transparent;
+-  color: var(--bad);
+-  border: 1px solid var(--bad);
+-  box-shadow: none;
++.chart-empty,
++.dashboard-hidden,
++.reports-hidden,
++.insights-hidden,
++.reports-unavailable,
++.insights-unavailable {
++  color: var(--ink-soft);
+ }
+ 
+-.button-danger:hover {
+-  box-shadow: 0 10px 24px -12px var(--bad);
++/* Воронка отчёта: подпись, полоса, число. */
++.funnel-row {
++  display: grid;
++  grid-template-columns: minmax(8rem, 14rem) 1fr minmax(3rem, max-content);
++  align-items: center;
++  gap: 0.9rem;
++  padding: 0.4rem 0;
+ }
+ 
+-/* Переключатель темы в подвале меню. */
+-.theme-toggle {
+-  margin-top: auto;
++.funnel-count,
++.funnel-share {
++  font-weight: 600;
++  font-variant-numeric: tabular-nums;
++  text-align: right;
++}
++
++.export-progress-value {
+   display: flex;
++  flex-wrap: wrap;
+   align-items: center;
+-  gap: 0.5rem;
+-  width: 100%;
+-  padding: 0.55rem 0.7rem;
+-  border: 1px solid var(--line-strong);
+-  border-radius: var(--radius-sm);
+-  background: var(--glass);
+-  color: var(--ink);
+-  font: inherit;
+-  font-size: 0.85rem;
+-  cursor: pointer;
+-  backdrop-filter: blur(10px);
+-  -webkit-backdrop-filter: blur(10px);
+-  box-shadow: none;
+-  transition: transform 0.18s var(--ease), border-color 0.18s var(--ease), box-shadow 0.25s var(--ease);
++  gap: 0.75rem;
+ }
+ 
+-.theme-toggle:hover {
+-  border-color: var(--accent);
+-  transform: translateY(-1px);
+-  box-shadow: 0 10px 24px -14px var(--accent);
++.export-progress-label,
++.export-step,
++.export-error-code {
++  color: var(--ink-soft);
++  font-size: 0.88rem;
+ }
+ 
+-.theme-toggle-label {
+-  color: var(--ink-soft);
++.export-error {
++  color: var(--status-ink-bad);
+ }
+ 
+-.theme-toggle-value {
+-  margin-left: auto;
+-  font-weight: 620;
++/* ============================================================= Движение */
++
++/* Движение только в ответ на действие и при загрузке; один оркестрованный
++   момент — «нагрев» лида. */
++@keyframes rail-in {
++  from {
++    opacity: 0;
++    transform: translateX(-6px);
++  }
++  to {
++    opacity: 1;
++    transform: none;
++  }
++}
++
++@keyframes turn-in {
++  from {
++    opacity: 0;
++    transform: translateY(4px);
++  }
++  to {
++    opacity: 1;
++    transform: none;
++  }
+ }
+ 
+-/* Появление списков лент — короткое, по загрузке страницы. */
++@keyframes heat {
++  0%,
++  100% {
++    box-shadow: 0 0 0 3px var(--warn-soft);
++  }
++  50% {
++    box-shadow: 0 0 0 7px var(--warn-soft);
++  }
++}
++
++/* Появление строк и карточек — короткое, по загрузке страницы. */
+ @keyframes console-rise {
+   from {
+     opacity: 0;
+-    transform: translateY(8px);
++    transform: translateY(6px);
+   }
+   to {
+     opacity: 1;
+@@ -2023,15 +2517,66 @@ button:active {
+ 
+ .table tbody tr,
+ .cards-item {
+-  animation: console-rise 0.45s var(--ease) both;
++  animation: console-rise 0.4s var(--ease) both;
+ }
+ 
++/* Обязательное уважение пользовательской настройки: переходы мгновенны, но
++   действия остаются доступны. */
+ @media (prefers-reduced-motion: reduce) {
+   *,
+   *::before,
+   *::after {
+     animation: none !important;
+     transition: none !important;
++    scroll-behavior: auto !important;
++  }
++}
++
++/* ============================================================= Адаптив */
++
++@media (max-width: 52rem) {
++  body:has(> .sidebar) {
++    grid-template-columns: 1fr;
++  }
++
++  .sidebar {
++    position: static;
++    height: auto;
++    margin: 0.75rem 0.75rem 0;
++    border-radius: var(--radius);
++  }
++
++  .sidebar-list {
++    flex-direction: row;
++    flex-wrap: wrap;
++  }
++
++  .theme-toggle {
++    margin-top: 0.75rem;
++  }
++
++  .split {
++    grid-template-columns: 1fr;
++  }
++
++  .facts,
++  .job-facts,
++  .export-status,
++  .ops,
++  .cockpit-agent-summary {
++    grid-template-columns: 1fr;
++    gap: 0.15rem;
++  }
++
++  .facts dd,
++  .export-status dd,
++  .ops dd {
++    margin-bottom: 0.5rem;
++  }
++
++  .page table {
++    display: block;
++    overflow-x: auto;
+   }
+ }
+ 
+@@ -2039,8 +2584,8 @@ button:active {
+    Общий слой экрана операций (operations-cockpit). Классы с префиксом cockpit-
+    несут только вид: панели, лента агентов, граф процессов и полноэкранный
+    дашборд. Цвета берутся из токенов темы, поэтому обе темы корректны без
+-   отдельных правил (design.md, Решение 8). Смысл статуса несут подпись и форма
+-   маркера общего бейджа .status; цвет — только дополнение. */
++   отдельных правил. Смысл статуса несут подпись и форма маркера общего бейджа
++   .status; цвет — только дополнение. */
+ 
+ .cockpit,
+ .cockpit-agents,
+@@ -2050,9 +2595,8 @@ button:active {
+   display: block;
+ }
+ 
+-/* Панели — та же стеклянная поверхность, что у карточек (см. группу .panel), но
+-   сеткой: состав расширяется регистрацией, поэтому раскладка не знает числа
+-   панелей. Отказ или скрытие одной панели не смещает остальные. */
++/* Панели — стеклянные, сеткой: состав расширяется регистрацией, поэтому
++   раскладка не знает числа панелей. Отказ одной панели не смещает остальные. */
+ .cockpit-panels {
+   display: grid;
+   grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
+@@ -2095,8 +2639,7 @@ button:active {
+   box-shadow: inset 3px 0 0 var(--accent);
+ }
+ 
+-/* Лента агентов: строка — раскрытие details с сохранённым состоянием (hx-preserve
+-   со стороны экрана). Указатель и раскрытие оформлены как у журнала консоли. */
++/* Лента агентов: строка — раскрытие details с сохранённым состоянием. */
+ .cockpit-agents-list {
+   display: flex;
+   flex-direction: column;
+@@ -2105,26 +2648,16 @@ button:active {
+ }
+ 
+ .cockpit-agent-row {
+-  border: 1px solid var(--line);
+   border-radius: var(--radius-sm);
+-  background: var(--glass);
+-  backdrop-filter: blur(10px);
+-  -webkit-backdrop-filter: blur(10px);
+   overflow: hidden;
+   animation: console-rise 0.4s var(--ease) both;
+ }
+ 
+-@supports not (backdrop-filter: blur(1px)) {
+-  .cockpit-agent-row {
+-    background: var(--surface);
+-  }
+-}
+-
+ .cockpit-agent-row > summary {
+   display: flex;
+   align-items: center;
+   gap: 0.75rem;
+-  padding: 0.6rem 0.8rem;
++  padding: 0.65rem 0.9rem;
+   cursor: pointer;
+   list-style: none;
+   transition: background 0.16s var(--ease);
+@@ -2151,7 +2684,7 @@ button:active {
+ 
+ .cockpit-agent-row > summary:hover,
+ .cockpit-agent-row[open] > summary {
+-  background: var(--paper-2);
++  background: var(--fill-2);
+ }
+ 
+ .cockpit-agent-company {
+@@ -2167,7 +2700,7 @@ button:active {
+ .cockpit-agent-meta {
+   list-style: none;
+   margin: 0;
+-  padding: 0 0.8rem 0.75rem 1.9rem;
++  padding: 0 0.9rem 0.75rem 1.9rem;
+   display: grid;
+   gap: 0.25rem;
+   color: var(--ink-soft);
+@@ -2175,34 +2708,22 @@ button:active {
+ }
+ 
+ .cockpit-agent-summary {
+-  display: grid;
+-  grid-template-columns: max-content 1fr;
+-  gap: 0.25rem 1rem;
+   margin: 0 0 var(--spacing);
+ }
+ 
+-.cockpit-agent-summary dt {
+-  color: var(--ink-soft);
+-  font-size: 0.85rem;
+-}
+-
+-.cockpit-agent-summary dd {
+-  margin: 0;
+-}
+-
+-/* Граф процессов: узлы и рёбра берут цвет из токенов, а не из чёрного по
+-   умолчанию, — иначе в тёмной теме текст узлов пропадает. */
+-.cockpit-figure {
++/* Граф процессов и топологии: узлы и рёбра берут цвет из токенов, а не из
++   чёрного по умолчанию, — иначе в тёмной теме текст узлов пропадает. */
++.cockpit-figure,
++.topology-figure {
+   margin: 0 0 var(--spacing);
+   padding: var(--spacing);
+-  background: var(--surface);
+-  border: 1px solid var(--line);
+   border-radius: var(--radius);
+   overflow-x: auto;
+ }
+ 
+ .cockpit-graph,
+-.cockpit-timeline {
++.cockpit-timeline,
++.topology-graph {
+   display: block;
+   width: 100%;
+   min-width: 32rem;
+@@ -2214,8 +2735,21 @@ button:active {
+   stroke-width: 1.5;
+ }
+ 
++.topology-edge {
++  stroke: var(--line-strong);
++  stroke-width: 1.5;
++}
++
+ .cockpit-node-box {
+-  fill: var(--paper-2);
++  fill: var(--glass-strong);
++  stroke: var(--line-strong);
++  stroke-width: 1;
++  rx: 12px;
++  ry: 12px;
++}
++
++.topology-node-box {
++  fill: var(--glass-strong);
+   stroke: var(--line-strong);
+   stroke-width: 1;
+   rx: 12px;
+@@ -2228,14 +2762,25 @@ button:active {
+   font-weight: 600;
+ }
+ 
++.topology-node-label {
++  fill: var(--ink);
++  font-size: 13px;
++  font-weight: 600;
++}
++
+ .cockpit-node-state {
+   fill: var(--ink-soft);
+   font-size: 12px;
+ }
+ 
++.topology-node-state {
++  fill: var(--ink-soft);
++  font-size: 12px;
++}
++
+ /* Полноэкранный дашборд: занимает полотно целиком, боковое меню скрыто; возврат
+-   к экрану операций — ссылкой в самом дашборде (tasks 6.5). Гейт :has() не
+-   трогает остальные экраны консоли. */
++   к экрану операций — ссылкой в самом дашборде. Гейт :has() не трогает
++   остальные экраны консоли. */
+ body:has(.cockpit-dashboard) {
+   grid-template-columns: 1fr;
+ }
+diff --git a/openspec/changes/console-liquid-glass/.openspec.yaml b/openspec/changes/console-liquid-glass/.openspec.yaml
+new file mode 100644
+index 0000000..aa32566
+--- /dev/null
++++ b/openspec/changes/console-liquid-glass/.openspec.yaml
+@@ -0,0 +1,2 @@
++schema: spec-driven
++created: 2026-10-06
+diff --git a/openspec/changes/console-liquid-glass/design.md b/openspec/changes/console-liquid-glass/design.md
+new file mode 100644
+index 0000000..a7db12d
+--- /dev/null
++++ b/openspec/changes/console-liquid-glass/design.md
+@@ -0,0 +1,47 @@
++## Context
++
++Общий слой оформления серверных экранов (`frontend/components/static/console.css`) раздаётся всем сервисам по `/static/console.css` (requirement «Общий слой оформления серверных экранов»). Тема переключается скриптом `theme.js` через атрибут `data-theme`; токены светлой темы объявлены в `:root`, тёмной — в `:root[data-theme="dark"]`. Тесты общего слоя (`contrast_test.go`, `static_test.go`, `a11y_test.go`) читают токены и правила прямо из файла: контраст подписей статусов на их подложках, формы маркеров, наличие правил экрана операций и отключение движения. CSP консоли запрещает встроенные стили и скрипты.
++
++Направление оформления выбрано пользователем по интерактивному макету: «матовое стекло» и графитовый акцент.
++
++## Goals / Non-Goals
++
++**Goals:**
++
++- Заменить фиолетово-градиентный вид на матовое стекло, не меняя классов разметки: все экраны получают новый вид одним файлом.
++- Убрать машинные коды из интерфейса механизмом, который переиспользуют все контексты.
++- Привести экраны заявок к виду «таблица / подпись — значение / панель решения».
++
++**Non-Goals:**
++
++- Публичные страницы edge, разметка экранов операций и топологии, перевод подписей на другие языки.
++- Имена тенантов вместо идентификаторов: в контексте `request-fulfillment` нет контракта чтения названия тенанта, поэтому идентификатор показывается с подписью «Клиент:» — честно, без выдуманного имени.
++
++## Decisions
++
++### Решение 1. Стекло как набор токенов и одно групповое правило
++
++Материал задаётся токенами (`--glass`, `--glass-border`, `--glass-hi`, `--glass-lo`, `--glass-blur`) и одним групповым правилом для всех поверхностей. `--surface` остаётся непрозрачным эквивалентом стекла на подложке: по нему тесты считают контраст, им же заменяется стекло в блоке `@supports not (backdrop-filter: …)`. Так контраст проверяется на том, что видит человек в худшем случае.
++
++**Альтернатива:** SVG-фильтр преломления (`backdrop-filter: url(#…)`) — отклонён: работает только в Chromium и требует встроенной разметки, которую запрещает CSP.
++
++### Решение 2. Графит вместо цветного акцента
++
++Акцент хрома — `--accent` (графит), текст на нём — `--btn-fg`. Акцент не пересекается с палитрой статусов, поэтому цвет в интерфейсе всегда означает статус. «Письмо отправлено» переведено из фиолетового в синий: фиолетовый исключён из оформления целиком.
++
++### Решение 3. Подписи кодов — функция `label` общего слоя
++
++`Messages.Label(prefix, code)` нормализует код так же, как `StatusClass` (нижний регистр, разделители — дефис), и ищет ключ `prefix.code` в каталоге. Найден — подпись; не найден — сам код. Функция шаблонов `label` принимает код любого строкового типа (`fmt.Sprint`), поэтому доменные именованные строки передаются без преобразования в адаптере. Подписи живут в каталогах контекстов-владельцев экранов; общий слой доменных терминов не получает.
++
++В `lead-management` подписи уже строятся в Go (`stageLabel`), поэтому стадия, состояние задания и письма подписываются функциями представления в `views.go` — по существующему образцу контекста.
++
++**Альтернатива:** `text (printf "…%s" .Phase)` — отклонено: неизвестный код превращался бы в ключ каталога на экране.
++
++### Решение 4. Проверки экранов по видимому тексту
++
++Сведения на экране утверждения теперь — пары `dt/dd`, поэтому строка «Найдено лидов: 7» есть в видимом тексте, но не подряд в разметке. Тесты экрана сравнивают видимый текст (`visibleText`: теги → пробел, пробелы схлопнуты), а не разметку; смысл проверок (найдено, цель, недобор, честная недоступность) не меняется. Очередь несёт «Найдено лидов: N» в `aria-label` прогресса.
++
++## Risks / Trade-offs
++
++- [Размытие нагружает слабые машины] → размытие только у статичных поверхностей, без анимации размытия; при `prefers-reduced-motion` анимации отключены.
++- [Глобальные правила для `.page table` и полей могут задеть экраны с собственной вёрсткой] → таблицы внутри панелей и карточек сбрасывают стекло; проверено скриншотами всех золотых рендеров в обеих темах.
+diff --git a/openspec/changes/console-liquid-glass/proposal.md b/openspec/changes/console-liquid-glass/proposal.md
+new file mode 100644
+index 0000000..165fb67
+--- /dev/null
++++ b/openspec/changes/console-liquid-glass/proposal.md
+@@ -0,0 +1,27 @@
++## Why
++
++Оформление серверных экранов (консоль оператора, клиентский портал, дашборд, автономная выгрузка лидов) построено на фиолетовых градиентах: градиентное полотно, градиентные кнопки, градиентный заголовок выгрузки. Пользователь оценил этот вид как неудачный и выбрал направление «матовое жидкое стекло» в духе Apple с графитовым акцентом (макет согласован 2026-10-06). Отдельная проблема — поля: экраны показывают оператору и клиенту машинные коды вместо слов (`awaiting-approval`, `processing`, `RUNNING`, `validating`, `not warmed`, `done`, `approved`), а экраны заявок выводят сведения россыпью абзацев и голым маркированным списком, без таблицы и без отделения необратимого решения от прочих действий.
++
++## What Changes
++
++- **Новый материал оформления** в общем слое `frontend/components/static/console.css`: спокойная подложка из размытых пятен (небо, песок, мята — без фиолетового), полупрозрачные поверхности с размытием и бликом по краю, плавающее боковое меню, капсульные кнопки и сегментированные переключатели. Акцент хрома — графит (чёрный в светлой теме, светлый в тёмной); цвет в интерфейсе несут только статусы. Без `backdrop-filter` поверхности становятся непрозрачными того же тона.
++- **Палитра статусов** переведена на системную палитру: «Письмо отправлено» — синий вместо фиолетового, «Холодный» — бирюзовый, светофор исходов сохранён; контраст подписей — не ниже AA в обеих темах. Добавлены формы маркеров для «ждёт решения» (треугольник), «идёт процесс» (круг с ореолом), «отменено» (перечёркнутый круг).
++- **Базовое оформление** форм, таблиц, списков «поле — значение», прогресса, плиток цифр и воронки отчёта — экраны без собственных правил перестают выглядеть «голым HTML».
++- **Читаемые подписи машинных кодов:** функция шаблонов `label` общего слоя (`Messages.Label`) берёт подпись из каталога по коду; неизвестный код показывается как есть. Подписи добавлены для статусов заявки, этапов и состояния исполнения, исходов валидации (`request-fulfillment`), статуса заявки в портале (`platform-governance`), состояний черновика (`outreach-orchestration`), стадии лида, состояния задания поиска и письма (`lead-management`).
++- **Экраны заявок:** очередь утверждения и очередь валидации — таблицы с номером заявки, этапом, прогрессом «найдено / цель» и недобором; экраны утверждения и валидации — сведения парами «подпись — значение», оффер и исполнение рядом, панель решения отделяет «Отклонить» (опасное действие) от основного «Утвердить». Технические формулировки в подсказках заменены понятными.
++- **Автономная выгрузка лидов** (`leads-export.html`) переведена на тот же материал, тема следует за системой.
++- **Не затрагивается:** публичные страницы edge (`frontend/public`), разметка и поведение экранов операций и топологии (меняется только их оформление), маршруты, формы и проверки на сервере.
++
++## Capabilities
++
++### New Capabilities
++<!-- Нет. -->
++
++### Modified Capabilities
++- `console-appearance`: добавлены требования к материалу оформления (матовое стекло, графитовый акцент, деградация без размытия), к читаемым подписям машинных кодов и к отделению необратимого решения на экранах заявок.
++
++## Impact
++
++- **Affected bounded contexts:** `lead-management` (владелец capability `console-appearance`), а также экраны `request-fulfillment`, `platform-governance`, `outreach-orchestration`, `analytics`, использующие общий слой. Доменная модель не затрагивается: агрегаты, события, политики и межконтекстные контракты не меняются; подписи — проекция представления в адаптерах `internal/adapters/http`. Каталог и диаграммы не меняются: capability и владелец прежние.
++- **Код:** `frontend/components/static/console.css`, `frontend/components/{messages.go,components.go}` (функция `label`); шаблоны и каталоги сообщений экранов заявок, портала, среза зависших черновиков; `lead-management/internal/adapters/http/views.go` (подписи стадии, задания, письма) и `templates/leads-export.html`.
++- **Тесты:** контраст и маркеры статусов (`contrast_test.go`) проходят на новых токенах; тест `Messages.Label`; обновлены золотые рендеры экранов заявок и карточки/задания; проверки экранов утверждения идут по видимому тексту страницы.
+diff --git a/openspec/changes/console-liquid-glass/specs/console-appearance/spec.md b/openspec/changes/console-liquid-glass/specs/console-appearance/spec.md
+new file mode 100644
+index 0000000..182eec3
+--- /dev/null
++++ b/openspec/changes/console-liquid-glass/specs/console-appearance/spec.md
+@@ -0,0 +1,57 @@
++## ADDED Requirements
++
++### Requirement: Материал оформления — матовое стекло
++
++Серверные экраны, использующие общий слой оформления, SHALL показывать поверхности (боковое меню, панели, карточки, таблицы, плитки цифр) полупрозрачными над спокойной подложкой из размытых цветовых пятен, с бликом по краю поверхности. Если браузер не поддерживает размытие подложки, поверхности SHALL отображаться непрозрачными того же тона без потери контраста.
++
++#### Scenario: Поверхности полупрозрачны
++
++- **WHEN** оператор открывает экран консоли
++- **THEN** меню, панели и таблицы показывают размытую подложку сквозь поверхность
++
++#### Scenario: Деградация без размытия
++
++- **WHEN** браузер не поддерживает `backdrop-filter`
++- **THEN** панели и меню отображаются непрозрачной поверхностью, а текст сохраняет контраст не ниже AA
++
++### Requirement: Нейтральный акцент без фиолетового
++
++Акцент элементов управления (основная кнопка, активный пункт, фокус) SHALL быть нейтральным графитовым и SHALL NOT нести смысла статуса: смысловой цвет остаётся только у статусов. Подложка и элементы управления SHALL NOT использовать фиолетовые тона и декоративные градиенты на кнопках, заголовках и активных пунктах.
++
++#### Scenario: Основная кнопка нейтральна в обеих темах
++
++- **WHEN** оператор открывает экран консоли в светлой или тёмной теме
++- **THEN** основная кнопка — графитовая капсула (тёмная в светлой теме, светлая в тёмной), без градиента и без фиолетового тона
++
++### Requirement: Читаемые подписи машинных кодов
++
++Экраны SHALL показывать статусы, этапы и состояния (статус заявки, этап и состояние исполнения, исход валидации, статус заявки в портале, состояние черновика, стадию лида, состояние задания поиска и письма) читаемой подписью на русском языке, а не машинным кодом. Код MAY оставаться в разметке как класс оформления. Подпись SHALL браться из каталога сообщений по коду; неизвестный каталогу код SHALL показываться как есть, а не скрываться и не подменяться ключом каталога.
++
++#### Scenario: Этап исполнения подписан словами
++
++- **WHEN** исполнение заявки стоит на этапе `awaiting-approval`
++- **THEN** очередь утверждения и экран заявки показывают этап подписью «Ждёт решения», а не кодом
++
++#### Scenario: Стадия лида подписана словами
++
++- **WHEN** открыта карточка лида на стадии `not warmed`
++- **THEN** бейдж стадии показывает «Не прогрет»
++
++#### Scenario: Неизвестный код не скрывается
++
++- **WHEN** экран получает код, для которого в каталоге нет подписи
++- **THEN** экран показывает сам код, а не пустое место и не ключ каталога
++
++### Requirement: Решение по заявке отделено от прочих действий
++
++Экраны заявок SHALL показывать сведения парами «подпись — значение», а очереди заявок — таблицей с номером заявки и её этапом. Необратимое решение по заявке SHALL находиться в отдельной панели с пояснением последствий, где отклонение SHALL быть оформлено как опасное действие, визуально отличное от основного действия утверждения.
++
++#### Scenario: Отклонение не похоже на утверждение
++
++- **WHEN** оператор открывает экран утверждения заявки, по которой можно принять решение
++- **THEN** «Утвердить» и «Отклонить» стоят в одной панели решения с пояснением, и «Отклонить» оформлено как опасное действие, а «Утвердить» — как основное
++
++#### Scenario: Очередь утверждения — таблица
++
++- **WHEN** в очереди утверждения есть заявки
++- **THEN** каждая заявка — строка таблицы с оффером, номером и версией, этапом, найденным числом относительно цели и недобором
+diff --git a/openspec/changes/console-liquid-glass/tasks.md b/openspec/changes/console-liquid-glass/tasks.md
+new file mode 100644
+index 0000000..65c9e99
+--- /dev/null
++++ b/openspec/changes/console-liquid-glass/tasks.md
+@@ -0,0 +1,30 @@
++## 1. Материал и токены
++
++- [x] 1.1 Переписать токены светлой и тёмной темы в `frontend/components/static/console.css`: подложка без фиолетового, стекло, графитовый акцент, системная палитра статусов; проверка: `go test ./frontend/components -run Contrast` проходит, контраст подписей статусов ≥ 4.5:1 в обеих темах.
++- [x] 1.2 Групповое правило стекла для поверхностей и непрозрачная деградация без `backdrop-filter`; проверка: блок `@supports not (backdrop-filter: blur(1px))` перечисляет те же поверхности.
++- [x] 1.3 Плавающее меню, капсульные кнопки, сегментированные вкладки и переключатели состава/представления; проверка: скриншоты золотых рендеров в обеих темах.
++- [x] 1.4 Базовое оформление форм, таблиц, пар «подпись — значение», прогресса, плиток цифр и воронки; проверка: скриншоты экранов отчётов, задания и операций.
++- [x] 1.5 Новые формы маркеров статусов (ждёт решения, идёт процесс, отменено) при сохранении существующих; проверка: `TestStatusMarkersEncodeTypeWithoutColor` проходит.
++
++## 2. Подписи машинных кодов
++
++- [x] 2.1 `Messages.Label` и функция шаблонов `label` в `frontend/components`; проверка: `TestMessagesLabel` проходит (регистр, разделители, неизвестный код).
++- [x] 2.2 Подписи статусов заявки, этапов и состояния исполнения, исходов валидации в каталоге `request-fulfillment`; проверка: экраны показывают «Ждёт решения», «В работе», «Выполняется», «Одобрена».
++- [x] 2.3 Подписи статуса заявки в портале (`platform-governance`) и состояний черновика (`outreach-orchestration`); проверка: тесты адаптеров проходят.
++- [x] 2.4 Подписи стадии лида, состояния задания поиска и письма в `lead-management/internal/adapters/http/views.go`; проверка: `TestCardShowsStatusAndHistory` проверяет «Не прогрет», золотые рендеры обновлены.
++
++## 3. Экраны заявок
++
++- [x] 3.1 Очереди утверждения и валидации — таблицы с номером, этапом/статусом, прогрессом и недобором; проверка: `TestApprovalQueueScreen`, `TestApprovalQueueShowsShortfall`, `TestValidationQueueScreen` проходят.
++- [x] 3.2 Экраны утверждения и валидации — пары «подпись — значение», панель решения с пояснением, «Отклонить» как опасное действие; проверка: тесты экрана утверждения по видимому тексту и золотые рендеры проходят, формы и адреса действий не изменились.
++- [x] 3.3 Понятные подсказки вместо технических формулировок (`awaiting-approval`, «рантайм workflow»); проверка: каталог `request-fulfillment` не содержит кодов этапов в подсказках.
++
++## 4. Выгрузка лидов
++
++- [x] 4.1 Перевести встроенные стили `leads-export.html` на матовое стекло с темой по системе; проверка: `TestConsoleTemplatesContainNoUserTextLiterals` и тесты выгрузки проходят, скриншот в обеих темах.
++
++## 5. Итоговая проверка
++
++- [x] 5.1 `gofmt`, `go vet`, `go test` по затронутым модулям (`frontend/components`, адаптеры `request-fulfillment`, `lead-management`, `platform-governance`, `outreach-orchestration`, `analytics`); проверка: команды проходят.
++- [ ] 5.2 `make check` на машине разработчика (build / test / vet / importlint / archlint / openspec); проверка: команда проходит без ошибок.
++- [x] 5.3 `openspec validate console-liquid-glass --strict`; проверка: change валиден.

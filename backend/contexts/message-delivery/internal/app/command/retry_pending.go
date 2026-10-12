@@ -2,6 +2,7 @@ package command
 
 import (
 	"context"
+	"errors"
 	"fmt"
 
 	"lead-gen/backend/contexts/message-delivery/internal/domain"
@@ -87,6 +88,9 @@ func (h *RetryPendingHandler) RetryDue(ctx context.Context, limit int) (RetrySum
 			if ctx.Err() != nil {
 				return summary, ctx.Err()
 			}
+			if errors.Is(claimErr, ports.ErrCampaignCancelled) {
+				summary.Skipped++
+			}
 			// Сообщение остаётся в хранилище и будет рассмотрено следующей
 			// попыткой; один сбой не останавливает проход.
 			continue
@@ -128,6 +132,13 @@ func (h *RetryPendingHandler) reopen(ctx context.Context, id domain.MessageID) (
 		message, findErr := tx.Messages().FindByID(ctx, id)
 		if findErr != nil {
 			return fmt.Errorf("загрузка сообщения %s: %w", id, findErr)
+		}
+		cancelled, fenceErr := tx.CampaignCancelled(ctx, message.TenantID().String(), message.CampaignID())
+		if fenceErr != nil {
+			return fmt.Errorf("проверка отмены кампании перед retry: %w", fenceErr)
+		}
+		if cancelled {
+			return ports.ErrCampaignCancelled
 		}
 		if !message.IsRetryable() {
 			return nil

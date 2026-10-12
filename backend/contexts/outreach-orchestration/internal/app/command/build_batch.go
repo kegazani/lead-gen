@@ -101,8 +101,9 @@ type BuildBatchHandler struct {
 }
 
 // NewBuildBatchHandler собирает сценарий из порта загрузки окна черновиков,
-// порта доступа и внешнего предиката риска. nil-предикат означает «рисков нет»
-// и трактуется доменом так же; решение об исключении всё равно принимает домен.
+// порта доступа и внешнего предиката риска. Предикат обязателен: домен отвергает
+// nil как недоступность фактов, а не как «рисков нет»; решение об исключении
+// всё равно принимает домен.
 //
 // Сценарию нужен именно DraftWindowRepository: полная загрузка агрегата в этом
 // пути запрещена, иначе кампания на 50 000 черновиков вернётся в память целиком.
@@ -142,7 +143,7 @@ func (h *BuildBatchHandler) Handle(ctx context.Context, cmd BuildBatch) (BuildBa
 		return BuildBatchResult{}, fmt.Errorf("загрузка окна черновиков кампании %s: %w", cmd.CampaignID, err)
 	}
 
-	built, err := domain.BuildApprovalBatchFromDrafts(window.Drafts, cmd.CampaignID, cmd.Limits, h.risk)
+	built, err := domain.BuildApprovalBatchFromDrafts(ctx, window.Drafts, cmd.CampaignID, cmd.TenantID, cmd.Limits, h.risk)
 	if err != nil {
 		return BuildBatchResult{}, err
 	}

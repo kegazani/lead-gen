@@ -1,0 +1,24 @@
+# Конфигурация Prometheus локального (compose) контура. Статические цели — группы
+# процессов с процесс-уровневым /metrics (метка service различает сервисы внутри
+# группы). Адреса — имена docker-сети; порт совпадает с -metrics-addr приложения.
+global:
+  scrape_interval: 15s
+  external_labels:
+    stack: lead-gen-dev
+
+scrape_configs:
+  - job_name: lead-gen-app
+    metrics_path: /metrics
+    static_configs:
+      - targets:
+          - core:8092
+          - delivery:8092
+          - demand:8092
+          - intake:8092
+          - public:8092
+          - platform:8092
+          - agents:8092
+
+  - job_name: prometheus
+    static_configs:
+      - targets: ["localhost:9090"]

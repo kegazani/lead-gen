@@ -3,12 +3,18 @@ package firecrawl
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
+	"lead-gen/contracts/integration-platform/budget"
 	"lead-gen/contracts/integration-platform/crawl"
 	"lead-gen/contracts/integration-platform/search"
 )
@@ -36,8 +42,9 @@ type guardTestState struct {
 	crawlHTTP  int // 0 — успешный синхронный ответ; иначе HTTP-статус ошибки
 	crawlLimit []int
 
-	scrapeHTTP int
-	mapHTTP    int
+	scrapeHTTP   int
+	mapHTTP      int
+	extractCalls int
 }
 
 // guardTestView — согласованный снимок состояния сервера без мьютекса.
@@ -106,6 +113,10 @@ func newGuardTest(t *testing.T) (*Guard, *guardTestState, *fakeClock, *recordedS
 			http.Error(w, "rate limited", http.StatusTooManyRequests)
 			return
 		}
+		if status != 0 && status != http.StatusOK {
+			http.Error(w, "search error", status)
+			return
+		}
 		results := make([]map[string]any, 0, n)
 		for i := 0; i < n; i++ {
 			results = append(results, map[string]any{"url": "https://example.com/" + string(rune('a'+i)), "title": "T", "description": "d"})
@@ -143,6 +154,7 @@ func newGuardTest(t *testing.T) (*Guard, *guardTestState, *fakeClock, *recordedS
 	mux.HandleFunc("/v1/scrape", func(w http.ResponseWriter, _ *http.Request) {
 		st.mu.Lock()
 		status := st.scrapeHTTP
+		st.extractCalls++
 		st.mu.Unlock()
 		if status == http.StatusTooManyRequests {
 			http.Error(w, "rate limited", http.StatusTooManyRequests)
@@ -184,6 +196,337 @@ func newGuardTest(t *testing.T) (*Guard, *guardTestState, *fakeClock, *recordedS
 		Jitter:     func(int64) int64 { return 0 },
 	})
 	return guard, st, clock, recSleep
+}
+
+func guardTestUnknownOutcomeRetainsReservationAndDoesNotRetry(t *testing.T) {
+	guard, st, _, _ := newGuardTest(t)
+	st.mu.Lock()
+	st.searchHTTP = http.StatusServiceUnavailable
+	st.mu.Unlock()
+
+	task, err := guard.Task("unknown", 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = task.Search(context.Background(), search.Query{Text: "q", MaxResults: 5})
+	if err == nil {
+		t.Fatal("5xx с неизвестным исходом должен вернуть ошибку")
+	}
+	if got := st.snapshot().searchCalls; got != 1 {
+		t.Fatalf("неизвестный исход повторён: попыток %d, want 1", got)
+	}
+	if snap := task.Snapshot(); snap.ReservedCredits != 2 || snap.ConfirmedSpentCredits != 0 || snap.Status != "stopped" {
+		t.Fatalf("резерв неизвестного исхода потерян: %+v", snap)
+	}
+	if _, err := task.Search(context.Background(), search.Query{Text: "q", MaxResults: 5}); err == nil {
+		t.Fatal("новый вызов должен быть заблокирован удержанным резервом")
+	}
+}
+
+func guardTestCancellationBeforeCallDoesNotSpendOrReserve(t *testing.T) {
+	guard, _, _, _ := newGuardTest(t)
+	task, err := guard.Task("cancelled", 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	if _, err := task.Search(ctx, search.Query{Text: "q", MaxResults: 5}); err == nil {
+		t.Fatal("отменённый контекст должен быть отклонён")
+	}
+	if snap := task.Snapshot(); snap.ReservedCredits != 0 || snap.ConfirmedSpentCredits != 0 {
+		t.Fatalf("отмена до сети изменила бюджет: %+v", snap)
+	}
+}
+
+func guardTestFailedSettlementKeepsReservation(t *testing.T) {
+	b, _ := NewTaskBudget(5)
+	if err := b.Reserve(3); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.Settle(4, 1); err == nil {
+		t.Fatal("settlement большей суммы, чем активный резерв, должен отказать")
+	}
+	if snap := b.Snapshot(); snap.ReservedCredits != 3 || snap.ConfirmedSpentCredits != 0 {
+		t.Fatalf("ошибочный settlement изменил бюджет: %+v", snap)
+	}
+}
+
+func guardTestOverrunIsRecordedAndStopsAdmission(t *testing.T) {
+	b, _ := NewTaskBudget(5)
+	if err := b.Reserve(3); err != nil {
+		t.Fatal(err)
+	}
+	if err := b.Settle(3, 4); err == nil {
+		t.Fatal("расход выше резерва должен вернуть ошибку")
+	}
+	snap := b.Snapshot()
+	if snap.ConfirmedSpentCredits != 4 || snap.ReservedCredits != 0 || snap.Status != BudgetStopped {
+		t.Fatalf("overrun не записан явно: %+v", snap)
+	}
+	if err := b.Reserve(1); err == nil {
+		t.Fatal("overrun должен блокировать дальнейший admission")
+	}
+}
+
+func guardTestExtractWithoutConfirmedPriceIsUncallable(t *testing.T) {
+	guard, st, _, _ := newGuardTest(t)
+	task, err := guard.Task("extract", 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = task.Extract(context.Background(), crawl.ExtractRequest{URL: "https://example.com"})
+	if err != ErrExtractCostUnknown {
+		t.Fatalf("Extract error = %v, want ErrExtractCostUnknown", err)
+	}
+	st.mu.Lock()
+	calls := st.extractCalls
+	st.mu.Unlock()
+	if calls != 0 {
+		t.Fatalf("Extract вызван до подтверждения цены: %d", calls)
+	}
+	if snap := task.Snapshot(); snap.ReservedCredits != 0 {
+		t.Fatalf("неподдержанный Extract создал резерв: %+v", snap)
+	}
+}
+
+func guardTestDoesNotRetryCrawlCreateOnUnknownOutcome(t *testing.T) {
+	guard, st, _, _ := newGuardTest(t)
+	st.mu.Lock()
+	st.crawlHTTP = http.StatusServiceUnavailable
+	st.mu.Unlock()
+	task, err := guard.Task("crawl-unknown", 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = task.Crawl(context.Background(), crawl.Request{StartURL: "https://example.com", MaxPages: 5})
+	if err == nil {
+		t.Fatal("неизвестный исход crawl create должен вернуть ошибку")
+	}
+	if got := len(st.snapshot().crawlLimit); got != 1 {
+		t.Fatalf("crawl create POST повторён %d раз, want 1", got)
+	}
+	if snap := task.Snapshot(); snap.ReservedCredits != 5 {
+		t.Fatalf("неизвестный crawl исход не удержал резерв: %+v", snap)
+	}
+}
+
+func guardTestPaymentRequiredStopsAdmissionForAllTasks(t *testing.T) {
+	guard, st, _, _ := newGuardTest(t)
+	st.mu.Lock()
+	st.crawlHTTP = http.StatusPaymentRequired
+	st.mu.Unlock()
+	first, _ := guard.Task("first", 5)
+	second, _ := guard.Task("second", 5)
+	_, _ = first.Crawl(context.Background(), crawl.Request{StartURL: "https://example.com", MaxPages: 5})
+	st.mu.Lock()
+	st.crawlHTTP = 0
+	st.mu.Unlock()
+	if err := guard.RefreshCredit(context.Background()); err != nil {
+		t.Fatalf("обновить balance после 402: %v", err)
+	}
+	before := len(st.snapshot().crawlLimit)
+	if _, err := second.Crawl(context.Background(), crawl.Request{StartURL: "https://example.com", MaxPages: 5}); err == nil {
+		t.Fatal("Guard должен блокировать новую задачу после 402")
+	}
+	if after := len(st.snapshot().crawlLimit); after != before {
+		t.Fatalf("после 402 отправлено новых crawl create: before=%d after=%d", before, after)
+	}
+}
+
+func TestGuardSafetyRegressionMatrix(t *testing.T) {
+	cases := []struct {
+		name string
+		run  func(*testing.T)
+	}{
+		{name: "unknown outcome retains reservation and blocks retry", run: guardTestUnknownOutcomeRetainsReservationAndDoesNotRetry},
+		{name: "429 retry is independently reserved", run: guardTestRateLimitRetriesThenSucceeds},
+		{name: "cancellation before call", run: guardTestCancellationBeforeCallDoesNotSpendOrReserve},
+		{name: "failed settlement retains reservation", run: guardTestFailedSettlementKeepsReservation},
+		{name: "overrun is recorded without clipping", run: guardTestOverrunIsRecordedAndStopsAdmission},
+		{name: "unsupported Extract is uncallable", run: guardTestExtractWithoutConfirmedPriceIsUncallable},
+		{name: "crawl create is not duplicated", run: guardTestDoesNotRetryCrawlCreateOnUnknownOutcome},
+		{name: "402 blocks all tasks", run: guardTestPaymentRequiredStopsAdmissionForAllTasks},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, tc.run)
+	}
+}
+
+func TestBudgetFactoryLifecycleContractThroughPublishedInterface(t *testing.T) {
+	guard, _, _, _ := newGuardTest(t)
+	var factory budget.Factory = guard
+	var statusReader budget.RegistryStatusReader = guard
+	task, err := factory.Begin("contract-lifecycle", 10)
+	if err != nil {
+		t.Fatalf("budget.Factory.Begin: %v", err)
+	}
+	if _, err := task.Search(context.Background(), search.Query{Text: "lifecycle", MaxResults: 5}); err != nil {
+		t.Fatalf("budget.Task.Search: %v", err)
+	}
+	if err := factory.Finish(context.Background(), "contract-lifecycle"); err != nil {
+		t.Fatalf("budget.Factory.Finish: %v", err)
+	}
+	status := statusReader.RegistryStatus()
+	if status.Entries != 1 || status.FinishedScopes != 1 || status.Capacity <= 0 {
+		t.Fatalf("published registry status = %+v", status)
+	}
+}
+
+func TestGuardUnknownNetworkTimeoutRetainsReservationAndStopsTask(t *testing.T) {
+	var searchCalls atomic.Int32
+	releaseHandler := make(chan struct{})
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v2/team/credit-usage", func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(t, w, map[string]any{"success": true, "data": map[string]any{"remainingCredits": 100}})
+	})
+	mux.HandleFunc("/v1/search", func(_ http.ResponseWriter, r *http.Request) {
+		searchCalls.Add(1)
+		select {
+		case <-r.Context().Done():
+		case <-releaseHandler:
+		}
+	})
+	srv := httptest.NewServer(mux)
+	defer srv.Close()
+	defer close(releaseHandler)
+
+	client := New(Config{BaseURL: srv.URL})
+	clock := newFakeClock()
+	limiter := NewLimiter(LimiterConfig{
+		MinInterval: time.Nanosecond,
+		Clock:       clock,
+		Sleep:       advancingSleep(clock),
+	})
+	guard := NewGuard(GuardConfig{
+		Client:     client,
+		Limiter:    limiter,
+		BalanceTTL: time.Minute,
+		Clock:      clock,
+		MaxRetries: 1,
+		RetryBase:  time.Millisecond,
+	})
+	task, err := guard.Task("network-timeout", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Millisecond)
+	defer cancel()
+	if _, err := task.Search(ctx, search.Query{Text: "timeout", MaxResults: 5}); err == nil {
+		t.Fatal("таймаут сетевого запроса должен быть неизвестным исходом")
+	}
+	if got := task.Snapshot(); got.ReservedCredits != 2 || got.ConfirmedSpentCredits != 0 || got.Status != "stopped" {
+		t.Fatalf("резерв неизвестного сетевого исхода не удержан: %+v", got)
+	}
+	if _, err := task.Search(context.Background(), search.Query{Text: "second", MaxResults: 5}); err == nil {
+		t.Fatal("задача должна блокировать новые сетевые попытки после неизвестного исхода")
+	}
+	if got := searchCalls.Load(); got != 1 {
+		t.Fatalf("после неизвестного исхода отправлено %d запросов, want 1", got)
+	}
+}
+
+type panicSearchRoundTripper struct{ remaining int }
+
+func (p *panicSearchRoundTripper) RoundTrip(req *http.Request) (*http.Response, error) {
+	if req.URL.Path == "/v1/search" {
+		panic("synthetic transport panic after paid attempt admission")
+	}
+	if req.URL.Path != "/v2/team/credit-usage" {
+		return nil, fmt.Errorf("unexpected Firecrawl path %s", req.URL.Path)
+	}
+	body := fmt.Sprintf(`{"success":true,"data":{"remainingCredits":%d}}`, p.remaining)
+	return &http.Response{
+		StatusCode: http.StatusOK,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(strings.NewReader(body)),
+		Request:    req,
+	}, nil
+}
+
+func TestGuardPanicCleansInflightButKeepsUnknownPinnedWithoutOperationEvidence(t *testing.T) {
+	clock := newFakeClock()
+	roundTripper := &panicSearchRoundTripper{remaining: 100}
+	client := New(Config{BaseURL: "http://firecrawl.test"})
+	client.httpClient = &http.Client{Transport: roundTripper}
+	usage := NewUsage(client, clock)
+	usage.credits = &usageSnapshot{value: 100, updatedAt: clock.Now()}
+	guard := NewGuard(GuardConfig{Client: client, Usage: usage, Clock: clock})
+	task, err := guard.Task("panic-unknown", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var recovered any
+	func() {
+		defer func() { recovered = recover() }()
+		_, _ = task.Search(context.Background(), search.Query{Text: "panic", MaxResults: 5})
+	}()
+	if recovered == nil {
+		t.Fatal("panic провайдера должен быть перепаничен вызывающему")
+	}
+	if got := task.Snapshot(); got.OutstandingReservations != 0 || got.UnknownCredits != 2 || got.ReservedCredits != 2 {
+		t.Fatalf("panic утёк как in-flight или освободил unknown: %+v", got)
+	}
+	status := guard.RegistryStatus()
+	if status.ActiveScopes != 1 || status.OutstandingReservations != 0 || status.UnknownReservations != 1 {
+		t.Fatalf("status Guard не показывает pinned unknown pressure: %+v", status)
+	}
+
+	if err := guard.Finish(context.Background(), "panic-unknown"); !errors.Is(err, budget.ErrUnknownOutcomeUnreconciled) {
+		t.Fatalf("неизменившийся balance не должен разрешить unknown: %v", err)
+	}
+	roundTripper.remaining = 98 // агрегированное уменьшение не указывает на этот вызов.
+	clock.Advance(time.Second)
+	if err := guard.RefreshCredit(context.Background()); err != nil {
+		t.Fatalf("обновить агрегированный account balance: %v", err)
+	}
+	if err := guard.Finish(context.Background(), "panic-unknown"); !errors.Is(err, budget.ErrUnknownOutcomeUnreconciled) {
+		t.Fatalf("aggregate balance не даёт operation-level evidence: %v", err)
+	}
+	if got := task.Snapshot(); got.UnknownCredits != 2 || got.ConfirmedSpentCredits != 0 || got.ReservedCredits != 2 || got.Status != string(BudgetStopped) {
+		t.Fatalf("unknown reservation был освобождён без exact evidence: %+v", got)
+	}
+}
+
+func TestGuardFinishAndUnrelatedBalanceRefreshKeepUnknownPinned(t *testing.T) {
+	guard, state, clock, _ := newGuardTest(t)
+	state.mu.Lock()
+	state.searchHTTP = http.StatusServiceUnavailable
+	state.mu.Unlock()
+	task, err := guard.Task("refresh-unknown", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := task.Search(context.Background(), search.Query{Text: "unknown", MaxResults: 5}); err == nil {
+		t.Fatal("5xx outcome должен быть unknown")
+	}
+	state.mu.Lock()
+	state.creditFail = true
+	state.mu.Unlock()
+	if err := guard.RefreshCredit(context.Background()); err == nil {
+		t.Fatal("неуспешный authoritative refresh должен вернуть ошибку")
+	}
+	if err := guard.Finish(context.Background(), "refresh-unknown"); !errors.Is(err, budget.ErrUnknownOutcomeUnreconciled) {
+		t.Fatalf("ошибка authoritative refresh должна удержать unknown: %v", err)
+	}
+	if got := task.Snapshot(); got.UnknownCredits != 2 || got.ReservedCredits != 2 {
+		t.Fatalf("неуспешный refresh изменил reservation: %+v", got)
+	}
+	state.mu.Lock()
+	state.creditFail = false
+	state.remainingCredits = 998
+	state.mu.Unlock()
+	clock.Advance(time.Second)
+	if err := guard.RefreshCredit(context.Background()); err != nil {
+		t.Fatalf("RefreshCredit: %v", err)
+	}
+	if err := guard.Finish(context.Background(), "refresh-unknown"); !errors.Is(err, budget.ErrUnknownOutcomeUnreconciled) {
+		t.Fatalf("неперсонализированный account delta не разрешает unknown: %v", err)
+	}
+	if got := task.Snapshot(); got.ReservedCredits != 2 || got.UnknownCredits != 2 || got.ConfirmedSpentCredits != 0 {
+		t.Fatalf("balance refresh освободил unknown reservation: %+v", got)
+	}
 }
 
 // TestCrawlWithoutExplicitLimitUsesBudget проверяет новую семантику: обход без
@@ -343,7 +686,7 @@ func TestAccountBalanceRequired(t *testing.T) {
 
 // TestRateLimitRetriesThenSucceeds проверяет приёмку 5: 429 повторяется с
 // возрастающей задержкой, без лавины, и в итоге завершается успехом.
-func TestRateLimitRetriesThenSucceeds(t *testing.T) {
+func guardTestRateLimitRetriesThenSucceeds(t *testing.T) {
 	guard, st, _, recSleep := newGuardTest(t)
 	st.mu.Lock()
 	st.searchFailures = 2 // два 429, затем успех

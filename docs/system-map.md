@@ -49,9 +49,10 @@
 | `outreach-orchestration` | `api`, `worker`, `chains`, `schedule` |
 | `message-delivery` | `sender`, `worker`, `schedule` |
 | `engagement-observation` | `ingest`, `worker` |
-| `analytics` | `api`, `worker`, `schedule` |
+| `analytics` | `api`, `worker` |
 | `request-fulfillment` | `api`, `worker` |
 | `integration-platform` | `api`, `ingest`, `sender`, `worker`, `chains`, `schedule` |
+| `agent-orchestration` | `api`, `worker`, `chains`, `schedule` |
 
 ### 2.1 Роли запуска
 
@@ -95,7 +96,7 @@
 - **Входы:** команды из очереди; данные пула в контуре клиента; внешние источники.
 - **Выходы:** записи в зоны и объектное хранилище; черновики в очередь утверждений; события; агрегаты.
 - **Зона доступа:** по движку. Красная зона — у импорта, обогащения (включая оценку размера и привязку к лиду), дедупликации, сегментации и верификации — в рамках поручения. Без доступа к красной зоне: генерация презентаций и наполнения лендингов (рамка, Решение 7) и отчётность (только агрегаты).
-- **Реализует:** `osint-enrichment`, `lead-pool-client-side`, `presentation-generator`, `linguistics`, `company-size-assessment`, `email-verification`, `lead-segmentation`, `outreach-channel-form`, `campaign-reporting`, `landing-page-generator`.
+- **Реализует:** `osint-enrichment`, `lead-pool-client-side`, `presentation-generator`, `linguistics`, `company-size-assessment`, `email-verification`, `lead-segmentation`, `outreach-channel-form`, `campaign-reporting`, `landing-page-generator`, обработку компаний агентом (`company-agent-orchestration`).
 
 **`chains` — долгие состояния и таймеры**
 
@@ -105,7 +106,7 @@
 - **Входы:** команды запуска; события реакций из `ingest`; решения оператора из `api`.
 - **Выходы:** черновики в очередь утверждений; уведомления; команды таймеров.
 - **Зона доступа:** зелёная — состояние выполнения; красная — только идентификаторы и статусы лида в рамках поручения, без копирования содержимого.
-- **Реализует:** `outreach-sequences`, сроки `outreach-approval`.
+- **Реализует:** `outreach-sequences`, сроки `outreach-approval`, долгие паузы утверждения агента (`agent-orchestration`).
 
 **`schedule` — расписания**
 
@@ -115,7 +116,7 @@
 - **Входы:** собственное расписание (настройка).
 - **Выходы:** команды в очередь.
 - **Зона доступа:** не имеет собственного доступа к данным — только право постановки заданий.
-- **Реализует:** инициацию `lead-segmentation`, `email-verification`, `campaign-reporting`, `company-size-assessment`.
+- **Реализует:** инициацию `lead-segmentation`, `email-verification`, `campaign-reporting`, `company-size-assessment`, запуск очереди агентов (`agent-orchestration`).
 
 ### 2.2 Policies и platform primitives
 
@@ -127,42 +128,44 @@
 | Зоны, поручение и подавление | `data-governance` | все затрагивающие данные контексты через policies |
 | Идемпотентность | `platform` (технический примитив) | роли `ingest`, `worker`, `sender`, `api` |
 | Лимиты и частоты | owning context задаёт policy; `platform` даёт атомарный счётчик | `message-delivery`, `lead-management`, `integration-platform` |
-| Аудит и доступ | `platform-governance` | все контексты через `access-decision` и `audit-recorded` |
+| Аудит и доступ | `platform-governance` | все контексты через `access-decision` и `audit-recorded`; committed-сообщения доставляет PostgreSQL outbox relay с RabbitMQ publisher confirm |
 | Наблюдаемость | `platform` (технический примитив) | все сервисы |
 | Консоль топологии сервисов | `platform-governance` (эксплуатационная проекция роли `api`) | администратор платформы; читает каталог, `deploy/services.yaml` и метрики Prometheus |
+| Операционная консоль | `platform-governance` (эксплуатационная проекция роли `api`) | администратор платформы; читает состояние агентов, исполнения Temporal и метрики |
 | Порты и адаптеры | `integration-platform` | контексты-потребители |
 | Лингвистика | `content-production` | контексты через `content-request` / `content-version` |
 | Квалификация взаимодействия | `engagement-observation` | `outreach-orchestration`, `analytics` |
-| Верификация адресов | `lead-management`; suppression policy — `data-governance` | `message-delivery`, `audience` |
+| Верификация адресов | `lead-management`; suppression policy — `data-governance` | `message-delivery`, `audience`, `outreach-orchestration` (`risk-screening`) |
 
 ### 2.3 Инфраструктура
 
 Свой код здесь не пишется — только конфигурация и интеграция.
 
-- **Очередь** (RabbitMQ): очереди по движкам, подтверждения, повторные попытки, DLQ. Потеря задания при перезапуске воркера не допускается.
+- **Очередь** (RabbitMQ): очереди по движкам, подтверждения, повторные попытки, DLQ. Outbox relay `platform-governance` сохраняет сообщение в PostgreSQL до publisher confirm; потеря события при перезапуске worker не допускается.
 - **Хранилище зелёной зоны** (PostgreSQL): агрегаты, юрлица из открытых реестров, состояние платформы, аудит.
 - **Хранилище красной зоны** (PostgreSQL в контуре клиента): пул лидов и персональные данные физлиц. Физически отдельно; перекрёстные запросы невозможны (рамка, Решение 1).
 - **Аналитическое хранилище:** события трекинга и доставки, read-модели отчётности. События отделены от сущностей: объём на порядки выше.
 - **Объектное хранилище** (S3-совместимое): PDF, изображения, архивы лендингов, вложения.
 - **Кэш и лимиты** (Valkey): счётчики частоты, блокировки по ключу дедупликации.
-- **Долгие процессы** (Temporal): состояние цепочек, таймеры, сигналы утверждения.
-- **Метрики** (Prometheus): источник состояния узлов и интенсивности рёбер эксплуатационной консоли топологии сервисов. Консоль — часть роли `api` сервиса `platform-governance` (capability `service-topology-console`): она показывает граф сервисов и инфраструктуры, собранный из объявлений каталога и `deploy/services.yaml`, а метрики читает через серверный прокси (браузер к Prometheus напрямую не ходит). Консоль — **не контекст и не владелец модели**: её узлы и рёбра — эксплуатационная проекция, а не новые сущности или связи.
+- **Долгие процессы** (Temporal): состояние цепочек, таймеры, сигналы утверждения; долговечные исполнения агентов (`agent-orchestration`). Их ход читает операционная консоль.
+- **Метрики** (Prometheus): источник состояния узлов и интенсивности рёбер эксплуатационной консоли топологии сервисов. Консоль — часть роли `api` сервиса `platform-governance` (capability `service-topology-console`): она показывает граф сервисов и инфраструктуры, собранный из объявлений каталога и `deploy/services.yaml`, а метрики читает через серверный прокси (браузер к Prometheus напрямую не ходит). Консоль — **не контекст и не владелец модели**: её узлы и рёбра — эксплуатационная проекция, а не новые сущности или связи. Тот же серверный прокси метрик использует операционная консоль (`operations-cockpit`), которая дополнительно читает исполнения Temporal и события шагов агента.
 - **Внешние сервисы:** Firecrawl (сбор и разбор), LLM-провайдер (обезличенный контент), провайдер отправки (SES), сервис верификации адресов, сервис оценки трафика, провайдер ссылок конференций.
 
 ### 2.4 Группы процессов, изоляция ролей и связывание контрактов
 
 Группа процессов (`process`) — способ запуска: один процесс служебного образа поднимает один или несколько сервисов, каждый со своим подмножеством ролей. Роль — единица размещения: она встречается ровно один раз по всем группам, поэтому разнести её по процессам нельзя. Группа не вправе объявить роль или сервис, которых нет в каталоге.
 
-Текущее (совмещённое) состояние — шесть групп, объявленных в `deploy/services.yaml`; они описывают форму деплоя, а не готовность кода:
+Текущее (совмещённое) состояние — семь групп, объявленных в `deploy/services.yaml`. Группа `agents` собрана (сервис `agent-orchestration` подключён точкой входа — задача 7.3 change'а `intelligent-lead-operations`), но сквозной прогон агента ещё не подтверждён живьём: блоки, чьи контракты владельцев точка входа пока не читает, честно недоступны (задача 8.3). Группы описывают форму деплоя, а не готовность кода:
 
 | Группа | Сервисы и роли | Контур |
 |---|---|---|
 | `intake` | `request-fulfillment` (`api`, `worker`) | вход ценностной цепочки: заявка клиента |
-| `core` | `outreach-orchestration` (`api`, `worker`, `chains`, `schedule`); `analytics` (`api`, `worker`, `schedule`) | горячий путь кампании: оркестрация → аналитика |
-| `delivery` | `message-delivery` (`sender`, `worker`, `schedule`); `integration-platform` (`sender`) | изолированный контур отправки |
+| `core` | `outreach-orchestration` (`api`, `worker`, `chains`, `schedule`); `analytics` (`api`, `worker`) | горячий путь кампании: оркестрация → аналитика |
+| `delivery` | `message-delivery` (`sender`, `worker`, `schedule`) | изолированный контур отправки |
 | `demand` | `lead-management` (`api`, `worker`); `audience` (`api`, `worker`, `schedule`); `content-production` (`api`, `worker`) | подготовка аудитории: лиды → сегменты → контент |
 | `public` | `engagement-observation` (`ingest`, `worker`) | публичный контур: приём внешних событий |
 | `platform` | `integration-platform` (`api`, `ingest`, `worker`, `chains`, `schedule`); `platform-governance` (`api`, `worker`); `data-governance` (`api`, `worker`, `chains`) | общий фундамент: интеграционные порты и правила доступа/данных |
+| `agents` | `agent-orchestration` (`api`, `worker`, `chains`, `schedule`) | автономная обработка компаний (проводка сделана; сквозной прогон агента открыт — задача 8.3) |
 
 Группы — форма первого деплоя, а не второй владелец модели: целевое состояние — группа на сервис, а переход между состояниями — правка `deploy/services.yaml` без изменения кода и домена.
 
@@ -206,40 +209,62 @@
 
 ### 3.3 Матрица связей
 
-**Межконтекстные связи (28, по каталогу).** Транспорт каждой связи объявлен в каталоге и не выводится из контекста рассуждения: `command`/`query` — `sync`/`http-json`, `event`/`policy` — `async`/`amqp`. `policy` доставляется как подписка на изменение правила, а не синхронным вызовом: потребитель хранит контрактный снимок и применяет его локально.
+**Межконтекстные связи (49, по каталогу).** Транспорт каждой связи объявлен в каталоге и не выводится из контекста рассуждения: `command`/`query` — `sync`/`http-json`, `event`/`policy` — `async`/`amqp`. `policy` доставляется как подписка на изменение правила, а не синхронным вызовом: потребитель хранит контрактный снимок и применяет его локально.
 
 | Upstream (сервис) | Downstream (сервис) | Тип | Транспорт | Механизм | Контракт |
 |---|---|---|---|---|---|
 | `outreach-orchestration` | `message-delivery` | command | sync | http-json | `approved-action` |
 | `integration-platform` | `lead-management` | command | sync | http-json | `provider-port` |
+| `integration-platform` | `lead-management` | command | sync | http-json | `vector` |
+| `integration-platform` | `request-fulfillment` | command | sync | http-json | `vector` |
 | `integration-platform` | `content-production` | command | sync | http-json | `provider-port` |
 | `integration-platform` | `message-delivery` | command | sync | http-json | `provider-port` |
 | `integration-platform` | `outreach-orchestration` | command | sync | http-json | `provider-port` |
-| `integration-platform` | `lead-management` | command | sync | http-json | `vector` |
-| `integration-platform` | `request-fulfillment` | command | sync | http-json | `vector` |
 | `outreach-orchestration` | `request-fulfillment` | command | sync | http-json | `call-intent` |
 | `request-fulfillment` | `platform-governance` | command | sync | http-json | `request-intent` |
+| `outreach-orchestration` | `request-fulfillment` | command | sync | http-json | `outreach-handoff` |
+| `content-production` | `request-fulfillment` | command | sync | http-json | `content-request` |
+| `lead-management` | `analytics` | command | sync | http-json | `recommendation-apply` |
+| `outreach-orchestration` | `agent-orchestration` | command | sync | http-json | `campaign-command` |
+| `content-production` | `agent-orchestration` | command | sync | http-json | `content-request` |
 | `lead-management` | `audience` | query | sync | http-json | `lead-profile` |
 | `audience` | `outreach-orchestration` | query | sync | http-json | `audience-snapshot` |
 | `content-production` | `outreach-orchestration` | query | sync | http-json | `content-version` |
-| `message-delivery` | `engagement-observation` | event | async | amqp | `delivery-event` |
-| `message-delivery` | `lead-management` | event | async | amqp | `delivery-event` |
-| `message-delivery` | `analytics` | event | async | amqp | `delivery-event` |
-| `engagement-observation` | `outreach-orchestration` | event | async | amqp | `engagement-event` |
-| `engagement-observation` | `audience` | event | async | amqp | `engagement-event` |
-| `engagement-observation` | `analytics` | event | async | amqp | `engagement-event` |
-| `outreach-orchestration` | `analytics` | event | async | amqp | `analytics-event` |
-| `data-governance` | `lead-management` | policy | async | amqp | `data-zone-policy` |
-| `data-governance` | `outreach-orchestration` | policy | async | amqp | `processing-authority` |
-| `data-governance` | `message-delivery` | policy | async | amqp | `suppression-policy` |
-| `data-governance` | `audience` | policy | async | amqp | `data-zone-policy` |
-| `platform-governance` | `outreach-orchestration` | policy | async | amqp | `access-decision` |
-| `platform-governance` | `request-fulfillment` | policy | async | amqp | `tenant-context` |
+| `content-production` | `message-delivery` | query | sync | http-json | `content-version` |
+| `platform-governance` | `outreach-orchestration` | query | sync | http-json | `access-decision` |
+| `platform-governance` | `data-governance` | query | sync | http-json | `access-decision` |
+| `lead-management` | `message-delivery` | query | sync | http-json | `delivery-target` |
+| `lead-management` | `outreach-orchestration` | query | sync | http-json | `address-verification` |
+| `integration-platform` | `platform-governance` | query | sync | http-json | `adapter-status` |
 | `lead-management` | `request-fulfillment` | query | sync | http-json | `lead-profile` |
 | `audience` | `request-fulfillment` | query | sync | http-json | `audience-snapshot` |
 | `outreach-orchestration` | `request-fulfillment` | query | sync | http-json | `campaign-state` |
+| `lead-management` | `agent-orchestration` | query | sync | http-json | `lead-search` |
+| `lead-management` | `agent-orchestration` | query | sync | http-json | `email-generation` |
+| `lead-management` | `agent-orchestration` | query | sync | http-json | `lead-relevance` |
+| `outreach-orchestration` | `agent-orchestration` | query | sync | http-json | `approved-action` |
+| `analytics` | `platform-governance` | query | sync | http-json | `campaign-report` |
+| `message-delivery` | `engagement-observation` | event | async | amqp | `delivery-event` |
+| `engagement-observation` | `outreach-orchestration` | event | async | amqp | `engagement-event` |
+| `outreach-orchestration` | `analytics` | event | async | amqp | `analytics-event` |
+| `message-delivery` | `analytics` | event | async | amqp | `delivery-event` |
+| `engagement-observation` | `analytics` | event | async | amqp | `engagement-event` |
+| `message-delivery` | `lead-management` | event | async | amqp | `delivery-event` |
+| `engagement-observation` | `audience` | event | async | amqp | `engagement-event` |
+| `message-delivery` | `agent-orchestration` | event | async | amqp | `delivery-event` |
+| `engagement-observation` | `agent-orchestration` | event | async | amqp | `engagement-event` |
+| `agent-orchestration` | `analytics` | event | async | amqp | `agent-event` |
+| `data-governance` | `lead-management` | policy | async | amqp | `data-zone-policy` |
+| `data-governance` | `outreach-orchestration` | policy | async | amqp | `processing-authority` |
+| `data-governance` | `message-delivery` | policy | async | amqp | `suppression-policy` |
+| `platform-governance` | `outreach-orchestration` | policy | async | amqp | `access-decision` |
+| `platform-governance` | `data-governance` | policy | async | amqp | `access-decision` |
+| `data-governance` | `audience` | policy | async | amqp | `data-zone-policy` |
+| `platform-governance` | `request-fulfillment` | policy | async | amqp | `tenant-context` |
+| `platform-governance` | `agent-orchestration` | policy | async | amqp | `access-decision` |
+| `platform-governance` | `agent-orchestration` | policy | async | amqp | `tenant-context` |
 
-Итого: 15 синхронных связей (9 `command`, 6 `query`) и 13 асинхронных (7 `event`, 6 `policy`).
+Итого: 30 синхронных связей (14 `command`, 16 `query`) и 19 асинхронных (10 `event`, 9 `policy`).
 
 **Операционные взаимодействия.** Строки ниже описывают потоки внутри платформы и к внешним системам; инициатор и адресат — сервисы и их роли.
 
@@ -317,6 +342,7 @@
 | `platform-access` | `platform-governance` | 3.16 | `api`, `worker` | зелёная | `platform-governance/specs/platform-access/spec.md` |
 | `service-topology-console` | `platform-governance` | — | `api` | зелёная | `service-topology-console/specs/service-topology-console/spec.md` |
 | `outreach-approval` | `outreach-orchestration` | — (ядро) | `api`, `chains` | зелёная | `full-enterprise-core-scope/specs/outreach-approval/spec.md` |
+| `risk-screening` | `outreach-orchestration` | — (ядро) | `api`, `chains` | зелёная | `risk-screening/specs/risk-screening/spec.md` |
 | `read-tracking` | `engagement-observation` | 3.9 | `ingest`, `worker` | обезличенно | `full-enterprise-core-scope/specs/read-tracking/spec.md` |
 | `domain-deliverability` | `message-delivery` | 3.8 | `sender`, `schedule` | зелёная | `full-enterprise-core-scope/specs/domain-deliverability/spec.md` |
 | `data-handling` | `data-governance` | — (ядро) | все роли | обе | `full-enterprise-core-scope/specs/data-handling/spec.md` |
@@ -331,7 +357,7 @@
 | `lead-segmentation` | `audience` | 3.5 | `worker`, `schedule` | контур клиента | `lead-segmentation/specs/lead-segmentation/spec.md` |
 | `outreach-channel-form` | `outreach-orchestration` | 3.19 | `worker` | зелёная | `outreach-channel-form/specs/outreach-channel-form/spec.md` |
 | `outreach-sequences` | `outreach-orchestration` | 3.10 | `chains` | зелёная + контур клиента | `sequences-and-reporting/specs/outreach-sequences/spec.md` |
-| `campaign-reporting` | `analytics` | 3.15 | `worker`, `schedule` | обезличенно | `sequences-and-reporting/specs/campaign-reporting/spec.md` |
+| `campaign-reporting` | `analytics` | 3.15 | `worker` | обезличенно | `sequences-and-reporting/specs/campaign-reporting/spec.md` |
 | `landing-page-generator` | `content-production` | — | `worker` | зелёная | `landing-page-generator/specs/landing-page-generator/spec.md` |
 | `provider-agnostic-integrations` | `integration-platform` | — | все роли | по порту | `migrate-platform-to-go/specs/provider-agnostic-integrations/spec.md` |
 | `client-request` | `request-fulfillment` | — (ядро) | `api`, `worker` | зелёная | `openspec/specs/client-request/spec.md` |
@@ -356,7 +382,7 @@
 | `lead-cards-console` | `lead-management` | — | `api` | обе | `openspec/specs/lead-cards-console/spec.md` |
 | `console-appearance` | `lead-management` | — | `api` | зелёная | `openspec/specs/console-appearance/spec.md` |
 | `semantic-lead-search` | `lead-management` | — | `api`, `worker` | обе | `openspec/specs/semantic-lead-search/spec.md` |
-| `client-dashboard` | `analytics` | 3.15 | `api`, `worker`, `schedule` | обезличенно | `openspec/specs/client-dashboard/spec.md` |
+| `client-dashboard` | `analytics` | 3.15 | `api`, `worker` | обезличенно | `openspec/specs/client-dashboard/spec.md` |
 | `firecrawl-credit-budget` | `integration-platform` | 3.1 | `worker` | зелёная | `openspec/specs/firecrawl-credit-budget/spec.md` |
 | `crawler-proxy-pool` | `integration-platform` | 3.1 | `api`, `ingest`, `sender`, `worker`, `chains`, `schedule` | зелёная | `self-hosted-crawler/specs/crawler-proxy-pool/spec.md` |
 

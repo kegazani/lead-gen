@@ -196,6 +196,9 @@ func TestApproveEmitsActionApprovedWithExactVersion(t *testing.T) {
 	if approved.DecisionID != decision.ID() || approved.OccurredAt().IsZero() {
 		t.Fatalf("событие не связано с решением: %+v", approved)
 	}
+	if approved.Material != MaterialID("material-1") {
+		t.Fatalf("событие не несёт материал черновика: %+v", approved)
+	}
 
 	pulled := campaign.PullDomainEvents()
 	if _, ok := eventOfType[ActionApproved](pulled); !ok {

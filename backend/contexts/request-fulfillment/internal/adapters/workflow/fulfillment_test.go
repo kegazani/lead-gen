@@ -2,6 +2,7 @@ package workflowadapter
 
 import (
 	"context"
+	"errors"
 	"testing"
 	"time"
 
@@ -9,6 +10,10 @@ import (
 	"go.temporal.io/sdk/activity"
 	"go.temporal.io/sdk/testsuite"
 	"go.temporal.io/sdk/workflow"
+
+	persistence "lead-gen/backend/contexts/request-fulfillment/internal/adapters/persistence/inmemory"
+	"lead-gen/backend/contexts/request-fulfillment/internal/ports"
+	"lead-gen/contracts/outreach-orchestration/outreachhandoff"
 )
 
 // newEnv собирает тестовую среду workflow: регистрирует workflow и activities под
@@ -16,17 +21,48 @@ import (
 // замещаются моками, реальные адаптеры здесь не исполняются.
 func newEnv(t *testing.T) *testsuite.TestWorkflowEnvironment {
 	t.Helper()
+	return newEnvWithActivities(t, &Activities{})
+}
+
+// newEnvWithActivities собирает тестовую среду workflow с заданными activities.
+// Обычные тесты передают пустой набор и замещают шаги моками; тесты передачи —
+// реальный HandoffDrafts со стабами контрактов, чтобы проверить состав команды.
+func newEnvWithActivities(t *testing.T, activities *Activities) *testsuite.TestWorkflowEnvironment {
+	t.Helper()
 	suite := &testsuite.WorkflowTestSuite{}
 	env := suite.NewTestWorkflowEnvironment()
 	env.RegisterWorkflowWithOptions(Fulfillment, workflow.RegisterOptions{Name: WorkflowName})
 
-	activities := &Activities{}
 	env.RegisterActivityWithOptions(activities.HandleStartProcessing, activity.RegisterOptions{Name: ActivityStartProcessing})
 	env.RegisterActivityWithOptions(activities.HandleFulfillRequest, activity.RegisterOptions{Name: ActivityFulfillRequest})
 	env.RegisterActivityWithOptions(activities.HandleCancelRequest, activity.RegisterOptions{Name: ActivityCancelRequest})
+	env.RegisterActivityWithOptions(activities.HandleFailRequest, activity.RegisterOptions{Name: ActivityFailRequest})
 	env.RegisterActivityWithOptions(activities.SearchLeads, activity.RegisterOptions{Name: ActivitySearchLeads})
 	env.RegisterActivityWithOptions(activities.DraftEmails, activity.RegisterOptions{Name: ActivityDraftEmails})
+	env.RegisterActivityWithOptions(activities.HandoffDrafts, activity.RegisterOptions{Name: ActivityHandoffDrafts})
 	return env
+}
+
+// assertWorkflowFailed проверяет, что workflow завершился сбоем (Temporal
+// close-статус Failed), а не штатно (Completed), и что фаза failed наблюдаема
+// через query. Именно close-статус Failed разрешает переиспользование WorkflowID
+// при повторном запуске (WorkflowIDReusePolicy = ALLOW_DUPLICATE_FAILED_ONLY).
+func assertWorkflowFailed(t *testing.T, env *testsuite.TestWorkflowEnvironment) {
+	t.Helper()
+	if err := env.GetWorkflowError(); err == nil {
+		t.Fatal("workflow завершился штатно (Completed); ожидался close-статус Failed")
+	}
+	value, err := env.QueryWorkflow(QueryStatus)
+	if err != nil {
+		t.Fatalf("запрос состояния: %v", err)
+	}
+	var status Status
+	if err := value.Get(&status); err != nil {
+		t.Fatalf("разбор состояния: %v", err)
+	}
+	if status.Phase != PhaseFailed {
+		t.Fatalf("фаза = %q, ожидалась %q", status.Phase, PhaseFailed)
+	}
 }
 
 // TestFulfillmentHappyPath проверяет путь validated → processing → fulfilled с
@@ -400,7 +436,8 @@ func TestFulfillmentNoLeadsApprovedByOperator(t *testing.T) {
 
 // TestFulfillmentNoDraftsWhenTargetReached проверяет сценарий «цель достигнута —
 // письма не генерируются»: при недоборе равном нулю шаг черновиков не запускается
-// автоматически, а наблюдаемый недобор честно равен нулю (не nil).
+// автоматически, а наблюдаемый недобор честно равен нулю (не nil). Передача
+// черновиков тогда тоже не запускается: без черновиков передавать нечего.
 func TestFulfillmentNoDraftsWhenTargetReached(t *testing.T) {
 	env := newEnv(t)
 	env.OnActivity(ActivityStartProcessing, mock.Anything, mock.Anything).Return(nil)
@@ -426,7 +463,11 @@ func TestFulfillmentNoDraftsWhenTargetReached(t *testing.T) {
 	if status.Drafted != 0 {
 		t.Fatalf("черновиков = %d, при достигнутой цели ожидался 0", status.Drafted)
 	}
+	if status.Handed != 0 {
+		t.Fatalf("передано = %d, при достигнутой цели ожидался 0", status.Handed)
+	}
 	env.AssertNotCalled(t, "ExecuteActivity", ActivityDraftEmails)
+	env.AssertNotCalled(t, "ExecuteActivity", ActivityHandoffDrafts)
 	env.AssertExpectations(t)
 }
 
@@ -491,6 +532,9 @@ func TestFulfillmentShortfallVisibleInQuery(t *testing.T) {
 	if queried.Shortfall == nil || *queried.Shortfall != 2 {
 		t.Fatalf("недобор в query = %v, ожидался 2", queried.Shortfall)
 	}
+	if queried.Target != 3 {
+		t.Fatalf("цель в query = %d, ожидалась 3", queried.Target)
+	}
 }
 
 // TestFulfillmentShortfallNotCalculatedWithoutTarget проверяет сценарий «цель не
@@ -517,6 +561,9 @@ func TestFulfillmentShortfallNotCalculatedWithoutTarget(t *testing.T) {
 	}
 	if status.Shortfall != nil {
 		t.Fatalf("недобор = %d, при отсутствии цели ожидался nil", *status.Shortfall)
+	}
+	if status.Target != 0 {
+		t.Fatalf("цель = %d, при отсутствии цели ожидался 0", status.Target)
 	}
 	env.AssertNotCalled(t, "ExecuteActivity", ActivityDraftEmails)
 }
@@ -586,6 +633,316 @@ func TestFulfillmentDraftStepMissingContractContinues(t *testing.T) {
 	env.AssertExpectations(t)
 }
 
+// TestFulfillmentHandsOffDraftsOnShortfall проверяет сценарий «недобор — письма
+// переданы на утверждение»: после генерации черновиков workflow вызывает шаг
+// передачи, а черновики заявки с разрешённым получателем и материалом попадают в
+// одну команду передачи с ожидаемым составом. Шаг передачи исполняется реально
+// (со стабами контрактов материала и передачи), шаги поиска и генерации замещены.
+func TestFulfillmentHandsOffDraftsOnShortfall(t *testing.T) {
+	ctx := context.Background()
+	store := persistence.NewDraftStore()
+	if err := store.SaveDrafts(ctx, []ports.EmailDraft{
+		{RequestID: "req-ho", TenantID: "tenant-1", LeadID: "lead-a", Subject: "тема", Body: "тело", RecipientRef: "contact-a"},
+	}); err != nil {
+		t.Fatalf("сохранение черновика: %v", err)
+	}
+	content := &stubContentRequest{}
+	handoff := &stubOutreachHandoff{result: outreachhandoff.Result{CampaignID: "camp-req-ho", Accepted: 1}}
+
+	env := newEnvWithActivities(t, &Activities{
+		Handoff: ContractHandoff{Drafts: store, Content: content, Outreach: handoff},
+	})
+	env.OnActivity(ActivityStartProcessing, mock.Anything, mock.Anything).Return(nil)
+	env.OnActivity(ActivitySearchLeads, mock.Anything, mock.Anything).
+		Return(searchResult{Found: 1, LeadIDs: []string{"lead-a"}}, nil)
+	env.OnActivity(ActivityDraftEmails, mock.Anything, mock.Anything).
+		Return(draftResult{Drafted: 1, LeadIDs: []string{"lead-a"}}, nil)
+	env.OnActivity(ActivityFulfillRequest, mock.Anything, mock.Anything).Return(nil)
+
+	env.RegisterDelayedCallback(func() {
+		env.SignalWorkflow(SignalApprovalDecision, ApprovalDecision{Approved: true, Actor: "operator"})
+	}, time.Second)
+
+	env.ExecuteWorkflow(Fulfillment, Params{RequestID: "req-ho", TenantID: "tenant-1", LeadTarget: 3})
+	if err := env.GetWorkflowError(); err != nil {
+		t.Fatalf("workflow завершился ошибкой: %v", err)
+	}
+	var status Status
+	if err := env.GetWorkflowResult(&status); err != nil {
+		t.Fatalf("чтение результата: %v", err)
+	}
+	if status.Handed != 1 {
+		t.Fatalf("передано = %d, ожидалось 1", status.Handed)
+	}
+	if len(handoff.commands) != 1 {
+		t.Fatalf("команд передачи = %d, ожидалась 1", len(handoff.commands))
+	}
+	command := handoff.commands[0]
+	if command.RequestID != "req-ho" || command.TenantID != "tenant-1" {
+		t.Fatalf("команда = %+v, ожидалась заявка req-ho тенанта tenant-1", command)
+	}
+	if len(command.Items) != 1 {
+		t.Fatalf("состав передачи = %+v, ожидалось одно письмо", command.Items)
+	}
+	item := command.Items[0]
+	if item.LeadID != "lead-a" || item.RecipientRef != "contact-a" || item.MaterialRef != emailMaterialAssetID("req-ho", "lead-a")+"@v1" {
+		t.Fatalf("письмо передачи = %+v, ожидались лид, получатель и материал", item)
+	}
+	env.AssertExpectations(t)
+}
+
+// TestFulfillmentReproducesGraphWithoutHandoff проверяет совместимость версий:
+// исполнение, начатое до появления звена передачи (`outreach-handoff` ==
+// DefaultVersion), воспроизводит прежний граф — черновики генерируются, но
+// передача не запускается.
+func TestFulfillmentReproducesGraphWithoutHandoff(t *testing.T) {
+	env := newEnv(t)
+	env.OnGetVersion(changeOutreachHandoff, workflow.DefaultVersion, workflow.Version(1)).
+		Return(func(string, workflow.Version, workflow.Version) workflow.Version { return workflow.DefaultVersion })
+	env.OnActivity(ActivityStartProcessing, mock.Anything, mock.Anything).Return(nil)
+	env.OnActivity(ActivitySearchLeads, mock.Anything, mock.Anything).
+		Return(searchResult{Found: 1, LeadIDs: []string{"lead-1"}}, nil)
+	env.OnActivity(ActivityDraftEmails, mock.Anything, mock.Anything).
+		Return(draftResult{Drafted: 1, LeadIDs: []string{"lead-1"}}, nil)
+	env.OnActivity(ActivityFulfillRequest, mock.Anything, mock.Anything).Return(nil)
+
+	env.RegisterDelayedCallback(func() {
+		env.SignalWorkflow(SignalApprovalDecision, ApprovalDecision{Approved: true, Actor: "operator"})
+	}, time.Second)
+
+	env.ExecuteWorkflow(Fulfillment, Params{RequestID: "req-old-handoff", TenantID: "tenant-1", LeadTarget: 3})
+	if err := env.GetWorkflowError(); err != nil {
+		t.Fatalf("workflow завершился ошибкой: %v", err)
+	}
+	var status Status
+	if err := env.GetWorkflowResult(&status); err != nil {
+		t.Fatalf("чтение результата: %v", err)
+	}
+	if status.Drafted != 1 {
+		t.Fatalf("черновиков = %d, ожидался 1", status.Drafted)
+	}
+	if status.Handed != 0 {
+		t.Fatalf("передано = %d, прежнее исполнение без передачи ожидало 0", status.Handed)
+	}
+	env.AssertNotCalled(t, "ExecuteActivity", ActivityHandoffDrafts)
+	env.AssertExpectations(t)
+}
+
+// TestFulfillmentStepFailureFailsRequest проверяет saga-компенсацию: сбой шага
+// поиска переводит заявку в failed с кодом search_failed, и workflow завершается
+// штатно (без ошибки), а не падает.
+func TestFulfillmentStepFailureFailsRequest(t *testing.T) {
+	env := newEnv(t)
+	env.OnActivity(ActivityStartProcessing, mock.Anything, mock.Anything).Return(nil)
+	env.OnActivity(ActivitySearchLeads, mock.Anything, mock.Anything).
+		Return(searchResult{}, errors.New("activity: поиск лидов: сеть недоступна")).Once()
+	env.OnActivity(ActivityFailRequest, mock.Anything, mock.MatchedBy(func(in transitionInput) bool {
+		return in.ReasonCode == failCodeSearch
+	})).Return(nil)
+
+	env.ExecuteWorkflow(Fulfillment, Params{RequestID: "req-fail", TenantID: "tenant-1", LeadTarget: 3})
+	assertWorkflowFailed(t, env)
+	env.AssertNotCalled(t, "ExecuteActivity", ActivityFulfillRequest)
+	env.AssertExpectations(t)
+}
+
+func TestFulfillmentKeepsTerminalIntentPendingAfterBoundedCompensation(t *testing.T) {
+	env := newEnv(t)
+	env.OnActivity(ActivityStartProcessing, mock.Anything, mock.Anything).Return(nil)
+	env.OnActivity(ActivitySearchLeads, mock.Anything, mock.Anything).
+		Return(searchResult{}, errors.New("исходная ошибка поиска")).Once()
+	env.OnActivity(ActivityFailRequest, mock.Anything, mock.MatchedBy(func(in transitionInput) bool {
+		return in.ReasonCode == failCodeSearch && in.Reason == failReason(failCodeSearch)
+	})).Return(errors.New("хранилище недоступно")).Times(2)
+
+	env.ExecuteWorkflow(Fulfillment, Params{
+		RequestID: "req-pending", TenantID: "tenant-1", AttemptID: "attempt-7", Generation: 7, CommandID: "cmd-7",
+		Policy: ExecutionPolicy{LongMaxAttempts: 1, CompensationMaxAttempts: 2, CompensationScheduleToClose: time.Minute},
+	})
+	if err := env.GetWorkflowError(); err == nil {
+		t.Fatal("workflow не должен сообщать об успехе при неподтверждённой компенсации")
+	}
+	value, err := env.QueryWorkflow(QueryStatus)
+	if err != nil {
+		t.Fatalf("query состояния: %v", err)
+	}
+	var status Status
+	if err := value.Get(&status); err != nil {
+		t.Fatalf("разбор состояния: %v", err)
+	}
+	if status.Phase != PhasePending {
+		t.Fatalf("фаза = %q, ожидалось pending", status.Phase)
+	}
+	env.AssertExpectations(t)
+}
+
+func TestTerminalIntentChecksumCoversIdentityAndOriginalReason(t *testing.T) {
+	intent := TerminalIntent{
+		Version: 1, WorkflowID: "workflow-1", RunID: "run-1", RequestID: "request-1", TenantID: "tenant-1",
+		AttemptID: "attempt-1", Generation: 1, CommandID: "command-1",
+		ReasonCode: failCodeSearch, OriginalReason: failReason(failCodeSearch),
+	}
+	checksum := terminalIntentChecksum(intent)
+	if len(checksum) != 64 || checksum != terminalIntentChecksum(intent) {
+		t.Fatalf("checksum неканоничен или недетерминирован: %q", checksum)
+	}
+	intent.OriginalReason += " изменено"
+	if checksum == terminalIntentChecksum(intent) {
+		t.Fatal("checksum не отражает изменение исходной причины")
+	}
+	intent.OriginalReason = failReason(failCodeSearch)
+	intent.Version++
+	if checksum == terminalIntentChecksum(intent) {
+		t.Fatal("checksum не отражает изменение версии marker")
+	}
+}
+
+// TestFulfillmentHandoffFailureFailsRequest проверяет компенсацию сбоя шага
+// передачи: код handoff_failed, заявка в failed, workflow завершается штатно.
+func TestFulfillmentHandoffFailureFailsRequest(t *testing.T) {
+	env := newEnv(t)
+	env.OnActivity(ActivityStartProcessing, mock.Anything, mock.Anything).Return(nil)
+	env.OnActivity(ActivitySearchLeads, mock.Anything, mock.Anything).
+		Return(searchResult{Found: 1, LeadIDs: []string{"lead-a"}}, nil)
+	env.OnActivity(ActivityDraftEmails, mock.Anything, mock.Anything).
+		Return(draftResult{Drafted: 1, LeadIDs: []string{"lead-a"}}, nil)
+	env.OnActivity(ActivityHandoffDrafts, mock.Anything, mock.Anything).
+		Return(handoffOutcome{}, errors.New("activity: передача писем: недоступна")).Once()
+	env.OnActivity(ActivityFailRequest, mock.Anything, mock.MatchedBy(func(in transitionInput) bool {
+		return in.ReasonCode == failCodeHandoff
+	})).Return(nil)
+
+	env.ExecuteWorkflow(Fulfillment, Params{RequestID: "req-fail-ho", TenantID: "tenant-1", LeadTarget: 3})
+	assertWorkflowFailed(t, env)
+	env.AssertNotCalled(t, "ExecuteActivity", ActivityFulfillRequest)
+	env.AssertExpectations(t)
+}
+
+// TestFulfillmentDraftFailureFailsRequest проверяет компенсацию сбоя шага
+// генерации черновиков: код draft_failed, заявка в failed, workflow завершается
+// штатно (без ошибки), а завершение не вызывается.
+func TestFulfillmentDraftFailureFailsRequest(t *testing.T) {
+	env := newEnv(t)
+	env.OnActivity(ActivityStartProcessing, mock.Anything, mock.Anything).Return(nil)
+	env.OnActivity(ActivitySearchLeads, mock.Anything, mock.Anything).
+		Return(searchResult{Found: 1, LeadIDs: []string{"lead-a"}}, nil)
+	env.OnActivity(ActivityDraftEmails, mock.Anything, mock.Anything).
+		Return(draftResult{}, errors.New("activity: генерация черновиков писем: LLM недоступен"))
+	env.OnActivity(ActivityFailRequest, mock.Anything, mock.MatchedBy(func(in transitionInput) bool {
+		return in.ReasonCode == failCodeDraft
+	})).Return(nil)
+
+	env.ExecuteWorkflow(Fulfillment, Params{RequestID: "req-fail-draft", TenantID: "tenant-1", LeadTarget: 3})
+	assertWorkflowFailed(t, env)
+	env.AssertNotCalled(t, "ExecuteActivity", ActivityFulfillRequest)
+	env.AssertExpectations(t)
+}
+
+// TestFulfillmentTransitionRejectedFailsRequest проверяет, что доменный отказ
+// перехода завершения (ошибка activity FulfillRequest) переводит заявку в failed
+// с кодом transition_rejected, а не оставляет её в processing.
+func TestFulfillmentTransitionRejectedFailsRequest(t *testing.T) {
+	env := newEnv(t)
+	env.OnActivity(ActivityStartProcessing, mock.Anything, mock.Anything).Return(nil)
+	env.OnActivity(ActivitySearchLeads, mock.Anything, mock.Anything).
+		Return(searchResult{Found: 1, LeadIDs: []string{"lead-a"}}, nil)
+	env.OnActivity(ActivityFulfillRequest, mock.Anything, mock.Anything).
+		Return(errors.New("activity FulfillRequest: переход заявки: недопустимый переход"))
+	env.OnActivity(ActivityFailRequest, mock.Anything, mock.MatchedBy(func(in transitionInput) bool {
+		return in.ReasonCode == failCodeTransitionRejected
+	})).Return(nil)
+
+	env.RegisterDelayedCallback(func() {
+		env.SignalWorkflow(SignalApprovalDecision, ApprovalDecision{Approved: true, Actor: "operator"})
+	}, time.Second)
+
+	env.ExecuteWorkflow(Fulfillment, Params{RequestID: "req-fail-transition", TenantID: "tenant-1", LeadTarget: 1})
+	assertWorkflowFailed(t, env)
+	env.AssertExpectations(t)
+}
+
+// TestFulfillmentExecutionTimeoutFailsRequest проверяет реальный путь
+// workflow_timed_out: когда исполнение приближается к внутреннему дедлайну,
+// workflow не ждёт терминального kill Temporal, а переводит заявку в failed с
+// кодом workflow_timed_out и завершается сбоем (close-статус Failed).
+func TestFulfillmentExecutionTimeoutFailsRequest(t *testing.T) {
+	env := newEnv(t)
+	env.OnActivity(ActivityStartProcessing, mock.Anything, mock.Anything).Return(nil)
+	env.OnActivity(ActivitySearchLeads, mock.Anything, mock.Anything).
+		Return(searchResult{Found: 1, LeadIDs: []string{"lead-1"}}, nil)
+	env.OnActivity(ActivityFailRequest, mock.Anything, mock.MatchedBy(func(in transitionInput) bool {
+		return in.ReasonCode == failCodeWorkflowTimedOut
+	})).Return(nil)
+
+	// Предел исполнения 2ч30м, срок паузы 2ч, запас 1ч: внутренний дедлайн (1ч30м)
+	// наступает раньше истечения паузы — workflow должен перейти в failed по
+	// таймауту, а не в cancelled по истечении срока паузы.
+	env.ExecuteWorkflow(Fulfillment, Params{
+		RequestID: "req-timeout", TenantID: "tenant-1", LeadTarget: 1,
+		Policy: ExecutionPolicy{ApprovalTTL: 2 * time.Hour, ExecutionTimeout: 2*time.Hour + 30*time.Minute},
+	})
+	assertWorkflowFailed(t, env)
+	env.AssertNotCalled(t, "ExecuteActivity", ActivityCancelRequest)
+	env.AssertNotCalled(t, "ExecuteActivity", ActivityFulfillRequest)
+	env.AssertExpectations(t)
+}
+
+// TestFulfillmentReproducesOldGraphWithoutFailureCompensation проверяет
+// совместимость версий для компенсации сбоя: прежнее исполнение
+// (changeFailureCompensation == DefaultVersion) при сбое шага возвращает исходную
+// ошибку, роняя workflow, а не переводит заявку в failed.
+func TestFulfillmentReproducesOldGraphWithoutFailureCompensation(t *testing.T) {
+	env := newEnv(t)
+	env.OnGetVersion(changeFailureCompensation, workflow.DefaultVersion, workflow.Version(1)).
+		Return(func(string, workflow.Version, workflow.Version) workflow.Version { return workflow.DefaultVersion })
+	env.OnGetVersion(changeTerminalIntent, workflow.DefaultVersion, workflow.Version(1)).
+		Return(func(string, workflow.Version, workflow.Version) workflow.Version { return workflow.DefaultVersion })
+	env.OnActivity(ActivityStartProcessing, mock.Anything, mock.Anything).Return(nil)
+	env.OnActivity(ActivitySearchLeads, mock.Anything, mock.Anything).
+		Return(searchResult{}, errors.New("activity: поиск лидов: сеть недоступна")).Once()
+
+	env.ExecuteWorkflow(Fulfillment, Params{RequestID: "req-old-fail", TenantID: "tenant-1", LeadTarget: 3})
+	if err := env.GetWorkflowError(); err == nil {
+		t.Fatal("прежнее исполнение должно упасть исходной ошибкой шага, а не завершиться штатно")
+	}
+	env.AssertNotCalled(t, "ExecuteActivity", ActivityFailRequest)
+	env.AssertExpectations(t)
+}
+
+// TestFulfillmentApprovalExpiryNotReclassifiedAsTimeout проверяет различие
+// исходов после паузы утверждения: когда срок утверждения истекает раньше
+// дедлайна workflow, заявка переходит в cancelled (срок утверждения истёк), а не
+// переклассифицируется в failed (дедлайн workflow истёк).
+func TestFulfillmentApprovalExpiryNotReclassifiedAsTimeout(t *testing.T) {
+	env := newEnv(t)
+	env.OnActivity(ActivityStartProcessing, mock.Anything, mock.Anything).Return(nil)
+	env.OnActivity(ActivitySearchLeads, mock.Anything, mock.Anything).
+		Return(searchResult{Found: 1, LeadIDs: []string{"lead-1"}}, nil)
+	env.OnActivity(ActivityCancelRequest, mock.Anything, mock.MatchedBy(func(in transitionInput) bool {
+		return in.ReasonCode == approvalExpiredReason
+	})).Return(nil)
+
+	// Срок утверждения 1ч, предел исполнения 3ч (дедлайн = 3ч − 1ч = 2ч > 1ч):
+	// срок утверждения истекает первым → cancelled, не failed.
+	env.ExecuteWorkflow(Fulfillment, Params{
+		RequestID: "req-approval-expiry", TenantID: "tenant-1", LeadTarget: 1,
+		Policy: ExecutionPolicy{ApprovalTTL: time.Hour, ExecutionTimeout: 3 * time.Hour},
+	})
+	if err := env.GetWorkflowError(); err != nil {
+		t.Fatalf("workflow завершился ошибкой: %v", err)
+	}
+	var status Status
+	if err := env.GetWorkflowResult(&status); err != nil {
+		t.Fatalf("чтение результата: %v", err)
+	}
+	if status.Phase != PhaseCancelled {
+		t.Fatalf("фаза = %q, ожидалась %q (срок утверждения истёк)", status.Phase, PhaseCancelled)
+	}
+	env.AssertNotCalled(t, "ExecuteActivity", ActivityFailRequest)
+	env.AssertNotCalled(t, "ExecuteActivity", ActivityFulfillRequest)
+	env.AssertExpectations(t)
+}
+
 // TestDraftsAllowed проверяет правило гейта «недобор → письма»: при включённом
 // гейте нужен наблюдаемый недобор, при выключенном (прежнее исполнение) генерация
 // разрешена безусловно.
@@ -631,10 +988,15 @@ func TestExecutionPolicyDefaults(t *testing.T) {
 		t.Fatalf("повторы длинных шагов %d не ограничены относительно коротких %d", policy.LongMaxAttempts, policy.TransitionMaxAttempts)
 	}
 
-	// Пользовательский срок паузы растягивает предел исполнения.
+	// Пользовательский срок паузы растягивает предел исполнения с запасом на
+	// компенсацию: запас всегда гарантирован и не съедает срок утверждения.
 	stretched := ExecutionPolicy{ApprovalTTL: 60 * 24 * time.Hour}.withDefaults()
 	if stretched.ExecutionTimeout < stretched.ApprovalTTL {
 		t.Fatalf("предел исполнения %v меньше пользовательского срока паузы %v", stretched.ExecutionTimeout, stretched.ApprovalTTL)
+	}
+	if stretched.ExecutionTimeout < stretched.ApprovalTTL+workflowTimeoutReserve {
+		t.Fatalf("предел исполнения %v не покрывает срок паузы %v и запас %v",
+			stretched.ExecutionTimeout, stretched.ApprovalTTL, workflowTimeoutReserve)
 	}
 }
 
@@ -646,4 +1008,148 @@ func TestStartHeartbeatOutsideActivityIsSafe(t *testing.T) {
 	stop()
 	stop()
 	safeRecordHeartbeat(context.Background())
+}
+
+// newHandoffEnv собирает тестовую среду с реальным шагом передачи: письма заявки
+// разрешаются в материал и передаются в outreach стабами контрактов, поэтому
+// workflow получает наблюдаемое число переданных писем (Expected) для ожидания
+// доставки. Возвращает среду и число переданных писем.
+func newHandoffEnv(t *testing.T, drafts []ports.EmailDraft) *testsuite.TestWorkflowEnvironment {
+	t.Helper()
+	env := newEnvWithActivities(t, &Activities{
+		Handoff: ContractHandoff{
+			Drafts:   handoffStoreWith(t, drafts...),
+			Content:  &stubContentRequest{},
+			Outreach: &stubOutreachHandoff{result: outreachhandoff.Result{CampaignID: "camp-req-del", Accepted: len(drafts)}},
+		},
+	})
+	leadIDs := make([]string, 0, len(drafts))
+	for _, d := range drafts {
+		leadIDs = append(leadIDs, d.LeadID)
+	}
+	env.OnActivity(ActivityStartProcessing, mock.Anything, mock.Anything).Return(nil)
+	env.OnActivity(ActivitySearchLeads, mock.Anything, mock.Anything).
+		Return(searchResult{Found: len(drafts), LeadIDs: leadIDs}, nil)
+	env.OnActivity(ActivityDraftEmails, mock.Anything, mock.Anything).
+		Return(draftResult{Drafted: len(drafts), LeadIDs: leadIDs}, nil)
+	return env
+}
+
+// TestFulfillmentDeliveryConcludesRequest проверяет capability
+// request-delivery-conclusion: заявка с переданными письмами завершается по
+// полному покрытию доставкой, не дожидаясь сигнала утверждения консоли заявок.
+func TestFulfillmentDeliveryConcludesRequest(t *testing.T) {
+	env := newHandoffEnv(t, []ports.EmailDraft{
+		{RequestID: "req-del", TenantID: "tenant-1", LeadID: "lead-a", Subject: "т", Body: "т", RecipientRef: "contact-a"},
+	})
+	env.OnActivity(ActivityFulfillRequest, mock.Anything, mock.Anything).Return(nil).Once()
+
+	env.RegisterDelayedCallback(func() {
+		env.SignalWorkflow(SignalDeliveryOutcome, DeliveryOutcome{MessageID: "msg-1", Delivered: true})
+	}, time.Second)
+
+	env.ExecuteWorkflow(Fulfillment, Params{RequestID: "req-del", TenantID: "tenant-1", LeadTarget: 3})
+	if err := env.GetWorkflowError(); err != nil {
+		t.Fatalf("workflow завершился ошибкой: %v", err)
+	}
+	var status Status
+	if err := env.GetWorkflowResult(&status); err != nil {
+		t.Fatalf("чтение результата: %v", err)
+	}
+	if status.Phase != PhaseFulfilled {
+		t.Fatalf("фаза = %q, ожидалась %q", status.Phase, PhaseFulfilled)
+	}
+	env.AssertExpectations(t)
+}
+
+// TestFulfillmentDeliveryDuplicateIsIdempotent проверяет идемпотентность
+// завершения по доставке: повтор события (at-least-once) не даёт второго перехода.
+func TestFulfillmentDeliveryDuplicateIsIdempotent(t *testing.T) {
+	env := newHandoffEnv(t, []ports.EmailDraft{
+		{RequestID: "req-del-dup", TenantID: "tenant-1", LeadID: "lead-a", Subject: "т", Body: "т", RecipientRef: "contact-a"},
+	})
+	// Ровно один переход в fulfilled: повтор того же message_id не считается.
+	env.OnActivity(ActivityFulfillRequest, mock.Anything, mock.Anything).Return(nil).Once()
+
+	env.RegisterDelayedCallback(func() {
+		env.SignalWorkflow(SignalDeliveryOutcome, DeliveryOutcome{MessageID: "msg-1", Delivered: true})
+		env.SignalWorkflow(SignalDeliveryOutcome, DeliveryOutcome{MessageID: "msg-1", Delivered: true})
+	}, time.Second)
+
+	env.ExecuteWorkflow(Fulfillment, Params{RequestID: "req-del-dup", TenantID: "tenant-1", LeadTarget: 3})
+	if err := env.GetWorkflowError(); err != nil {
+		t.Fatalf("workflow завершился ошибкой: %v", err)
+	}
+	var status Status
+	if err := env.GetWorkflowResult(&status); err != nil {
+		t.Fatalf("чтение результата: %v", err)
+	}
+	if status.Phase != PhaseFulfilled {
+		t.Fatalf("фаза = %q, ожидалась %q", status.Phase, PhaseFulfilled)
+	}
+	env.AssertExpectations(t)
+}
+
+// TestFulfillmentDeliveryFailureCancels проверяет, что недоставка письма не
+// завершает заявку успехом: терминальное покрытие с отказом ведёт к cancelled.
+func TestFulfillmentDeliveryFailureCancels(t *testing.T) {
+	env := newHandoffEnv(t, []ports.EmailDraft{
+		{RequestID: "req-del-fail", TenantID: "tenant-1", LeadID: "lead-a", Subject: "т", Body: "т", RecipientRef: "contact-a"},
+	})
+	env.OnActivity(ActivityCancelRequest, mock.Anything, mock.MatchedBy(func(in transitionInput) bool {
+		return in.ReasonCode == deliveryFailedReason
+	})).Return(nil)
+
+	env.RegisterDelayedCallback(func() {
+		env.SignalWorkflow(SignalDeliveryOutcome, DeliveryOutcome{MessageID: "msg-1", Delivered: false})
+	}, time.Second)
+
+	env.ExecuteWorkflow(Fulfillment, Params{RequestID: "req-del-fail", TenantID: "tenant-1", LeadTarget: 3})
+	if err := env.GetWorkflowError(); err != nil {
+		t.Fatalf("workflow завершился ошибкой: %v", err)
+	}
+	var status Status
+	if err := env.GetWorkflowResult(&status); err != nil {
+		t.Fatalf("чтение результата: %v", err)
+	}
+	if status.Phase != PhaseCancelled {
+		t.Fatalf("фаза = %q, ожидалась %q", status.Phase, PhaseCancelled)
+	}
+	env.AssertNotCalled(t, "ExecuteActivity", ActivityFulfillRequest)
+	env.AssertExpectations(t)
+}
+
+// TestFulfillmentDeliveryIncompleteTimesOut проверяет ограниченность ожидания:
+// неполное покрытие доставкой по истечении срока даёт cancelled, а не вечное
+// ожидание.
+func TestFulfillmentDeliveryIncompleteTimesOut(t *testing.T) {
+	env := newHandoffEnv(t, []ports.EmailDraft{
+		{RequestID: "req-del-slow", TenantID: "tenant-1", LeadID: "lead-a", Subject: "т", Body: "т", RecipientRef: "contact-a"},
+		{RequestID: "req-del-slow", TenantID: "tenant-1", LeadID: "lead-b", Subject: "т", Body: "т", RecipientRef: "contact-b"},
+	})
+	// Неполное покрытие по истечении срока — недоставка, а не успех.
+	env.OnActivity(ActivityCancelRequest, mock.Anything, mock.MatchedBy(func(in transitionInput) bool {
+		return in.ReasonCode == deliveryFailedReason
+	})).Return(nil)
+
+	env.RegisterDelayedCallback(func() {
+		env.SignalWorkflow(SignalDeliveryOutcome, DeliveryOutcome{MessageID: "msg-1", Delivered: true})
+	}, time.Second)
+
+	env.ExecuteWorkflow(Fulfillment, Params{
+		RequestID: "req-del-slow", TenantID: "tenant-1", LeadTarget: 3,
+		Policy: ExecutionPolicy{ApprovalTTL: time.Minute},
+	})
+	if err := env.GetWorkflowError(); err != nil {
+		t.Fatalf("workflow завершился ошибкой: %v", err)
+	}
+	var status Status
+	if err := env.GetWorkflowResult(&status); err != nil {
+		t.Fatalf("чтение результата: %v", err)
+	}
+	if status.Phase != PhaseCancelled {
+		t.Fatalf("фаза = %q, ожидалась %q", status.Phase, PhaseCancelled)
+	}
+	env.AssertNotCalled(t, "ExecuteActivity", ActivityFulfillRequest)
+	env.AssertExpectations(t)
 }

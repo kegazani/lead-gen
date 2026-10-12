@@ -67,6 +67,7 @@ func (h *InitiateCallHandler) Handle(ctx context.Context, cmd InitiateCall) (Ini
 	}
 
 	transition, err := applyChange(ctx, h.uow, commandKey{RequestID: cmd.RequestID, TenantID: cmd.TenantID},
+		nil,
 		func(r *domain.Request) ([]domain.DomainEvent, error) {
 			return nil, r.AttachCall(domain.CallID(result.CallID))
 		})
@@ -84,8 +85,8 @@ func (h *InitiateCallHandler) Handle(ctx context.Context, cmd InitiateCall) (Ini
 // check подтверждает, что звонок допустим: заявка есть, тенант совпадает, статус
 // активен. Изменений не вносит.
 func (h *InitiateCallHandler) check(ctx context.Context, cmd InitiateCall) error {
-	return h.uow.WithinTransaction(ctx, func(tx ports.Transaction) error {
-		request, err := tx.Requests().FindByID(ctx, cmd.RequestID)
+	return h.uow.WithinTransaction(ctx, func(txCtx context.Context, tx ports.Transaction) error {
+		request, err := tx.Requests().FindByID(txCtx, cmd.RequestID)
 		if err != nil {
 			return err
 		}

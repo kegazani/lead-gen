@@ -1,17 +1,64 @@
 {{- define "content" -}}
 <section class="portal">
-  <h1>Портал клиента</h1>
+  <h1>{{ text "portal.title" }}</h1>
   {{- with .View.Notice }}
   <p class="notice" role="status">{{.}}</p>
   {{- end }}
+
+  <h2>{{ text "portal.services" }}</h2>
+  {{- if .View.Services }}
+  <div class="services">
+    {{- range .View.Services }}
+    <details class="service">
+      <summary>{{ .Name }} — {{ .Short }}</summary>
+      <p>{{ .Full }}</p>
+    </details>
+    {{- end }}
+  </div>
+  {{- else }}
+  <p class="portal-empty">{{ text "portal.services.empty" }}</p>
+  {{- end }}
+
+  <h2>{{ text "portal.metrics.title" }}</h2>
+  <dl class="facts metrics">
+    <div><dt>{{ text "portal.metrics.found" }}</dt><dd>{{ .View.Found }}</dd></div>
+    <div><dt>{{ text "portal.metrics.communicated" }}</dt><dd>{{ .View.Communicated }}</dd></div>
+    <div><dt>{{ text "portal.metrics.replied" }}</dt><dd>{{ .View.Replied }}</dd></div>
+  </dl>
+
+  <aside class="request-tree-panel" aria-label="{{ text "portal.requests.title" }}">
+    <h2>{{ text "portal.requests.title" }}</h2>
+    <div class="request-tree" id="request-tree" role="tree" aria-label="{{ text "portal.requests.title" }}">
+      {{- if .View.RequestsUnavailable }}
+      <p class="portal-empty" data-request-state="unavailable">{{ text "portal.requests.unavailable" }}</p>
+      {{- else if .View.Requests }}
+      <ul class="request-tree-list">
+        {{- range .View.Requests }}
+        <li class="request-tree-node" role="treeitem" data-request-id="{{ .RequestID }}">
+          <span class="request-tree-id">{{ .RequestID }}</span>
+          <span class="status status-{{ .Status }}">{{ label "portal.request.status" .Status }}</span>
+        </li>
+        {{- end }}
+      </ul>
+      {{- else }}
+      <p class="portal-empty" data-request-state="empty">{{ text "portal.requests.empty" }}</p>
+      {{- end }}
+    </div>
+  </aside>
+
   {{- if .View.HasRequest }}
-  <article class="request-state">
-    <p class="request-id">Заявка: {{ .View.RequestID }}</p>
-    <p>Статус: <span class="status status-{{ .View.Status }}">{{ .View.Status }}</span></p>
+  <article class="request-state fact-panel">
+    <dl class="facts">
+      <div><dt>{{ text "portal.request.id" }}</dt><dd class="request-id">{{ .View.RequestID }}</dd></div>
+      <div><dt>{{ text "portal.request.status" }}</dt><dd><span class="status status-{{ .View.Status }}">{{ label "portal.request.status" .View.Status }}</span></dd></div>
+      {{- if eq .View.Status "failed" }}
+      <div><dt>{{ text "portal.request.failure" }}</dt><dd class="request-failure">{{ .View.ErrorMessage }}</dd></div>
+      {{- end }}
+    </dl>
   </article>
   {{- else }}
-  <p class="portal-empty">Заявка ещё не подана.</p>
+  <p class="portal-empty">{{ text "portal.request.empty" }}</p>
   {{- end }}
-  <p><a href="/portal/request?tenant_id={{ urlquery .View.TenantID }}">Подать заявку</a></p>
+  <p class="actions"><a class="button" href="/portal/request">{{ text "portal.request.submit" }}</a></p>
 </section>
 {{- end -}}

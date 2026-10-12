@@ -38,12 +38,15 @@ type CollectedPage struct {
 
 // CollectSiteResult — исход сбора. Available=false означает честную
 // недоступность: сбор не выполнен, работа продолжается на ручных материалах.
+// Границы обхода, в которых велся сбор, фиксируются в результате.
 type CollectSiteResult struct {
 	Available bool            `json:"available"`
 	Reason    string          `json:"reason,omitempty"`
 	Pages     []CollectedPage `json:"pages,omitempty"`
 	MaxPages  int             `json:"max_pages"`
 	MaxDepth  int             `json:"max_depth"`
+	// MaxTimeSeconds — предельное время обхода, в котором велся сбор.
+	MaxTimeSeconds int `json:"max_time_seconds"`
 	// ExcludedPersonal — исключённые сведения о физических лицах: факт исключения
 	// сообщается.
 	ExcludedPersonal []string `json:"excluded_personal,omitempty"`
@@ -73,7 +76,7 @@ func (h *CollectSiteHandler) Handle(ctx context.Context, cmd CollectSite) (Colle
 		return CollectSiteResult{}, fmt.Errorf("%w: %v", ErrCollectionInput, err)
 	}
 
-	result := CollectSiteResult{MaxPages: cmd.MaxPages, MaxDepth: cmd.MaxDepth}
+	result := CollectSiteResult{MaxPages: cmd.MaxPages, MaxDepth: cmd.MaxDepth, MaxTimeSeconds: cmd.MaxTimeSeconds}
 	if h.collector == nil {
 		result.Reason = "движок сбора сведений не сконфигурирован: работа продолжается на предоставленных вручную материалах"
 		return result, nil

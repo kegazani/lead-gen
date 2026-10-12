@@ -4,7 +4,9 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"sync/atomic"
 	"testing"
+	"time"
 )
 
 func TestCreditUsageSuccess(t *testing.T) {
@@ -109,5 +111,70 @@ func TestUsageCacheKeepsLastSuccessfulOnError(t *testing.T) {
 	}
 	if bal := u.CreditBalance(); !bal.Available || bal.Value != 777 {
 		t.Fatalf("последнее успешное значение должно сохраниться: %+v", bal)
+	}
+}
+
+func TestUsageSerializesConcurrentCreditRefreshes(t *testing.T) {
+	var calls atomic.Int32
+	firstStarted := make(chan struct{})
+	secondStarted := make(chan struct{})
+	releaseFirst := make(chan struct{})
+	releaseSecond := make(chan struct{})
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		switch calls.Add(1) {
+		case 1:
+			close(firstStarted)
+			<-releaseFirst
+			writeJSON(t, w, map[string]any{"success": true, "data": map[string]any{"remainingCredits": 100}})
+		case 2:
+			close(secondStarted)
+			<-releaseSecond
+			writeJSON(t, w, map[string]any{"success": true, "data": map[string]any{"remainingCredits": 90}})
+		default:
+			t.Errorf("неожиданный credit refresh request №%d", calls.Load())
+			http.Error(w, "too many requests", http.StatusInternalServerError)
+		}
+	}))
+	defer server.Close()
+
+	clock := newFakeClock()
+	usage := NewUsage(New(Config{BaseURL: server.URL}), clock)
+	firstDone := make(chan error, 1)
+	go func() { firstDone <- usage.RefreshCredit(context.Background()) }()
+	<-firstStarted
+	secondCallStarted := make(chan struct{})
+	secondDone := make(chan error, 1)
+	go func() {
+		close(secondCallStarted)
+		secondDone <- usage.RefreshCredit(context.Background())
+	}()
+	<-secondCallStarted
+	select {
+	case <-secondStarted:
+		t.Fatal("второй credit refresh обогнал медленный первый запрос")
+	case <-time.After(25 * time.Millisecond):
+	}
+	if got := calls.Load(); got != 1 {
+		t.Fatalf("пока первый refresh не завершён, provider calls=%d, want 1", got)
+	}
+	close(releaseFirst)
+	if err := <-firstDone; err != nil {
+		t.Fatalf("первый RefreshCredit: %v", err)
+	}
+	select {
+	case <-secondStarted:
+	case <-time.After(time.Second):
+		t.Fatal("после первого refresh второй provider request не начался")
+	}
+	clock.Advance(time.Second)
+	close(releaseSecond)
+	if err := <-secondDone; err != nil {
+		t.Fatalf("второй RefreshCredit: %v", err)
+	}
+	if got := calls.Load(); got != 2 {
+		t.Fatalf("credit refresh calls=%d, want 2", got)
+	}
+	if bal := usage.CreditBalance(); !bal.Available || bal.Value != 90 || !bal.UpdatedAt.Equal(clock.Now()) {
+		t.Fatalf("последний сериализованный снимок не сохранён корректно: %+v", bal)
 	}
 }

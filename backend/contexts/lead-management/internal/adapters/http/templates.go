@@ -25,15 +25,16 @@ var (
 
 // consoleStylesheets — внешние таблицы стилей консоли, подключаемые каркасом
 // страницы. Оформление общее для серверных экранов и живёт в frontend/components
-// (CSP консоли запрещает inline-стили); здесь — только ссылка на него.
-var consoleStylesheets = components.ConsoleStylesheets
+// (CSP консоли запрещает inline-стили); здесь — только ссылка на него и
+// собственное расширение состава карточек консоли лидов (static/cards.css).
+var consoleStylesheets = append(append([]string{}, components.ConsoleStylesheets...), "/static/cards.css")
 
 // consoleScripts — внешние скрипты консоли. HTMX даёт гипермедиа-частичные
 // обновления (живой журнал заданий без перезагрузки), console.js сохраняет выбор
 // заданий и переносит лида перетаскиванием, assistant.js выводит ответ ассистента
 // потоком; скрипты — отдельные файлы, так как CSP разрешает скрипты только с того
 // же источника.
-var consoleScripts = []string{"/static/htmx.min.js", "/static/console.js", "/static/assistant.js"}
+var consoleScripts = append([]string{"/static/htmx.min.js", "/static/console.js", "/static/assistant.js"}, components.ConsoleScripts...)
 
 // consoleBootstrapScripts — скрипты, подключаемые синхронно в <head> до
 // отрисовки страницы. theme.js ставит выбранную тему без вспышки, поэтому он не
@@ -72,7 +73,7 @@ const (
 // parsePages разбирает страницы консоли вместе с каркасом и фрагментами. Ошибка
 // разбора возвращается сразу — при сборке процесса, а не при первом запросе.
 func parsePages() (*components.Set, error) {
-	return components.New(
+	return components.NewWithMessages(consoleMessages(),
 		templateFS,
 		pageLogin,
 		pageDashboard,
@@ -93,7 +94,18 @@ func parsePages() (*components.Set, error) {
 // со встроенными стилями, без каркаса и статики консоли. Файл передают отдельно от
 // сервиса, поэтому он не должен ссылаться на /static.
 func parseLeadsExport() (*template.Template, error) {
-	return template.New("export-root").ParseFS(templateFS, pageLeadsExport)
+	return template.New("export-root").Funcs(exportTextFuncs()).ParseFS(templateFS, pageLeadsExport)
+}
+
+// exportTextFuncs повторяет функцию text общего слоя для автономного шаблона выгрузки:
+// файл разбирается отдельно от каркаса страниц, поэтому каталог сообщений нужно
+// подключить явно. Текст выгрузки также живёт в каталоге.
+func exportTextFuncs() template.FuncMap {
+	return template.FuncMap{
+		"text": func(key string) string {
+			return consoleMessages().Text(components.MessageKey(key))
+		},
+	}
 }
 
 // staticFiles раздаёт встроенные статические файлы консоли вместе с общим

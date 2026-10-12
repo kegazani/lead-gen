@@ -7,9 +7,11 @@
 // Нормализация ответа. Успешная отправка переводится в нормализованный исход
 // delivered с кодом принятия. Ответ SMTP-сервера (протокольная ошибка)
 // нормализуется по коду: 4xx — мягкий отказ (soft-bounce), 5xx — жёсткий
-// (hard-bounce). Сбой транспорта (соединение, отмена, ошибка протокола без кода)
-// не является решением провайдера о получателе и возвращается как
-// ports.ErrMailerUnavailable — временный исход.
+// (hard-bounce). Сбой транспорта (соединение, отмена, ошибка протокола без кода
+// до подтверждённой передачи DATA) не является решением провайдера о получателе
+// и возвращается как ports.ErrMailerUnavailable — временный исход. Потеря
+// подтверждения после DATA возвращается как OutcomeUnknown для durable фиксации
+// без retry.
 package provider
 
 import (
@@ -73,7 +75,12 @@ func New(cfg Config) (*Mailer, error) {
 // (соединение, отмена, протокол без кода) и ошибки аутентификации/доступа
 // (диапазон 530–539) — не решение о получателе, а сбой окружения, и не должны
 // менять репутацию домена: они возвращаются как ports.ErrMailerUnavailable.
+// mail.ErrOutcomeUnknown преобразуется в доменный исход без delivery-event и
+// не попадает в автоматические повторы.
 func normalizeError(err error) (ports.ProviderResponse, error) {
+	if errors.Is(err, mail.ErrOutcomeUnknown) {
+		return ports.ProviderResponse{Outcome: domain.OutcomeUnknown, ProviderCode: "outcome-unknown"}, nil
+	}
 	code, ok := providerCode(err)
 	if !ok || (code >= 530 && code < 540) {
 		return ports.ProviderResponse{}, fmt.Errorf("%w: %v", ports.ErrMailerUnavailable, err)
@@ -88,10 +95,11 @@ func normalizeError(err error) (ports.ProviderResponse, error) {
 // Send реализует ports.Mailer. Тема и тело письма передаются провайдеру.
 func (m *Mailer) Send(ctx context.Context, message ports.OutgoingMessage) (ports.ProviderResponse, error) {
 	err := m.port.Send(ctx, mail.Message{
-		From:    m.from,
-		To:      message.To.String(),
-		Subject: message.Subject,
-		Body:    message.Body,
+		MessageID: string(message.MessageID),
+		From:      m.from,
+		To:        message.To.String(),
+		Subject:   message.Subject,
+		Body:      message.Body,
 	})
 	if err == nil {
 		return ports.ProviderResponse{Outcome: domain.OutcomeDelivered, ProviderCode: m.successCode}, nil

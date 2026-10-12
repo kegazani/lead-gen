@@ -6,16 +6,30 @@ import "time"
 type TenantState string
 
 const (
+	// TenantPending — заявка на регистрацию подана и ждёт решения администратора.
+	// Доступ к порталу и созданию заявок не выдаётся.
+	TenantPending TenantState = "pending"
 	// TenantActive — тенант активен и выдаёт решения доступа.
 	TenantActive TenantState = "active"
+	// TenantRejected — заявка на регистрацию отклонена администратором.
+	TenantRejected TenantState = "rejected"
 	// TenantDisabled — тенант отключён и новых решений доступа не выдаёт.
 	TenantDisabled TenantState = "disabled"
 )
 
 // isValid сообщает, что состояние объявлено доменом.
 func (s TenantState) isValid() bool {
-	return s == TenantActive || s == TenantDisabled
+	switch s {
+	case TenantPending, TenantActive, TenantRejected, TenantDisabled:
+		return true
+	default:
+		return false
+	}
 }
+
+// grantsAccess сообщает, что состояние выдаёт положительные решения доступа.
+// Проверяемая и отклонённая заявка доступа не дают, как и отключённый тенант.
+func (s TenantState) grantsAccess() bool { return s == TenantActive }
 
 // AccessAssignment — правило снимка правил: набор ролей актора в тенанте.
 type AccessAssignment struct {

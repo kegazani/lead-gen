@@ -80,6 +80,9 @@ func TestServerReadsEnvelopeAndKeyFromHeaders(t *testing.T) {
 	if req.Envelope.CorrelationID != "campaign-1" || req.Envelope.SchemaVersion != "1.2.0" || req.Envelope.TenantID != "tenant-1" {
 		t.Fatalf("конверт восстановлен неверно: %+v", req.Envelope)
 	}
+	if req.Envelope.WorkflowID != "wf-42" {
+		t.Fatalf("workflow_id потерян при восстановлении конверта: %+v", req.Envelope)
+	}
 	if req.Envelope.Name != "approved-action" {
 		t.Fatalf("имя контракта потеряно: %+v", req.Envelope)
 	}

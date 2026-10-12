@@ -14,16 +14,20 @@ import (
 // добавить того же пользователя в другой агрегат невозможна, потому что
 // репозиторий адресует агрегат по тенанту.
 type TenantUser struct {
-	id    UserID
-	login string
-	roles RoleSet
+	id           UserID
+	login        string
+	passwordHash string
+	roles        RoleSet
 }
 
 // ID возвращает идентификатор пользователя.
 func (u TenantUser) ID() UserID { return u.id }
 
-// Login возвращает логин пользователя.
+// Login возвращает логин пользователя (email учётной записи).
 func (u TenantUser) Login() string { return u.login }
+
+// PasswordHash возвращает хеш пароля пользователя.
+func (u TenantUser) PasswordHash() string { return u.passwordHash }
 
 // Roles возвращает набор ролей пользователя.
 func (u TenantUser) Roles() RoleSet { return u.roles }
@@ -32,8 +36,10 @@ func (u TenantUser) Roles() RoleSet { return u.roles }
 type NewUser struct {
 	// ID — идентификатор пользователя.
 	ID UserID
-	// Login — логин пользователя.
+	// Login — логин пользователя (email учётной записи).
 	Login string
+	// PasswordHash — хеш пароля пользователя (сырой пароль в домен не попадает).
+	PasswordHash string
 	// Roles — начальный набор ролей (непустой).
 	Roles RoleSet
 }
@@ -47,6 +53,17 @@ type RegisterTenantParams struct {
 	CompanyName string
 	// Description — описание компании клиента (обязательно).
 	Description string
+	// INN — ИНН компании (обязателен, уникален).
+	INN string
+	// CompanyEmail — email компании (обязателен, уникален).
+	CompanyEmail string
+	// Website — ссылка на сайт компании (обязательна).
+	Website string
+	// LegalData — юридические данные компании.
+	LegalData string
+	// Pending — создавать тенант как заявку на регистрацию (на проверке), а не
+	// сразу активным. Используется самообслуживанием клиента.
+	Pending bool
 	// At — время создания (UTC).
 	At time.Time
 	// Actor — субъект создания: уполномоченный актор либо сам клиент при
@@ -118,15 +135,22 @@ func (c ChangeContext) validate() error {
 //
 // Поля закрыты: состояние меняется только методами агрегата.
 type Tenant struct {
-	id          TenantID
-	companyName string
-	description string
-	state       TenantState
-	version     uint64
-	users       []TenantUser
-	audit       []AuditRecord
-	createdAt   time.Time
-	events      []DomainEvent
+	id                 TenantID
+	companyName        string
+	description        string
+	inn                string
+	companyEmail       string
+	website            string
+	legalData          string
+	state              TenantState
+	registrationReason string
+	version            uint64
+	users              []TenantUser
+	profile            Profile
+	profileStatus      ProfileStatus
+	audit              []AuditRecord
+	createdAt          time.Time
+	events             []DomainEvent
 }
 
 // RegisterTenant создаёт активный тенант, фиксируя создание одной записью
@@ -145,6 +169,10 @@ func RegisterTenant(params RegisterTenantParams) (*Tenant, error) {
 	if description == "" {
 		return nil, ErrDescriptionRequired
 	}
+	inn := strings.TrimSpace(params.INN)
+	companyEmail := strings.TrimSpace(params.CompanyEmail)
+	website := strings.TrimSpace(params.Website)
+	legalData := strings.TrimSpace(params.LegalData)
 	if params.At.IsZero() {
 		return nil, ErrMissingTime
 	}
@@ -152,12 +180,22 @@ func RegisterTenant(params RegisterTenantParams) (*Tenant, error) {
 		return nil, err
 	}
 
+	state := TenantActive
+	if params.Pending {
+		state = TenantPending
+	}
+
 	tenant := &Tenant{
-		id:          params.ID,
-		companyName: companyName,
-		description: description,
-		state:       TenantActive,
-		createdAt:   params.At,
+		id:            params.ID,
+		companyName:   companyName,
+		description:   description,
+		inn:           inn,
+		companyEmail:  companyEmail,
+		website:       website,
+		legalData:     legalData,
+		state:         state,
+		profileStatus: ProfileEmpty,
+		createdAt:     params.At,
 	}
 
 	header := EventHeader{
@@ -179,7 +217,6 @@ func RegisterTenant(params RegisterTenantParams) (*Tenant, error) {
 		}
 		tenant.users = append(tenant.users, user)
 		event.UserID = user.id
-		event.Login = user.login
 		event.Roles = user.roles.Roles()
 	}
 	tenant.version = 1
@@ -212,7 +249,7 @@ func (t *Tenant) prepareUser(user NewUser) (TenantUser, error) {
 	if err != nil {
 		return TenantUser{}, err
 	}
-	return TenantUser{id: user.ID, login: login, roles: roles}, nil
+	return TenantUser{id: user.ID, login: login, passwordHash: strings.TrimSpace(user.PasswordHash), roles: roles}, nil
 }
 
 // AddUser добавляет пользователя в состав тенанта, фиксируя изменение доступа
@@ -233,7 +270,6 @@ func (t *Tenant) AddUser(change ChangeContext, user NewUser) error {
 	t.events = append(t.events, TenantAccessChanged{
 		EventHeader: change.header(t.id),
 		UserID:      prepared.id,
-		Login:       prepared.login,
 		Roles:       prepared.roles.Roles(),
 		Change:      AccessUserAdded,
 	})
@@ -249,6 +285,27 @@ func (t *Tenant) CompanyName() string { return t.companyName }
 
 // Description возвращает описание компании клиента.
 func (t *Tenant) Description() string { return t.description }
+
+// INN возвращает ИНН компании.
+func (t *Tenant) INN() string { return t.inn }
+
+// CompanyEmail возвращает email компании.
+func (t *Tenant) CompanyEmail() string { return t.companyEmail }
+
+// Website возвращает ссылку на сайт компании.
+func (t *Tenant) Website() string { return t.website }
+
+// LegalData возвращает юридические данные компании.
+func (t *Tenant) LegalData() string { return t.legalData }
+
+// RegistrationReason возвращает описание решения по заявке на регистрацию.
+func (t *Tenant) RegistrationReason() string { return t.registrationReason }
+
+// Profile возвращает профиль компании.
+func (t *Tenant) Profile() Profile { return t.profile }
+
+// ProfileStatus возвращает состояние профиля компании.
+func (t *Tenant) ProfileStatus() ProfileStatus { return t.profileStatus }
 
 // State возвращает состояние тенанта.
 func (t *Tenant) State() TenantState { return t.state }
@@ -343,6 +400,27 @@ func (t *Tenant) RevokeRole(change ChangeContext, userID UserID, role Role) erro
 	return t.recordAccessChange(change, t.users[index], AccessRoleRevoked, ActionRoleRevoked)
 }
 
+// SetUserPassword заменяет хеш пароля пользователя. В домен попадает только хеш:
+// сырой пароль хранит и проверяет адаптер. Смена пароля не меняет состав ролей,
+// поэтому отдельное событие доступа и запись аудита не создаются; изменение
+// фиксируется подъёмом версии правил доступа.
+func (t *Tenant) SetUserPassword(change ChangeContext, userID UserID, passwordHash string) error {
+	if err := change.validate(); err != nil {
+		return err
+	}
+	index, err := t.userIndex(userID)
+	if err != nil {
+		return err
+	}
+	hash := strings.TrimSpace(passwordHash)
+	if hash == "" {
+		return ErrUserPasswordRequired
+	}
+	t.users[index].passwordHash = hash
+	t.version++
+	return nil
+}
+
 // Disable переводит тенант в состояние «отключён», фиксируя это событием и
 // записью аудита. Повторное отключение идемпотентно и не создаёт новых записей.
 func (t *Tenant) Disable(change ChangeContext) error {
@@ -362,6 +440,99 @@ func (t *Tenant) Disable(change ChangeContext) error {
 		ActionTenantDisabled, t.id.String(), change.At, OutcomeSucceeded, ""))
 }
 
+// ApproveRegistration переводит заявку на регистрацию из pending в active,
+// фиксируя решение администратора событием и записью аудита.
+func (t *Tenant) ApproveRegistration(change ChangeContext) error {
+	if err := change.validate(); err != nil {
+		return err
+	}
+	if t.state != TenantPending {
+		return ErrRegistrationState
+	}
+	t.state = TenantActive
+	t.version++
+	t.events = append(t.events, TenantAccessChanged{
+		EventHeader: change.header(t.id),
+		Change:      AccessTenantRegistered,
+	})
+	return t.appendAudit(change.header(t.id), newAuditRecordOrPanic(change.AuditID, change.Actor,
+		ActionRegistrationApproved, t.id.String(), change.At, OutcomeSucceeded, ""))
+}
+
+// RejectRegistration отклоняет заявку на регистрацию с обязательным описанием
+// причины. Отклонённый тенант доступа не выдаёт.
+func (t *Tenant) RejectRegistration(change ChangeContext, description string) error {
+	if err := change.validate(); err != nil {
+		return err
+	}
+	if t.state != TenantPending {
+		return ErrRegistrationState
+	}
+	reason := strings.TrimSpace(description)
+	if reason == "" {
+		return ErrRegistrationReasonRequired
+	}
+	t.state = TenantRejected
+	t.registrationReason = reason
+	t.version++
+	t.events = append(t.events, TenantAccessChanged{
+		EventHeader: change.header(t.id),
+		Change:      AccessTenantRegistrationRejected,
+	})
+	return t.appendAudit(change.header(t.id), newAuditRecordOrPanic(change.AuditID, change.Actor,
+		ActionRegistrationRejected, t.id.String(), change.At, OutcomeRejected, ""))
+}
+
+// SaveProfile сохраняет черновик профиля компании. Правка запрещена, пока профиль
+// на согласовании; после правки профиль возвращается в черновик и требует новой
+// подачи на согласование.
+func (t *Tenant) SaveProfile(profile Profile) error {
+	if t.profileStatus == ProfilePending {
+		return ErrProfilePending
+	}
+	t.profile = NewProfile(profile.Description, profile.Target, profile.Services)
+	t.profileStatus = ProfileEmpty
+	return nil
+}
+
+// SubmitProfile отправляет заполненный профиль на согласование.
+func (t *Tenant) SubmitProfile() error {
+	if !t.profile.Complete() {
+		return ErrProfileIncomplete
+	}
+	if t.profileStatus == ProfilePending {
+		return ErrProfileState
+	}
+	t.profileStatus = ProfilePending
+	return nil
+}
+
+// ApproveProfile подтверждает профиль, переводя его в active.
+func (t *Tenant) ApproveProfile(change ChangeContext) error {
+	if err := change.validate(); err != nil {
+		return err
+	}
+	if t.profileStatus != ProfilePending {
+		return ErrProfileState
+	}
+	t.profileStatus = ProfileActive
+	return t.appendAudit(change.header(t.id), newAuditRecordOrPanic(change.AuditID, change.Actor,
+		ActionProfileApproved, t.id.String(), change.At, OutcomeSucceeded, ""))
+}
+
+// RejectProfile отклоняет профиль, возвращая его к правке.
+func (t *Tenant) RejectProfile(change ChangeContext) error {
+	if err := change.validate(); err != nil {
+		return err
+	}
+	if t.profileStatus != ProfilePending {
+		return ErrProfileState
+	}
+	t.profileStatus = ProfileRejected
+	return t.appendAudit(change.header(t.id), newAuditRecordOrPanic(change.AuditID, change.Actor,
+		ActionProfileRejected, t.id.String(), change.At, OutcomeRejected, ""))
+}
+
 // DecideAccess выдаёт решение доступа для актора строго по назначенным ролям.
 //
 // Пустой актор — ошибка, а не отказ: отсутствие субъекта нельзя трактовать как
@@ -372,7 +543,7 @@ func (t *Tenant) DecideAccess(actor ActorID) (bool, error) {
 	if err := actor.validate(); err != nil {
 		return false, err
 	}
-	if t.state != TenantActive {
+	if !t.state.grantsAccess() {
 		return false, nil
 	}
 	for _, user := range t.users {
@@ -426,7 +597,6 @@ func (t *Tenant) recordAccessChange(change ChangeContext, user TenantUser, kind 
 	t.events = append(t.events, TenantAccessChanged{
 		EventHeader: change.header(t.id),
 		UserID:      user.id,
-		Login:       user.login,
 		Roles:       user.roles.Roles(),
 		Change:      kind,
 	})

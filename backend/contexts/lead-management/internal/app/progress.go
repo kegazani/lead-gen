@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"lead-gen/backend/contexts/lead-management/internal/ports"
+	"lead-gen/backend/platform/jobs"
 	"lead-gen/backend/platform/observability/observ"
 	"lead-gen/contracts/integration-platform/budget"
 )
@@ -32,11 +33,12 @@ const (
 // Там же, на границе flush, фиксируется снимок найденных компаний: результат
 // задания виден по ходу прогона, а не только после завершения.
 type progressReporter struct {
-	store  ports.SearchJobStore
-	id     string
-	now    func() time.Time
-	task   budget.Task // nil — бюджет не применяется
-	logger observ.Logger
+	store             ports.SearchJobStore
+	id                string
+	now               func() time.Time
+	task              budget.Task // nil — бюджет не применяется
+	logger            observ.Logger
+	failureNormalizer jobs.FailureNormalizer
 
 	// resultSupplier — снимок найденных компаний на момент flush; nil — результат
 	// общим репортером не фиксируется.
@@ -45,14 +47,15 @@ type progressReporter struct {
 	// наборе пропускается, чтобы не множить записи на каждой странице.
 	lastResult     []string
 	resultRecorded bool
+	resultErr      error
 
 	p ports.SearchJobProgress
 }
 
 // newProgressReporter собирает репортер прогресса задания. task может быть nil,
 // logger может быть nil — тогда сбой записи результата не логируется.
-func newProgressReporter(store ports.SearchJobStore, id string, now func() time.Time, task budget.Task, logger observ.Logger) *progressReporter {
-	return &progressReporter{store: store, id: id, now: now, task: task, logger: logger}
+func newProgressReporter(store ports.SearchJobStore, id string, now func() time.Time, task budget.Task, logger observ.Logger, normalizer jobs.FailureNormalizer) *progressReporter {
+	return &progressReporter{store: store, id: id, now: now, task: task, logger: logger, failureNormalizer: normalizer}
 }
 
 // result задаёт поставщика найденных компаний: репортер вызывает его на границе
@@ -155,6 +158,16 @@ func (rep *progressReporter) flush(ctx context.Context) {
 	rep.persistResult(ctx)
 }
 
+// resultError возвращает последнюю ошибку durable-записи результата. Неудачная
+// промежуточная запись может быть повторена следующим flush; успешная запись
+// сбрасывает ошибку.
+func (rep *progressReporter) resultError() error {
+	if rep == nil {
+		return nil
+	}
+	return rep.resultErr
+}
+
 // persistResult фиксирует снимок найденных компаний, если поставщик задан и набор
 // изменился. Ошибка записи логируется и не прерывает задание: результат будет
 // записан на следующей границе, а сам прогон продолжается.
@@ -167,11 +180,13 @@ func (rep *progressReporter) persistResult(ctx context.Context) {
 		return
 	}
 	if err := rep.store.RecordResult(ctx, rep.id, ids); err != nil {
+		rep.resultErr = err
 		if rep.logger != nil {
-			rep.logger.Error("запись результата задания", err, observ.Fields{TaskID: rep.id})
+			searchDiagnostic(rep.logger, true, "запись результата задания", "result_record_failed", observ.Fields{TaskID: rep.id})
 		}
 		return
 	}
+	rep.resultErr = nil
 	rep.lastResult = ids
 	rep.resultRecorded = true
 }

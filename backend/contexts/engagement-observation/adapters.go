@@ -7,6 +7,7 @@
 package engagementobservation
 
 import (
+	"context"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"lead-gen/backend/contexts/engagement-observation/internal/adapters/persistence/postgres"
@@ -28,6 +29,8 @@ type Persistence struct {
 	UnitOfWork ports.UnitOfWork
 	// Journal — журнал outbox: ожидающие публикации события переживают рестарт.
 	Journal platformoutbox.Journal
+	// Ping выполняет пассивную проверку соединения с тем же PostgreSQL-пулом.
+	Ping func(context.Context) error
 }
 
 // NewPostgresPersistence собирает PostgreSQL-адаптеры хранилища контекста поверх
@@ -40,5 +43,6 @@ func NewPostgresPersistence(pool *pgxpool.Pool) Persistence {
 		Links:      postgres.NewLinks(pool),
 		UnitOfWork: postgres.NewUnitOfWork(pool),
 		Journal:    postgres.NewJournal(pool),
+		Ping:       pool.Ping,
 	}
 }

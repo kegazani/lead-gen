@@ -4,9 +4,11 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"lead-gen/backend/platform/consoleauth"
 	"lead-gen/frontend/components"
@@ -14,11 +16,12 @@ import (
 
 // Имена страниц консольных экранов среза.
 const (
-	pageLogin        = "templates/login.html"
-	pageDraftQueue   = "templates/draft_queue.html"
-	pageBatchScreen  = "templates/batch_screen.html"
-	pageDraftScreen  = "templates/draft_screen.html"
-	pageStalledQueue = "templates/stalled_queue.html"
+	pageLogin           = "templates/login.html"
+	pageDraftQueue      = "templates/draft_queue.html"
+	pageBatchScreen     = "templates/batch_screen.html"
+	pageDraftScreen     = "templates/draft_screen.html"
+	pageStalledQueue    = "templates/stalled_queue.html"
+	pageEditorialReview = "templates/editorial_review.html"
 )
 
 // Разделы подменю консоли рассылок: машинные ключи активного пункта.
@@ -31,29 +34,41 @@ const (
 // frontend/components плюс страницы этого сервиса. Разбор идёт при сборке
 // сервиса, поэтому ошибка разметки видна сразу.
 func newPages() (*components.Set, error) {
-	return components.New(templateFS,
+	return components.NewWithMessages(consoleMessages(), templateFS,
 		pageLogin,
 		pageDraftQueue,
 		pageBatchScreen,
 		pageDraftScreen,
 		pageStalledQueue,
+		pageEditorialReview,
 	)
 }
 
-// consoleNav собирает навигацию консоли: общие разделы консоли плюс подменю
-// «Рассылки» с экранами этого сервиса. Общий компонент не знает раздела рассылок
-// (его канонический список задан в frontend/components), поэтому подменю
-// добавляется как группа — без правки общего слоя.
-func (s *Server) consoleNav(active string) components.Nav {
-	nav := components.ConsoleNav(s.console, "")
-	nav.Groups = append(nav.Groups, components.NavGroup{
-		Label: "Рассылки",
-		Items: []components.NavItem{
-			{Label: "Очередь черновиков", Href: "/outreach/drafts", Active: active == consoleNavDrafts},
-			{Label: "Зависшие черновики", Href: "/outreach/stalled", Active: active == consoleNavStalled},
+// consoleNav собирает общую навигацию консоли: канонические разделы общего слоя
+// с активным разделом «Рассылки» (ConsoleSectionOutreach). Вторичных групп здесь
+// нет: переходы между экранами раздела выводятся внутриэкранной панелью
+// (outreachSubnav), поэтому общий сайдбар одинаков на всех консолях и не меняет
+// состав и высоту при переходах (change console-shell-navigation). Контекст
+// активного тенанта и актора переносится в ссылки разделов.
+func (s *Server) consoleNav(tenant, actor string) components.Nav {
+	ctx := components.ConsoleContext{TenantID: tenant, Actor: actor}
+	return components.ConsoleNavWithContext(s.console, components.ConsoleSectionOutreach, ctx)
+}
+
+// outreachSubnav собирает внутриэкранную панель переходов по экранам раздела
+// «Рассылки»: очередь черновиков и зависшие черновики. Панель выводится в области
+// содержимого, а не в общем сайдбаре; текущий экран отмечен активным, а ссылки
+// сохраняют активные tenant_id и actor, чтобы контекст не терялся при переходе
+// между экранами раздела (change console-shell-navigation).
+func outreachSubnav(active, tenant, actor string) *components.Tabs {
+	ctx := components.ConsoleContext{TenantID: tenant, Actor: actor}
+	return &components.Tabs{
+		Items: []components.Tab{
+			{Key: consoleNavDrafts, Label: consoleMessages().Text(msgDraftQueueTitle), Href: components.ConsoleHrefWithContext("/outreach/drafts", ctx)},
+			{Key: consoleNavStalled, Label: consoleMessages().Text(msgStalledTitle), Href: components.ConsoleHrefWithContext("/outreach/stalled", ctx)},
 		},
-	})
-	return nav
+		Active: active,
+	}
 }
 
 // render рисует страницу в буфер: частично отданный HTML выглядел бы сломанной
@@ -69,6 +84,11 @@ func (s *Server) render(w http.ResponseWriter, status int, page string, model co
 	if len(model.Layout.BootstrapScripts) == 0 {
 		model.Layout.BootstrapScripts = components.ConsoleBootstrapScripts
 	}
+	// Общие скрипты консоли возвращают фокус при подмене фрагмента и объявляют
+	// изменения через область aria-live (web-frontend-architecture, срез 7, 7.3).
+	if len(model.Layout.Scripts) == 0 {
+		model.Layout.Scripts = components.ConsoleScripts
+	}
 	var buf bytes.Buffer
 	if err := s.pages.Render(&buf, page, model); err != nil {
 		s.renderPlainError(w, http.StatusInternalServerError, "ошибка рендеринга экрана")
@@ -77,6 +97,32 @@ func (s *Server) render(w http.ResponseWriter, status int, page string, model co
 	w.Header().Set("Content-Type", contentTypeHTML)
 	w.WriteHeader(status)
 	_, _ = w.Write(buf.Bytes())
+}
+
+// Порог и окно ограничения частоты чувствительных действий консоли.
+const (
+	sensitiveLimit  = 30
+	sensitiveWindow = time.Minute
+)
+
+// rateLimit оборачивает чувствительное действие ограничителем частоты общего слоя:
+// вход и решения утверждения (web-frontend-architecture, срез 7, 7.5). Факт
+// блокировки фиксируется.
+func (s *Server) rateLimit(path string, next http.HandlerFunc) http.HandlerFunc {
+	limited := components.RateLimit(components.RateLimitConfig{
+		Limit:  sensitiveLimit,
+		Window: sensitiveWindow,
+		OnBlocked: func(r *http.Request, key string) {
+			s.recordRateLimit(r, path, key)
+		},
+	})(next)
+	return limited.ServeHTTP
+}
+
+// recordRateLimit фиксирует блокировку в журнале процесса: без фиксации
+// отклонение неотличимо от тишины.
+func (s *Server) recordRateLimit(r *http.Request, path, key string) {
+	log.Printf("outreach-orchestration: превышен порог частоты path=%s key=%s", path, key)
 }
 
 // renderPlainError отдаёт текстовую ошибку для случаев, когда HTML-экран
@@ -97,6 +143,7 @@ func actorOf(r *http.Request) string {
 
 // loginView — модель страницы входа консоли рассылок.
 type loginView struct {
+	Live  components.Live
 	Error string
 }
 
@@ -107,8 +154,8 @@ func (s *Server) handleLoginForm(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.render(w, http.StatusOK, pageLogin, components.Page{
-		Layout: components.Layout{Title: "Вход"},
-		View:   loginView{},
+		Layout: components.Layout{Title: consoleMessages().Text(msgLoginTitle)},
+		View:   loginView{Live: consoleLive},
 	})
 }
 
@@ -125,8 +172,8 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	id, err := s.sessions.Login(r.FormValue("username"), r.FormValue("password"))
 	if errors.Is(err, consoleauth.ErrInvalidCredentials) {
 		s.render(w, http.StatusUnauthorized, pageLogin, components.Page{
-			Layout: components.Layout{Title: "Вход"},
-			View:   loginView{Error: "Неверный логин или пароль."},
+			Layout: components.Layout{Title: consoleMessages().Text(msgLoginTitle)},
+			View:   loginView{Live: consoleLive, Error: consoleMessages().Text(msgLoginError)},
 		})
 		return
 	}

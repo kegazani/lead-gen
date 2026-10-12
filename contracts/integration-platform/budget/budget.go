@@ -8,14 +8,32 @@
 package budget
 
 import (
+	"context"
+	"errors"
 	"time"
 
 	"lead-gen/contracts/integration-platform/crawl"
 	"lead-gen/contracts/integration-platform/search"
 )
 
-// Snapshot — состояние бюджета задачи для отображения: лимит, подтверждённый
-// расход, зарезервированный бюджет и доступный остаток. Бюджет необязателен:
+var (
+	// ErrRegistryCapacity — реестр не может принять новый scope без вытеснения
+	// незавершённых или ещё удерживаемых записей.
+	ErrRegistryCapacity = errors.New("budget: реестр задач заполнен")
+	// ErrTaskClosed — task scope уже переведён в terminal lifecycle и не принимает
+	// новые платные действия.
+	ErrTaskClosed = errors.New("budget: scope задачи закрывается или завершён")
+	// ErrFinishPending — Finish начал закрытие, но ожидает завершения in-flight
+	// операции.
+	ErrFinishPending = errors.New("budget: завершение задачи ожидает in-flight операции")
+	// ErrUnknownOutcomeUnreconciled — точного provider operation evidence для
+	// разрешения неизвестного резерва нет. Aggregate account balance недостаточен.
+	ErrUnknownOutcomeUnreconciled = errors.New("budget: для неизвестного исхода нет точного provider operation evidence")
+)
+
+// Snapshot — состояние бюджета задачи для отображения: лимит, подтверждённый и
+// консервативно reconciled расход, зарезервированный бюджет и доступный остаток.
+// Бюджет необязателен:
 // MaxCredits == 0 означает «бюджет не задан» — кредитный лимит не применяется,
 // при этом ConfirmedSpentCredits продолжает фиксировать фактический расход.
 type Snapshot struct {
@@ -25,7 +43,13 @@ type Snapshot struct {
 	ConfirmedSpentCredits int `json:"confirmed_spent_credits"`
 	// ReservedCredits — зарезервированный, но ещё не подтверждённый бюджет.
 	ReservedCredits int `json:"reserved_credits"`
-	// Available — доступно в рамках задачи (лимит минус расход и резерв). При
+	// UnknownCredits — часть резерва с неизвестным сетевым исходом.
+	UnknownCredits int `json:"unknown_credits"`
+	// OutstandingReservations — число зарезервированных операций, ещё не пришедших
+	// к известному settlement/unknown исходу.
+	OutstandingReservations int `json:"outstanding_reservations"`
+	// Available — доступно в рамках задачи (лимит минус подтверждённый расход и
+	// резервы). При
 	// незаданном бюджете равно 0 и не должно использоваться как ограничение:
 	// потребитель сначала проверяет MaxCredits.
 	Available int `json:"available"`
@@ -41,6 +65,27 @@ type Factory interface {
 	// > 0 задаёт жёсткий лимит; 0 — без кредитного лимита, но с измерением
 	// фактического расхода. Отрицательное значение — ошибка.
 	Begin(taskID string, maxCredits int) (Task, error)
+	// Finish запрашивает terminal settlement. Outstanding operations завершаются
+	// перед изменением статуса; unknown исход не разрешается aggregate account
+	// balance refresh, остаётся pinned и возвращает ErrUnknownOutcomeUnreconciled.
+	Finish(ctx context.Context, taskID string) error
+}
+
+// RegistryStatus — process-local pressure snapshot реестра бюджетных задач.
+type RegistryStatus struct {
+	Entries                 int   `json:"entries"`
+	Capacity                int   `json:"capacity"`
+	ActiveScopes            int   `json:"active_scopes"`
+	FinishedScopes          int   `json:"finished_scopes"`
+	OutstandingReservations int   `json:"outstanding_reservations"`
+	UnknownReservations     int   `json:"unknown_reservations"`
+	CapacityRejections      int64 `json:"capacity_rejections"`
+}
+
+// RegistryStatusReader — необязательная read-поверхность Guard для мониторинга
+// заполнения process-local task registry.
+type RegistryStatusReader interface {
+	RegistryStatus() RegistryStatus
 }
 
 // Task — бюджетная обёртка операций одной задачи. Встраивает порты поиска и
@@ -54,8 +99,10 @@ type Task interface {
 	Snapshot() Snapshot
 }
 
-// Balance — подтверждённое значение остатка (кредиты или токены) с временем
-// последнего успешного обновления. Available=false означает «недоступен».
+// Balance — подтверждённое значение остатка (кредиты или токены) с локальным
+// временем успешного получения ответа. UpdatedAt не является provider observation
+// timestamp, если источник его отдельно не передал. Available=false означает
+// «недоступен».
 type Balance struct {
 	Available bool
 	Value     int

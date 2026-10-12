@@ -1,0 +1,44 @@
+{{- define "agents-feed" -}}
+{{- if .Unavailable }}
+<p class="notice" role="status">{{ text "cockpit.agents.unavailable" }}</p>
+{{- else if .Empty }}
+<p class="empty">{{ text "cockpit.agents.empty" }}</p>
+{{- else }}
+<div class="cockpit-agents-list">
+  {{- range .Rows }}
+  <details id="agent-row-{{ .RunID }}" class="cockpit-agent-row" hx-preserve="true">
+    <summary>
+      <span class="cockpit-agent-company">{{ .Company }}</span>
+      <span class="status status-{{ .StateClass }}"><span aria-hidden="true">{{ .StateIcon }}</span> {{ .StateLabel }}</span>
+      <span class="cockpit-agent-client">{{ .ClientID }}</span>
+    </summary>
+    <ul class="cockpit-agent-meta">
+      <li>{{ text "cockpit.col.run" }}: {{ .RunID }}</li>
+      <li>{{ text "cockpit.col.step" }}: {{ .Step }}</li>
+      <li>{{ text "cockpit.col.updated" }}: {{ formatDateTime .UpdatedAt }}</li>
+      <li><a href="{{ .DetailURL }}">{{ text "cockpit.agents.link" }}</a></li>
+    </ul>
+  </details>
+  {{- end }}
+</div>
+{{- end }}
+{{- end -}}
+
+{{- define "content" -}}
+<section class="cockpit-agents">
+  <h1>{{ text "cockpit.title.agents" }}</h1>
+  {{- with .View.Notice }}
+  <p class="notice" role="status">{{.}}</p>
+  {{- end }}
+  <div id="agents-feed"
+       hx-get="{{ .View.FeedURL }}"
+       hx-trigger="every 5s"
+       hx-swap="innerHTML"
+       data-focus-after-swap="#agents-feed"
+       data-live-announce="{{ text "cockpit.agents.live" }}"
+       aria-label="{{ text "cockpit.agents.aria" }}">
+    {{ template "agents-feed" .View }}
+  </div>
+  {{ template "live" .View.Live }}
+</section>
+{{- end -}}

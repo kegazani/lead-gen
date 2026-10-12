@@ -109,7 +109,7 @@ func StatusClass(status string) string {
 // Фрагменты маленькие и неизменные, поэтому разбор на каждый вызов проще
 // общего реестра с состоянием; ошибка возвращается сразу, как и в Set.Render.
 func renderFragment(w io.Writer, name string, data any) error {
-	parsed, err := template.New(name).ParseFS(baseFS, "templates/"+name+".html")
+	parsed, err := template.New(name).Funcs(templateFuncs(DefaultMessages())).ParseFS(baseFS, "templates/"+name+".html")
 	if err != nil {
 		return fmt.Errorf("components: разбор фрагмента %s: %w", name, err)
 	}

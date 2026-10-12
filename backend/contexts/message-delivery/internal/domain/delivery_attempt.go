@@ -30,6 +30,10 @@ const (
 	// OutcomeSuppressed — попытка заблокирована стоп-листом непосредственно
 	// перед доставкой. Не является ответом провайдера.
 	OutcomeSuppressed AttemptOutcome = "suppressed"
+
+	// OutcomeUnknown — передача завершилась без достоверного SMTP acknowledgement.
+	// Исход не считается ни принятием, ни отказом и не подлежит автоматическому повтору.
+	OutcomeUnknown AttemptOutcome = "unknown"
 )
 
 // IsProviderResponse сообщает, является ли исход нормализованным ответом
@@ -46,7 +50,7 @@ func (o AttemptOutcome) IsProviderResponse() bool {
 // isValid сообщает, что исход объявлен доменом.
 func (o AttemptOutcome) isValid() bool {
 	switch o {
-	case OutcomeDelivered, OutcomeHardBounce, OutcomeSoftBounce, OutcomeTemporary, OutcomeSuppressed:
+	case OutcomeDelivered, OutcomeHardBounce, OutcomeSoftBounce, OutcomeTemporary, OutcomeSuppressed, OutcomeUnknown:
 		return true
 	default:
 		return false

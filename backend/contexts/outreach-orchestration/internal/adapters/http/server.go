@@ -24,10 +24,14 @@ import (
 
 	"lead-gen/backend/contexts/outreach-orchestration/internal/adapters/idempotency"
 	"lead-gen/backend/contexts/outreach-orchestration/internal/app/command"
+	appeditorial "lead-gen/backend/contexts/outreach-orchestration/internal/app/editorialreview"
 	"lead-gen/backend/contexts/outreach-orchestration/internal/app/query"
 	"lead-gen/backend/contexts/outreach-orchestration/internal/domain"
 	"lead-gen/backend/contexts/outreach-orchestration/internal/ports"
 	"lead-gen/backend/platform/consoleauth"
+	"lead-gen/backend/platform/readiness"
+	"lead-gen/contracts/outreach-orchestration/approvedaction"
+	"lead-gen/contracts/outreach-orchestration/editorialreview"
 	"lead-gen/frontend/components"
 )
 
@@ -154,6 +158,38 @@ type SequenceStateUseCase interface {
 	Handle(context.Context, query.SequenceState) ([]query.SequenceStateItem, error)
 }
 
+// HandoffUseCase — узкий вход приёма передачи писем заявки (контракт
+// outreach-handoff). nil означает, что приём не подключён: маршрут честно
+// отвечает 503, а не 200 с пустым результатом.
+type HandoffUseCase interface {
+	Handle(context.Context, command.SubmitHandoff) (command.SubmitHandoffResult, error)
+}
+
+type EditorialHandoffUseCase interface {
+	Submit(context.Context, appeditorial.Handoff) (appeditorial.Campaign, bool, error)
+}
+
+type EditorialReviewPort interface{ editorialreview.Port }
+
+// CancelRequestUseCase — durable cancellation fence for a request owner.
+type CancelRequestUseCase interface {
+	Handle(context.Context, command.CancelRequest) error
+}
+
+// SubmitApprovalUseCase — узкий вход подачи черновика агента на утверждение
+// (контракт campaign-command в части подачи). nil означает, что подача не
+// подключена: маршрут честно отвечает 503, а не 200 с пустым результатом.
+type SubmitApprovalUseCase interface {
+	Handle(context.Context, command.SubmitForApproval) (command.SubmitForApprovalResult, error)
+}
+
+// ApprovedActionUseCase — узкий вход чтения утверждённого действия по черновику
+// (read-контракт draftdecision). nil означает, что источник решения не подключён:
+// маршрут отвечает 503, а не выдуманным решением.
+type ApprovedActionUseCase interface {
+	Handle(context.Context, query.ApprovedActionQuery) (approvedaction.ApprovedAction, error)
+}
+
 // CommandKeyStore — узкий интерфейс хранилища ключей идемпотентности команд.
 // Его реализует adapters/idempotency.Store; HTTP-адаптер работает с ключами
 // только через этот интерфейс, а к пакету idempotency обращается лишь за
@@ -172,6 +208,7 @@ type CommandKeyStore interface {
 // Dependencies — внешние зависимости HTTP-адаптера. CommandKeys допускается
 // равным nil: тогда идемпотентность границы не проверяется.
 type Dependencies struct {
+	Readiness      func(context.Context) readiness.Snapshot
 	CreateCampaign CreateCampaignUseCase
 	DraftAction    DraftActionUseCase
 	ApproveDraft   ApproveDraftUseCase
@@ -191,6 +228,26 @@ type Dependencies struct {
 	ResumeExecution ResumeExecutionUseCase
 	SequenceHistory SequenceHistoryUseCase
 	SequenceState   SequenceStateUseCase
+
+	// Handoff — приём передачи писем заявки из request-fulfillment (контракт
+	// outreach-handoff). Межсервисная граница: сессия консоли и CSRF не
+	// требуются. nil — приём не подключён, маршрут отвечает 503.
+	Handoff          HandoffUseCase
+	EditorialHandoff EditorialHandoffUseCase
+	EditorialReview  EditorialReviewPort
+	// CancelRequest durably fences request handoffs and approvals; nil is
+	// unavailable rather than an implicit successful cancellation.
+	CancelRequest CancelRequestUseCase
+
+	// SubmitApproval — подача черновика агента на утверждение (контракт
+	// campaign-command в части подачи). Межсервисная граница: сессия консоли и
+	// CSRF не требуются. nil — подача не подключена, маршрут отвечает 503.
+	SubmitApproval SubmitApprovalUseCase
+
+	// ApprovedAction — чтение утверждённого действия по черновику (read-контракт
+	// draftdecision) для шага отправки. nil — источник решения не подключён,
+	// маршрут отвечает 503.
+	ApprovedAction ApprovedActionUseCase
 
 	// BatchLimits — лимиты пакета, передаваемые сценариям параметром. Это
 	// конфигурация композиции, а не доменное правило: адаптер лишь прокидывает
@@ -218,6 +275,14 @@ type Dependencies struct {
 
 	// Console — базовые адреса сервисов консоли для общей навигации по разделам.
 	Console components.ConsoleBases
+
+	// BasePath — внешний префикс пути консоли под единым origin (admin-proxy).
+	// Пусто — консоль смонтирована в корень origin.
+	BasePath string
+
+	// ExternalPrefixes — префиксы других консолей единого origin: ссылки на них
+	// в навигации не переписываются под собственный префикс.
+	ExternalPrefixes []string
 }
 
 // Server — HTTP-сервер среза. Нулевое значение непригодно: используйте
@@ -259,7 +324,21 @@ type Server struct {
 	sequenceHistory SequenceHistoryUseCase
 	sequenceState   SequenceStateUseCase
 
+	handoff          HandoffUseCase
+	editorialHandoff EditorialHandoffUseCase
+	editorialReview  EditorialReviewPort
+	cancelRequest    CancelRequestUseCase
+
+	submitApproval SubmitApprovalUseCase
+	approvedAction ApprovedActionUseCase
+
 	handler http.Handler
+}
+
+// SetReadiness подключает оценку владельца без вызова бизнес-сценариев.
+func (s *Server) SetReadiness(check func(context.Context) readiness.Snapshot) {
+	s.deps.Readiness = check
+	s.handler = components.PrefixMiddleware(s.deps.BasePath, s.routes(), s.deps.ExternalPrefixes...)
 }
 
 // NewServer собирает маршруты среза из переданных сценариев.
@@ -294,12 +373,20 @@ func NewServer(deps Dependencies) *Server {
 		resumeExecution: deps.ResumeExecution,
 		sequenceHistory: deps.SequenceHistory,
 		sequenceState:   deps.SequenceState,
+
+		handoff:          deps.Handoff,
+		editorialHandoff: deps.EditorialHandoff,
+		editorialReview:  deps.EditorialReview,
+		cancelRequest:    deps.CancelRequest,
+
+		submitApproval: deps.SubmitApproval,
+		approvedAction: deps.ApprovedAction,
 	}
 	// Шаблоны консольных экранов разбираются сразу, чтобы ошибка разметки была
 	// видна при сборке сервиса. Если набор не собрался, JSON-часть продолжает
 	// работать, а экран честно отвечает 500.
 	server.pages, _ = newPages()
-	server.handler = server.routes()
+	server.handler = components.PrefixMiddleware(deps.BasePath, server.routes(), deps.ExternalPrefixes...)
 	return server
 }
 
@@ -313,6 +400,7 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 // стандартной библиотеки.
 func (s *Server) routes() http.Handler {
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /readyz", s.handleReady)
 
 	mux.HandleFunc("POST /campaigns", s.handleCreateCampaign)
 	mux.HandleFunc("GET /campaigns", s.handleApprovalQueue)
@@ -333,6 +421,21 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST /campaigns/{campaignID}/enrollments/{executionID}/outcomes", s.handleRecordOutcome)
 	mux.HandleFunc("POST /campaigns/{campaignID}/enrollments/{executionID}/resume", s.handleResumeExecution)
 
+	// Приём передачи писем заявки (контракт outreach-handoff). Межсервисная
+	// граница: команда приходит от request-fulfillment, сессия консоли и CSRF не
+	// требуются — как у контрактных эндпоинтов lead-search/email-generation/
+	// request-intent.
+	mux.HandleFunc("POST /outreach-handoff", s.handleHandoff)
+	mux.HandleFunc("POST /outreach-handoff/cancellation", s.handleHandoffCancellation)
+
+	// Подача черновика агентом в очередь утверждения и чтение решения оператора
+	// (контракты campaign-command и draftdecision). Межсервисные границы: команда
+	// приходит от agent-orchestration, сессия консоли и CSRF не требуются.
+	mux.HandleFunc("POST /campaign-command", s.handleCampaignCommand)
+	mux.HandleFunc("GET /approved-action", s.handleApprovedAction)
+	mux.Handle("GET /outreach/editorial/{campaignID}/{leadID}", components.NoStore(s.consoleHandler(s.handleEditorialRead)))
+	mux.Handle("POST /outreach/editorial/{campaignID}/{leadID}/decision", s.consoleHandler(s.handleEditorialDecide))
+
 	// Операторская консоль очереди утверждения рассылок (web-frontend-
 	// architecture, срез 4): HTMX + серверный рендеринг поверх тех же
 	// прикладных сценариев. Действия — POST/redirect/GET; изменяющие запросы
@@ -340,20 +443,35 @@ func (s *Server) routes() http.Handler {
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(components.StaticFS())))
 
 	mux.Handle("GET /login", s.publicHTML(s.handleLoginForm))
-	mux.Handle("POST /login", s.publicHTML(s.handleLogin))
+	mux.Handle("POST /login", s.publicHTML(s.rateLimit("/login", s.handleLogin)))
 	mux.Handle("GET /logout", s.publicHTML(s.handleLogout))
 
-	mux.Handle("GET /outreach/drafts", s.consoleHandler(s.handleDraftQueue))
-	mux.Handle("GET /outreach/campaigns/{campaignID}/batches", s.consoleHandler(s.handleBatchScreen))
-	mux.Handle("POST /outreach/campaigns/{campaignID}/batches/approve", s.consoleHandler(s.handleBatchApprove))
-	mux.Handle("GET /outreach/campaigns/{campaignID}/drafts/{draftID}", s.consoleHandler(s.handleDraftScreen))
-	mux.Handle("POST /outreach/campaigns/{campaignID}/drafts/{draftID}/approve", s.consoleHandler(s.handleDraftApprove))
-	mux.Handle("POST /outreach/campaigns/{campaignID}/drafts/{draftID}/edit-approve", s.consoleHandler(s.handleDraftEditApprove))
-	mux.Handle("POST /outreach/campaigns/{campaignID}/drafts/{draftID}/reject", s.consoleHandler(s.handleDraftReject))
-	mux.Handle("POST /outreach/campaigns/{campaignID}/drafts/{draftID}/postpone", s.consoleHandler(s.handleDraftPostpone))
-	mux.Handle("GET /outreach/stalled", s.consoleHandler(s.handleStalledQueue))
+	// Экраны несут персональные данные получателей, поэтому их ответы запрещено
+	// кэшировать; решения по черновикам и пакетам ограничены по частоте (7.5).
+	mux.Handle("GET /outreach/drafts", components.NoStore(s.consoleHandler(s.handleDraftQueue)))
+	mux.Handle("GET /outreach/campaigns/{campaignID}/batches", components.NoStore(s.consoleHandler(s.handleBatchScreen)))
+	mux.Handle("POST /outreach/campaigns/{campaignID}/batches/approve", s.consoleHandler(s.rateLimit("/outreach/batches/approve", s.handleBatchApprove)))
+	mux.Handle("GET /outreach/campaigns/{campaignID}/drafts/{draftID}", components.NoStore(s.consoleHandler(s.handleDraftScreen)))
+	mux.Handle("POST /outreach/campaigns/{campaignID}/drafts/{draftID}/approve", s.consoleHandler(s.rateLimit("/outreach/drafts/approve", s.handleDraftApprove)))
+	mux.Handle("POST /outreach/campaigns/{campaignID}/drafts/{draftID}/edit-approve", s.consoleHandler(s.rateLimit("/outreach/drafts/edit-approve", s.handleDraftEditApprove)))
+	mux.Handle("POST /outreach/campaigns/{campaignID}/drafts/{draftID}/reject", s.consoleHandler(s.rateLimit("/outreach/drafts/reject", s.handleDraftReject)))
+	mux.Handle("POST /outreach/campaigns/{campaignID}/drafts/{draftID}/postpone", s.consoleHandler(s.rateLimit("/outreach/drafts/postpone", s.handleDraftPostpone)))
+	mux.Handle("GET /outreach/stalled", components.NoStore(s.consoleHandler(s.handleStalledQueue)))
 
 	return mux
+}
+
+func (s *Server) handleReady(w http.ResponseWriter, r *http.Request) {
+	if s.deps.Readiness == nil {
+		writeJSON(w, http.StatusServiceUnavailable, readiness.Snapshot{Status: readiness.StatusUnknown, Ready: false})
+		return
+	}
+	report := s.deps.Readiness(r.Context())
+	status := http.StatusOK
+	if !report.Ready {
+		status = http.StatusServiceUnavailable
+	}
+	writeJSON(w, status, report)
 }
 
 // publicHTML навешивает заголовки безопасности на публичную HTML-страницу
@@ -453,7 +571,8 @@ func statusForError(err error) int {
 		errors.Is(err, domain.ErrExecutionNotFound),
 		errors.Is(err, command.ErrCampaignTenantMismatch):
 		return http.StatusNotFound
-	case errors.Is(err, domain.ErrDraftVersionMismatch),
+	case errors.Is(err, domain.ErrEditorialDeliveryForbidden),
+		errors.Is(err, domain.ErrDraftVersionMismatch),
 		errors.Is(err, domain.ErrDecisionConflict),
 		errors.Is(err, domain.ErrInvalidDraftTransition),
 		errors.Is(err, domain.ErrApprovalRequired),
@@ -468,6 +587,8 @@ func statusForError(err error) int {
 		errors.Is(err, domain.ErrBatchDraftNotEligible),
 		errors.Is(err, idempotency.ErrReservationAbandoned):
 		return http.StatusConflict
+	case errors.Is(err, domain.ErrRiskFactsUnavailable):
+		return http.StatusServiceUnavailable
 	case errors.Is(err, domain.ErrEmptyID),
 		errors.Is(err, query.ErrTenantRequired),
 		errors.Is(err, query.ErrActorRequired),

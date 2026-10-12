@@ -40,11 +40,11 @@ func riskFor(ids ...domain.DraftID) domain.CanBeDecidedInPackage {
 	for _, id := range ids {
 		marked[id] = struct{}{}
 	}
-	return func(id domain.DraftID, _ int) []domain.RiskReason {
-		if _, ok := marked[id]; ok {
-			return []domain.RiskReason{domain.RiskPersonalDataDetected}
+	return func(_ context.Context, req domain.RiskFactsRequest) ([]domain.RiskReason, error) {
+		if _, ok := marked[req.DraftID]; ok {
+			return []domain.RiskReason{domain.RiskStopRuleTriggered}, nil
 		}
-		return nil
+		return nil, nil
 	}
 }
 
@@ -71,7 +71,7 @@ func TestBatchQueueIsBuiltFromAggregateResult(t *testing.T) {
 	}
 
 	// Проекция обязана совпасть с результатом агрегата: query не фильтрует сам.
-	built, err := campaign.BuildApprovalBatch(batchLimitsForTest(), risk)
+	built, err := campaign.BuildApprovalBatch(context.Background(), batchLimitsForTest(), risk)
 	if err != nil {
 		t.Fatalf("BuildApprovalBatch: %v", err)
 	}
@@ -91,14 +91,14 @@ func TestBatchQueueIsBuiltFromAggregateResult(t *testing.T) {
 	if len(projection.Excluded) != 1 || projection.Excluded[0].DraftID != domain.DraftID("draft-3") {
 		t.Fatalf("исключённые: %+v", projection.Excluded)
 	}
-	if len(projection.Excluded[0].Reasons) != 1 || projection.Excluded[0].Reasons[0] != domain.RiskPersonalDataDetected {
+	if len(projection.Excluded[0].Reasons) != 1 || projection.Excluded[0].Reasons[0] != domain.RiskStopRuleTriggered {
 		t.Fatalf("причина исключения: %v", projection.Excluded[0].Reasons)
 	}
 }
 
 func TestBatchQueueBelowMinimumIsIndividual(t *testing.T) {
 	campaign := batchCampaign(t, 1)
-	handler := NewBatchQueueHandler(newFakeRepository(campaign), nil, allowAccess())
+	handler := NewBatchQueueHandler(newFakeRepository(campaign), riskFor(), allowAccess())
 
 	projection, err := handler.Handle(context.Background(), batchQueueRequest())
 	if err != nil {
@@ -114,7 +114,7 @@ func TestBatchQueueBelowMinimumIsIndividual(t *testing.T) {
 
 func TestBatchQueueRequiresTenant(t *testing.T) {
 	campaign := batchCampaign(t, 2)
-	handler := NewBatchQueueHandler(newFakeRepository(campaign), nil, allowAccess())
+	handler := NewBatchQueueHandler(newFakeRepository(campaign), riskFor(), allowAccess())
 
 	request := batchQueueRequest()
 	request.TenantID = ""
@@ -125,7 +125,7 @@ func TestBatchQueueRequiresTenant(t *testing.T) {
 
 func TestBatchQueueRequiresActor(t *testing.T) {
 	campaign := batchCampaign(t, 2)
-	handler := NewBatchQueueHandler(newFakeRepository(campaign), nil, allowAccess())
+	handler := NewBatchQueueHandler(newFakeRepository(campaign), riskFor(), allowAccess())
 
 	request := batchQueueRequest()
 	request.Actor = ""
@@ -136,7 +136,7 @@ func TestBatchQueueRequiresActor(t *testing.T) {
 
 func TestBatchQueueDeniesActorWithoutRight(t *testing.T) {
 	campaign := batchCampaign(t, 2)
-	handler := NewBatchQueueHandler(newFakeRepository(campaign), nil, &stubAccess{allowed: false})
+	handler := NewBatchQueueHandler(newFakeRepository(campaign), riskFor(), &stubAccess{allowed: false})
 
 	if _, err := handler.Handle(context.Background(), batchQueueRequest()); !errors.Is(err, ErrAccessDenied) {
 		t.Fatalf("ожидалась ErrAccessDenied, получено %v", err)
@@ -145,7 +145,7 @@ func TestBatchQueueDeniesActorWithoutRight(t *testing.T) {
 
 func TestBatchQueueDeniesWithoutAccessPort(t *testing.T) {
 	campaign := batchCampaign(t, 2)
-	handler := NewBatchQueueHandler(newFakeRepository(campaign), nil)
+	handler := NewBatchQueueHandler(newFakeRepository(campaign), riskFor())
 
 	if _, err := handler.Handle(context.Background(), batchQueueRequest()); !errors.Is(err, ErrAccessDenied) {
 		t.Fatalf("ожидалась ErrAccessDenied, получено %v", err)
@@ -154,7 +154,7 @@ func TestBatchQueueDeniesWithoutAccessPort(t *testing.T) {
 
 func TestBatchQueueRejectsForeignTenant(t *testing.T) {
 	campaign := batchCampaign(t, 2)
-	handler := NewBatchQueueHandler(newFakeRepository(campaign), nil, allowAccess())
+	handler := NewBatchQueueHandler(newFakeRepository(campaign), riskFor(), allowAccess())
 
 	request := batchQueueRequest()
 	request.TenantID = domain.TenantID("tenant-2")
@@ -167,7 +167,7 @@ func TestBatchQueueRejectsForeignTenant(t *testing.T) {
 // признак пакетного принятия в журнале без прикладных сценариев команды.
 func approveBatchDirect(t *testing.T, campaign *domain.Campaign) {
 	t.Helper()
-	built, err := campaign.BuildApprovalBatch(batchLimitsForTest(), nil)
+	built, err := campaign.BuildApprovalBatch(context.Background(), batchLimitsForTest(), riskFor())
 	if err != nil {
 		t.Fatalf("BuildApprovalBatch: %v", err)
 	}
@@ -180,12 +180,12 @@ func approveBatchDirect(t *testing.T, campaign *domain.Campaign) {
 			DraftVersion: entry.Version,
 		})
 	}
-	if _, _, err := campaign.ApproveBatch(domain.BatchApprovalParams{
+	if _, _, err := campaign.ApproveBatch(context.Background(), domain.BatchApprovalParams{
 		Actor:       testOperator,
 		DecidedAt:   testNow(),
 		Digest:      batch.Digest(),
 		Composition: items,
-	}, nil); err != nil {
+	}, riskFor()); err != nil {
 		t.Fatalf("ApproveBatch: %v", err)
 	}
 	campaign.PullDomainEvents()

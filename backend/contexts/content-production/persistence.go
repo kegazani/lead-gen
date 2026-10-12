@@ -35,6 +35,8 @@ type Persistence struct {
 	UnitOfWork ports.UnitOfWork
 	// Journal — журнал outbox: ожидающие публикации события переживают рестарт.
 	Journal outbox.Journal
+	// Ping выполняет пассивную проверку соединения с тем же PostgreSQL-пулом.
+	Ping func(context.Context) error
 }
 
 // NewPostgresPersistence собирает PostgreSQL-адаптеры хранилища контекста поверх
@@ -46,6 +48,7 @@ func NewPostgresPersistence(pool *pgxpool.Pool) Persistence {
 		RenderJobs: postgres.NewRenderJobRepository(pool),
 		UnitOfWork: postgres.NewUnitOfWork(pool),
 		Journal:    postgres.NewJournal(pool),
+		Ping:       pool.Ping,
 	}
 }
 

@@ -1,10 +1,12 @@
 package outreachorchestration_test
 
 import (
+	"context"
 	"strings"
 	"testing"
 
 	composition "lead-gen/backend/contexts/outreach-orchestration"
+	"lead-gen/backend/contexts/outreach-orchestration/internal/domain"
 )
 
 // TestBuildRequiresRiskPredicate — защита от повторения блокера: незаданный
@@ -24,15 +26,21 @@ func TestBuildRequiresRiskPredicate(t *testing.T) {
 	}
 }
 
-// TestBuildAcceptsExplicitRiskStub — явно переданная заглушка принимается: она
-// сохраняет текущее поведение «рисков нет», но теперь это осознанный выбор
-// вызывающего, а не скрытый дефолт.
-func TestBuildAcceptsExplicitRiskStub(t *testing.T) {
-	slice, err := composition.Build(composition.Params{Risk: composition.NoUpstreamRiskChecks})
+// noRiskFacts — тестовый двойник внешнего предиката риска: черновики без
+// признаков. Это осознанный двойник теста, а не заглушка продукта: на продуктовом
+// пути предикат собирает NewRiskFacts поверх портов владельцев.
+func noRiskFacts(context.Context, domain.RiskFactsRequest) ([]domain.RiskReason, error) {
+	return nil, nil
+}
+
+// TestBuildAcceptsExplicitRiskFacts — явно переданный предикат признаний риска
+// принимается: вызывающий задаёт его осознанно, а не получает скрытый дефолт.
+func TestBuildAcceptsExplicitRiskFacts(t *testing.T) {
+	slice, err := composition.Build(composition.Params{Risk: noRiskFacts})
 	if err != nil {
-		t.Fatalf("сборка с явной заглушкой риска: %v", err)
+		t.Fatalf("сборка с явным предикатом риска: %v", err)
 	}
 	if slice == nil {
-		t.Fatal("сборка с явной заглушкой риска вернула nil-срез")
+		t.Fatal("сборка с явным предикатом риска вернула nil-срез")
 	}
 }

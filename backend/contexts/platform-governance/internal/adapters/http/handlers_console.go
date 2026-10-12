@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/csv"
 	"errors"
 	"net/http"
@@ -13,6 +14,8 @@ import (
 	"lead-gen/backend/contexts/platform-governance/internal/app/query"
 	"lead-gen/backend/contexts/platform-governance/internal/domain"
 	"lead-gen/backend/contexts/platform-governance/internal/ports"
+	"lead-gen/backend/platform/consoleauth"
+	"lead-gen/backend/platform/consolescope"
 	"lead-gen/backend/platform/observability/observ"
 	"lead-gen/frontend/components"
 )
@@ -36,11 +39,12 @@ type roleOption struct {
 }
 
 // roleOptions — роли, объявленные доменом, как варианты формы. Их перечисляет
-// owning context: консоль не заводит собственного списка ролей.
-func roleOptions() []roleOption {
+// owning context: консоль не заводит собственного списка ролей. Подписи берутся
+// из каталога сообщений (срез 7, 7.1).
+func (s *Server) roleOptions() []roleOption {
 	return []roleOption{
-		{Value: domain.RoleAdmin.String(), Label: "Администратор платформы"},
-		{Value: domain.RoleClient.String(), Label: "Клиент"},
+		{Value: domain.RoleAdmin.String(), Label: s.messages.Text(msgConsoleRoleAdmin)},
+		{Value: domain.RoleClient.String(), Label: s.messages.Text(msgConsoleRoleClient)},
 	}
 }
 
@@ -70,6 +74,7 @@ type consoleUserRow struct {
 type consoleUsersView struct {
 	TenantID        string
 	Actor           string
+	CSRF            string
 	Notice          string
 	Users           []consoleUserRow
 	UserField       components.Field
@@ -77,18 +82,17 @@ type consoleUsersView struct {
 	AssignCommandID string
 }
 
-// consoleAdapterRow — строка раздела «Интеграции».
+// consoleAdapterRow — строка раздела «Интеграции»: только нормализованные
+// состояние и причина. Свободный текст владельца адаптеров сюда не попадает.
 type consoleAdapterRow struct {
-	Name        string
-	Version     string
-	Health      string
+	Adapter     string
+	StateLabel  string
 	Class       string
 	ReasonLabel string
 }
 
 // consoleIntegrationsView — модель раздела «Интеграции и адаптеры».
 type consoleIntegrationsView struct {
-	Notice      string
 	Unavailable bool
 	Adapters    []consoleAdapterRow
 }
@@ -112,6 +116,27 @@ type consoleAuditView struct {
 	ExportURL string
 }
 
+// consoleTenantRow — строка списка тенантов: платформенные атрибуты и форма
+// выбора. Логины и контакты пользователей сюда не попадают — источник
+// (query.TenantView) их не отдаёт; идентифицирующие данные компании используются
+// только разделом «Регистрации».
+type consoleTenantRow struct {
+	ID          string
+	CompanyName string
+	StateLabel  string
+	Class       string
+	Active      bool
+}
+
+// consoleTenantView — модель экрана «Выбор тенанта».
+type consoleTenantView struct {
+	TenantID string
+	Actor    string
+	CSRF     string
+	Notice   string
+	Tenants  []consoleTenantRow
+}
+
 // deniedView — модель экрана отказа в доступе.
 type deniedView struct {
 	Heading string
@@ -119,10 +144,16 @@ type deniedView struct {
 	Status  int
 }
 
-// consoleActor извлекает субъекта действия: из формы (POST), запроса или
-// заголовка X-Actor. Аутентификация вне среза (dev-контур), но пустой субъект
-// операцией не считается: серверный страж отвергает его до принятия решения.
+// consoleActor извлекает субъекта действия: из сессии оператора консоли (когда
+// вход включён), затем из формы (POST), запроса или заголовка X-Actor. Пустой
+// субъект операцией не считается: серверный страж отвергает его до принятия
+// решения.
 func consoleActor(r *http.Request) string {
+	if session := consoleauth.Current(r.Context()); session != nil {
+		if actor := strings.TrimSpace(session.Username()); actor != "" {
+			return actor
+		}
+	}
 	if r.PostForm != nil {
 		if actor := strings.TrimSpace(r.PostFormValue("actor")); actor != "" {
 			return actor
@@ -134,29 +165,72 @@ func consoleActor(r *http.Request) string {
 	return strings.TrimSpace(r.Header.Get(headerActor))
 }
 
-// consoleGuard принимает решение о доступе на сервере. Роли актора читаются из
-// агрегата tenant (снимок access-decision), затем применяется матрица «раздел →
-// действие → право». Отказ рисуется страницей и возвращает false.
-func (s *Server) consoleGuard(w http.ResponseWriter, r *http.Request, tenantID string, section app.Section, action app.Action) bool {
+// sessionCSRF возвращает CSRF-токен сессии оператора консоли для формы. Пусто,
+// если вход консоли не включён (?actor=, dev): тогда сессионной защиты нет.
+func sessionCSRF(r *http.Request) string {
+	if session := consoleauth.Current(r.Context()); session != nil {
+		return session.CSRF()
+	}
+	return ""
+}
+
+// activeTenant определяет активный тенант экранного запроса: `tenant_id` из
+// строки запроса, затем из формы, затем — выбранный оператором тенант из cookie
+// консоли (`consolescope`). Единая точка определения для всех консольных
+// экранов: выбранный на экране выбора тенант переносится между разделами без
+// ручного ввода. Пусто — тенант не выбран.
+func (s *Server) activeTenant(r *http.Request) string {
+	if tenant := strings.TrimSpace(r.URL.Query().Get("tenant_id")); tenant != "" {
+		return tenant
+	}
+	if r.PostForm != nil {
+		if tenant := strings.TrimSpace(r.PostFormValue("tenant_id")); tenant != "" {
+			return tenant
+		}
+	}
+	return consolescope.ActiveTenant(r)
+}
+
+// requireTenant возвращает активный тенант или, если он не выбран, перенаправляет
+// платформенного оператора на экран выбора тенанта. Второе значение ложно, если
+// ответ уже отправлен (редирект).
+func (s *Server) requireTenant(w http.ResponseWriter, r *http.Request, actor string) (string, bool) {
+	tenant := s.activeTenant(r)
+	if tenant != "" {
+		return tenant, true
+	}
+	http.Redirect(w, r, consoleURL("/console/tenant", "", actor, ""), http.StatusSeeOther)
+	return "", false
+}
+
+// decideSection принимает решение о доступе на сервере и возвращает статус и
+// сообщение отказа (0 — доступ разрешён). Роли актора читаются из снимка
+// access-decision владельца, затем применяется матрица «раздел → действие →
+// право». Общая точка для страниц и JSON-эндпоинтов консоли.
+func (s *Server) decideSection(r *http.Request, tenantID string, section app.Section, action app.Action) (int, string) {
 	if s.deps.DecideAccess == nil {
-		s.renderConsoleDenied(w, http.StatusServiceUnavailable, "Проверка доступа недоступна")
-		return false
+		return http.StatusServiceUnavailable, "Проверка доступа недоступна"
 	}
 	actor := consoleActor(r)
 	if actor == "" {
-		s.renderConsoleDenied(w, http.StatusUnauthorized, "Не задан субъект действия")
-		return false
+		return http.StatusUnauthorized, "Не задан субъект действия"
 	}
 	roles, err := s.deps.DecideAccess.Roles(r.Context(), domain.TenantID(strings.TrimSpace(tenantID)), domain.ActorID(actor))
 	if err != nil {
-		status, message := consoleAccessError(err)
-		s.renderConsoleDenied(w, status, message)
-		return false
+		return consoleAccessError(err)
 	}
 	if err := app.AuthorizeSection(roles, section, action); err != nil {
-		// Отказ не зависит от навигации: матрица решает одинаково для страницы и
-		// для действия.
-		s.renderConsoleDenied(w, http.StatusForbidden, "Действие недоступно для вашей роли")
+		return http.StatusForbidden, "Действие недоступно для вашей роли"
+	}
+	return 0, ""
+}
+
+// consoleGuard принимает решение о доступе на сервере. Отказ рисуется страницей и
+// возвращает false. Отказ не зависит от навигации: матрица решает одинаково для
+// страницы и для действия.
+func (s *Server) consoleGuard(w http.ResponseWriter, r *http.Request, tenantID string, section app.Section, action app.Action) bool {
+	if status, message := s.decideSection(r, tenantID, section, action); status != 0 {
+		s.renderConsoleDenied(w, status, message)
 		return false
 	}
 	return true
@@ -177,24 +251,83 @@ func consoleAccessError(err error) (int, string) {
 }
 
 // handleConsoleRoot обслуживает GET /console: точка входа в раздел управления.
+// Ведёт на раздел регистраций — он доступен платформенному оператору без
+// выбранного тенанта, в отличие от «Пользователей», требующих тенант.
 func (s *Server) handleConsoleRoot(w http.ResponseWriter, r *http.Request) {
-	http.Redirect(w, r, consoleURL("/console/users", r.URL.Query().Get("tenant_id"), consoleActor(r), ""), http.StatusSeeOther)
+	http.Redirect(w, r, consoleURL("/console/registrations", s.activeTenant(r), consoleActor(r), ""), http.StatusSeeOther)
+}
+
+// handleConsoleTenant обслуживает GET /console/tenant: список тенантов и выбор
+// активного. Доступ к списку решается матрицей по активному тенанту
+// (SectionTenant/View); само переключение проверяется отдельно в
+// handleConsoleTenantSwitch — видимость формы не заменяет серверную проверку.
+func (s *Server) handleConsoleTenant(w http.ResponseWriter, r *http.Request) {
+	tenant := s.activeTenant(r)
+	actor := consoleActor(r)
+	if strings.TrimSpace(tenant) == "" {
+		// Список тенантов открывается без активного тенанта: право на него даёт
+		// принадлежность к платформенным операторам, а не роль в конкретном
+		// тенанте — иначе выбор тенанта недостижим («курица и яйцо»).
+		if !s.platformOperator(actor) {
+			s.renderConsoleDenied(w, http.StatusBadRequest, "Не задан тенант")
+			return
+		}
+	} else if !s.consoleGuard(w, r, tenant, app.SectionTenant, app.ActionView) {
+		return
+	}
+	tenants, err := s.deps.ListTenants.Handle(r.Context(), query.ListTenants{})
+	if err != nil {
+		s.render(w, adminStatus(err), pageConsoleTenant, components.Page{
+			Layout:  components.Layout{Title: "Выбор тенанта"},
+			Sidebar: s.consoleNav("/console/tenant", tenant, actor),
+			View:    consoleTenantView{TenantID: tenant, Actor: actor, Notice: adminMessage(err)},
+		})
+		return
+	}
+	s.render(w, http.StatusOK, pageConsoleTenant, components.Page{
+		Layout:  components.Layout{Title: "Выбор тенанта"},
+		Sidebar: s.consoleNav("/console/tenant", tenant, actor),
+		View: consoleTenantView{
+			TenantID: tenant,
+			Actor:    actor,
+			CSRF:     sessionCSRF(r),
+			Notice:   consoleNotice(r.URL.Query().Get("notice")),
+			Tenants:  tenantRows(tenants, tenant),
+		},
+	})
+}
+
+// platformOperator сообщает, что субъект действует в платформенном масштабе
+// (оператор во всех тенантах). Пустой субъект или неподключённый владелец доступа
+// оператором не считается.
+func (s *Server) platformOperator(actor string) bool {
+	if s.deps.DecideAccess == nil {
+		return false
+	}
+	actor = strings.TrimSpace(actor)
+	if actor == "" {
+		return false
+	}
+	return s.deps.DecideAccess.IsOperator(domain.ActorID(actor))
 }
 
 // handleConsoleUsers обслуживает GET /console/users: состав пользователей и ролей
 // тенанта.
 func (s *Server) handleConsoleUsers(w http.ResponseWriter, r *http.Request) {
-	tenant := r.URL.Query().Get("tenant_id")
 	actor := consoleActor(r)
+	tenant, ok := s.requireTenant(w, r, actor)
+	if !ok {
+		return
+	}
 	if !s.consoleGuard(w, r, tenant, app.SectionUsers, app.ActionView) {
 		return
 	}
 	users, err := s.deps.TenantUsers.Handle(r.Context(), query.TenantUsers{TenantID: tenant})
 	if err != nil {
-		s.renderConsoleUsers(w, adminStatus(err), tenant, actor, adminMessage(err))
+		s.renderConsoleUsers(w, r, adminStatus(err), tenant, actor, adminMessage(err))
 		return
 	}
-	s.renderConsoleUsers(w, http.StatusOK, tenant, actor, consoleNotice(r.URL.Query().Get("notice")), users...)
+	s.renderConsoleUsers(w, r, http.StatusOK, tenant, actor, consoleNotice(r.URL.Query().Get("notice")), users...)
 }
 
 // handleConsoleAssignRole обслуживает POST /console/users/roles/assign. Действие
@@ -238,7 +371,7 @@ func (s *Server) handleConsoleRoleCommand(w http.ResponseWriter, r *http.Request
 		return
 	}
 	if err := run(actor, tenant, r.PostForm); err != nil {
-		s.renderConsoleUsers(w, adminStatus(err), tenant, actor, adminMessage(err))
+		s.renderConsoleUsers(w, r, adminStatus(err), tenant, actor, adminMessage(err))
 		return
 	}
 	http.Redirect(w, r, consoleURL("/console/users", tenant, actor, okNotice), http.StatusSeeOther)
@@ -248,30 +381,39 @@ func (s *Server) handleConsoleRoleCommand(w http.ResponseWriter, r *http.Request
 // адаптеров интеграций. Недоступность владельца показывается честно, а не пустым
 // успехом.
 func (s *Server) handleConsoleIntegrations(w http.ResponseWriter, r *http.Request) {
-	tenant := r.URL.Query().Get("tenant_id")
 	actor := consoleActor(r)
+	tenant, ok := s.requireTenant(w, r, actor)
+	if !ok {
+		return
+	}
 	if !s.consoleGuard(w, r, tenant, app.SectionIntegrations, app.ActionView) {
 		return
 	}
 	view := consoleIntegrationsView{}
-	states, err := s.deps.Adapters.Handle(r.Context())
+	status := http.StatusOK
+	states, err := s.adapterStates(r.Context())
 	if err != nil {
+		// Владелец адаптеров недоступен: показываем честное состояние и не
+		// выдаём технические детали. Текст ошибки в разметку не переносится.
 		view.Unavailable = true
-		view.Notice = "Состояние интеграций недоступно"
+		status = statusForError(err)
 	} else {
 		view.Adapters = adapterRows(states)
 	}
-	s.render(w, http.StatusOK, pageConsoleIntegrations, components.Page{
+	s.render(w, status, pageConsoleIntegrations, components.Page{
 		Layout:  components.Layout{Title: "Интеграции"},
-		Sidebar: consoleNav("/console/integrations", tenant, actor),
+		Sidebar: s.consoleNav("/console/integrations", tenant, actor),
 		View:    view,
 	})
 }
 
 // handleConsoleAudit обслуживает GET /console/audit: просмотр журнала аудита.
 func (s *Server) handleConsoleAudit(w http.ResponseWriter, r *http.Request) {
-	tenant := r.URL.Query().Get("tenant_id")
 	actor := consoleActor(r)
+	tenant, ok := s.requireTenant(w, r, actor)
+	if !ok {
+		return
+	}
 	if !s.consoleGuard(w, r, tenant, app.SectionAudit, app.ActionView) {
 		return
 	}
@@ -279,14 +421,14 @@ func (s *Server) handleConsoleAudit(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		s.render(w, adminStatus(err), pageConsoleAudit, components.Page{
 			Layout:  components.Layout{Title: "Журнал аудита"},
-			Sidebar: consoleNav("/console/audit", tenant, actor),
+			Sidebar: s.consoleNav("/console/audit", tenant, actor),
 			View:    consoleAuditView{TenantID: tenant, Notice: adminMessage(err)},
 		})
 		return
 	}
 	s.render(w, http.StatusOK, pageConsoleAudit, components.Page{
 		Layout:  components.Layout{Title: "Журнал аудита"},
-		Sidebar: consoleNav("/console/audit", tenant, actor),
+		Sidebar: s.consoleNav("/console/audit", tenant, actor),
 		View: consoleAuditView{
 			TenantID:  tenant,
 			Entries:   auditRows(entries),
@@ -299,7 +441,10 @@ func (s *Server) handleConsoleAudit(w http.ResponseWriter, r *http.Request) {
 // журнала в CSV. Журнал только читается — правка записей невозможна. Ответ
 // персональных данных не кэшируется.
 func (s *Server) handleConsoleAuditExport(w http.ResponseWriter, r *http.Request) {
-	tenant := r.URL.Query().Get("tenant_id")
+	tenant, ok := s.requireTenant(w, r, consoleActor(r))
+	if !ok {
+		return
+	}
 	if !s.consoleGuard(w, r, tenant, app.SectionAudit, app.ActionExport) {
 		return
 	}
@@ -346,16 +491,22 @@ func (s *Server) handleConsoleTenantSwitch(w http.ResponseWriter, r *http.Reques
 		s.deps.Logger.Info("console: переключение тенанта",
 			observ.Fields{}, "service", consoleServiceName, "actor", actor, "tenant_id", tenant)
 	}
+	// Выбор активного тенанта сохраняется в cookie консоли: остальные консоли
+	// (другие порты того же хоста) читают его как фолбэк, когда в запросе нет
+	// tenant_id, — выбранный тенант переносится без ручного ввода.
+	consolescope.SetActiveTenant(w, r, tenant)
 	http.Redirect(w, r, consoleURL("/console/users", tenant, actor, "switched"), http.StatusSeeOther)
 }
 
 // renderConsoleUsers рисует экран пользователей с указанным статусом, собирая
 // состав на сервере.
-func (s *Server) renderConsoleUsers(w http.ResponseWriter, status int, tenant, actor, notice string, users ...query.TenantUserView) {
+func (s *Server) renderConsoleUsers(w http.ResponseWriter, r *http.Request, status int, tenant, actor, notice string, users ...query.TenantUserView) {
+	view := s.consoleUsersView(tenant, actor, notice, users)
+	view.CSRF = sessionCSRF(r)
 	s.render(w, status, pageConsoleUsers, components.Page{
 		Layout:  components.Layout{Title: "Пользователи и роли"},
-		Sidebar: consoleNav("/console/users", tenant, actor),
-		View:    s.consoleUsersView(tenant, actor, notice, users),
+		Sidebar: s.consoleNav("/console/users", tenant, actor),
+		View:    view,
 	})
 }
 
@@ -387,7 +538,7 @@ func (s *Server) consoleUsersView(tenant, actor, notice string, users []query.Te
 		UserField: components.Field{
 			ID: "console-user-id", Name: "user_id", Label: "Идентификатор пользователя", Required: true,
 		},
-		RoleOptions:     roleOptions(),
+		RoleOptions:     s.roleOptions(),
 		AssignCommandID: s.commandID(),
 	}
 }
@@ -400,25 +551,66 @@ func (s *Server) commandID() string {
 	return s.deps.IDs.NewEventID().String()
 }
 
-// adapterRows переводит состояние адаптеров в строки раздела. Причина
-// показывается нормализованной подписью, а не текстом владельца.
-func adapterRows(states []ports.AdapterState) []consoleAdapterRow {
+// adapterStates читает состояние адаптеров через use case. Неподключённый порт
+// и сбой владельца — один честный исход app.ErrUnavailable.
+func (s *Server) adapterStates(ctx context.Context) ([]ports.AdapterStatus, error) {
+	if s.deps.Adapters == nil {
+		return nil, app.ErrUnavailable
+	}
+	return s.deps.Adapters.Handle(ctx)
+}
+
+// adapterRows переводит состояние адаптеров в строки раздела. Состояние и
+// причина показываются нормализованными подписями из закрытого набора, а не
+// текстом владельца.
+func adapterRows(states []ports.AdapterStatus) []consoleAdapterRow {
 	rows := make([]consoleAdapterRow, 0, len(states))
 	for _, state := range states {
 		rows = append(rows, consoleAdapterRow{
-			Name:        state.Name,
-			Version:     state.CapabilitySetVersion,
-			Health:      string(state.Health),
-			Class:       components.StatusClass(string(state.Health)),
+			Adapter:     state.Adapter,
+			StateLabel:  adapterStateLabel(state.State),
+			Class:       adapterStateClass(state.State),
 			ReasonLabel: adapterReasonLabel(state.Reason),
 		})
 	}
 	return rows
 }
 
+// adapterStateLabel переводит нормализованный код состояния в подпись оператору.
+// Неизвестное состояние (в том числе у несконфигурированного адаптера) —
+// «неизвестно», а не «в норме».
+func adapterStateLabel(state string) string {
+	switch state {
+	case ports.AdapterStateUp:
+		return "работает"
+	case ports.AdapterStateDegraded:
+		return "деградация"
+	case ports.AdapterStateDown:
+		return "недоступен"
+	default:
+		return "неизвестно"
+	}
+}
+
+// adapterStateClass сопоставляет состояние CSS-классу общего бейджа. Классы
+// принадлежат общему оформлению консоли (frontend/components); раздел не вводит
+// собственных классов и не передаёт в разметку код состояния как есть.
+func adapterStateClass(state string) string {
+	switch state {
+	case ports.AdapterStateUp:
+		return "done"
+	case ports.AdapterStateDegraded:
+		return "running"
+	case ports.AdapterStateDown:
+		return "failed"
+	default:
+		return "queued"
+	}
+}
+
 // adapterReasonLabel переводит нормализованный код причины в подпись. Набор
 // закрыт: произвольный текст не показывается.
-func adapterReasonLabel(reason ports.AdapterReason) string {
+func adapterReasonLabel(reason string) string {
 	switch reason {
 	case ports.AdapterReasonUnreachable:
 		return "не отвечает"
@@ -432,6 +624,36 @@ func adapterReasonLabel(reason ports.AdapterReason) string {
 		return "некорректная настройка"
 	default:
 		return ""
+	}
+}
+
+// tenantRows переводит список тенантов в строки экрана. Состояние показывается
+// объявленной подписью, а не кодом домена; активный тенант отмечается флагом,
+// чтобы форма выбора не предлагала повторно выбрать текущий.
+func tenantRows(tenants []query.TenantView, active string) []consoleTenantRow {
+	rows := make([]consoleTenantRow, 0, len(tenants))
+	for _, tenant := range tenants {
+		rows = append(rows, consoleTenantRow{
+			ID:          tenant.ID,
+			CompanyName: tenant.CompanyName,
+			StateLabel:  tenantStateLabel(tenant.State),
+			Class:       components.StatusClass(tenant.State),
+			Active:      tenant.ID == active,
+		})
+	}
+	return rows
+}
+
+// tenantStateLabel переводит состояние тенанта в подпись оператору. Неизвестное
+// состояние — «неизвестно», а не «активен».
+func tenantStateLabel(state string) string {
+	switch state {
+	case string(domain.TenantActive):
+		return "активен"
+	case string(domain.TenantDisabled):
+		return "отключён"
+	default:
+		return "неизвестно"
 	}
 }
 
@@ -461,17 +683,14 @@ func (s *Server) renderConsoleDenied(w http.ResponseWriter, status int, message 
 	})
 }
 
-// consoleNav собирает навигацию раздела управления с активным пунктом.
-func consoleNav(active, tenant, actor string) components.Nav {
-	items := []components.NavItem{
-		{Label: "Пользователи", Href: consoleURL("/console/users", tenant, actor, "")},
-		{Label: "Интеграции", Href: consoleURL("/console/integrations", tenant, actor, "")},
-		{Label: "Аудит", Href: consoleURL("/console/audit", tenant, actor, "")},
-	}
-	for i := range items {
-		items[i].Active = strings.HasPrefix(items[i].Href, active)
-	}
-	return components.Nav{Items: items}
+// consoleNav собирает навигацию админских экранов через общий слой: канонический
+// список включает и операторские разделы (Заявки, Исполнение, Лиды, Отчёты,
+// Рассылки), и платформенные (Тенант, Пользователи, Регистрации, Интеграции,
+// Аудит, Топология, Операции). Ссылки несут выбранный тенант и актора; активен
+// открытый раздел — общий слой отмечает его по пути раздела.
+func (s *Server) consoleNav(active, tenant, actor string) components.Nav {
+	ctx := components.ConsoleContext{TenantID: tenant, Actor: actor}
+	return components.ConsoleNavMessagesWithContext(s.messages, s.console, active, ctx)
 }
 
 // consoleURL собирает адрес экрана с необязательными тенантом, актором и
@@ -503,6 +722,18 @@ func consoleNotice(code string) string {
 		return "Роль отозвана"
 	case "switched":
 		return "Тенант переключён"
+	case "registration_approved":
+		return "Заявка на регистрацию подтверждена"
+	case "registration_rejected":
+		return "Заявка на регистрацию отклонена"
+	case "profile_approved":
+		return "Профиль подтверждён"
+	case "profile_rejected":
+		return "Профиль отклонён"
+	case "panel_hidden":
+		return "Панель скрыта"
+	case "panel_shown":
+		return "Панель показана"
 	default:
 		return ""
 	}

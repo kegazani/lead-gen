@@ -88,6 +88,21 @@ func TestEmptyLeads(t *testing.T) {
 	}
 }
 
+func TestSearchPreservesPartialReason(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"found":1,"from_pool":0,"crawled":1,"leads":[{"id":"partial.example","origin":"crawl"}],"partial_reason":"extract_cost_unknown"}`)
+	}))
+	defer server.Close()
+
+	result, err := newClient(t, server).Search(context.Background(), leadsearch.Query{Criteria: "x"})
+	if err != nil {
+		t.Fatalf("Search: %v", err)
+	}
+	if result.PartialReason != "extract_cost_unknown" || result.Found != 1 || len(result.Leads) != 1 {
+		t.Fatalf("частичная причина потеряна при разборе wire-ответа: %+v", result)
+	}
+}
+
 // TestErrorMapping проверяет перевод HTTP-кодов владельца в исходы контракта:
 // 400 — доменный отказ, прочее — недоступность.
 func TestErrorMapping(t *testing.T) {

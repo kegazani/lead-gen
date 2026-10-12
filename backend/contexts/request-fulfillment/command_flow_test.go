@@ -34,7 +34,7 @@ func (s *seqIDs) NewEventID() domain.EventID {
 type harness struct {
 	uow       *inmemory.UnitOfWork
 	repo      *persistence.Repository
-	journal   *platformoutbox.MemoryJournal
+	journal   *inmemory.TransactionalJournal
 	clock     fixedClock
 	ids       *seqIDs
 	submit    *command.SubmitRequestHandler
@@ -48,7 +48,7 @@ type harness struct {
 
 func newHarness() *harness {
 	repo := persistence.New()
-	journal := platformoutbox.NewMemoryJournal()
+	journal := inmemory.NewTransactionalJournal()
 	uow := inmemory.NewUnitOfWorkWith(repo, journal)
 	clock := fixedClock{at: epoch}
 	ids := &seqIDs{}

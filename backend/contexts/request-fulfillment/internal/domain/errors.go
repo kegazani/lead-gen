@@ -42,12 +42,21 @@ var (
 	// ErrReasonRequired — переход (отклонение, отмена) требует причины.
 	ErrReasonRequired = errors.New("домен: причина перехода обязательна")
 
+	// ErrInvalidReasonCode — код причины сбоя исполнения пуст или не входит в
+	// согласованный набор (search_failed, draft_failed, handoff_failed,
+	// transition_rejected, workflow_timed_out).
+	ErrInvalidReasonCode = errors.New("домен: недопустимый код причины сбоя исполнения")
+
 	// ErrInvalidOfferRevision — сохранённая версия оффера некорректна.
 	ErrInvalidOfferRevision = errors.New("домен: некорректная версия оффера")
 
 	// ErrInvalidSnapshot — сохранённое состояние заявки внутренне противоречиво
 	// и не может быть восстановлено без нарушения инвариантов.
 	ErrInvalidSnapshot = errors.New("домен: некорректное сохранённое состояние заявки")
+
+	// ErrRequestSubmissionConflict — повторный request_id пришёл с другой
+	// бизнес-командой и не может переиспользовать прежнюю заявку.
+	ErrRequestSubmissionConflict = errors.New("домен: повтор подачи заявки не совпадает с исходной командой")
 
 	// ErrUnknownValidationOutcome — исход валидации не объявлен доменом.
 	ErrUnknownValidationOutcome = errors.New("домен: неизвестный исход валидации")
@@ -57,4 +66,12 @@ var (
 
 	// ErrEmptyEmbedding — попытка зафиксировать пустой вектор эмбеддинга.
 	ErrEmptyEmbedding = errors.New("домен: пустой вектор эмбеддинга")
+
+	// ErrRequestLimitReached — у клиента уже пять заявок в нетерминальных
+	// статусах; создание шестой отклоняется.
+	ErrRequestLimitReached = errors.New("домен: превышен лимит заявок клиента")
+
+	// ErrActiveRequestLimitReached — у клиента уже есть заявка в работе
+	// (processing); запуск второй в работу отклоняется.
+	ErrActiveRequestLimitReached = errors.New("домен: превышен лимит заявок в работе")
 )

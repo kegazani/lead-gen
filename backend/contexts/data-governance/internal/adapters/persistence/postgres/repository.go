@@ -50,6 +50,12 @@ type Repository struct {
 	begin func(context.Context) (pgx.Tx, error)
 }
 
+// Readiness проверяет доступность соединения read-only без чтения или изменения данных.
+func (r *Repository) Readiness(ctx context.Context) error {
+	var one int
+	return r.db.QueryRow(ctx, `SELECT 1`).Scan(&one)
+}
+
 // Repository реализует порт репозитория оснований обработки.
 var _ ports.ProcessingBasisRepository = (*Repository)(nil)
 

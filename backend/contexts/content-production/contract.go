@@ -27,8 +27,12 @@ func NewContentRequest(slice *Slice) contentrequest.Port {
 	}
 	return contentrequest.InProc(contentrequest.InProcHandler{
 		RequestFunc: func(ctx context.Context, in contentrequest.Intent) (contentrequest.Result, error) {
+			subject := ""
+			if in.Subject != nil {
+				subject = *in.Subject
+			}
 			format, err := domain.ParseRenderFormat(in.Format)
-			if err != nil {
+			if in.Mode != contentrequest.ModeVersionOnly && err != nil {
 				return contentrequest.Result{}, fmt.Errorf("%w: %v", contentrequest.ErrRejected, err)
 			}
 			result, err := slice.ProduceContent.Handle(ctx, command.ProduceContent{
@@ -40,6 +44,8 @@ func NewContentRequest(slice *Slice) contentrequest.Port {
 				Format:        format,
 				TemplateID:    domain.TemplateID(in.TemplateID),
 				Body:          in.Body,
+				Subject:       subject,
+				Mode:          in.Mode,
 				Actor:         domain.ActorID(in.Actor),
 				CorrelationID: domain.CorrelationID(in.CorrelationID),
 			})
@@ -76,13 +82,17 @@ func NewContentVersion(slice *Slice) contentversion.Source {
 			if !ok {
 				return contentversion.Version{}, fmt.Errorf("%w: %s", contentversion.ErrNotFound, q.AssetID)
 			}
+			subject := chosen.Subject
+			if subject == "" {
+				subject = contentVersionSubject(view, chosen.VersionID)
+			}
 			return contentversion.Version{
 				AssetID:   view.AssetID.String(),
 				VersionID: chosen.VersionID.String(),
 				Revision:  chosen.Revision,
 				Language:  view.Language,
 				Region:    view.Region,
-				Subject:   contentVersionSubject(view, chosen.VersionID),
+				Subject:   subject,
 				Body:      chosen.Body,
 			}, nil
 		},
@@ -188,6 +198,8 @@ func contentRequestError(err error) error {
 	case err == nil:
 		return nil
 	case errors.Is(err, command.ErrPackageRequired),
+		errors.Is(err, command.ErrUnknownContentMode),
+		errors.Is(err, command.ErrVersionOnlyConflict),
 		errors.Is(err, command.ErrVersionRequired),
 		errors.Is(err, command.ErrTenantMismatch),
 		errors.Is(err, domain.ErrEmptyID),

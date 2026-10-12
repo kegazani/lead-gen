@@ -10,6 +10,7 @@ import (
 	"lead-gen/backend/contexts/lead-management/internal/adapters/persistence/memory"
 	"lead-gen/backend/contexts/lead-management/internal/app"
 	"lead-gen/backend/contexts/lead-management/internal/domain"
+	"lead-gen/backend/contexts/lead-management/internal/ports"
 	"lead-gen/contracts/lead-management/leadsearch"
 	"lead-gen/contracts/lead-management/leadsearch/httpport"
 )
@@ -47,7 +48,7 @@ func TestLeadSearchHTTPRoundTrip(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateCompany: %v", err)
 	}
-	if err := profiles.Save(context.Background(), company); err != nil {
+	if err := profiles.Save(ports.WithTenant(context.Background(), "tenant-1"), company); err != nil {
 		t.Fatalf("Save: %v", err)
 	}
 

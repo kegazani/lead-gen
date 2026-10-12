@@ -20,6 +20,8 @@ import (
 	"lead-gen/backend/contexts/data-governance/internal/ports"
 	composition "lead-gen/backend/platform/composition"
 	"lead-gen/backend/platform/observability/observ"
+	"lead-gen/backend/platform/readiness"
+	"lead-gen/contracts/platform-governance/accessdecision"
 )
 
 // ServiceID — идентификатор сервиса, равный идентификатору контекста из
@@ -52,8 +54,15 @@ type Config struct {
 	// Interval — период фонового прохода истечения полномочий роли worker.
 	Interval time.Duration
 
-	// Grants — права доступа среза. По умолчанию доступ закрыт.
+	// Grants — права доступа dev/test-двойника. Используются только когда не
+	// задан Access (dev-сборка без владельца). По умолчанию доступ закрыт.
 	Grants []Grant
+
+	// Access — решение о доступе из контракта access-decision владельца
+	// platform-governance. Продуктовый путь (cmd/lead-gen) задаёт его явно,
+	// включая честный недоступный решатель, когда владелец не собран. nil —
+	// dev-сборка на правах Grants.
+	Access accessdecision.Decider
 
 	// Repository — репозиторий оснований. nil и пустой DSN → новый in-memory
 	// репозиторий (dev). Если задан, используется независимо от DSN.
@@ -74,10 +83,6 @@ type Config struct {
 
 	// IDs — генератор идентификаторов событий. nil → криптостойкий Random.
 	IDs ports.IDGenerator
-
-	// Access — решение о доступе актора к тенанту. nil → in-memory список прав
-	// среза, собранный из Grants.
-	Access ports.AccessDecision
 
 	// Наблюдаемость сервиса: логгер, метрики и трейсер впрыскиваются
 	// composition root'ом; обязательны.
@@ -144,15 +149,23 @@ func Build(cfg Config) (*Slice, error) {
 		ids = idgen.NewRandom()
 	}
 
-	decider := access.NewDecider()
-	for _, grant := range cfg.Grants {
-		if err := decider.Grant(grant.Actor, grant.Tenant); err != nil {
-			return nil, fmt.Errorf("сборка: выдача права доступа: %w", err)
+	// Решение о доступе: при заданном Access — тонкий перевод к контракту
+	// владельца (продуктовый путь); иначе dev/test-двойник на правах Grants.
+	var accessDecision ports.AccessDecision
+	if cfg.Access != nil {
+		contract, err := access.NewContract(cfg.Access)
+		if err != nil {
+			return nil, fmt.Errorf("сборка: решение о доступе: %w", err)
 		}
-	}
-	accessDecision := cfg.Access
-	if accessDecision == nil {
-		accessDecision = decider
+		accessDecision = contract
+	} else {
+		dev := access.NewDecider()
+		for _, grant := range cfg.Grants {
+			if err := dev.Grant(grant.Actor, grant.Tenant); err != nil {
+				return nil, fmt.Errorf("сборка: выдача права доступа: %w", err)
+			}
+		}
+		accessDecision = dev
 	}
 
 	createBasis := command.NewCreateBasisHandler(repository, clock, ids)
@@ -211,12 +224,13 @@ func (sl *Slice) Close() error {
 // Service — собранный сервис data-governance. Реализует composition.Service:
 // раннер на каждую объявленную каталогом роль (api, worker, chains).
 type Service struct {
-	slice    *Slice
-	apiAddr  string
-	interval time.Duration
-	logger   observ.Logger
-	metrics  observ.Metrics
-	tracer   observ.Tracer
+	slice     *Slice
+	apiAddr   string
+	interval  time.Duration
+	logger    observ.Logger
+	metrics   observ.Metrics
+	tracer    observ.Tracer
+	readiness *readiness.Evaluator
 }
 
 // New собирает сервис из переданных зависимостей.
@@ -238,12 +252,13 @@ func New(cfg Config) (*Service, error) {
 		return nil, err
 	}
 	return &Service{
-		slice:    slice,
-		apiAddr:  cfg.APIAddr,
-		interval: cfg.Interval,
-		logger:   cfg.Logger,
-		metrics:  cfg.Metrics,
-		tracer:   cfg.Tracer,
+		slice:     slice,
+		apiAddr:   cfg.APIAddr,
+		interval:  cfg.Interval,
+		logger:    cfg.Logger,
+		metrics:   cfg.Metrics,
+		tracer:    cfg.Tracer,
+		readiness: readiness.New(readiness.Config{Timeout: 250 * time.Millisecond, TTL: time.Second}),
 	}, nil
 }
 
@@ -282,7 +297,12 @@ func (s *Service) RoleRunner(role composition.Role) (composition.RoleRunner, boo
 // runAPI поднимает внутренний HTTP-сервер контекста и останавливает его по
 // отмене контекста.
 func (s *Service) runAPI(ctx context.Context) error {
-	handler := observ.Middleware(s.logger, s.metrics, s.tracer, ServiceID)(s.slice.Server)
+	mux := http.NewServeMux()
+	mux.HandleFunc("GET /readyz", func(w http.ResponseWriter, r *http.Request) {
+		writeReadiness(w, s.Readiness(r.Context(), composition.RoleAPI))
+	})
+	mux.Handle("/", s.slice.Server)
+	handler := observ.Middleware(s.logger, s.metrics, s.tracer, ServiceID)(mux)
 	server := &http.Server{
 		Addr:              s.apiAddr,
 		Handler:           handler,

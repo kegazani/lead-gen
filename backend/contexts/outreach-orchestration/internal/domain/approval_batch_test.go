@@ -1,7 +1,9 @@
 package domain
 
 import (
+	"context"
 	"errors"
+	"fmt"
 	"testing"
 )
 
@@ -27,7 +29,21 @@ func addBatchDraft(t *testing.T, campaign *Campaign, id DraftID, spec DraftSpec)
 }
 
 func riskPredicate(signs map[DraftID][]RiskReason) CanBeDecidedInPackage {
-	return func(id DraftID, _ int) []RiskReason { return signs[id] }
+	return func(_ context.Context, req RiskFactsRequest) ([]RiskReason, error) {
+		return signs[req.DraftID], nil
+	}
+}
+
+// noRiskChecks — тестовый предикат без признаков риска: не заглушка продукта, а
+// двойник теста, возвращающий пустой список без ошибки.
+func noRiskChecks() CanBeDecidedInPackage { return riskPredicate(nil) }
+
+// unavailableFacts — тестовый предикат недоступных фактов риска: ошибка, а не
+// пустой список («рисков нет»).
+func unavailableFacts() CanBeDecidedInPackage {
+	return func(context.Context, RiskFactsRequest) ([]RiskReason, error) {
+		return nil, fmt.Errorf("%w: владелец недоступен", ErrRiskFactsUnavailable)
+	}
 }
 
 func itemFor(t *testing.T, campaign *Campaign, id DraftID) BatchApprovalItem {
@@ -82,7 +98,7 @@ func TestBuildApprovalBatchGroupsHomogeneousDrafts(t *testing.T) {
 	addBatchDraft(t, campaign, "d6", batchSpec(t, "m2", "s1", "r6"))
 	addBatchDraft(t, campaign, "d7", batchSpec(t, "m1", "s2", "r7"))
 
-	result, err := campaign.BuildApprovalBatch(batchLimits(2, 10, 100), nil)
+	result, err := campaign.BuildApprovalBatch(context.Background(), batchLimits(2, 10, 100), noRiskChecks())
 	if err != nil {
 		t.Fatalf("BuildApprovalBatch: %v", err)
 	}
@@ -116,7 +132,7 @@ func TestBuildApprovalBatchSplitsIntoShardsAboveLimit(t *testing.T) {
 		addBatchDraft(t, campaign, id, batchSpec(t, "m1", "s1", "r-"+string(id)))
 	}
 
-	result, err := campaign.BuildApprovalBatch(batchLimits(2, 2, 100), nil)
+	result, err := campaign.BuildApprovalBatch(context.Background(), batchLimits(2, 2, 100), noRiskChecks())
 	if err != nil {
 		t.Fatalf("BuildApprovalBatch: %v", err)
 	}
@@ -137,7 +153,7 @@ func TestBuildApprovalBatchBelowMinimumGoesToIndividual(t *testing.T) {
 	campaign := newCampaign(t)
 	addBatchDraft(t, campaign, "d1", batchSpec(t, "m1", "s1", "r1"))
 
-	result, err := campaign.BuildApprovalBatch(batchLimits(2, 10, 100), nil)
+	result, err := campaign.BuildApprovalBatch(context.Background(), batchLimits(2, 10, 100), noRiskChecks())
 	if err != nil {
 		t.Fatalf("BuildApprovalBatch: %v", err)
 	}
@@ -153,17 +169,17 @@ func TestBuildApprovalBatchExcludesEachRiskReason(t *testing.T) {
 	campaign := newCampaign(t)
 	addBatchDraft(t, campaign, "clean-1", batchSpec(t, "m1", "s1", "r1"))
 	addBatchDraft(t, campaign, "clean-2", batchSpec(t, "m1", "s1", "r2"))
+	// Признаки риска — только те, у которых есть владелец факта (design.md,
+	// Решение 1): стоп-лист и верификация адреса.
 	reasons := map[DraftID][]RiskReason{
-		"risk-personal-data": {RiskPersonalDataDetected},
-		"risk-address":       {RiskAddressUnverified},
-		"risk-facts":         {RiskRequiredFactsMissing},
-		"risk-stop":          {RiskStopRuleTriggered},
+		"risk-stop":    {RiskStopRuleTriggered},
+		"risk-address": {RiskAddressUnverified},
 	}
 	for id := range reasons {
 		addBatchDraft(t, campaign, id, batchSpec(t, "m1", "s1", "recipient-"+string(id)))
 	}
 
-	result, err := campaign.BuildApprovalBatch(batchLimits(2, 10, 100), riskPredicate(reasons))
+	result, err := campaign.BuildApprovalBatch(context.Background(), batchLimits(2, 10, 100), riskPredicate(reasons))
 	if err != nil {
 		t.Fatalf("BuildApprovalBatch: %v", err)
 	}
@@ -194,7 +210,7 @@ func TestBuildApprovalBatchValidatesLimits(t *testing.T) {
 		batchLimits(5, 2, 100),
 		batchLimits(5, 20, 10),
 	} {
-		if _, err := campaign.BuildApprovalBatch(limits, nil); !errors.Is(err, ErrInvalidBatchLimits) {
+		if _, err := campaign.BuildApprovalBatch(context.Background(), limits, noRiskChecks()); !errors.Is(err, ErrInvalidBatchLimits) {
 			t.Fatalf("лимиты %+v: ожидалась ErrInvalidBatchLimits, получено %v", limits, err)
 		}
 	}
@@ -221,9 +237,9 @@ func TestApproveBatchCannotBypassRiskExclusion(t *testing.T) {
 			itemFor(t, campaign, "risky"),
 		},
 	}
-	signs := map[DraftID][]RiskReason{"risky": {RiskPersonalDataDetected}}
+	signs := map[DraftID][]RiskReason{"risky": {RiskStopRuleTriggered}}
 
-	_, _, err := campaign.ApproveBatch(params, riskPredicate(signs))
+	_, _, err := campaign.ApproveBatch(context.Background(), params, riskPredicate(signs))
 	if !errors.Is(err, ErrBatchDraftNotEligible) {
 		t.Fatalf("ожидалась ErrBatchDraftNotEligible, получено %v", err)
 	}
@@ -243,13 +259,13 @@ func TestApproveBatchCreatesOneDecisionPerDraft(t *testing.T) {
 	for _, id := range []DraftID{"d1", "d2", "d3"} {
 		addBatchDraft(t, campaign, id, batchSpec(t, "m1", "s1", "r-"+string(id)))
 	}
-	result, err := campaign.BuildApprovalBatch(batchLimits(2, 10, 100), nil)
+	result, err := campaign.BuildApprovalBatch(context.Background(), batchLimits(2, 10, 100), noRiskChecks())
 	if err != nil {
 		t.Fatalf("BuildApprovalBatch: %v", err)
 	}
 	batch := result.Batches()[0]
 
-	decisions, _, err := campaign.ApproveBatch(paramsForBatch(t, batch), nil)
+	decisions, _, err := campaign.ApproveBatch(context.Background(), paramsForBatch(t, batch), noRiskChecks())
 	if err != nil {
 		t.Fatalf("ApproveBatch: %v", err)
 	}
@@ -312,7 +328,7 @@ func TestBatchDigestDeterministicAndSensitiveToComposition(t *testing.T) {
 
 func mustBuild(t *testing.T, campaign *Campaign) BatchBuildResult {
 	t.Helper()
-	result, err := campaign.BuildApprovalBatch(batchLimits(2, 10, 100), nil)
+	result, err := campaign.BuildApprovalBatch(context.Background(), batchLimits(2, 10, 100), noRiskChecks())
 	if err != nil {
 		t.Fatalf("BuildApprovalBatch: %v", err)
 	}
@@ -328,10 +344,10 @@ func TestApproveBatchIsIdempotent(t *testing.T) {
 	params := paramsForBatch(t, batch)
 	campaign.PullDomainEvents()
 
-	if _, events, err := campaign.ApproveBatch(params, nil); err != nil || len(events) != 3 {
+	if _, events, err := campaign.ApproveBatch(context.Background(), params, noRiskChecks()); err != nil || len(events) != 3 {
 		t.Fatalf("первое утверждение: events=%d, err=%v", len(events), err)
 	}
-	decisions, events, err := campaign.ApproveBatch(params, nil)
+	decisions, events, err := campaign.ApproveBatch(context.Background(), params, noRiskChecks())
 	if err != nil {
 		t.Fatalf("повторное утверждение: %v", err)
 	}
@@ -352,7 +368,7 @@ func TestApproveBatchRejectsDigestMismatch(t *testing.T) {
 	params := paramsForBatch(t, batch)
 	params.Digest = "неверный-digest"
 
-	if _, _, err := campaign.ApproveBatch(params, nil); !errors.Is(err, ErrBatchDigestMismatch) {
+	if _, _, err := campaign.ApproveBatch(context.Background(), params, noRiskChecks()); !errors.Is(err, ErrBatchDigestMismatch) {
 		t.Fatalf("ожидалась ErrBatchDigestMismatch, получено %v", err)
 	}
 	if len(campaign.Decisions()) != 0 {
@@ -371,7 +387,7 @@ func TestApproveBatchRejectsChangedComposition(t *testing.T) {
 	if _, err := campaign.ReviseDraft("d2", 1, batchSpec(t, "m1", "s1", "r-d2-v2")); err != nil {
 		t.Fatalf("ReviseDraft: %v", err)
 	}
-	if _, _, err := campaign.ApproveBatch(params, nil); !errors.Is(err, ErrDraftVersionMismatch) {
+	if _, _, err := campaign.ApproveBatch(context.Background(), params, noRiskChecks()); !errors.Is(err, ErrDraftVersionMismatch) {
 		t.Fatalf("ожидалась ErrDraftVersionMismatch, получено %v", err)
 	}
 	if len(campaign.Decisions()) != 0 {
@@ -400,7 +416,7 @@ func TestRejectWithinBatchUsesOrdinaryRejectDraft(t *testing.T) {
 	}
 
 	// Пакет, включающий отклонённый черновик, больше не принимается.
-	if _, _, err := campaign.ApproveBatch(params, nil); !errors.Is(err, ErrBatchCompositionChanged) {
+	if _, _, err := campaign.ApproveBatch(context.Background(), params, noRiskChecks()); !errors.Is(err, ErrBatchCompositionChanged) {
 		t.Fatalf("ожидалась ErrBatchCompositionChanged, получено %v", err)
 	}
 }
@@ -415,7 +431,7 @@ func TestApproveBatchEmitsNActionApprovedAndStateChanged(t *testing.T) {
 	// след пакетного утверждения.
 	campaign.PullDomainEvents()
 
-	if _, _, err := campaign.ApproveBatch(paramsForBatch(t, batch), nil); err != nil {
+	if _, _, err := campaign.ApproveBatch(context.Background(), paramsForBatch(t, batch), noRiskChecks()); err != nil {
 		t.Fatalf("ApproveBatch: %v", err)
 	}
 	events := campaign.DomainEvents()
@@ -449,7 +465,7 @@ func TestApproveBatchPreservesI1AndI2(t *testing.T) {
 		addBatchDraft(t, campaign, id, batchSpec(t, "m1", "s1", "r-"+string(id)))
 	}
 	batch := batchByKey(t, mustBuild(t, campaign), HomogeneityKey{Material: "m1", Segment: "s1"})
-	if _, _, err := campaign.ApproveBatch(paramsForBatch(t, batch), nil); err != nil {
+	if _, _, err := campaign.ApproveBatch(context.Background(), paramsForBatch(t, batch), noRiskChecks()); err != nil {
 		t.Fatalf("ApproveBatch: %v", err)
 	}
 
@@ -473,7 +489,7 @@ func TestBuildApprovalBatchLeavesExcessPendingBeyondWindow(t *testing.T) {
 		addBatchDraft(t, campaign, id, batchSpec(t, "m1", "s1", "r-"+string(id)))
 	}
 
-	result, err := campaign.BuildApprovalBatch(batchLimits(2, 3, 3), nil)
+	result, err := campaign.BuildApprovalBatch(context.Background(), batchLimits(2, 3, 3), noRiskChecks())
 	if err != nil {
 		t.Fatalf("BuildApprovalBatch: %v", err)
 	}
@@ -494,12 +510,12 @@ func TestBuildApprovalBatchFromDraftsMatchesAggregateDigest(t *testing.T) {
 	limits := batchLimits(2, 10, 100)
 
 	// Путь агрегата: черновики берутся из самого агрегата.
-	viaAggregate, err := campaign.BuildApprovalBatch(limits, nil)
+	viaAggregate, err := campaign.BuildApprovalBatch(context.Background(), limits, noRiskChecks())
 	if err != nil {
 		t.Fatalf("BuildApprovalBatch: %v", err)
 	}
 	// Путь окна: тот же набор черновиков приходит слайсом, как из репозитория.
-	viaDrafts, err := BuildApprovalBatchFromDrafts(campaign.Drafts(), campaign.ID(), limits, nil)
+	viaDrafts, err := BuildApprovalBatchFromDrafts(context.Background(), campaign.Drafts(), campaign.ID(), campaign.TenantID(), limits, noRiskChecks())
 	if err != nil {
 		t.Fatalf("BuildApprovalBatchFromDrafts: %v", err)
 	}
@@ -528,7 +544,7 @@ func TestBuildApprovalBatchFromDraftsFocusesOnPendingApproval(t *testing.T) {
 		t.Fatalf("RejectDraft: %v", err)
 	}
 
-	result, err := BuildApprovalBatchFromDrafts(campaign.Drafts(), campaign.ID(), batchLimits(2, 10, 100), nil)
+	result, err := BuildApprovalBatchFromDrafts(context.Background(), campaign.Drafts(), campaign.ID(), campaign.TenantID(), batchLimits(2, 10, 100), noRiskChecks())
 	if err != nil {
 		t.Fatalf("BuildApprovalBatchFromDrafts: %v", err)
 	}
@@ -544,8 +560,54 @@ func TestBuildApprovalBatchFromDraftsRejectsForeignCampaign(t *testing.T) {
 	campaign := newCampaign(t)
 	addBatchDraft(t, campaign, "d1", batchSpec(t, "m1", "s1", "r1"))
 
-	_, err := BuildApprovalBatchFromDrafts(campaign.Drafts(), CampaignID("campaign-2"), batchLimits(2, 10, 100), nil)
+	_, err := BuildApprovalBatchFromDrafts(context.Background(), campaign.Drafts(), CampaignID("campaign-2"), campaign.TenantID(), batchLimits(2, 10, 100), noRiskChecks())
 	if !errors.Is(err, ErrDraftNotFound) {
 		t.Fatalf("черновик чужой кампании должен быть отвергнут, получено %v", err)
+	}
+}
+
+// TestBuildApprovalBatchNilPredicateIsUnavailable проверяет, что незаданный
+// предикат — недоступность фактов, а не «рисков нет».
+func TestBuildApprovalBatchNilPredicateIsUnavailable(t *testing.T) {
+	campaign := newCampaign(t)
+	addBatchDraft(t, campaign, "d1", batchSpec(t, "m1", "s1", "r1"))
+
+	if _, err := campaign.BuildApprovalBatch(context.Background(), batchLimits(2, 10, 100), nil); !errors.Is(err, ErrRiskFactsUnavailable) {
+		t.Fatalf("nil-предикат: ошибка = %v, ожидалась ErrRiskFactsUnavailable", err)
+	}
+}
+
+// TestBuildApprovalBatchUnavailableFactsIsErrorNotExclusion проверяет, что
+// недоступность фактов не даёт исключения и не трактуется как «рисков нет»:
+// состав не выдаётся, вызывающий получает ошибку.
+func TestBuildApprovalBatchUnavailableFactsIsErrorNotExclusion(t *testing.T) {
+	campaign := newCampaign(t)
+	addBatchDraft(t, campaign, "d1", batchSpec(t, "m1", "s1", "r1"))
+	addBatchDraft(t, campaign, "d2", batchSpec(t, "m1", "s1", "r2"))
+
+	result, err := campaign.BuildApprovalBatch(context.Background(), batchLimits(2, 10, 100), unavailableFacts())
+	if !errors.Is(err, ErrRiskFactsUnavailable) {
+		t.Fatalf("ошибка = %v, ожидалась ErrRiskFactsUnavailable", err)
+	}
+	if len(result.Excluded()) != 0 || len(result.Batches()) != 0 {
+		t.Fatalf("недоступность фактов не должна давать ни исключения, ни пакета: %+v", result)
+	}
+}
+
+// TestApproveBatchUnavailableFactsIsError проверяет, что недоступность фактов
+// останавливает пакетное решение с ошибкой, а не с «рисков нет».
+func TestApproveBatchUnavailableFactsIsError(t *testing.T) {
+	campaign := newCampaign(t)
+	for _, id := range []DraftID{"d1", "d2"} {
+		addBatchDraft(t, campaign, id, batchSpec(t, "m1", "s1", "r-"+string(id)))
+	}
+	batch := batchByKey(t, mustBuild(t, campaign), HomogeneityKey{Material: "m1", Segment: "s1"})
+	campaign.PullDomainEvents()
+
+	if _, _, err := campaign.ApproveBatch(context.Background(), paramsForBatch(t, batch), unavailableFacts()); !errors.Is(err, ErrRiskFactsUnavailable) {
+		t.Fatalf("ошибка = %v, ожидалась ErrRiskFactsUnavailable", err)
+	}
+	if len(campaign.Decisions()) != 0 {
+		t.Fatalf("при недоступности фактов решения записаны: %d", len(campaign.Decisions()))
 	}
 }

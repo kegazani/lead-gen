@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 
+	"go.temporal.io/api/enums/v1"
 	"go.temporal.io/api/serviceerror"
 
 	"lead-gen/backend/contexts/request-fulfillment/internal/ports"
@@ -36,11 +37,14 @@ func NewClient(client *platformworkflow.Client, taskQueue string, policy Executi
 // Register регистрирует workflow и activities фулфилмента в реестре воркера.
 func Register(registry *platformworkflow.Registry, activities *Activities) {
 	registry.RegisterWorkflowNamed(WorkflowName, Fulfillment)
+	registry.RegisterWorkflowNamed(LegacyWorkflowName, Fulfillment)
 	registry.RegisterActivityNamed(ActivityStartProcessing, activities.HandleStartProcessing)
 	registry.RegisterActivityNamed(ActivityFulfillRequest, activities.HandleFulfillRequest)
 	registry.RegisterActivityNamed(ActivityCancelRequest, activities.HandleCancelRequest)
+	registry.RegisterActivityNamed(ActivityFailRequest, activities.HandleFailRequest)
 	registry.RegisterActivityNamed(ActivitySearchLeads, activities.SearchLeads)
 	registry.RegisterActivityNamed(ActivityDraftEmails, activities.DraftEmails)
+	registry.RegisterActivityNamed(ActivityHandoffDrafts, activities.HandoffDrafts)
 }
 
 // StartFulfillment запускает workflow исполнения заявки. Реализует
@@ -53,21 +57,31 @@ func (c *Client) StartFulfillment(ctx context.Context, in ports.StartFulfillment
 		return ports.WorkflowRun{}, ports.ErrWorkflowUnavailable
 	}
 	policy := c.policy.withDefaults()
-	run, err := c.client.Start(ctx, platformworkflow.StartOptions{
-		WorkflowID:       WorkflowID(in.RequestID),
-		TaskQueue:        c.taskQueue,
-		ExecutionTimeout: policy.ExecutionTimeout,
-	}, Fulfillment, Params{
-		RequestID:     in.RequestID,
-		TenantID:      in.TenantID,
-		CorrelationID: in.CorrelationID,
-		LeadTarget:    in.LeadTarget,
-		Policy:        policy,
+	run, err := c.client.Start(ctx, startOptions(in.RequestID, c.taskQueue, policy), Fulfillment, Params{
+		RequestID:        in.RequestID,
+		TenantID:         in.TenantID,
+		CorrelationID:    in.CorrelationID,
+		LeadTarget:       in.LeadTarget,
+		ExecutionPurpose: in.ExecutionPurpose,
+		Policy:           policy,
 	})
 	if err != nil {
 		return ports.WorkflowRun{}, fmt.Errorf("%w: %v", ports.ErrWorkflowUnavailable, err)
 	}
 	return ports.WorkflowRun{WorkflowID: run.WorkflowID, RunID: run.RunID, AlreadyStarted: run.AlreadyStarted}, nil
+}
+
+// startOptions собирает параметры запуска исполнения заявки. WorkflowIDReusePolicy
+// задана явно (ALLOW_DUPLICATE_FAILED_ONLY): упавшая заявка (Temporal close-статус
+// Failed) может быть перезапущена с тем же WorkflowID при повторном запуске
+// (re-run), а успешно завершённая (fulfilled) или отменённая (cancelled) — нет.
+func startOptions(requestID, taskQueue string, policy ExecutionPolicy) platformworkflow.StartOptions {
+	return platformworkflow.StartOptions{
+		WorkflowID:            WorkflowID(requestID),
+		TaskQueue:             taskQueue,
+		ExecutionTimeout:      policy.ExecutionTimeout,
+		WorkflowIDReusePolicy: enums.WORKFLOW_ID_REUSE_POLICY_ALLOW_DUPLICATE_FAILED_ONLY,
+	}
 }
 
 // WorkflowStatus читает наблюдаемое состояние исполнения заявки. Реализует
@@ -86,18 +100,37 @@ func (c *Client) WorkflowStatus(ctx context.Context, requestID string) (ports.Wo
 		return ports.WorkflowStatus{}, fmt.Errorf("%w: %v", ports.ErrWorkflowUnavailable, err)
 	}
 	result := ports.WorkflowStatus{
-		RequestID:  requestID,
-		WorkflowID: workflowID,
-		Phase:      status.Phase,
-		Found:      status.Found,
-		Drafted:    status.Drafted,
-		NoLeads:    status.NoLeads,
+		RequestID:     requestID,
+		WorkflowID:    workflowID,
+		Phase:         status.Phase,
+		Found:         status.Found,
+		Drafted:       status.Drafted,
+		Target:        status.Target,
+		Shortfall:     status.Shortfall,
+		NoLeads:       status.NoLeads,
+		PartialReason: status.PartialReason,
 	}
 	if execution, err := c.client.Describe(ctx, workflowID, ""); err == nil {
 		result.Execution = execution.Status
 		result.RunID = execution.RunID
 	}
 	return result, nil
+}
+
+// CancelWorkflow запрашивает остановку исполнения по стабильному WorkflowID.
+// Отсутствие исполнения считается успешной отменой: заявка могла быть отменена
+// до того, как dispatcher успел запустить Temporal workflow.
+func (c *Client) CancelWorkflow(ctx context.Context, requestID string) error {
+	if c == nil || c.client == nil {
+		return ports.ErrWorkflowUnavailable
+	}
+	if err := c.client.Cancel(ctx, WorkflowID(requestID), ""); err != nil {
+		if isNotFound(err) {
+			return ports.ErrWorkflowNotFound
+		}
+		return fmt.Errorf("%w: %v", ports.ErrWorkflowUnavailable, err)
+	}
+	return nil
 }
 
 // isNotFound сообщает, что ошибка Temporal означает отсутствие исполнения.
@@ -110,6 +143,12 @@ func isNotFound(err error) bool {
 // Реализует ports.WorkflowSignaler.
 func (c *Client) SignalApprovalDecision(ctx context.Context, in ports.WorkflowDecision) error {
 	return c.signal(ctx, in.RequestID, SignalApprovalDecision, ApprovalDecision{Approved: in.Approved, Actor: in.Actor})
+}
+
+// SignalDeliveryOutcome подаёт сигнал исхода доставки письма бегущему исполнению
+// (capability request-delivery-conclusion). Реализует ports.WorkflowSignaler.
+func (c *Client) SignalDeliveryOutcome(ctx context.Context, in ports.DeliveryOutcome) error {
+	return c.signal(ctx, in.RequestID, SignalDeliveryOutcome, DeliveryOutcome{MessageID: in.MessageID, Delivered: in.Delivered})
 }
 
 // signal подаёт сигнал по идентификатору заявки, переводя ошибки Temporal в
@@ -131,5 +170,6 @@ func (c *Client) signal(ctx context.Context, requestID, name string, value any) 
 var (
 	_ ports.WorkflowStarter      = (*Client)(nil)
 	_ ports.WorkflowStatusReader = (*Client)(nil)
+	_ ports.WorkflowCanceller    = (*Client)(nil)
 	_ ports.WorkflowSignaler     = (*Client)(nil)
 )

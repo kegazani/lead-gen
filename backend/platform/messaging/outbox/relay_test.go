@@ -1,11 +1,19 @@
 package outbox
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"fmt"
+	"net/http"
+	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"lead-gen/backend/platform/observability/observ"
+	"lead-gen/backend/platform/observability/prommetrics"
 )
 
 // recordedPublish — зафиксированный вызов публикации.
@@ -23,6 +31,7 @@ type fakePublisher struct {
 	mu        sync.Mutex
 	attempts  int
 	failFirst int
+	failure   error
 	recorded  []recordedPublish
 }
 
@@ -31,6 +40,9 @@ func (p *fakePublisher) Publish(_ context.Context, exchange, routingKey string, 
 	defer p.mu.Unlock()
 	p.attempts++
 	if p.attempts <= p.failFirst {
+		if p.failure != nil {
+			return p.failure
+		}
 		return errors.New("брокер недоступен")
 	}
 	p.recorded = append(p.recorded, recordedPublish{
@@ -40,6 +52,45 @@ func (p *fakePublisher) Publish(_ context.Context, exchange, routingKey string, 
 		eventID:    headers["event_id"],
 	})
 	return nil
+}
+
+func TestRelayLogsOnlySafeFailureCategory(t *testing.T) {
+	secret := "sentinel-secret alice@example.com 550e8400-e29b-41d4-a716-446655440000"
+	newJournal := func() *MemoryJournal {
+		journal := NewMemoryJournal()
+		if err := journal.Append(context.Background(), Message{ID: "event-1", Body: []byte("body"), Headers: map[string]string{"correlation_id": "corr-1"}}); err != nil {
+			t.Fatal(err)
+		}
+		return journal
+	}
+	cases := []struct {
+		name     string
+		journal  func() Journal
+		pub      *fakePublisher
+		category string
+	}{
+		{name: "journal_read", journal: func() Journal { return failingPendingJournal{err: fmt.Errorf("wrapped: %w", errors.New(secret))} }, pub: &fakePublisher{}, category: "journal_read"},
+		{name: "publish", journal: func() Journal { return newJournal() }, pub: &fakePublisher{failFirst: 1, failure: fmt.Errorf("wrapped: %w", errors.New(secret))}, category: "publish"},
+		{name: "mark_published", journal: func() Journal {
+			return failingMarkJournal{MemoryJournal: newJournal(), err: fmt.Errorf("wrapped: %w", errors.New(secret))}
+		}, pub: &fakePublisher{}, category: "mark_published"},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			var output bytes.Buffer
+			relay := NewRelay(tc.journal(), tc.pub, time.Second).WithLogger(observ.NewLoggerWithWriter(&output))
+			relay.publish(context.Background())
+			logged := output.String()
+			for _, unsafe := range []string{"sentinel-secret", "alice@example.com", "550e8400-e29b-41d4-a716-446655440000", "wrapped:"} {
+				if strings.Contains(logged, unsafe) {
+					t.Fatalf("исходная ошибка попала в JSON-лог (%q): %s", unsafe, logged)
+				}
+			}
+			if !strings.Contains(logged, `"failure_category":"`+tc.category+`"`) {
+				t.Fatalf("лог не содержит безопасную категорию %q: %s", tc.category, logged)
+			}
+		})
+	}
 }
 
 func (p *fakePublisher) snapshot() []recordedPublish {
@@ -169,6 +220,149 @@ func TestRelayKeepsMessagePendingWhileBrokerDown(t *testing.T) {
 	if len(pending) != 1 || pending[0].ID != "m1" {
 		t.Fatalf("запись потеряна при отказе брокера: %+v", pending)
 	}
+}
+
+// TestRelayLogsAndCountsPublishFailure проверяет, что ошибка публикации не
+// проглатывается: она логируется с корреляцией записи, увеличивает счётчик
+// отказов, запись остаётся неподтверждённой, а цикл продолжает проходы
+// (design.md, Решения 4 и 5).
+func TestRelayLogsAndCountsPublishFailure(t *testing.T) {
+	journal := NewMemoryJournal()
+	ctx := context.Background()
+
+	if err := journal.Append(ctx, Message{ID: "m1", Body: []byte("one"), Headers: map[string]string{"event_id": "e1", "correlation_id": "corr-1"}}); err != nil {
+		t.Fatalf("Append: %v", err)
+	}
+
+	// Брокер устойчиво недоступен: каждый проход публикации падает.
+	pub := &fakePublisher{failFirst: 1 << 20}
+	var buf bytes.Buffer
+	metrics := observ.NewMetrics().(*observ.MemoryMetrics)
+	relay := NewRelay(journal, pub, time.Millisecond).
+		WithLogger(observ.NewLoggerWithWriter(&buf)).
+		WithMetrics(metrics)
+
+	cancel, done := runRelay(t, relay)
+	time.Sleep(20 * time.Millisecond)
+	cancel()
+	waitRelayStop(t, done)
+
+	// Запись не подтверждена и остаётся для повтора.
+	pending, err := journal.Pending(ctx, 0)
+	if err != nil {
+		t.Fatalf("Pending: %v", err)
+	}
+	if len(pending) != 1 || pending[0].ID != "m1" {
+		t.Fatalf("запись потеряна при отказе брокера: %+v", pending)
+	}
+
+	// Счётчик отказов вырос.
+	if got := metrics.Counter(outboxPublishFailuresTotal, nil); got == 0 {
+		t.Fatalf("счётчик отказов публикации не вырос")
+	}
+
+	// Ошибка залогирована с корреляцией записи.
+	if !strings.Contains(buf.String(), "публикация записи не удалась") {
+		t.Fatalf("лог не несёт ошибку публикации: %s", buf.String())
+	}
+	if !strings.Contains(buf.String(), "corr-1") {
+		t.Fatalf("лог не несёт correlation_id записи: %s", buf.String())
+	}
+}
+
+// TestRelayPublishFailureAppearsInExposition проверяет сквозной путь счётчика
+// отказов публикации через реальный адаптер Prometheus: при устойчивом отказе
+// Publish счётчик outbox_publish_failures_total растёт и виден в /metrics, а
+// запись остаётся неподтверждённой (design.md, Решения 2 и 5).
+func TestRelayPublishFailureAppearsInExposition(t *testing.T) {
+	journal := NewMemoryJournal()
+	ctx := context.Background()
+
+	if err := journal.Append(ctx, Message{ID: "m1", Body: []byte("one"), Headers: map[string]string{"event_id": "e1", "correlation_id": "corr-1"}}); err != nil {
+		t.Fatalf("Append: %v", err)
+	}
+
+	pub := &fakePublisher{failFirst: 1 << 20}
+	adapter := prommetrics.New()
+	relay := NewRelay(journal, pub, time.Millisecond).WithMetrics(adapter)
+
+	cancel, done := runRelay(t, relay)
+	waitFor(t, func() bool {
+		rec := httptest.NewRecorder()
+		adapter.Handler().ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+		return strings.Contains(rec.Body.String(), "outbox_publish_failures_total")
+	}, "счётчик отказов публикации не появился в /metrics")
+	cancel()
+	waitRelayStop(t, done)
+
+	// Запись остаётся неподтверждённой для повтора (at-least-once).
+	pending, err := journal.Pending(ctx, 0)
+	if err != nil {
+		t.Fatalf("Pending: %v", err)
+	}
+	if len(pending) != 1 || pending[0].ID != "m1" {
+		t.Fatalf("запись потеряна при отказе брокера: %+v", pending)
+	}
+}
+
+// failingPendingJournal — Journal, у которого чтение очереди всегда падает.
+// Эмулирует отказ хранилища, а не брокера.
+type failingPendingJournal struct{ err error }
+
+func (f failingPendingJournal) Append(context.Context, Message) error           { return nil }
+func (f failingPendingJournal) Pending(context.Context, int) ([]Message, error) { return nil, f.err }
+func (f failingPendingJournal) MarkPublished(context.Context, string) error     { return nil }
+
+// failingMarkJournal — Journal, у которого подтверждение записи всегда падает;
+// чтение очереди делегирует MemoryJournal. Эмулирует отказ при MarkPublished.
+type failingMarkJournal struct {
+	*MemoryJournal
+	err error
+}
+
+func (f failingMarkJournal) MarkPublished(context.Context, string) error { return f.err }
+
+// TestRelayCountsOnlyPublishFailures проверяет, что счётчик отказов публикации
+// учитывает только отказ publisher.Publish, а не ошибки чтения журнала или
+// подтверждения записи (design.md, Решение 5): чужие ошибки лишь логируются.
+func TestRelayCountsOnlyPublishFailures(t *testing.T) {
+	t.Run("ошибка чтения журнала", func(t *testing.T) {
+		metrics := observ.NewMetrics().(*observ.MemoryMetrics)
+		var buf bytes.Buffer
+		relay := NewRelay(failingPendingJournal{err: errors.New("журнал недоступен")}, &fakePublisher{}, time.Millisecond).
+			WithLogger(observ.NewLoggerWithWriter(&buf)).
+			WithMetrics(metrics)
+
+		relay.publish(context.Background())
+
+		if got := metrics.Counter(outboxPublishFailuresTotal, nil); got != 0 {
+			t.Fatalf("ошибка чтения журнала увеличила счётчик отказов публикации: %d", got)
+		}
+		if !strings.Contains(buf.String(), "чтение журнала не удалось") {
+			t.Fatalf("ошибка чтения журнала не залогирована: %s", buf.String())
+		}
+	})
+
+	t.Run("ошибка подтверждения записи", func(t *testing.T) {
+		journal := NewMemoryJournal()
+		if err := journal.Append(context.Background(), Message{ID: "m1", Body: []byte("one"), Headers: map[string]string{"event_id": "e1"}}); err != nil {
+			t.Fatalf("Append: %v", err)
+		}
+		metrics := observ.NewMetrics().(*observ.MemoryMetrics)
+		var buf bytes.Buffer
+		relay := NewRelay(failingMarkJournal{MemoryJournal: journal, err: errors.New("подтверждение недоступно")}, &fakePublisher{}, time.Millisecond).
+			WithLogger(observ.NewLoggerWithWriter(&buf)).
+			WithMetrics(metrics)
+
+		relay.publish(context.Background())
+
+		if got := metrics.Counter(outboxPublishFailuresTotal, nil); got != 0 {
+			t.Fatalf("ошибка подтверждения увеличила счётчик отказов публикации: %d", got)
+		}
+		if !strings.Contains(buf.String(), "подтверждение записи не удалось") {
+			t.Fatalf("ошибка подтверждения не залогирована: %s", buf.String())
+		}
+	})
 }
 
 // runRelay запускает Run в отдельной горутине: метод блокирующий.

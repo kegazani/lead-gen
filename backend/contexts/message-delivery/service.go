@@ -2,20 +2,26 @@ package messagedelivery
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	httpapi "lead-gen/backend/contexts/message-delivery/internal/adapters/http"
 	outboxinmemory "lead-gen/backend/contexts/message-delivery/internal/adapters/outbox/inmemory"
 	"lead-gen/backend/contexts/message-delivery/internal/adapters/outbox/relay"
 	"lead-gen/backend/contexts/message-delivery/internal/adapters/persistence/postgres"
+	"lead-gen/backend/contexts/message-delivery/internal/domain"
 	"lead-gen/backend/contexts/message-delivery/internal/ports"
 	composition "lead-gen/backend/platform/composition"
 	"lead-gen/backend/platform/observability/observ"
+	"lead-gen/backend/platform/readiness"
 	"lead-gen/backend/platform/transport/amqp"
 	"lead-gen/contracts/data-governance/suppressionpolicy"
 	"lead-gen/contracts/integration-platform/mail"
+	approvedaction "lead-gen/contracts/outreach-orchestration/approvedaction"
 )
 
 // ServiceID — идентификатор сервиса, равный идентификатору контекста из
@@ -73,6 +79,16 @@ type Config struct {
 	// Source — источник команд доставки роли sender. nil → очередь в памяти.
 	Source ports.CommandSource
 
+	// IntakeAddr — адрес отдельного слушателя приёма утверждённых действий
+	// (роль worker). Пусто — приём не поднимается: в co-location утверждённое
+	// действие приходит прямым вызовом моста.
+	IntakeAddr string
+
+	// Intake — приёмник утверждённых действий (обычно мост approved-action,
+	// ApprovedActionBridge.Publisher). nil при заданном IntakeAddr — приём честно
+	// отвечает 503, а не выдаёт отсутствие проводки за работающий приём.
+	Intake approvedaction.Publisher
+
 	// Clock — источник времени. nil → SystemClock.
 	Clock ports.Clock
 
@@ -99,16 +115,20 @@ type Config struct {
 // раннер на каждую объявленную каталогом роль.
 //
 // Роль sender — единственная точка отправки, изолированная от обработки
-// API-запросов: у контекста нет роли api. worker публикует delivery-event,
+// API-запросов: у контекста нет роли api. worker публикует delivery-event и
+// обслуживает приём сетевого контракта approved-action отдельным слушателем,
 // schedule обслуживает повторные окна доставки.
 type Service struct {
 	slice         *Slice
 	sink          *AMQPSink
 	interval      time.Duration
 	retryInterval time.Duration
+	intakeAddr    string
+	intake        *httpapi.Server
 	logger        observ.Logger
 	metrics       observ.Metrics
 	tracer        observ.Tracer
+	readiness     *roleReadiness
 }
 
 // New собирает сервис. Персистентность, почтовый провайдер и стоп-лист
@@ -136,8 +156,17 @@ func New(cfg Config) (*Service, error) {
 	var sink relay.Sink
 	var amqpSink *AMQPSink
 	if cfg.Publisher != nil {
-		amqpSink = NewAMQPSink(cfg.Publisher, cfg.Interval)
+		amqpSink = NewAMQPSink(cfg.Publisher, cfg.Interval).
+			WithLogger(cfg.Logger).
+			WithMetrics(cfg.Metrics)
 		sink = amqpSink
+	}
+
+	// Приёмная HTTP-поверхность собирается только при заданном адресе слушателя:
+	// без него контракт приходит в процесс in-process (co-location).
+	var intake *httpapi.Server
+	if cfg.IntakeAddr != "" {
+		intake = httpapi.NewServer(cfg.Intake)
 	}
 
 	unitOfWork, relaySource, retryables := cfg.UnitOfWork, cfg.RelaySource, cfg.Retryables
@@ -195,15 +224,28 @@ func New(cfg Config) (*Service, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Service{
+	service := &Service{
 		slice:         slice,
 		sink:          amqpSink,
 		interval:      cfg.Interval,
 		retryInterval: retryInterval,
+		intakeAddr:    cfg.IntakeAddr,
+		intake:        intake,
 		logger:        cfg.Logger,
 		metrics:       cfg.Metrics,
 		tracer:        cfg.Tracer,
-	}, nil
+	}
+	var storageProbe readiness.Probe
+	if cfg.Pool != nil {
+		storageProbe = func(ctx context.Context) (readiness.ProbeResult, error) {
+			if err := cfg.Pool.Ping(ctx); err != nil {
+				return readiness.ProbeResult{}, err
+			}
+			return readiness.ProbeResult{Status: readiness.StatusUp, Reason: readiness.ReasonNone}, nil
+		}
+	}
+	service.readiness = newRoleReadiness(service, storageProbe)
+	return service, nil
 }
 
 // ID реализует composition.Service.
@@ -214,14 +256,28 @@ func (s *Service) ID() string { return ServiceID }
 func (s *Service) RoleRunner(role composition.Role) (composition.RoleRunner, bool) {
 	switch role {
 	case composition.RoleSender:
-		return composition.RoleFunc(s.runSender), true
+		return s.trackedRunner(role, s.runSender), true
 	case composition.RoleWorker:
-		return composition.RoleFunc(s.runWorker), true
+		return s.trackedRunner(role, s.runWorker), true
 	case composition.RoleSchedule:
-		return composition.RoleFunc(s.runSchedule), true
+		return s.trackedRunner(role, s.runSchedule), true
 	default:
 		return nil, false
 	}
+}
+
+func (s *Service) trackedRunner(role composition.Role, run func(context.Context) error) composition.RoleRunner {
+	return composition.RoleFunc(func(ctx context.Context) (err error) {
+		s.readiness.setRole(role, readiness.StatusUp)
+		defer func() {
+			if err != nil {
+				s.readiness.setRole(role, readiness.StatusDown)
+			} else {
+				s.readiness.setRole(role, readiness.StatusUnknown)
+			}
+		}()
+		return run(ctx)
+	})
 }
 
 // runSender — изолированный контур отправки. Роль читает команды доставки из
@@ -235,7 +291,17 @@ func (s *Service) runSender(ctx context.Context) error {
 	s.logger.Info("sender: приём команд доставки запущен", observ.Fields{}, "service", ServiceID)
 
 	for {
-		cmd, ok, err := s.slice.Source.Next(ctx)
+		var cmd domain.DeliveryCommand
+		var ok bool
+		var err error
+		var claim ports.ClaimedCommandSource
+		var leaseToken string
+		if claimed, supportsClaims := s.slice.Source.(ports.ClaimedCommandSource); supportsClaims {
+			claim = claimed
+			cmd, leaseToken, ok, err = claim.Claim(ctx)
+		} else {
+			cmd, ok, err = s.slice.Source.Next(ctx)
+		}
 		if err != nil {
 			if ctx.Err() != nil {
 				s.logger.Info("sender: останов", observ.Fields{}, "service", ServiceID)
@@ -252,7 +318,18 @@ func (s *Service) runSender(ctx context.Context) error {
 		if handleErr != nil {
 			s.logger.Error("sender: доставка команды", handleErr, observ.Fields{},
 				"service", ServiceID, "command_id", cmd.CommandID.String())
+			if claim != nil {
+				if releaseErr := claim.Release(context.Background(), leaseToken); releaseErr != nil {
+					s.logger.Error("sender: освобождение lease команды", releaseErr, observ.Fields{}, "command_id", cmd.CommandID.String())
+				}
+			}
 			continue
+		}
+		if claim != nil {
+			if ackErr := claim.Ack(ctx, leaseToken); ackErr != nil {
+				s.logger.Error("sender: подтверждение обработанной команды", ackErr, observ.Fields{}, "command_id", cmd.CommandID.String())
+				continue
+			}
 		}
 		s.logger.Info("sender: команда обработана", observ.Fields{},
 			"service", ServiceID,
@@ -262,11 +339,28 @@ func (s *Service) runSender(ctx context.Context) error {
 	}
 }
 
-// runWorker публикует delivery-event из доменного outbox и честно сообщает об
-// отсутствии зарегистрированных обработчиков очередей.
+// runWorker публикует delivery-event из доменного outbox, обслуживает приём
+// сетевого контракта approved-action (если задан адрес слушателя) и честно
+// сообщает об отсутствии зарегистрированных обработчиков очередей.
+//
+// Слушатель приёма — отдельная обязанность роли worker: он поднимается до
+// контура публикации и работает, пока контекст роли не отменён. Пустой
+// IntakeAddr сохраняет прежнее поведение.
 func (s *Service) runWorker(ctx context.Context) error {
+	if s.intake != nil {
+		s.startIntake(ctx)
+	}
 	if s.slice.Relay == nil || s.sink == nil {
-		return fmt.Errorf("worker: публикация delivery-event не собрана (Publisher не задан)")
+		if s.intake == nil {
+			return fmt.Errorf("worker: публикация delivery-event не собрана (Publisher не задан)")
+		}
+		// Публикация не собрана, но приём утверждённых действий — самостоятельная
+		// обязанность роли: слушатель не гасится, пока контекст не отменён.
+		s.logger.Warn("worker: публикация delivery-event не собрана — работает только приём approved-action",
+			observ.Fields{}, "service", ServiceID)
+		<-ctx.Done()
+		s.logger.Info("worker: останов", observ.Fields{}, "service", ServiceID)
+		return nil
 	}
 
 	go func() {
@@ -290,6 +384,33 @@ func (s *Service) runWorker(ctx context.Context) error {
 			s.publishPending(ctx)
 		}
 	}
+}
+
+// startIntake поднимает отдельный слушатель приёма утверждённых действий и
+// останавливает его по отмене контекста роли. Сбой слушателя логируется: роль
+// продолжает работу, а недоступность приёма не выдаётся за остановку процесса.
+func (s *Service) startIntake(ctx context.Context) {
+	handler := observ.Middleware(s.logger, s.metrics, s.tracer, ServiceID)(s.intake)
+	server := &http.Server{
+		Addr:              s.intakeAddr,
+		Handler:           handler,
+		ReadHeaderTimeout: 5 * time.Second,
+	}
+	go func() {
+		<-ctx.Done()
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+		if err := server.Shutdown(shutdownCtx); err != nil {
+			s.logger.Error("worker: останов слушателя приёма approved-action", err, observ.Fields{}, "service", ServiceID)
+		}
+	}()
+	go func() {
+		s.logger.Info("worker: слушатель приёма approved-action запущен", observ.Fields{},
+			"service", ServiceID, "addr", s.intakeAddr)
+		if err := server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			s.logger.Error("worker: работа слушателя приёма approved-action", err, observ.Fields{}, "service", ServiceID)
+		}
+	}()
 }
 
 // publishPending выполняет один проход публикации и логирует результат. Ошибка

@@ -19,6 +19,7 @@ import (
 	"lead-gen/backend/platform/messaging/inbox"
 	platformoutbox "lead-gen/backend/platform/messaging/outbox"
 	"lead-gen/backend/platform/observability/observ"
+	"lead-gen/backend/platform/readiness"
 	"lead-gen/backend/platform/transport/amqp"
 )
 
@@ -92,7 +93,8 @@ type Slice struct {
 	Relay *platformoutbox.Relay
 
 	// Server — HTTP-обработчики роли ingest. Реализует http.Handler.
-	Server *httpapi.Server
+	Server    *httpapi.Server
+	Readiness RoleReadinessReporter
 
 	IngestEvent      *command.IngestEventHandler
 	RecordTransition *command.RecordTransitionHandler
@@ -142,7 +144,11 @@ func Build(cfg Config) (*Slice, error) {
 	recordTransition := command.NewRecordTransitionHandler(links, ingest, ids)
 	getEngagement := query.NewGetEngagementHandler(repository)
 
+	readinessState := newReadinessReporter(cfg.Persistence, cfg.Consumer, cfg.Publisher, cfg.Deduper)
 	server := httpapi.NewServer(httpapi.Dependencies{
+		Readiness: func(ctx context.Context) readiness.Snapshot {
+			return readinessState.RoleReadiness(ctx, composition.RoleIngest)
+		},
 		IngestEvent:      ingest,
 		RecordTransition: recordTransition,
 		GetEngagement:    getEngagement,
@@ -150,7 +156,9 @@ func Build(cfg Config) (*Slice, error) {
 
 	var relay *platformoutbox.Relay
 	if cfg.Publisher != nil {
-		relay = platformoutbox.NewRelay(journal, cfg.Publisher, cfg.Interval)
+		relay = platformoutbox.NewRelay(journal, cfg.Publisher, cfg.Interval).
+			WithLogger(cfg.Logger).
+			WithMetrics(cfg.Metrics)
 	}
 
 	return &Slice{
@@ -161,6 +169,7 @@ func Build(cfg Config) (*Slice, error) {
 		UnitOfWork:       unitOfWork,
 		Relay:            relay,
 		Server:           server,
+		Readiness:        readinessState,
 		IngestEvent:      ingest,
 		RecordTransition: recordTransition,
 		GetEngagement:    getEngagement,
@@ -176,6 +185,14 @@ type Service struct {
 	logger     observ.Logger
 	metrics    observ.Metrics
 	tracer     observ.Tracer
+}
+
+// RoleReadiness сообщает владельческую готовность роли, не запуская подписчика.
+func (s *Service) RoleReadiness(ctx context.Context, role composition.Role) readiness.Snapshot {
+	if s == nil || s.slice == nil || s.slice.Readiness == nil {
+		return readiness.Snapshot{Capability: string(role), Status: readiness.StatusUnknown, Ready: false}
+	}
+	return s.slice.Readiness.RoleReadiness(ctx, role)
 }
 
 // New собирает сервис из адаптеров и переданных зависимостей.

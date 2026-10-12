@@ -15,9 +15,10 @@ import (
 
 // TenantUserSnapshot — сохранённое состояние пользователя тенанта.
 type TenantUserSnapshot struct {
-	ID    UserID
-	Login string
-	Roles []Role
+	ID           UserID
+	Login        string
+	PasswordHash string
+	Roles        []Role
 }
 
 // AuditRecordSnapshot — сохранённое состояние записи аудита.
@@ -33,21 +34,28 @@ type AuditRecordSnapshot struct {
 
 // TenantSnapshot — полное сохранённое состояние aggregate root tenant.
 type TenantSnapshot struct {
-	ID          TenantID
-	CompanyName string
-	Description string
-	State       TenantState
-	Version     uint64
-	CreatedAt   time.Time
-	Users       []TenantUserSnapshot
-	Audit       []AuditRecordSnapshot
+	ID                 TenantID
+	CompanyName        string
+	Description        string
+	INN                string
+	CompanyEmail       string
+	Website            string
+	LegalData          string
+	State              TenantState
+	RegistrationReason string
+	Profile            Profile
+	ProfileStatus      ProfileStatus
+	Version            uint64
+	CreatedAt          time.Time
+	Users              []TenantUserSnapshot
+	Audit              []AuditRecordSnapshot
 }
 
 // Snapshot возвращает состояние агрегата для сохранения.
 func (t *Tenant) Snapshot() TenantSnapshot {
 	users := make([]TenantUserSnapshot, 0, len(t.users))
 	for _, user := range t.users {
-		users = append(users, TenantUserSnapshot{ID: user.id, Login: user.login, Roles: user.roles.Roles()})
+		users = append(users, TenantUserSnapshot{ID: user.id, Login: user.login, PasswordHash: user.passwordHash, Roles: user.roles.Roles()})
 	}
 	audit := make([]AuditRecordSnapshot, 0, len(t.audit))
 	for _, record := range t.audit {
@@ -62,14 +70,21 @@ func (t *Tenant) Snapshot() TenantSnapshot {
 		})
 	}
 	return TenantSnapshot{
-		ID:          t.id,
-		CompanyName: t.companyName,
-		Description: t.description,
-		State:       t.state,
-		Version:     t.version,
-		CreatedAt:   t.createdAt,
-		Users:       users,
-		Audit:       audit,
+		ID:                 t.id,
+		CompanyName:        t.companyName,
+		Description:        t.description,
+		INN:                t.inn,
+		CompanyEmail:       t.companyEmail,
+		Website:            t.website,
+		LegalData:          t.legalData,
+		State:              t.state,
+		RegistrationReason: t.registrationReason,
+		Profile:            t.profile,
+		ProfileStatus:      t.profileStatus,
+		Version:            t.version,
+		CreatedAt:          t.createdAt,
+		Users:              users,
+		Audit:              audit,
 	}
 }
 
@@ -93,6 +108,10 @@ func RehydrateTenant(s TenantSnapshot) (*Tenant, error) {
 	if description == "" {
 		return nil, fmt.Errorf("%w: тенант %s: %v", ErrInvalidSnapshot, s.ID, ErrDescriptionRequired)
 	}
+	inn := strings.TrimSpace(s.INN)
+	companyEmail := strings.TrimSpace(s.CompanyEmail)
+	website := strings.TrimSpace(s.Website)
+	legalData := strings.TrimSpace(s.LegalData)
 	if s.CreatedAt.IsZero() {
 		return nil, fmt.Errorf("%w: тенант %s", ErrInvalidSnapshot, s.ID)
 	}
@@ -103,14 +122,28 @@ func RehydrateTenant(s TenantSnapshot) (*Tenant, error) {
 	if !state.isValid() {
 		return nil, fmt.Errorf("%w: тенант %s: неизвестное состояние %q", ErrInvalidSnapshot, s.ID, s.State)
 	}
+	profileStatus := s.ProfileStatus
+	if profileStatus == "" {
+		profileStatus = ProfileEmpty
+	}
+	if !profileStatus.isValid() {
+		return nil, fmt.Errorf("%w: тенант %s: неизвестное состояние профиля %q", ErrInvalidSnapshot, s.ID, s.ProfileStatus)
+	}
 
 	tenant := &Tenant{
-		id:          s.ID,
-		companyName: companyName,
-		description: description,
-		state:       state,
-		version:     s.Version,
-		createdAt:   s.CreatedAt,
+		id:                 s.ID,
+		companyName:        companyName,
+		description:        description,
+		inn:                inn,
+		companyEmail:       companyEmail,
+		website:            website,
+		legalData:          legalData,
+		state:              state,
+		registrationReason: s.RegistrationReason,
+		profile:            s.Profile,
+		profileStatus:      profileStatus,
+		version:            s.Version,
+		createdAt:          s.CreatedAt,
 	}
 
 	seenUsers := make(map[UserID]bool, len(s.Users))
@@ -133,7 +166,7 @@ func RehydrateTenant(s TenantSnapshot) (*Tenant, error) {
 		if roles.Empty() {
 			return nil, fmt.Errorf("%w: тенант %s: %v", ErrInvalidSnapshot, s.ID, ErrRolesRequired)
 		}
-		tenant.users = append(tenant.users, TenantUser{id: user.ID, login: login, roles: roles})
+		tenant.users = append(tenant.users, TenantUser{id: user.ID, login: login, passwordHash: user.PasswordHash, roles: roles})
 	}
 
 	// Первый проход: проверка записей и сбор идентификаторов. Второй проход:

@@ -1,0 +1,18 @@
+{{- define "content" -}}
+<section class="login auth-shell">
+  <div class="auth-card">
+    <h1>{{ text "portal.login.title" }}</h1>
+    {{ template "tabs" .View.AuthTabs }}
+    {{- with .View.Notice }}
+    <p class="notice" role="status">{{.}}</p>
+    {{- end }}
+    <form method="post" action="/login" class="auth-form">
+      {{ template "field" .View.EmailField }}
+      {{ template "field" .View.PasswordField }}
+      <button type="submit">{{ text "portal.login.submit" }}</button>
+    </form>
+    <p class="auth-cta">{{ text "portal.login.no_account" }} <a href="/register">{{ text "portal.register.submit" }}</a></p>
+    <p class="hint"><a href="/reset">{{ text "portal.login.reset" }}</a></p>
+  </div>
+</section>
+{{- end -}}

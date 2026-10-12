@@ -23,6 +23,11 @@ output "app_image" {
   value       = module.app.image
 }
 
+output "release_plan" {
+  description = "Несекретный candidate plan для внешнего release runner; не является подтверждением stage."
+  value       = module.app.release_plan
+}
+
 output "observability_containers" {
   description = "Идентификатор узла метрик -> контейнер."
   value       = module.observability.containers

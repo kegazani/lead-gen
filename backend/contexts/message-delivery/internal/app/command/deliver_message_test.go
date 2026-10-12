@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	outboxmemory "lead-gen/backend/contexts/message-delivery/internal/adapters/outbox/inmemory"
+
 	"lead-gen/backend/contexts/message-delivery/internal/domain"
 	"lead-gen/backend/contexts/message-delivery/internal/ports"
 )
@@ -30,6 +32,23 @@ func testCommand(t *testing.T) domain.DeliveryCommand {
 		Address:          address,
 		SenderDomain:     sender,
 		CorrelationID:    domain.CorrelationID("act-1"),
+	}
+}
+
+func TestDeliverMessage_CampaignFenceWinsBeforeReservation(t *testing.T) {
+	cmd := testCommand(t)
+	cmd.CampaignID = "campaign-1"
+	uow := outboxmemory.NewUnitOfWork()
+	if err := uow.CancelCampaign(context.Background(), cmd.TenantID.String(), cmd.CampaignID); err != nil {
+		t.Fatal(err)
+	}
+	mailer := &fakeMailer{}
+	handler := NewDeliverMessageHandler(newFakeSuppression(), mailer, fixedClock{}, uow)
+	if _, err := handler.Handle(context.Background(), cmd); !errors.Is(err, ports.ErrCampaignCancelled) {
+		t.Fatalf("ожидался cancellation fence, получено %v", err)
+	}
+	if len(mailer.sent) != 0 {
+		t.Fatalf("mailer вызван до reservation fence: %d", len(mailer.sent))
 	}
 }
 
@@ -114,6 +133,30 @@ func TestDeliverMessage_MailerUnavailableRecordsTemporary(t *testing.T) {
 	// Сбой транспорта не является ответом провайдера и не меняет репутацию.
 	if _, err := uow.reputations.FindByDomain(context.Background(), testSender(t)); !errors.Is(err, ports.ErrSenderReputationNotFound) {
 		t.Fatalf("репутация не должна меняться при сбое транспорта, got %v", err)
+	}
+}
+
+func TestDeliverMessage_UnknownExternalOutcomeIsNotBlindlyRetried(t *testing.T) {
+	uow := newFakeUoW()
+	mailer := &fakeMailer{err: ports.ErrMailerOutcomeUnknown}
+	handler := newTestHandler(uow, mailer, newFakeSuppression())
+	cmd := testCommand(t)
+
+	if _, err := handler.Handle(context.Background(), cmd); !errors.Is(err, ports.ErrMailerOutcomeUnknown) {
+		t.Fatalf("ожидался неизвестный исход, получено %v", err)
+	}
+	if len(mailer.sent) != 1 {
+		t.Fatalf("первичный вызов mailer = %d, ожидался 1", len(mailer.sent))
+	}
+	replayed, err := handler.Handle(context.Background(), cmd)
+	if err != nil {
+		t.Fatalf("повтор команды: %v", err)
+	}
+	if !replayed.Replayed || replayed.Status != domain.MessageStatusSending {
+		t.Fatalf("неизвестный исход должен оставаться зарезервированным: %+v", replayed)
+	}
+	if len(mailer.sent) != 1 {
+		t.Fatalf("повтор неизвестного исхода отправил дубль: вызовов=%d", len(mailer.sent))
 	}
 }
 

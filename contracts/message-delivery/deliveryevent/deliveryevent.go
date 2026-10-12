@@ -12,7 +12,9 @@ import (
 const ContractName = "delivery-event"
 
 // SchemaVersion — текущая версия схемы. Изменять по правилам semver из envelope.go.
-const SchemaVersion = "1.0.0"
+// Версия 1.1.0 добавлена по правилу MINOR: `campaign_id` — необязательное поле,
+// старые издатели и потребители продолжают работать без изменений.
+const SchemaVersion = "1.1.0"
 
 // Envelope — общий конверт контрактов контекста. Реэкспорт пакета envelope,
 // чтобы потребитель видел форму конверта рядом с самим контрактом.
@@ -57,6 +59,11 @@ type DeliveryEvent struct {
 	MessageID string `json:"message_id"`
 	// ApprovedActionID — утверждённое действие, из которого создано сообщение.
 	ApprovedActionID string `json:"approved_action_id"`
+	// CampaignID — непрозрачная ссылка на кампанию-владельца, унаследованная от
+	// утверждённого действия (его correlation_id равен идентификатору кампании).
+	// Необязательное поле версии 1.1.0: позволяет потребителю сопоставить исход
+	// доставки со своей кампанией. Персональных данных не несёт.
+	CampaignID string `json:"campaign_id,omitempty"`
 	// RecipientRef — непрозрачная ссылка на получателя. Не адрес и не
 	// персональные данные.
 	RecipientRef string `json:"recipient_ref"`

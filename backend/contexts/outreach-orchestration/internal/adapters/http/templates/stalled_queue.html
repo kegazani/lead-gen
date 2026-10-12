@@ -1,19 +1,20 @@
 {{- define "content" -}}
 <section class="stalled">
-  <h1>Зависшие черновики</h1>
-  <p class="hint">Черновики с истёкшим сроком утверждения. Автоутверждения нет — действие не исполнено. Тенант: {{.View.TenantID}}</p>
+  {{ template "live" .View.Live }}
+  <h1>{{ text "outreach.stalled.title" }}</h1>
+  <p class="hint">{{ text "outreach.stalled.hint" }} {{.View.TenantID}}</p>
 
   {{- if .View.Unavailable }}
-  <p class="watermark" role="status">Срез недоступен: хранилище не подключено</p>
+  <p class="watermark" role="status">{{ text "outreach.stalled.unavailable" }}</p>
   {{- else }}
   {{- if .View.Notify }}
   <p class="notice" role="alert">
-    Оператор уведомляется: зависших черновиков {{len .View.Items}}. Срок истёк, но действие осталось неисполненным.
+    {{ text "outreach.stalled.notify" }} {{len .View.Items}}. {{ text "outreach.stalled.notify_tail" }}
   </p>
   {{- end }}
   <table class="queue">
     <thead>
-      <tr><th>Кампания</th><th>Черновик</th><th>Версия</th><th>Канал</th><th>Получатель</th><th>Состояние</th></tr>
+      <tr><th>{{ text "outreach.field.campaign" }}</th><th>{{ text "outreach.field.draft" }}</th><th>{{ text "outreach.field.version" }}</th><th>{{ text "outreach.field.channel" }}</th><th>{{ text "outreach.field.recipient" }}</th><th>{{ text "outreach.field.state" }}</th></tr>
     </thead>
     <tbody>
     {{- range .View.Items }}
@@ -23,10 +24,10 @@
         <td>{{.Version}}</td>
         <td>{{.Channel}}</td>
         <td>{{.RecipientID}}</td>
-        <td><span class="status status-{{.State}}">{{.State}}</span></td>
+        <td><span class="status status-{{.State}}">{{ label "outreach.draft.state" .State }}</span></td>
       </tr>
     {{- else }}
-      <tr><td colspan="6" class="queue-empty">Зависших черновиков нет</td></tr>
+      <tr><td colspan="6" class="queue-empty">{{ text "outreach.stalled.empty" }}</td></tr>
     {{- end }}
     </tbody>
   </table>

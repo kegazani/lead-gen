@@ -26,8 +26,10 @@ type ProduceContent struct {
 	TemplateID domain.TemplateID
 	// Body — текст контента. Для нового пакета обязателен; для существующего
 	// непустой и отличный текст публикует новую версию.
-	Body  string
-	Actor domain.ActorID
+	Body    string
+	Subject string
+	Mode    string
+	Actor   domain.ActorID
 
 	CorrelationID domain.CorrelationID
 	CausationID   domain.CausationID
@@ -58,6 +60,12 @@ func NewProduceContentHandler(uow ports.UnitOfWork, clock ports.Clock, ids ports
 // Handle обеспечивает пакет и версию контента и ставит задание рендеринга в одной
 // транзакции. Повтор с тем же RequestID возвращает уже созданное задание.
 func (h *ProduceContentHandler) Handle(ctx context.Context, cmd ProduceContent) (ProduceContentResult, error) {
+	if cmd.Mode == "version-only" {
+		return h.handleVersionOnly(ctx, cmd)
+	}
+	if cmd.Mode != "" {
+		return ProduceContentResult{}, ErrUnknownContentMode
+	}
 	jobID := domain.RenderJobID(strings.TrimSpace(cmd.RequestID))
 	at := resolveAt(time.Time{}, h.clock)
 	correlation := correlationOrDefault(cmd.CorrelationID, cmd.RequestID)
@@ -174,6 +182,78 @@ func (h *ProduceContentHandler) Handle(ctx context.Context, cmd ProduceContent) 
 			State:       job.State(),
 			Events:      events,
 		}
+		return nil
+	})
+	if err != nil {
+		return ProduceContentResult{}, err
+	}
+	return result, nil
+}
+
+// handleVersionOnly сохраняет точные тему и тело как неизменяемую версию. Запись
+// версии и её событие атомарны; задание рендеринга намеренно не создаётся.
+func (h *ProduceContentHandler) handleVersionOnly(ctx context.Context, cmd ProduceContent) (ProduceContentResult, error) {
+	requestID := strings.TrimSpace(cmd.RequestID)
+	if requestID == "" {
+		return ProduceContentResult{}, ErrVersionRequired
+	}
+	versionID := domain.ContentVersionID(requestID)
+	at := resolveAt(time.Time{}, h.clock)
+	correlation := correlationOrDefault(cmd.CorrelationID, requestID)
+	var result ProduceContentResult
+	err := h.uow.WithinTransaction(ctx, func(tx ports.Transaction) error {
+		pkg, err := tx.Packages().FindByID(ctx, cmd.AssetID)
+		if errors.Is(err, ports.ErrContentPackageNotFound) {
+			locale, localeErr := domain.NewContentLocale(cmd.Language, cmd.Region)
+			if localeErr != nil {
+				return localeErr
+			}
+			pkg, err = domain.NewContentPackage(domain.NewContentPackageParams{
+				ID: cmd.AssetID, TenantID: cmd.TenantID, Locale: locale,
+				VersionID: versionID, Subject: cmd.Subject, Body: cmd.Body, ExactText: true,
+				Actor: cmd.Actor, At: at, EventID: h.ids.NewEventID(),
+				CorrelationID: correlation, CausationID: cmd.CausationID,
+			})
+			if err != nil {
+				return err
+			}
+			if err := tx.Packages().Save(ctx, pkg, 0); err != nil {
+				return err
+			}
+		} else if err != nil {
+			return err
+		} else {
+			if pkg.TenantID() != cmd.TenantID {
+				return ErrTenantMismatch
+			}
+			if existing, ok := pkg.FindVersion(versionID); ok {
+				if existing.Subject() != cmd.Subject || existing.Body() != cmd.Body {
+					return ErrVersionOnlyConflict
+				}
+				result = ProduceContentResult{AssetID: pkg.ID(), VersionID: existing.ID()}
+				return nil
+			}
+			before := pkg.Version()
+			if _, err := pkg.PublishVersion(domain.PublishVersionInput{
+				VersionID: versionID, Subject: cmd.Subject, Body: cmd.Body, ExactText: true,
+				Actor: cmd.Actor, At: at, EventID: h.ids.NewEventID(),
+				CorrelationID: correlation, CausationID: cmd.CausationID,
+			}); err != nil {
+				return err
+			}
+			if err := tx.Packages().Save(ctx, pkg, before); err != nil {
+				return err
+			}
+		}
+		events := pkg.PullDomainEvents()
+		if err := tx.Outbox().Append(ctx, events...); err != nil {
+			return err
+		}
+		latest, ok := pkg.FindVersion(versionID)
+		if !ok {
+			return ErrPackageRequired
+		}
+		result = ProduceContentResult{AssetID: pkg.ID(), VersionID: latest.ID(), Events: events}
 		return nil
 	})
 	if err != nil {

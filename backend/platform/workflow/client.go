@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"time"
 
+	enumspb "go.temporal.io/api/enums/v1"
 	"go.temporal.io/api/serviceerror"
 	"go.temporal.io/sdk/client"
 
@@ -15,6 +16,17 @@ import (
 
 // ErrNotConfigured — рантайм Temporal не сконфигурирован (пустой адрес).
 var ErrNotConfigured = errors.New("workflow: рантайм Temporal не сконфигурирован")
+
+// Имена метрик запуска workflow. Совпадают с каталогом prommetrics.specs; имя
+// вне каталога молча отбрасывается адаптером, поэтому имена здесь — часть
+// контракта, а не произвольные строки. Меток у счётчиков нет намеренно:
+// идентификатор исполнения (workflow_id) высококардинален и в метки не
+// допускается — его место в логах через observ.Fields.WorkflowID.
+const (
+	metricWorkflowStarted             = "workflow_started_total"
+	metricWorkflowStartError          = "workflow_start_error_total"
+	metricWorkflowStartAlreadyStarted = "workflow_start_already_started_total"
+)
 
 // Client — обёртка клиента Temporal: соединение, namespace и очередь задач по
 // умолчанию. Держит метрики сервиса и увеличивает счётчики запусков, чтобы
@@ -93,6 +105,13 @@ type StartOptions struct {
 	// рекомендуется для заявок с человеческой паузой: исполнение не должно жить
 	// вечно).
 	ExecutionTimeout time.Duration
+
+	// WorkflowIDReusePolicy — политика переиспользования идентификатора
+	// исполнения после его завершения. Ноль — политика Temporal по умолчанию
+	// (AllowDuplicate). Для заявок, допускающих повторный запуск упавшего
+	// исполнения с тем же идентификатором, задаётся ALLOW_DUPLICATE_FAILED_ONLY:
+	// reuse разрешён только после неудачного close-статуса.
+	WorkflowIDReusePolicy enumspb.WorkflowIdReusePolicy
 }
 
 // Run — ссылка на запущенное исполнение. AlreadyStarted отличает повторный старт
@@ -121,16 +140,17 @@ func (c *Client) Start(ctx context.Context, opts StartOptions, workflowFn any, a
 		ID:                       opts.WorkflowID,
 		TaskQueue:                queue,
 		WorkflowExecutionTimeout: opts.ExecutionTimeout,
+		WorkflowIDReusePolicy:    opts.WorkflowIDReusePolicy,
 	}, workflowFn, args...)
 	if err != nil {
 		if existing, ok := startedRun(err, opts.WorkflowID); ok {
-			c.count("workflow_start_already_started", map[string]string{"workflow_id": opts.WorkflowID})
+			c.count(metricWorkflowStartAlreadyStarted, nil)
 			return existing, nil
 		}
-		c.count("workflow_start_error", map[string]string{"workflow_id": opts.WorkflowID})
+		c.count(metricWorkflowStartError, nil)
 		return Run{}, fmt.Errorf("workflow: запуск %q: %w", opts.WorkflowID, err)
 	}
-	c.count("workflow_started", map[string]string{"workflow_id": opts.WorkflowID})
+	c.count(metricWorkflowStarted, nil)
 	return Run{WorkflowID: run.GetID(), RunID: run.GetRunID()}, nil
 }
 
@@ -166,8 +186,8 @@ func (c *Client) Describe(ctx context.Context, workflowID, runID string) (Execut
 	}
 	info := response.GetWorkflowExecutionInfo()
 	execution := Execution{
-		WorkflowID: workflowID,
-		RunID:      runID,
+		WorkflowID: info.GetExecution().GetWorkflowId(),
+		RunID:      info.GetExecution().GetRunId(),
 		Status:     info.GetStatus().String(),
 	}
 	if info.GetStartTime() != nil {
@@ -175,9 +195,6 @@ func (c *Client) Describe(ctx context.Context, workflowID, runID string) (Execut
 	}
 	if info.GetCloseTime() != nil {
 		execution.CloseTime = info.GetCloseTime().AsTime()
-	}
-	if execution.RunID == "" && info.GetExecution() != nil {
-		execution.RunID = info.GetExecution().GetRunId()
 	}
 	return execution, nil
 }
@@ -191,6 +208,19 @@ func (c *Client) Signal(ctx context.Context, workflowID, runID, signalName strin
 	}
 	if err := c.inner.SignalWorkflow(ctx, workflowID, runID, signalName, value); err != nil {
 		return fmt.Errorf("workflow: сигнал %q к %q: %w", signalName, workflowID, err)
+	}
+	return nil
+}
+
+// Cancel запрашивает отмену текущего исполнения. Подтверждение означает, что
+// Temporal принял команду отмены, а не то, что уже выполняющийся внешний эффект
+// удалось отозвать.
+func (c *Client) Cancel(ctx context.Context, workflowID, runID string) error {
+	if c == nil || c.inner == nil {
+		return ErrNotConfigured
+	}
+	if err := c.inner.CancelWorkflow(ctx, workflowID, runID); err != nil {
+		return fmt.Errorf("workflow: запрос отмены %q: %w", workflowID, err)
 	}
 	return nil
 }

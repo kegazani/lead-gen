@@ -1,47 +1,48 @@
 {{- define "content" -}}
 <section class="dashboard" data-tenant="{{ .View.TenantID }}">
-  <h1>Дашборд метрик</h1>
+  {{ template "live" .View.Live }}
+  <h1>{{ text "analytics.dashboard.title" }}</h1>
   {{- if not .View.Visible }}
   <p class="dashboard-hidden" role="status">
-    Срез скрыт: данных меньше порога минимальной группы ({{ .View.MinGroup }} записи).
+    {{ text "analytics.dashboard.hidden" }} ({{ .View.MinGroup }} {{ text "analytics.dashboard.hidden.entries" }}
   </p>
   {{- else }}
-  <section class="dashboard-leading" aria-label="Метрики прогресса">
-    <h2>Прогресс</h2>
+  <section class="dashboard-leading" aria-label="{{ text "analytics.dashboard.progress.aria" }}">
+    <h2>{{ text "analytics.dashboard.progress.title" }}</h2>
     <ul class="kpi-cards">
       <li class="kpi-card">
-        <span class="kpi-label">Найдено лидов</span>
+        <span class="kpi-label">{{ text "analytics.dashboard.metric.found" }}</span>
         <span class="kpi-value" data-metric="found">{{ .View.Progress.Found }}</span>
       </li>
       <li class="kpi-card">
-        <span class="kpi-label">Прокоммуницировано</span>
+        <span class="kpi-label">{{ text "analytics.dashboard.metric.communicated" }}</span>
         <span class="kpi-value" data-metric="communicated">{{ .View.Progress.Communicated }}</span>
       </li>
       <li class="kpi-card">
-        <span class="kpi-label">Ответили</span>
+        <span class="kpi-label">{{ text "analytics.dashboard.metric.replied" }}</span>
         <span class="kpi-value" data-metric="replied">{{ .View.Progress.Replied }}</span>
         <span class="kpi-share">{{ .View.Progress.RepliedShare }}</span>
       </li>
       <li class="kpi-card">
-        <span class="kpi-label">Прогретые</span>
+        <span class="kpi-label">{{ text "analytics.dashboard.metric.warmed" }}</span>
         <span class="kpi-value" data-metric="warmed">{{ .View.Progress.Warmed }}</span>
       </li>
     </ul>
 
     <figure class="growth">
-      <figcaption>Рост по дням</figcaption>
+      <figcaption>{{ text "analytics.dashboard.growth.caption" }}</figcaption>
       {{- if .View.Progress.Chart.Empty }}
-      <p class="chart-empty">Нет данных для графика</p>
+      <p class="chart-empty">{{ text "analytics.dashboard.growth.empty" }}</p>
       {{- else }}
-      <svg class="growth-chart" viewBox="0 0 {{ .View.Progress.Chart.Width }} {{ .View.Progress.Chart.Height }}" role="img" aria-label="Рост найденных лидов по дням">
+      <svg class="growth-chart" viewBox="0 0 {{ .View.Progress.Chart.Width }} {{ .View.Progress.Chart.Height }}" role="img" aria-label="{{ text "analytics.dashboard.growth.aria" }}">
         <polygon class="growth-area" points="{{ .View.Progress.Chart.Area }}"></polygon>
         <polyline class="growth-line" points="{{ .View.Progress.Chart.Line }}"></polyline>
       </svg>
       {{- end }}
     </figure>
 
-    <div class="funnel" aria-label="Воронка">
-      <h3>Воронка</h3>
+    <div class="funnel" aria-label="{{ text "analytics.dashboard.funnel.aria" }}">
+      <h3>{{ text "analytics.dashboard.funnel.title" }}</h3>
       {{- range .View.Progress.Funnel }}
       <div class="funnel-row">
         <span class="funnel-label">{{ .Label }}</span>
@@ -52,22 +53,26 @@
     </div>
   </section>
 
-  <section class="dashboard-operations" aria-label="Операционные метрики">
-    <h2>Операции</h2>
+  <section class="dashboard-operations" aria-label="{{ text "analytics.dashboard.operations.aria" }}">
+    <h2>{{ text "analytics.dashboard.operations.title" }}</h2>
     <dl class="ops">
-      <div><dt>В обработке</dt><dd data-metric="in_progress">{{ .View.Operations.InProgress }}</dd></div>
-      <div><dt>Ожидают ответа</dt><dd data-metric="waiting">{{ .View.Operations.Waiting }}</dd></div>
-      <div><dt>Максимальный возраст ожидания</dt><dd data-metric="waiting_max_age">{{ .View.Operations.WaitingMaxAge }}</dd></div>
-      <div><dt>Среднее время ожидания</dt><dd data-metric="average_wait">{{ .View.Operations.AverageWait }}</dd></div>
-      <div><dt>Холодные</dt><dd data-metric="cold">{{ .View.Operations.Cold }}</dd></div>
-      <div><dt>Не отвечают дольше {{ .View.ThresholdDays }} дней</dt><dd data-metric="not_responding">{{ .View.Operations.NotResponding }}</dd></div>
-      <div><dt>В очереди на добор</dt><dd data-metric="queue">{{ .View.Operations.Queue }}</dd></div>
+      <div><dt>{{ text "analytics.dashboard.operation.in_progress" }}</dt><dd data-metric="in_progress">{{ .View.Operations.InProgress }}</dd></div>
+      <div><dt>{{ text "analytics.dashboard.operation.waiting" }}</dt><dd data-metric="waiting">{{ .View.Operations.Waiting }}</dd></div>
+      <div><dt>{{ text "analytics.dashboard.operation.waiting_max_age" }}</dt><dd data-metric="waiting_max_age">{{ .View.Operations.WaitingMaxAge }}</dd></div>
+      <div><dt>{{ text "analytics.dashboard.operation.average_wait" }}</dt><dd data-metric="average_wait">{{ .View.Operations.AverageWait }}</dd></div>
+      <div><dt>{{ text "analytics.dashboard.operation.cold" }}</dt><dd data-metric="cold">{{ .View.Operations.Cold }}</dd></div>
+      <div><dt>{{ text "analytics.dashboard.operation.not_responding" }} {{ .View.ThresholdDays }} {{ text "analytics.dashboard.operation.not_responding.days" }}</dt><dd data-metric="not_responding">{{ .View.Operations.NotResponding }}</dd></div>
+      <div><dt>{{ text "analytics.dashboard.operation.queue" }}</dt><dd data-metric="queue">{{ .View.Operations.Queue }}</dd></div>
     </dl>
   </section>
 
   <script>
     (function () {
-      var source = new EventSource("/dashboard/stream?tenant_id=" + {{ .View.TenantID }} + "&role=" + {{ .View.Role }});
+      function adminBasePath() {
+        var meta = document.querySelector('meta[name="admin-base-path"]');
+        return meta && meta.content ? meta.content : '';
+      }
+      var source = new EventSource(adminBasePath() + "/dashboard/stream?tenant_id=" + {{ .View.TenantID }} + "&role=" + {{ .View.Role }});
       source.addEventListener("metrics", function (event) {
         var data = JSON.parse(event.data);
         var metrics = {

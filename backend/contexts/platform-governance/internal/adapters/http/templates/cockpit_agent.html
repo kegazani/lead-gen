@@ -1,0 +1,87 @@
+{{- define "agent-detail" -}}
+{{- if .Unavailable }}
+<p class="notice" role="status">{{ text "cockpit.agent.unavailable" }}</p>
+{{- else if not .Found }}
+<p class="empty">{{ text "cockpit.agent.missing" }}</p>
+{{- else }}
+<p><a href="{{ .BackURL }}">{{ text "cockpit.agent.back" }}</a></p>
+<dl class="cockpit-agent-summary">
+  <dt>{{ text "cockpit.col.run" }}</dt><dd>{{ .Detail.RunID }}</dd>
+  <dt>{{ text "cockpit.col.client" }}</dt><dd>{{ .Detail.ClientID }}</dd>
+  <dt>{{ text "cockpit.col.company" }}</dt><dd>{{ .Detail.Company }}</dd>
+  <dt>{{ text "cockpit.col.state" }}</dt>
+  <dd><span class="status status-{{ .Detail.StateClass }}"><span aria-hidden="true">{{ .Detail.StateIcon }}</span> {{ .Detail.StateLabel }}</span></dd>
+</dl>
+
+<h2>{{ text "cockpit.agent.events" }}</h2>
+{{- if .Detail.Events }}
+<table class="table">
+  <thead>
+    <tr>
+      <th>{{ text "cockpit.col.time" }}</th>
+      <th>{{ text "cockpit.col.kind" }}</th>
+      <th>{{ text "cockpit.col.step" }}</th>
+      <th>{{ text "cockpit.col.outcome" }}</th>
+      <th>{{ text "cockpit.col.reason" }}</th>
+    </tr>
+  </thead>
+  <tbody>
+    {{- range .Detail.Events }}
+    <tr>
+      <td>{{ if not .At.IsZero }}{{ formatDateTime .At }}{{ end }}</td>
+      <td>{{ .KindLabel }}</td>
+      <td>{{ .Step }}</td>
+      <td><span class="status status-{{ .OutcomeClass }}"><span aria-hidden="true">{{ .OutcomeIcon }}</span> {{ .OutcomeLabel }}</span></td>
+      <td>{{ .ReasonLabel }}</td>
+    </tr>
+    {{- end }}
+  </tbody>
+</table>
+{{- else }}
+<p class="empty">{{ text "cockpit.agent.no_events" }}</p>
+{{- end }}
+
+<h2>{{ text "cockpit.agent.reasons" }}</h2>
+{{- if .Detail.Reasons }}
+<table class="table">
+  <thead>
+    <tr><th>{{ text "cockpit.col.reason" }}</th><th>{{ text "cockpit.col.count" }}</th></tr>
+  </thead>
+  <tbody>
+    {{- range .Detail.Reasons }}
+    <tr><td>{{ .Label }}</td><td>{{ .Count }}</td></tr>
+    {{- end }}
+  </tbody>
+</table>
+{{- else }}
+<p class="empty">{{ text "cockpit.agent.no_reasons" }}</p>
+{{- end }}
+
+<h2>{{ text "cockpit.agent.jobs" }}</h2>
+{{- if .Detail.Jobs }}
+<table class="table">
+  <thead>
+    <tr><th>{{ text "cockpit.col.job" }}</th><th>{{ text "cockpit.col.kind" }}</th><th>{{ text "cockpit.col.state" }}</th></tr>
+  </thead>
+  <tbody>
+    {{- range .Detail.Jobs }}
+    <tr>
+      <td>{{ .ID }}</td>
+      <td>{{ .KindLabel }}</td>
+      <td><span class="status status-{{ .StateClass }}">{{ .StateLabel }}</span></td>
+    </tr>
+    {{- end }}
+  </tbody>
+</table>
+{{- else }}
+<p class="empty">{{ text "cockpit.agent.no_jobs" }}</p>
+{{- end }}
+{{- end }}
+{{- end -}}
+
+{{- define "content" -}}
+<section class="cockpit-agent">
+  <h1>{{ text "cockpit.title.agent" }}</h1>
+  {{ template "agent-detail" .View }}
+</section>
+{{- end -}}

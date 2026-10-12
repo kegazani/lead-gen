@@ -105,6 +105,12 @@ func (l *Limiter) acquire(ctx context.Context, crawl bool) (func(), error) {
 		released = true
 		<-l.sem
 	}
+	completed := false
+	defer func() {
+		if !completed {
+			release()
+		}
+	}()
 
 	// Выдержка минимальной паузы с предыдущего запроса этого класса.
 	minInterval := l.minInterval
@@ -127,6 +133,7 @@ func (l *Limiter) acquire(ctx context.Context, crawl bool) (func(), error) {
 		l.lastNormal = now(l.clock)
 	}
 	l.mu.Unlock()
+	completed = true
 	return release, nil
 }
 

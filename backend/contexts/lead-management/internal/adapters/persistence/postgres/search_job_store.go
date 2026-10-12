@@ -87,7 +87,7 @@ func (s *SearchJobStore) Create(ctx context.Context, job jobs.Job) error {
 		return fmt.Errorf("postgres: запись задания %s: %w", job.ID, err)
 	}
 	if tag.RowsAffected() == 0 {
-		return fmt.Errorf("postgres: задание %s уже существует", job.ID)
+		return fmt.Errorf("postgres: %w: %s", ports.ErrSearchJobExists, job.ID)
 	}
 	_ = s.RecordEvent(ctx, ports.SearchJobEvent{JobID: job.ID, Type: ports.EventEnqueued, CreatedAt: createdAt})
 	return nil
@@ -156,6 +156,45 @@ func (s *SearchJobStore) UpdateStatus(ctx context.Context, id string, from, to j
 	}
 	if t := eventTypeForStatus(to); t != "" {
 		_ = s.RecordEvent(ctx, ports.SearchJobEvent{JobID: id, Type: t, Code: errCode, CreatedAt: time.Now().UTC()})
+	}
+	return nil
+}
+
+// RenewLease атомарно продлевает аренду только для текущего running-поколения.
+func (s *SearchJobStore) RenewLease(ctx context.Context, id string, attempt int) error {
+	tag, err := s.pool.Exec(ctx, renewSearchJobLease, id, attempt)
+	if err != nil {
+		return fmt.Errorf("postgres: продление lease задания %s: %w", id, err)
+	}
+	if tag.RowsAffected() == 0 {
+		return fmt.Errorf("postgres: %w: lease задания %s потерян", jobs.ErrTransitionRejected, id)
+	}
+	return nil
+}
+
+// UpdateOwnedStatus меняет состояние только если текущая running-попытка
+// принадлежит вызывающему. Проверка и переход выполняются одним UPDATE.
+func (s *SearchJobStore) UpdateOwnedStatus(ctx context.Context, id string, attempt int, to jobs.Status, reason, code string) error {
+	errText, errCode := "", ""
+	if to == jobs.StatusFailed {
+		errText, errCode = reason, code
+	}
+	tag, err := s.pool.Exec(ctx, updateOwnedSearchJobStatus, id, attempt, string(to), errText, errCode)
+	if err != nil {
+		return fmt.Errorf("postgres: завершение lease задания %s: %w", id, err)
+	}
+	if tag.RowsAffected() == 0 {
+		exists, err := s.jobExists(ctx, id)
+		if err != nil {
+			return err
+		}
+		if !exists {
+			return fmt.Errorf("postgres: %w: %s", jobs.ErrNotFound, id)
+		}
+		return fmt.Errorf("postgres: %w: lease задания %s потерян", jobs.ErrTransitionRejected, id)
+	}
+	if eventType := eventTypeForStatus(to); eventType != "" {
+		_ = s.RecordEvent(ctx, ports.SearchJobEvent{JobID: id, Type: eventType, Code: errCode, CreatedAt: time.Now().UTC()})
 	}
 	return nil
 }
@@ -507,6 +546,20 @@ func (s *SearchJobStore) ListSearchJobs(ctx context.Context, limit int) ([]ports
 	return list, nil
 }
 
+// GetSearchJob возвращает durable journal row по ID, включая ранее сохранённые
+// result refs. Worker использует их после возврата осиротевшего задания в очередь,
+// чтобы повторный прогон не затирал уже зафиксированные результаты.
+func (s *SearchJobStore) GetSearchJob(ctx context.Context, id string) (ports.SearchJob, error) {
+	row, err := scanSearchJob(s.pool.QueryRow(ctx, selectSearchJobByID, id))
+	if errors.Is(err, pgx.ErrNoRows) {
+		return ports.SearchJob{}, fmt.Errorf("postgres: %w: %s", jobs.ErrNotFound, id)
+	}
+	if err != nil {
+		return ports.SearchJob{}, fmt.Errorf("postgres: чтение журнала задания %s: %w", id, err)
+	}
+	return row.toSearchJob(), nil
+}
+
 // searchJobRow — строка таблицы search_job с уже разобранными JSON-полями.
 type searchJobRow struct {
 	id              string
@@ -768,6 +821,16 @@ SET status = 'running', attempts = attempts + 1, updated_at = now()
 WHERE id = $1
 RETURNING id, query, status, COALESCE(result_ref::text, '[]'), COALESCE(error, ''), COALESCE(error_code, ''), attempts, created_at, updated_at, COALESCE(budget::text, ''), COALESCE(max_credits, 0), COALESCE(target_companies, 0), COALESCE(max_results, 0), COALESCE(plan::text, ''), COALESCE(interpretation::text, ''), cancel_requested, COALESCE(progress::text, ''), 0`
 
+	renewSearchJobLease = `
+UPDATE "lead-management".search_job
+SET updated_at = now()
+WHERE id = $1 AND status = 'running' AND attempts = $2`
+
+	updateOwnedSearchJobStatus = `
+UPDATE "lead-management".search_job
+SET status = $3, error = $4, error_code = $5, updated_at = now()
+WHERE id = $1 AND status = 'running' AND attempts = $2`
+
 	updateSearchJobStatus = `
 UPDATE "lead-management".search_job
 SET status = $3, error = $4, error_code = $5, updated_at = now()
@@ -807,8 +870,16 @@ WHERE id = $1
 RETURNING (SELECT status FROM old_status)`
 
 	updateSearchJobResultRef = `
-UPDATE "lead-management".search_job
-SET result_ref = $2::jsonb, updated_at = now()
+UPDATE "lead-management".search_job AS current_job
+SET result_ref = (
+    SELECT COALESCE(jsonb_agg(to_jsonb(value) ORDER BY first_ordinal), '[]'::jsonb)
+    FROM (
+        SELECT value, min(ordinality) AS first_ordinal
+        FROM jsonb_array_elements_text(COALESCE(current_job.result_ref, '[]'::jsonb) || $2::jsonb)
+             WITH ORDINALITY AS item(value, ordinality)
+        GROUP BY value
+    ) AS merged
+), updated_at = now()
 WHERE id = $1`
 
 	updateSearchJobBudget = `

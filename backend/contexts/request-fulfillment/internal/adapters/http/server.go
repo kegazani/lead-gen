@@ -10,13 +10,17 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
+	"time"
 
 	"lead-gen/backend/contexts/request-fulfillment/internal/app/command"
 	"lead-gen/backend/contexts/request-fulfillment/internal/app/query"
 	"lead-gen/backend/contexts/request-fulfillment/internal/domain"
 	"lead-gen/backend/contexts/request-fulfillment/internal/ports"
 	"lead-gen/backend/platform/consoleauth"
+	"lead-gen/backend/platform/readiness"
+	"lead-gen/contracts/outreach-orchestration/outreachhandoff"
 	"lead-gen/frontend/components"
 )
 
@@ -38,6 +42,9 @@ const (
 // контекста. FulfillmentQuery допускается равным nil только вместе с запросом
 // статусов артефактов.
 type Dependencies struct {
+	ExecutionProtocol      ports.ExecutionProtocol
+	ExecutionConsumer      ports.ExecutionIntentConsumer
+	AdmitExecution         *command.AdmitExecutionHandler
 	SubmitRequest          *command.SubmitRequestHandler
 	StartValidation        *command.StartValidationHandler
 	ValidateRequest        *command.ValidateRequestHandler
@@ -45,12 +52,18 @@ type Dependencies struct {
 	FulfillRequest         *command.FulfillRequestHandler
 	RejectRequest          *command.RejectRequestHandler
 	CancelRequest          *command.CancelRequestHandler
+	FailRequest            *command.FailRequestHandler
+	RerunRequest           *command.RerunRequestHandler
+	ReturnForRevision      *command.ReturnForRevisionHandler
+	Resubmit               *command.ResubmitRequestHandler
 	ReviseOffer            *command.ReviseOfferHandler
 	RecordAudienceSnapshot *command.RecordAudienceSnapshotHandler
 	RecordCampaign         *command.RecordCampaignHandler
 	RecordDeal             *command.RecordDealHandler
 	GetRequest             *query.GetRequestHandler
+	ListRequests           *query.ListRequestsHandler
 	FulfillmentStatus      *query.FulfillmentStatusHandler
+	ExecutionState         *query.ExecutionStateHandler
 
 	// WorkflowStatus — чтение состояния исполнения заявки. nil означает, что
 	// рантайм workflow не подключён: обработчик честно отвечает 503.
@@ -64,6 +77,11 @@ type Dependencies struct {
 	// workflow). nil означает, что рантайм не подключён: обработчик честно
 	// отвечает 503.
 	WorkflowSignaler ports.WorkflowSignaler
+	// WorkflowCanceller — отмена активного Temporal исполнения после durable
+	// перехода заявки в cancelled.
+	WorkflowCanceller ports.WorkflowCanceller
+	// OutreachCancellation fences late handoff and approval at their owner.
+	OutreachCancellation outreachhandoff.Port
 
 	// ValidationQueue — очередь заявок на валидацию (экран валидации).
 	ValidationQueue *query.ValidationQueueHandler
@@ -88,14 +106,29 @@ type Dependencies struct {
 	// отвечает 503.
 	EmailDrafts *query.EmailDraftsHandler
 
-	// Runtime — признак доступности рантайма durable-исполнения для пробы
-	// готовности (/readyz). nil означает, что рантайм не подключён: готовность не
-	// зависит от отсутствующей зависимости, и проба отвечает «готов».
+	// RequestWatcher — подписка на изменения заявок тенанта (SSE-поток экрана
+	// заявок компании). nil означает отсутствие потока: обработчик честно
+	// отвечает 503.
+	RequestWatcher ports.RequestWatcher
+
+	// Runtime — monitor-backed факт доступности Temporal. nil считается unknown.
 	Runtime RuntimeProbe
+	// Readiness — явный профиль readiness владельца контекста.
+	Readiness readiness.Profile
+	// ReadinessEvaluator ограничивает и кэширует проверки профиля.
+	ReadinessEvaluator *readiness.Evaluator
 
 	// Console — базовые адреса сервисов консоли для общей навигации по разделам
 	// (Заявки, Исполнение, Лиды, Отчёты). Пустые адреса дают относительные пути.
 	Console components.ConsoleBases
+
+	// BasePath — внешний префикс пути консоли под единым origin (admin-proxy).
+	// Пусто — консоль смонтирована в корень origin.
+	BasePath string
+
+	// ExternalPrefixes — префиксы других консолей единого origin: ссылки на них
+	// в навигации не переписываются под собственный префикс.
+	ExternalPrefixes []string
 
 	// Auth — учётные данные оператора консоли заявок и общий стор сессий. Пустое
 	// CookieName означает общее имя cookie "session": вход в консоль заявок
@@ -126,15 +159,17 @@ type Server struct {
 func NewServer(deps Dependencies) *Server {
 	server := &Server{deps: deps, sessions: consoleauth.New(deps.Auth), console: deps.Console}
 	server.pages, _ = newPages()
-	server.handler = server.routes()
+	server.handler = components.PrefixMiddleware(deps.BasePath, server.routes(), deps.ExternalPrefixes...)
 	return server
 }
 
 // consoleNav собирает общую навигацию консоли с активным разделом. Сервис
 // заявок владеет разделами «Заявки» и «Исполнение»: их пункты относительны,
-// остальные ведут в свои сервисы по базовым адресам.
-func (s *Server) consoleNav(active string) components.Nav {
-	return components.ConsoleNav(s.console, active)
+// остальные ведут в свои сервисы по базовым адресам. Контекст активного тенанта и
+// актора переносится в ссылки, чтобы выбранный тенант не терялся при переходе в
+// консоль другого сервиса.
+func (s *Server) consoleNav(active, tenant, actor string) components.Nav {
+	return components.ConsoleNavWithContext(s.console, active, components.ConsoleContext{TenantID: tenant, Actor: actor})
 }
 
 // ServeHTTP реализует http.Handler.
@@ -157,21 +192,22 @@ func (s *Server) routes() http.Handler {
 	mux := http.NewServeMux()
 
 	// Вход и выход консоли: публичные HTML-страницы под теми же заголовками
-	// безопасности, что и остальные экраны.
+	// безопасности, что и остальные экраны. Вход ограничен по частоте (7.5).
 	mux.Handle("GET /login", s.publicHTML(s.handleLoginForm))
-	mux.Handle("POST /login", s.publicHTML(s.handleLogin))
+	mux.Handle("POST /login", s.publicHTML(s.rateLimit("/login", s.handleLogin)))
 	mux.Handle("GET /logout", s.publicHTML(s.handleLogout))
 
 	// Корень сервиса ведёт на очередь валидации, а не отвечает 404.
 	mux.HandleFunc("GET /{$}", s.handleRoot)
 	mux.HandleFunc("POST /requests", s.handleSubmit)
+	mux.HandleFunc("GET /requests", s.handleList)
 	mux.HandleFunc("GET /requests/{requestID}", s.handleGet)
 	mux.HandleFunc("POST /requests/{requestID}/validation/start", s.handleStartValidation)
 	mux.HandleFunc("POST /requests/{requestID}/validation/complete", s.handleValidate)
 	mux.HandleFunc("POST /requests/{requestID}/processing/start", s.handleStartProcessing)
 	mux.HandleFunc("POST /requests/{requestID}/fulfillment", s.handleFulfill)
 	mux.HandleFunc("POST /requests/{requestID}/rejection", s.handleReject)
-	mux.HandleFunc("POST /requests/{requestID}/cancellation", s.handleCancel)
+	mux.Handle("POST /requests/{requestID}/cancellation", s.consoleAPIMutation(http.HandlerFunc(s.handleCancel)))
 	mux.HandleFunc("POST /requests/{requestID}/offer", s.handleReviseOffer)
 	mux.HandleFunc("POST /requests/{requestID}/artifacts/audience-snapshot", s.handleRecordAudience)
 	mux.HandleFunc("POST /requests/{requestID}/artifacts/campaign", s.handleRecordCampaign)
@@ -179,8 +215,8 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /requests/{requestID}/fulfillment-status", s.handleFulfillmentStatus)
 	mux.HandleFunc("GET /requests/{requestID}/email-drafts", s.handleEmailDrafts)
 	mux.HandleFunc("GET /requests/{requestID}/workflow", s.handleWorkflowStatus)
-	mux.HandleFunc("POST /requests/{requestID}/workflow", s.handleStartWorkflow)
-	mux.HandleFunc("POST /requests/{requestID}/workflow/approval-decision", s.handleWorkflowApprovalDecision)
+	mux.Handle("POST /requests/{requestID}/workflow", s.cookieAuthMutation(http.HandlerFunc(s.handleStartWorkflow)))
+	mux.Handle("POST /requests/{requestID}/workflow/approval-decision", s.consoleAPIMutation(http.HandlerFunc(s.handleWorkflowApprovalDecision)))
 	mux.HandleFunc("GET /healthz", s.handleHealth)
 	// /readyz отражает готовность обслуживать работу с учётом доступности
 	// рантайма durable-исполнения; /healthz остаётся пробой живости.
@@ -191,23 +227,61 @@ func (s *Server) routes() http.Handler {
 	// Экран валидации (HTMX + серверный рендеринг) — эксплуатационная проекция
 	// роли api. Действия — POST/redirect/GET; частичные ответы — для HTMX.
 	// Консольные маршруты требуют сессию оператора, а изменяющие — CSRF-токен.
-	mux.Handle("GET /validation", s.consoleHandler(s.handleValidationQueue))
-	mux.Handle("GET /requests/{requestID}/validation", s.consoleHandler(s.handleValidationScreen))
-	mux.Handle("POST /requests/{requestID}/validation/take", s.consoleHandler(s.handleValidationTake))
+	mux.Handle("GET /validation", components.NoStore(s.consoleHandler(s.handleValidationQueue)))
+	mux.Handle("GET /requests/{requestID}/validation", components.NoStore(s.consoleHandler(s.handleValidationScreen)))
+	mux.Handle("POST /requests/{requestID}/validation/take", s.consoleHandler(s.rateLimit("/validation/take", s.handleValidationTake)))
 	mux.Handle("POST /requests/{requestID}/validation/offer", s.consoleHandler(s.handleValidationOffer))
-	mux.Handle("POST /requests/{requestID}/validation/approve", s.consoleHandler(s.handleValidationApprove))
-	mux.Handle("POST /requests/{requestID}/validation/reject", s.consoleHandler(s.handleValidationReject))
+	mux.Handle("POST /requests/{requestID}/validation/approve", s.consoleHandler(s.rateLimit("/validation/approve", s.handleValidationApprove)))
+	mux.Handle("POST /requests/{requestID}/validation/reject", s.consoleHandler(s.rateLimit("/validation/reject", s.handleValidationReject)))
 	mux.Handle("POST /requests/{requestID}/validation/call", s.consoleHandler(s.handleValidationCall))
 
 	// Экран утверждения результата фулфилмента (HTMX + серверный рендеринг):
 	// очередь ожидающих решения, экран заявки и кнопки решения. Действия —
-	// POST/redirect/GET; частичные ответы — для HTMX.
-	mux.Handle("GET /approvals", s.consoleHandler(s.handleApprovalQueue))
-	mux.Handle("GET /requests/{requestID}/approval", s.consoleHandler(s.handleApprovalScreen))
-	mux.Handle("POST /requests/{requestID}/approval/approve", s.consoleHandler(s.handleApprovalApprove))
-	mux.Handle("POST /requests/{requestID}/approval/reject", s.consoleHandler(s.handleApprovalReject))
+	// POST/redirect/GET; частичные ответы — для HTMX. Решения утверждения
+	// ограничены по частоте (7.5).
+	mux.Handle("GET /approvals", components.NoStore(s.consoleHandler(s.handleApprovalQueue)))
+	mux.Handle("GET /requests/{requestID}/approval", components.NoStore(s.consoleHandler(s.handleApprovalScreen)))
+	mux.Handle("POST /requests/{requestID}/approval/approve", s.consoleHandler(s.rateLimit("/approval/approve", s.handleApprovalApprove)))
+	mux.Handle("POST /requests/{requestID}/approval/reject", s.consoleHandler(s.rateLimit("/approval/reject", s.handleApprovalReject)))
+
+	// Экран заявок компании: список заявок выбранного тенанта с историей
+	// переходов и действиями «вернуть на доработку» и «отменить» (с комментарием).
+	mux.Handle("GET /company", components.NoStore(s.consoleHandler(s.handleCompanyRequests)))
+	mux.Handle("POST /requests/{requestID}/revision", s.consoleHandler(s.handleCompanyReturnForRevision))
+	mux.Handle("POST /requests/{requestID}/cancel", s.consoleHandler(s.handleCompanyCancel))
+	mux.Handle("POST /requests/{requestID}/rerun", s.consoleHandler(s.handleCompanyRerun))
+	// Живое обновление статусов заявок компании (SSE): тот же контракт доступа,
+	// что и у экрана /company — требуется сессия оператора.
+	mux.Handle("GET /company/stream", s.authMiddleware(http.HandlerFunc(s.handleCompanyStream)))
+	// Скрипт клиентской подписки на поток. CSP экранов запрещает inline-скрипты,
+	// поэтому подписка — отдельный файл, раздаваемый из встроенного каталога.
+	mux.Handle("GET /static/company_requests.js", s.companyStreamScript())
 
 	return mux
+}
+
+// Порог и окно ограничения частоты чувствительных действий консоли.
+const (
+	sensitiveLimit  = 30
+	sensitiveWindow = time.Minute
+)
+
+// rateLimit оборачивает чувствительное действие ограничителем частоты общего слоя:
+// вход, взятие в работу и решения (web-frontend-architecture, срез 7, 7.5).
+func (s *Server) rateLimit(path string, next http.HandlerFunc) http.HandlerFunc {
+	limited := components.RateLimit(components.RateLimitConfig{
+		Limit:  sensitiveLimit,
+		Window: sensitiveWindow,
+		OnBlocked: func(r *http.Request, key string) {
+			s.recordRateLimit(r, path, key)
+		},
+	})(next)
+	return limited.ServeHTTP
+}
+
+// recordRateLimit фиксирует блокировку в журнале процесса.
+func (s *Server) recordRateLimit(r *http.Request, path, key string) {
+	log.Printf("request-fulfillment: превышен порог частоты path=%s key=%s", path, key)
 }
 
 // publicHTML навешивает заголовки безопасности на публичную HTML-страницу
@@ -231,16 +305,58 @@ func (s *Server) authMiddleware(next http.Handler) http.Handler {
 	return s.sessions.Middleware(consoleauth.Policy{LoginPath: "/login"})(next)
 }
 
+// cookieAuthMutation сохраняет анонимный сетевой API контракт, но если браузер
+// прислал cookie консоли, требует действующую сессию и CSRF как для остальных
+// cookie-authenticated mutation routes.
+func (s *Server) cookieAuthMutation(next http.Handler) http.Handler {
+	protected := s.authMiddleware(next)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if _, err := r.Cookie(s.sessions.CookieName()); err == nil {
+			protected.ServeHTTP(w, r)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// consoleAPIMutation использует тот же серверный session store и CSRF middleware,
+// что и HTML-консоль, но для API возвращает 401 вместо браузерного redirect.
+func (s *Server) consoleAPIMutation(next http.Handler) http.Handler {
+	protected := s.authMiddleware(next)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		cookie, err := r.Cookie(s.sessions.CookieName())
+		if err != nil {
+			writeErrorMessage(w, http.StatusUnauthorized, "требуется сессия оператора")
+			return
+		}
+		if _, ok := s.sessions.Authenticate(cookie.Value); !ok {
+			writeErrorMessage(w, http.StatusUnauthorized, "требуется сессия оператора")
+			return
+		}
+		if token := r.Header.Get("X-CSRF-Token"); token != "" {
+			clone := r.Clone(r.Context())
+			urlCopy := *r.URL
+			values := urlCopy.Query()
+			values.Set("csrf", token)
+			urlCopy.RawQuery = values.Encode()
+			clone.URL = &urlCopy
+			r = clone
+		}
+		protected.ServeHTTP(w, r)
+	})
+}
+
 // loginView — модель страницы входа.
 type loginView struct {
+	Live  components.Live
 	Error string
 }
 
 // handleLoginForm показывает форму входа оператора.
 func (s *Server) handleLoginForm(w http.ResponseWriter, r *http.Request) {
 	s.render(w, http.StatusOK, pageLogin, components.Page{
-		Layout: components.Layout{Title: "Вход"},
-		View:   loginView{},
+		Layout: components.Layout{Title: consoleMessages().Text(msgReqLoginTitle)},
+		View:   loginView{Live: consoleLive},
 	})
 }
 
@@ -253,8 +369,8 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	id, err := s.sessions.Login(r.FormValue("username"), r.FormValue("password"))
 	if errors.Is(err, consoleauth.ErrInvalidCredentials) {
 		s.render(w, http.StatusUnauthorized, pageLogin, components.Page{
-			Layout: components.Layout{Title: "Вход"},
-			View:   loginView{Error: "Неверный логин или пароль."},
+			Layout: components.Layout{Title: consoleMessages().Text(msgReqLoginTitle)},
+			View:   loginView{Live: consoleLive, Error: consoleMessages().Text(msgReqLoginError)},
 		})
 		return
 	}
@@ -311,6 +427,12 @@ func writeErrorMessage(w http.ResponseWriter, status int, message string) {
 
 // writeDomainError переводит ошибку сценария в код ответа.
 func writeDomainError(w http.ResponseWriter, err error) {
+	if errors.Is(err, command.ErrTenantMismatch) || errors.Is(err, ports.ErrRequestNotFound) {
+		// Для чужой заявки не раскрываем ни факт существования, ни отличие от
+		// неизвестного идентификатора.
+		writeErrorMessage(w, http.StatusNotFound, "заявка не найдена")
+		return
+	}
 	status := statusForError(err)
 	if status >= http.StatusInternalServerError {
 		writeJSON(w, status, errorResponse{Error: "внутренняя ошибка"})
@@ -327,15 +449,21 @@ func statusForError(err error) int {
 	case errors.Is(err, ports.ErrRequestNotFound):
 		return http.StatusNotFound
 	case errors.Is(err, ports.ErrVersionConflict),
-		errors.Is(err, command.ErrTenantMismatch),
+		errors.Is(err, ports.ErrExecutionCommandConflict),
+		errors.Is(err, ports.ErrExecutionAdmissionBlocked),
+		errors.Is(err, ports.ErrExecutionFenceConflict),
 		errors.Is(err, domain.ErrInvalidTransition),
-		errors.Is(err, domain.ErrTerminalState):
+		errors.Is(err, domain.ErrTerminalState),
+		errors.Is(err, domain.ErrRequestLimitReached),
+		errors.Is(err, domain.ErrActiveRequestLimitReached):
 		return http.StatusConflict
 	case errors.Is(err, ports.ErrArtifactUnavailable):
 		return http.StatusBadGateway
 	case errors.Is(err, ports.ErrWorkflowNotFound):
 		return http.StatusNotFound
 	case errors.Is(err, ports.ErrWorkflowUnavailable):
+		return http.StatusServiceUnavailable
+	case errors.Is(err, ports.ErrExecutionAdmissionUnavailable):
 		return http.StatusServiceUnavailable
 	case errors.Is(err, ports.ErrCallUnavailable):
 		return http.StatusServiceUnavailable
@@ -345,6 +473,8 @@ func statusForError(err error) int {
 		return http.StatusServiceUnavailable
 	case errors.Is(err, ports.ErrDraftStoreUnavailable):
 		return http.StatusServiceUnavailable
+	case errors.Is(err, errInvalidLeadTarget):
+		return http.StatusBadRequest
 	case errors.Is(err, domain.ErrEmptyID),
 		errors.Is(err, domain.ErrMissingActor),
 		errors.Is(err, domain.ErrMissingTime),

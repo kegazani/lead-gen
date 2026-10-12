@@ -10,6 +10,12 @@ import (
 )
 
 func seedCompany(profiles *memProfiles, id, name string) *domain.Company {
+	return seedCompanyInTenant(profiles, "", id, name)
+}
+
+// seedCompanyInTenant сохраняет карточку в заданном тенанте: сценарии, читающие
+// пул по тенанту-владельцу, должны получить карточку в том же тенанте.
+func seedCompanyInTenant(profiles *memProfiles, tenant, id, name string) *domain.Company {
 	company, err := domain.CreateCompany(domain.CreateCompanyParams{
 		Domain:      id,
 		Name:        domain.AttributedValue{Value: name, Provenance: domain.Provenance{SourceURL: "https://" + id, ExtractedAt: testTime}},
@@ -19,7 +25,7 @@ func seedCompany(profiles *memProfiles, id, name string) *domain.Company {
 	if err != nil {
 		panic(err)
 	}
-	if err := profiles.Save(context.Background(), company); err != nil {
+	if err := profiles.Save(ports.WithTenant(context.Background(), tenant), company); err != nil {
 		panic(err)
 	}
 	return company

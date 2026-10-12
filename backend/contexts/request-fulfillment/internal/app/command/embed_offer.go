@@ -59,6 +59,7 @@ func (h *EmbedOfferHandler) Handle(ctx context.Context, cmd EmbedOffer) (EmbedOf
 	}
 
 	transition, err := applyChange(ctx, h.uow, commandKey{RequestID: cmd.RequestID, TenantID: cmd.TenantID},
+		nil,
 		func(r *domain.Request) ([]domain.DomainEvent, error) {
 			if r.Offer().Revision() != revision {
 				return nil, fmt.Errorf("%w: оффер заявки %s изменён во время расчёта", ports.ErrVersionConflict, cmd.RequestID)
@@ -80,8 +81,8 @@ func (h *EmbedOfferHandler) Handle(ctx context.Context, cmd EmbedOffer) (EmbedOf
 func (h *EmbedOfferHandler) offerText(ctx context.Context, cmd EmbedOffer) (string, int, error) {
 	var text string
 	var revision int
-	err := h.uow.WithinTransaction(ctx, func(tx ports.Transaction) error {
-		request, err := tx.Requests().FindByID(ctx, cmd.RequestID)
+	err := h.uow.WithinTransaction(ctx, func(txCtx context.Context, tx ports.Transaction) error {
+		request, err := tx.Requests().FindByID(txCtx, cmd.RequestID)
 		if err != nil {
 			return err
 		}

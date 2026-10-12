@@ -16,7 +16,6 @@ import (
 	"lead-gen/backend/contexts/request-fulfillment/internal/app/command"
 	"lead-gen/backend/contexts/request-fulfillment/internal/domain"
 	"lead-gen/backend/contexts/request-fulfillment/internal/ports"
-	platformoutbox "lead-gen/backend/platform/messaging/outbox"
 	"lead-gen/contracts/lead-management/leadsearch"
 )
 
@@ -34,7 +33,7 @@ func newValidatedRequest(t *testing.T) (*Activities, *persistence.Repository) {
 	clock := fixedClock{at: time.Unix(1700000000, 0).UTC()}
 	ids := idgen.NewRandom()
 	repo := persistence.New()
-	uow := inmemory.NewUnitOfWorkWith(repo, platformoutbox.NewMemoryJournal())
+	uow := inmemory.NewUnitOfWorkWith(repo, inmemory.NewTransactionalJournal())
 
 	submit := command.NewSubmitRequestHandler(uow, clock, ids)
 	startValidation := command.NewStartValidationHandler(uow, clock, ids)
@@ -58,6 +57,7 @@ func newValidatedRequest(t *testing.T) (*Activities, *persistence.Repository) {
 		StartProcessing: command.NewStartProcessingHandler(uow, clock, ids),
 		Fulfill:         command.NewFulfillRequestHandler(uow, clock, ids),
 		Cancel:          command.NewCancelRequestHandler(uow, clock, ids),
+		Fail:            command.NewFailRequestHandler(uow, clock, ids),
 		Clock:           clock,
 		IDs:             ids,
 	}, repo
@@ -164,8 +164,9 @@ func TestSearchLeadsCallsContractWithOfferCriteria(t *testing.T) {
 func TestSearchLeadsReturnsLeadIDs(t *testing.T) {
 	activities, repo := newValidatedRequest(t)
 	port := &stubSearch{result: leadsearch.Result{
-		Found: 2,
-		Leads: []leadsearch.LeadRef{{ID: "lead-a", Origin: leadsearch.OriginPool}, {ID: "lead-b", Origin: leadsearch.OriginCrawl}},
+		Found:         2,
+		Leads:         []leadsearch.LeadRef{{ID: "lead-a", Origin: leadsearch.OriginPool}, {ID: "lead-b", Origin: leadsearch.OriginCrawl}},
+		PartialReason: "crawl_unavailable",
 	}}
 	activities.Search = ContractSearch{Requests: repo, Contract: port}
 
@@ -180,6 +181,9 @@ func TestSearchLeadsReturnsLeadIDs(t *testing.T) {
 	}
 	if len(res.LeadIDs) != 2 || res.LeadIDs[0] != "lead-a" || res.LeadIDs[1] != "lead-b" {
 		t.Fatalf("идентификаторы лидов = %v, ожидались lead-a, lead-b", res.LeadIDs)
+	}
+	if res.PartialReason != "crawl_unavailable" {
+		t.Fatalf("partial_reason = %q, ожидался crawl_unavailable", res.PartialReason)
 	}
 }
 
@@ -307,6 +311,127 @@ func TestHandleCancelTerminalErrorIsNonRetryable(t *testing.T) {
 	var appErr *temporal.ApplicationError
 	if !errors.As(err, &appErr) || !appErr.NonRetryable() {
 		t.Fatalf("отказ терминального состояния должен быть non-retryable: %v", err)
+	}
+}
+
+// TestHandleFailRequest — activity FailRequest переводит заявку processing →
+// failed через application service и персистит код и текст причины.
+func TestHandleFailRequest(t *testing.T) {
+	activities, repo := newValidatedRequest(t)
+	ctx := context.Background()
+	in := transitionInput{RequestID: "req-1", TenantID: "tenant-1", CorrelationID: "corr-1", Actor: "workflow"}
+	if err := activities.HandleStartProcessing(ctx, in); err != nil {
+		t.Fatalf("запуск: %v", err)
+	}
+
+	if err := activities.HandleFailRequest(ctx, transitionInput{
+		RequestID: "req-1", TenantID: "tenant-1", CorrelationID: "corr-1",
+		Actor: "workflow", ReasonCode: "search_failed", Reason: "поиск упал",
+	}); err != nil {
+		t.Fatalf("FailRequest: %v", err)
+	}
+
+	request, err := repo.FindByID(ctx, "req-1")
+	if err != nil {
+		t.Fatalf("чтение заявки: %v", err)
+	}
+	if request.Status() != domain.StatusFailed {
+		t.Fatalf("статус = %q, ожидался failed", request.Status())
+	}
+	code, text, ok := request.FailureReason()
+	if !ok || code != "search_failed" || text != "поиск упал" {
+		t.Fatalf("причина = %q/%q/%v, ожидалась search_failed/поиск упал/true", code, text, ok)
+	}
+}
+
+// TestHandleFailRequestIdempotent — повторная доставка FailRequest по уже failed
+// заявке — no-op: версия не растёт.
+func TestHandleFailRequestIdempotent(t *testing.T) {
+	activities, repo := newValidatedRequest(t)
+	ctx := context.Background()
+	if err := activities.HandleStartProcessing(ctx, transitionInput{
+		RequestID: "req-1", TenantID: "tenant-1", CorrelationID: "corr-1",
+	}); err != nil {
+		t.Fatalf("запуск: %v", err)
+	}
+	failIn := transitionInput{
+		RequestID: "req-1", TenantID: "tenant-1", CorrelationID: "corr-1",
+		Actor: "workflow", ReasonCode: "search_failed", Reason: "поиск упал",
+	}
+	if err := activities.HandleFailRequest(ctx, failIn); err != nil {
+		t.Fatalf("FailRequest: %v", err)
+	}
+	request, err := repo.FindByID(ctx, "req-1")
+	if err != nil {
+		t.Fatalf("чтение заявки: %v", err)
+	}
+	version := request.Version()
+
+	if err := activities.HandleFailRequest(ctx, failIn); err != nil {
+		t.Fatalf("повтор FailRequest: %v", err)
+	}
+	request, err = repo.FindByID(ctx, "req-1")
+	if err != nil {
+		t.Fatalf("чтение заявки: %v", err)
+	}
+	if request.Status() != domain.StatusFailed || request.Version() != version {
+		t.Fatalf("повтор изменил состояние: статус %q, версия %d", request.Status(), request.Version())
+	}
+}
+
+// TestHandleFailRequestTerminalErrorIsNonRetryable — FailRequest по другой
+// терминальной заявке даёт non-retryable доменный отказ.
+func TestHandleFailRequestTerminalErrorIsNonRetryable(t *testing.T) {
+	activities, _ := newValidatedRequest(t)
+	ctx := context.Background()
+	if err := activities.HandleStartProcessing(ctx, transitionInput{
+		RequestID: "req-1", TenantID: "tenant-1",
+	}); err != nil {
+		t.Fatalf("запуск: %v", err)
+	}
+	if err := activities.HandleFulfillRequest(ctx, transitionInput{
+		RequestID: "req-1", TenantID: "tenant-1",
+	}); err != nil {
+		t.Fatalf("завершение: %v", err)
+	}
+	err := activities.HandleFailRequest(ctx, transitionInput{
+		RequestID: "req-1", TenantID: "tenant-1", ReasonCode: "search_failed", Reason: "поиск упал",
+	})
+	if err == nil {
+		t.Fatal("ожидалась ошибка терминального состояния")
+	}
+	if !errors.Is(err, domain.ErrTerminalState) {
+		t.Fatalf("ошибка = %v, ожидалась ErrTerminalState", err)
+	}
+	var appErr *temporal.ApplicationError
+	if !errors.As(err, &appErr) || !appErr.NonRetryable() {
+		t.Fatalf("отказ терминального состояния должен быть non-retryable: %v", err)
+	}
+}
+
+// TestHandleFailRequestInvalidReasonCodeNonRetryable — FailRequest с невалидным
+// кодом причины даёт non-retryable доменный отказ (ErrInvalidReasonCode), поэтому
+// компенсация с MaximumAttempts = 0 не зацикливается на невалидном коде.
+func TestHandleFailRequestInvalidReasonCodeNonRetryable(t *testing.T) {
+	activities, _ := newValidatedRequest(t)
+	ctx := context.Background()
+	if err := activities.HandleStartProcessing(ctx, transitionInput{
+		RequestID: "req-1", TenantID: "tenant-1",
+	}); err != nil {
+		t.Fatalf("запуск: %v", err)
+	}
+	err := activities.HandleFailRequest(ctx, transitionInput{
+		RequestID: "req-1", TenantID: "tenant-1", ReasonCode: "not-a-code", Reason: "что-то упало",
+	})
+	if err == nil {
+		t.Fatal("ожидалась ошибка невалидного кода причины")
+	}
+	if !errors.Is(err, domain.ErrInvalidReasonCode) {
+		t.Fatalf("ошибка = %v, ожидалась ErrInvalidReasonCode", err)
+	}
+	var appErr *temporal.ApplicationError
+	if !errors.As(err, &appErr) || !appErr.NonRetryable() {
+		t.Fatalf("невалидный код причины должен быть non-retryable: %v", err)
 	}
 }
 

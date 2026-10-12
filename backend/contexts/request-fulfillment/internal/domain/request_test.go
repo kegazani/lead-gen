@@ -328,6 +328,33 @@ func TestArtifactReferences(t *testing.T) {
 	}
 }
 
+// TestRecordCampaignIdempotent — повтор фиксации той же кампании не двигает
+// версию: повторная доставка activity передачи не накапливает версии без
+// изменения состояния.
+func TestRecordCampaignIdempotent(t *testing.T) {
+	request := newRequest(t)
+	toValidated(t, request)
+	if _, err := request.StartProcessing(input(3)); err != nil {
+		t.Fatalf("StartProcessing: %v", err)
+	}
+	if err := request.RecordCampaign("camp-7"); err != nil {
+		t.Fatalf("RecordCampaign: %v", err)
+	}
+	version := request.Version()
+	if err := request.RecordCampaign("camp-7"); err != nil {
+		t.Fatalf("повтор RecordCampaign: %v", err)
+	}
+	if request.Version() != version {
+		t.Fatalf("версия изменилась на повторе: %d → %d", version, request.Version())
+	}
+	if err := request.RecordCampaign("camp-8"); err != nil {
+		t.Fatalf("смена кампании: %v", err)
+	}
+	if request.CampaignID() != "camp-8" || request.Version() != version+1 {
+		t.Fatalf("смена кампании: кампания=%q версия=%d", request.CampaignID(), request.Version())
+	}
+}
+
 // TestTransitionAudit — сценарий «Аудит перехода»: переход фиксируется с временем
 // и актором.
 func TestTransitionAudit(t *testing.T) {

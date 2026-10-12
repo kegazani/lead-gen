@@ -27,8 +27,9 @@ type ChangeLeadStage struct {
 }
 
 // Change переносит лида на стадию stage, фиксируя переход с автором. Стадия вне
-// согласованного набора отклоняется доменом.
-func (u *ChangeLeadStage) Change(ctx context.Context, leadID string, stage domain.Stage, author string) error {
+// согласованного набора отклоняется доменом. tenantID — активный тенант запроса;
+// пусто — берётся тенант конфигурации сценария (TenantID).
+func (u *ChangeLeadStage) Change(ctx context.Context, leadID string, stage domain.Stage, author, tenantID string) error {
 	company, err := u.Profiles.FindByID(ctx, domain.CompanyID(leadID))
 	if errors.Is(err, ports.ErrProfileNotFound) {
 		return ErrCardNotFound
@@ -46,20 +47,21 @@ func (u *ChangeLeadStage) Change(ctx context.Context, leadID string, stage domai
 	if err := u.Activity.RecordStageChange(ctx, company.ID(), stage, author, at); err != nil {
 		return err
 	}
-	u.publishStage(ctx, company.ID().String(), stage, at)
+	u.publishStage(ctx, company.ID().String(), stage, at, tenantID)
 	return nil
 }
 
-// publishStage публикует событие lead-workflow дашборда. Публикация — вторичный
-// эффект: переход уже зафиксирован, и её сбой не отменяет смену стадии. Ошибка
-// фиксируется логом, а не возвращается вызывающему.
-func (u *ChangeLeadStage) publishStage(ctx context.Context, companyID string, stage domain.Stage, at time.Time) {
+// publishStage публикует событие lead-workflow дашборда в срезе активного
+// тенанта запроса. Публикация — вторичный эффект: переход уже зафиксирован, и её
+// сбой не отменяет смену стадии. Ошибка фиксируется логом, а не возвращается
+// вызывающему.
+func (u *ChangeLeadStage) publishStage(ctx context.Context, companyID string, stage domain.Stage, at time.Time, tenantID string) {
 	if u.Events == nil {
 		return
 	}
 	event := ports.AnalyticsEvent{
 		EventID:    fmt.Sprintf("lead-workflow:%s:%s:%d", companyID, stage, at.UnixNano()),
-		TenantID:   u.TenantID,
+		TenantID:   tenantOrDefault(tenantID, u.TenantID),
 		Kind:       ports.AnalyticsKindLeadWorkflow,
 		CompanyID:  companyID,
 		Status:     stage.String(),

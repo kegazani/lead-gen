@@ -559,17 +559,27 @@ type fakeBudgetFactory struct {
 	search     search.Port
 	crawl      crawl.Port
 	maxCredits int
+	beginErr   error
 	// available — доступный остаток, попадающий в снимок бюджета задачи.
 	available int
 
 	begins   []string
 	lastTask *fakeBudgetTask
+	finished []string
 }
 
 func (f *fakeBudgetFactory) Begin(taskID string, maxCredits int) (budget.Task, error) {
 	f.begins = append(f.begins, taskID)
+	if f.beginErr != nil {
+		return nil, f.beginErr
+	}
 	f.lastTask = &fakeBudgetTask{taskID: taskID, maxCredits: maxCredits, available: f.available, search: f.search, crawl: f.crawl}
 	return f.lastTask, nil
+}
+
+func (f *fakeBudgetFactory) Finish(_ context.Context, taskID string) error {
+	f.finished = append(f.finished, taskID)
+	return nil
 }
 
 // TestRunSearchBudgetPerJob проверяет, что при заданной фабрике бюджета каждое
@@ -588,17 +598,18 @@ func TestRunSearchBudgetPerJob(t *testing.T) {
 	factory := &fakeBudgetFactory{search: fs, crawl: fc, maxCredits: 20}
 
 	r := &RunSearch{
-		Jobs:     newMemJobs(),
-		Profiles: newMemProfiles(),
-		Contacts: newMemContacts(),
-		Search:   fs,
-		Crawl:    fc,
-		Budget:   factory,
-		Clock:    fakeClock{t: testTime},
-		Limits:   testCrawlLimits(),
-		Logger:   observ.NewLoggerWithWriter(io.Discard),
-		Metrics:  observ.NewMetrics(),
-		Tracer:   observ.NewTracer("lead-management"),
+		Jobs:       newMemJobs(),
+		Profiles:   newMemProfiles(),
+		Contacts:   newMemContacts(),
+		Search:     fs,
+		Crawl:      fc,
+		Budget:     factory,
+		MaxCredits: 5,
+		Clock:      fakeClock{t: testTime},
+		Limits:     testCrawlLimits(),
+		Logger:     observ.NewLoggerWithWriter(io.Discard),
+		Metrics:    observ.NewMetrics(),
+		Tracer:     observ.NewTracer("lead-management"),
 	}
 
 	job, err := r.Enqueue(context.Background(), "example", 20)
@@ -613,14 +624,17 @@ func TestRunSearchBudgetPerJob(t *testing.T) {
 	if len(factory.begins) != 1 || factory.begins[0] != id {
 		t.Fatalf("Begin-вызовы = %v, ожидался один с id %s", factory.begins, id)
 	}
-	if factory.lastTask == nil || factory.lastTask.maxCredits != 20 {
-		t.Fatalf("задаче не передан maxCredits=20: %+v", factory.lastTask)
+	if factory.lastTask == nil || factory.lastTask.maxCredits != 5 {
+		t.Fatalf("задача не ограничена configured FirecrawlMaxCredits=5: %+v", factory.lastTask)
 	}
 	if factory.lastTask.searchCalls != 1 {
 		t.Fatalf("поиск через бюджет вызван %d раз, ожидался 1", factory.lastTask.searchCalls)
 	}
 	if factory.lastTask.crawlCalls != 1 {
 		t.Fatalf("обход через бюджет вызван %d раз, ожидался 1", factory.lastTask.crawlCalls)
+	}
+	if len(factory.finished) != 1 || factory.finished[0] != id {
+		t.Fatalf("terminal Finish не вызван для job ID: finished=%v want=%s", factory.finished, id)
 	}
 }
 
@@ -1000,10 +1014,11 @@ func TestRunSearchCancelDrainsFetchedPages(t *testing.T) {
 		{URL: "https://b.example.com", Markdown: "# Beta LLC\n\nDesc b", Metadata: map[string]string{"description": "Desc b"}},
 	}}
 	fs := &fakeSearch{results: []search.Result{{URL: "https://a.example.com"}}}
+	factory := &fakeBudgetFactory{search: fs, crawl: crawlPort}
 
 	r := &RunSearch{
 		Jobs: store, Profiles: profiles, Contacts: newMemContacts(),
-		Search: fs, Crawl: crawlPort,
+		Search: fs, Crawl: crawlPort, Budget: factory,
 		Clock:  fakeClock{t: testTime},
 		Limits: testCrawlLimits(),
 		Logger: observ.NewLoggerWithWriter(io.Discard), Metrics: observ.NewMetrics(), Tracer: observ.NewTracer("lead-management"),
@@ -1018,6 +1033,9 @@ func TestRunSearchCancelDrainsFetchedPages(t *testing.T) {
 		if _, err := profiles.FindByID(context.Background(), companyID); err != nil {
 			t.Fatalf("карточка %q должна быть сохранена при отмене: %v", companyID, err)
 		}
+	}
+	if len(factory.finished) != 1 || factory.finished[0] != id {
+		t.Fatalf("Finish не вызван при отменённом задании: %v", factory.finished)
 	}
 }
 
@@ -1578,8 +1596,8 @@ func TestHandleCountsAssessmentErrorsAndContinues(t *testing.T) {
 	if progress.CompaniesFound != 2 {
 		t.Fatalf("обход не продолжился после ошибок оценки: %+v", progress)
 	}
-	if log := buf.String(); !strings.Contains(log, "оценка компании не удалась") || !strings.Contains(log, "оценка недоступна") {
-		t.Fatalf("лог без причины ошибки оценки: %s", log)
+	if log := buf.String(); !strings.Contains(log, "оценка компании не удалась") || !strings.Contains(log, `"diagnostic_code":"assessment_compute_failed"`) || strings.Contains(log, "оценка недоступна") {
+		t.Fatalf("лог не содержит безопасную категорию ошибки оценки или содержит raw error: %s", log)
 	}
 }
 
@@ -1676,5 +1694,51 @@ func TestCrawlRequestCarriesInternalPageLimit(t *testing.T) {
 	}
 	if got := fc.requests[0]; got.MaxPages != 7 || got.MaxDepth != 2 || got.MaxTimeSeconds != 90 {
 		t.Fatalf("параметры обхода: получено maxPages=%d maxDepth=%d maxTime=%d, ожидалось 7/2/90", got.MaxPages, got.MaxDepth, got.MaxTimeSeconds)
+	}
+}
+
+// timeoutCrawlWithPages — фейк обхода, отдающий уже собранные страницы вместе с
+// crawl.ErrTimeout (как адаптер Firecrawl при исчерпании времени обхода).
+type timeoutCrawlWithPages struct {
+	pages map[string][]crawl.Page
+}
+
+func (f *timeoutCrawlWithPages) Crawl(_ context.Context, req crawl.Request) (crawl.CrawlOutcome, error) {
+	return crawl.CrawlOutcome{Pages: f.pages[req.StartURL]}, crawl.ErrTimeout
+}
+
+func (f *timeoutCrawlWithPages) Extract(context.Context, crawl.ExtractRequest) ([]crawl.ContactCandidate, error) {
+	return nil, nil
+}
+
+// TestRunSearchProcessesPagesFromTimedOutCrawl проверяет, что таймаут обхода одного
+// сайта (crawl.ErrTimeout) не отменяет задание: уже добытые страницы сохраняются,
+// а задание завершается успешно.
+func TestRunSearchProcessesPagesFromTimedOutCrawl(t *testing.T) {
+	profiles := newMemProfiles()
+	fc := &timeoutCrawlWithPages{pages: map[string][]crawl.Page{
+		"https://a.example.com": {{
+			URL:      "https://a.example.com",
+			Markdown: "# Alpha Corp\n\nDesc a",
+			Metadata: map[string]string{"description": "Desc a"},
+		}},
+	}}
+	fs := &fakeSearch{results: searchResult("https://a.example.com")}
+	logger, metrics, tracer := testObservability()
+
+	r := &RunSearch{
+		Jobs: newMemJobs(), Profiles: profiles, Contacts: newMemContacts(),
+		Search: fs, Crawl: fc,
+		Clock:  fakeClock{t: testTime},
+		Limits: testCrawlLimits(),
+		Logger: logger, Metrics: metrics, Tracer: tracer,
+	}
+
+	id := mustEnqueue(t, r, "example")
+	if err := r.Handle(context.Background(), jobs.Job{ID: id, Payload: []byte(`{"query":"example"}`)}); err != nil {
+		t.Fatalf("таймаут обхода одного сайта не должен отменять задание: %v", err)
+	}
+	if _, err := profiles.FindByID(context.Background(), domain.CompanyID("a.example.com")); err != nil {
+		t.Fatalf("карточка из частичных страниц должна быть сохранена: %v", err)
 	}
 }

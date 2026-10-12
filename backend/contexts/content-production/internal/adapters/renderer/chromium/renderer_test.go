@@ -71,6 +71,9 @@ func portRequest(format domain.RenderFormat, body string) ports.RenderRequest {
 // непустой документ с сигнатурой PDF.
 func TestRenderPDFProducesRealPDF(t *testing.T) {
 	renderer := newRenderer(t)
+	if err := renderer.ReadinessCheck(context.Background()); err != nil {
+		t.Fatalf("ReadinessCheck: %v", err)
+	}
 	htmlDocument := composeDocumentHTML("ru", documentLayout{title: "Отчёт", body: "Отчёт\n\nПервый абзац."})
 
 	pdf, err := renderer.RenderPDF(context.Background(), htmlDocument)
@@ -84,6 +87,25 @@ func TestRenderPDFProducesRealPDF(t *testing.T) {
 		t.Fatalf("результат не начинается с %%PDF-: %q", pdf[:min(8, len(pdf))])
 	}
 	t.Logf("реальный HTML → PDF: %d байт", len(pdf))
+}
+
+func TestReadinessCheckHonorsCallerDeadline(t *testing.T) {
+	renderer, err := New(Config{ExecPath: "chromium-not-installed-anywhere", Timeout: time.Second})
+	if err != nil {
+		t.Fatalf("New: %v", err)
+	}
+	defer renderer.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	start := time.Now()
+	err = renderer.ReadinessCheck(ctx)
+	if !errors.Is(err, ports.ErrRenderUnavailable) {
+		t.Fatalf("ожидалась честная недоступность Chromium, получено %v", err)
+	}
+	if elapsed := time.Since(start); elapsed > 100*time.Millisecond {
+		t.Fatalf("проверка readiness не уважает отмену контекста: %s", elapsed)
+	}
 }
 
 // TestRenderPNGProducesRealImage проверяет реальный HTML → PNG: движок

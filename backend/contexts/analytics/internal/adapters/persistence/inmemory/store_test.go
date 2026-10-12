@@ -17,3 +17,13 @@ func TestProjectionStoreContract(t *testing.T) {
 		return inmemory.New()
 	})
 }
+
+// TestInsightStoreContract прогоняет общий contract suite порта InsightStore
+// против in-memory-реализации: тот же набор проверок проходит и против
+// PostgreSQL-реализации.
+func TestInsightStoreContract(t *testing.T) {
+	contracttest.RunInsightStoreContract(t, func(t *testing.T) ports.InsightStore {
+		t.Helper()
+		return inmemory.NewInsightStore()
+	})
+}

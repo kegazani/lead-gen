@@ -10,6 +10,7 @@ import (
 	"lead-gen/backend/contexts/lead-management/internal/ports"
 	"lead-gen/contracts/integration-platform/budget"
 	"lead-gen/contracts/integration-platform/llm"
+	"lead-gen/frontend/components"
 )
 
 // viewTestTime — фиксированный момент для тестов модели представления.
@@ -38,7 +39,8 @@ func TestFirecrawlStatusFrom(t *testing.T) {
 	if !s.Configured || !s.CreditsAvailable || s.Credits != "1234" {
 		t.Fatalf("статус кредитов: %+v", s)
 	}
-	if s.CreditsUpdated != "2026-01-02 10:00:00" {
+	// Время обновления локализовано общим слоем (web-frontend-architecture, 7.1).
+	if s.CreditsUpdated != "02.01.2026 10:00" {
 		t.Fatalf("время обновления = %q", s.CreditsUpdated)
 	}
 	if !s.TokensAvailable || s.Tokens != "42" {
@@ -155,16 +157,19 @@ func TestCardRowsComposition(t *testing.T) {
 		{ID: "hypo.example", Name: "Гипотеза"},
 		{ID: "none.example", Name: "Без оценки"},
 	}, byCompany)
-	fitsRows, otherRows := splitCardRows(rows)
+	fitsRows, hypoRows, unsuitableRows, unassessedRows := groupCardRows(rows)
 
 	if len(fitsRows) != 1 || fitsRows[0].ID != "fit.example" {
-		t.Fatalf("группа «Подходящие» = %+v", fitsRows)
+		t.Fatalf("группа «Подходит» = %+v", fitsRows)
 	}
-	if len(otherRows) != 2 {
-		t.Fatalf("вторая группа должна хранить гипотезу и отсутствие оценки: %+v", otherRows)
+	if len(hypoRows) != 1 || hypoRows[0].ID != "hypo.example" || hypoRows[0].VerdictLabel != "Гипотеза" {
+		t.Fatalf("группа «Гипотеза» = %+v", hypoRows)
 	}
-	if otherRows[0].VerdictLabel != "Гипотеза" || otherRows[1].VerdictLabel != "Не оценено" {
-		t.Fatalf("подписи второй группы = %+v", otherRows)
+	if len(unsuitableRows) != 0 {
+		t.Fatalf("группа «Не подходит» должна быть пуста: %+v", unsuitableRows)
+	}
+	if len(unassessedRows) != 1 || unassessedRows[0].ID != "none.example" || unassessedRows[0].VerdictLabel != "Не оценено" {
+		t.Fatalf("группа «Не оценено» = %+v", unassessedRows)
 	}
 }
 
@@ -182,19 +187,22 @@ func TestCardRowsWithLatestAssessments(t *testing.T) {
 		{ID: "unsuitable.example", Name: "Не подходит"},
 		{ID: "none.example", Name: "Без оценки"},
 	}, latest)
-	fitsRows, otherRows := splitCardRows(rows)
+	fitsRows, hypoRows, unsuitableRows, unassessedRows := groupCardRows(rows)
 
 	if len(fitsRows) != 1 || fitsRows[0].ID != "fit.example" {
-		t.Fatalf("группа «Подходящие» = %+v", fitsRows)
+		t.Fatalf("группа «Подходит» = %+v", fitsRows)
 	}
-	if len(otherRows) != 2 {
-		t.Fatalf("вторая группа должна хранить «Не подходит» и отсутствие оценки: %+v", otherRows)
+	if len(hypoRows) != 0 {
+		t.Fatalf("группа «Гипотеза» должна быть пуста: %+v", hypoRows)
 	}
-	if otherRows[0].VerdictLabel != "Не подходит" || otherRows[1].VerdictLabel != "Не оценено" {
-		t.Fatalf("подписи второй группы = %+v", otherRows)
+	if len(unsuitableRows) != 1 || unsuitableRows[0].VerdictLabel != "Не подходит" {
+		t.Fatalf("группа «Не подходит» = %+v", unsuitableRows)
 	}
-	if otherRows[1].VerdictClass != "unknown" {
-		t.Fatalf("класс неоценённой карточки = %q, ожидался unknown", otherRows[1].VerdictClass)
+	if len(unassessedRows) != 1 || unassessedRows[0].VerdictLabel != "Не оценено" {
+		t.Fatalf("группа «Не оценено» = %+v", unassessedRows)
+	}
+	if unassessedRows[0].VerdictClass != "unknown" {
+		t.Fatalf("класс неоценённой карточки = %q, ожидался unknown", unassessedRows[0].VerdictClass)
 	}
 }
 
@@ -296,10 +304,10 @@ func TestJobFrom(t *testing.T) {
 		},
 		Events: []ports.SearchJobEvent{{Type: ports.EventEnqueued, CreatedAt: viewTestTime}},
 	}
-	view := jobFrom(detail, []*domain.LeadAssessment{assessment}, map[string]app.CompanyEmail{
+	view := jobFrom(detail, []*domain.LeadAssessment{assessment}, true, map[string]app.CompanyEmail{
 		"a.example": {Email: "a@a.example"},
 		"b.example": {NoEmail: true},
-	})
+	}, components.ConsoleContext{})
 	if view.ID != "j1" || view.Query != "пример запроса" {
 		t.Fatalf("jobFrom = %+v", view)
 	}
@@ -337,11 +345,194 @@ func TestJobFrom(t *testing.T) {
 // заменяется выдуманной (lead-relevance).
 func TestJobFromWithoutAssessments(t *testing.T) {
 	detail := app.JobDetail{Job: ports.SearchJob{ID: "j1", Query: "запрос", ResultRef: []string{"a.example"}}}
-	view := jobFrom(detail, nil, nil)
+	view := jobFrom(detail, nil, true, nil, components.ConsoleContext{})
 	if view.Distribution.Total() != 0 || len(view.Fits) != 0 {
 		t.Fatalf("без оценок распределение должно быть пустым: %+v", view)
 	}
 	if view.Companies[0].VerdictLabel != "" {
 		t.Fatalf("компания подписана оценкой без контекста: %+v", view.Companies[0])
+	}
+}
+
+// TestSelectionSummaryFrom проверяет проекцию «Сводка отбора» над наблюдаемым
+// прогресом: цель/найдено/недобор, охват и воронка (design.md, Решение 1).
+func TestSelectionSummaryFrom(t *testing.T) {
+	job := ports.SearchJob{
+		ResultRef: []string{"a.example", "b.example", "c.example"},
+		Progress: &ports.SearchJobProgress{
+			TargetCompanies: 5, CompaniesFound: 3, PagesCrawled: 7,
+			PlannedTargets: 2, PlannedURLs: 1, ParseErrors: 1, AssessmentErrors: 1,
+			CreditsSpent: 2, CreditsAvailable: 8, TokensSpent: 100, StopReason: "цели исчерпаны",
+		},
+	}
+	s := selectionSummaryFrom(job, verdictDistribution{Fits: 1, Hypothesis: 1, Unsuitable: 1}, true, 2, true)
+	if !s.ProgressKnown || !s.TargetSet || s.Target != 5 || s.Found != 3 || s.Shortfall != 2 {
+		t.Fatalf("цель/найдено/недобор = %+v", s)
+	}
+	if s.Pages != 7 || s.PlannedTargets != 2 || s.PlannedURLs != 1 {
+		t.Fatalf("охват = %+v", s)
+	}
+	if s.ParseErrors != 1 || s.AssessmentErrors != 1 || !s.CreditsKnown || s.StopReason != "цели исчерпаны" {
+		t.Fatalf("охват ошибок/кредитов/причины = %+v", s)
+	}
+	if len(s.Funnel) != 9 {
+		t.Fatalf("воронка = %+v", s.Funnel)
+	}
+	if s.Funnel[0].Label != "Найдено" || s.Funnel[0].Count != 3 || !s.Funnel[0].Known {
+		t.Fatalf("первый этап воронки = %+v", s.Funnel[0])
+	}
+	if s.Funnel[1].Label != "Email проверен" || s.Funnel[1].Count != 2 || !s.Funnel[1].Known {
+		t.Fatalf("этап email = %+v", s.Funnel[1])
+	}
+}
+
+// TestSelectionSummaryNoTarget проверяет, что при незаданной цели недобор не
+// показывается и не подменяется нулём (design.md, Решение 5).
+func TestSelectionSummaryNoTarget(t *testing.T) {
+	job := ports.SearchJob{
+		ResultRef: []string{"a.example"},
+		Progress:  &ports.SearchJobProgress{CompaniesFound: 1, PagesCrawled: 1},
+	}
+	s := selectionSummaryFrom(job, verdictDistribution{}, true, 1, true)
+	if s.TargetSet || s.Shortfall != 0 || s.Target != 0 {
+		t.Fatalf("при незаданной цели недобор не рассчитывается: %+v", s)
+	}
+}
+
+// TestFunnelUnavailableStages проверяет, что недоступный этап воронки помечается
+// недоступным, а не выдуманным нулём: этапы писем/отправки/ответа на уровне
+// задания недоступны, а недоступное хранилище оценок делает этапы оценок
+// недоступными.
+func TestFunnelUnavailableStages(t *testing.T) {
+	points := funnelPoints(2, false, 0, verdictDistribution{}, false)
+	byLabel := map[string]funnelPoint{}
+	for _, p := range points {
+		byLabel[p.Label] = p
+	}
+	for _, label := range []string{"Email проверен", "Оценено", "Подходит", "Гипотеза", "Не подходит", "Писем", "Отправлено", "Ответили"} {
+		if point, ok := byLabel[label]; !ok || point.Known {
+			t.Fatalf("этап %q должен быть недоступен: %+v", label, point)
+		}
+	}
+	if !byLabel["Найдено"].Known || byLabel["Найдено"].Count != 2 {
+		t.Fatalf("этап «Найдено» должен быть доступен: %+v", byLabel["Найдено"])
+	}
+}
+
+// TestTargetDiagnosis проверяет приоритет наблюдаемых причин недобора: причина
+// остановки → счётчики ошибок → распределение вердиктов → остаток без домысла.
+func TestTargetDiagnosis(t *testing.T) {
+	cases := []struct {
+		name       string
+		progress   *ports.SearchJobProgress
+		dist       verdictDistribution
+		wantShowed bool
+		wantReason string
+	}{
+		{"нет прогресса", nil, verdictDistribution{}, false, ""},
+		{"цель не задана", &ports.SearchJobProgress{CompaniesFound: 3}, verdictDistribution{}, false, ""},
+		{"цель достигнута", &ports.SearchJobProgress{TargetCompanies: 10, CompaniesFound: 10, TargetReached: true}, verdictDistribution{}, false, ""},
+		{"причина остановки", &ports.SearchJobProgress{TargetCompanies: 10, CompaniesFound: 4, StopReason: "бюджет исчерпан"}, verdictDistribution{}, true, "бюджет исчерпан"},
+		{"ошибки разбора", &ports.SearchJobProgress{TargetCompanies: 10, CompaniesFound: 4, ParseErrors: 2}, verdictDistribution{}, true, "ошибок разбора 2"},
+		{"ошибки оценки", &ports.SearchJobProgress{TargetCompanies: 10, CompaniesFound: 4, AssessmentErrors: 1}, verdictDistribution{}, true, "ошибок оценки 1"},
+		{"отсеяно оценкой", &ports.SearchJobProgress{TargetCompanies: 10, CompaniesFound: 4}, verdictDistribution{Hypothesis: 4}, true, "отсеяны оценкой"},
+		{"причина не определена", &ports.SearchJobProgress{TargetCompanies: 10, CompaniesFound: 4}, verdictDistribution{}, true, ""},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			d := targetDiagnosisFrom(tc.progress, tc.dist)
+			if d.Showed != tc.wantShowed {
+				t.Fatalf("Showed = %v, ожидалось %v", d.Showed, tc.wantShowed)
+			}
+			if tc.wantReason != "" && !strings.Contains(d.Reason, tc.wantReason) {
+				t.Fatalf("причина = %q, ожидалась с %q", d.Reason, tc.wantReason)
+			}
+			if tc.wantShowed && tc.wantReason == "" && d.Reason != "" {
+				t.Fatalf("причина не определена, но выведена: %q", d.Reason)
+			}
+		})
+	}
+}
+
+// TestRejectionCategories проверяет группировку причин отсева по свидетельствам
+// задания: «Не подходит» — по Mismatch, «Гипотеза» — по Missing, «нет email» — по
+// контактам, «ошибки оценки» — по счётчику; каждой группе дан переход к списку.
+func TestRejectionCategories(t *testing.T) {
+	unsuitable := mustAssessment(t, "j", "u.example", domain.VerdictUnsuitable, domain.SignalProfile, []domain.Evidence{{
+		Criterion: "к", Fact: "ф", SourceURL: "https://u.example/s", Reasoning: "о", SignalKind: domain.SignalProfile, Mismatch: "нет собственного отдела продаж",
+	}})
+	hypothesis := mustAssessment(t, "j", "h.example", domain.VerdictHypothesis, domain.SignalProfile, []domain.Evidence{{
+		Criterion: "к", Fact: "ф", SourceURL: "https://h.example/s", Reasoning: "о", SignalKind: domain.SignalProfile, Missing: "прямое заявление",
+	}})
+	byCompany := assessmentsByCompany([]*domain.LeadAssessment{unsuitable, hypothesis})
+	job := ports.SearchJob{ID: "j", ResultRef: []string{"u.example", "h.example", "m.example"}}
+	emails := map[string]app.CompanyEmail{
+		"u.example": {Email: "a@u.example"},
+		"h.example": {NoEmail: true},
+		"m.example": {Email: "a@m.example"},
+	}
+	categories := rejectionCategories(job, byCompany, emails, 2, components.ConsoleContext{})
+	got := map[string]rejectionCategory{}
+	for _, c := range categories {
+		got[c.Label] = c
+	}
+	if c, ok := got["Не подходит"]; !ok || c.Count != 1 || len(c.Groups) != 1 || c.Groups[0].Label != "нет собственного отдела продаж" {
+		t.Fatalf("группа «Не подходит» = %+v", got["Не подходит"])
+	}
+	if c, ok := got["Гипотеза"]; !ok || c.Count != 1 || len(c.Groups) != 1 || c.Groups[0].Label != "прямое заявление" {
+		t.Fatalf("группа «Гипотеза» = %+v", got["Гипотеза"])
+	}
+	if c, ok := got["нет email / email недоступен"]; !ok || c.Count != 1 {
+		t.Fatalf("группа «нет email» = %+v", got["нет email / email недоступен"])
+	}
+	if c, ok := got["ошибки оценки"]; !ok || c.Count != 2 {
+		t.Fatalf("группа «ошибки оценки» = %+v", got["ошибки оценки"])
+	}
+	if !strings.Contains(got["Не подходит"].Href, "reason=mismatch") {
+		t.Fatalf("у группы нет перехода к отфильтрованному списку: %q", got["Не подходит"].Href)
+	}
+}
+
+// TestRejectionCategoriesNoInventedReason проверяет, что компании без
+// свидетельства причина не назначается: пустая группа не создаётся.
+func TestRejectionCategoriesNoInventedReason(t *testing.T) {
+	fits := mustAssessment(t, "j", "fit.example", domain.VerdictFits, domain.SignalDirect, []domain.Evidence{{
+		Criterion: "к", Fact: "ф", SourceURL: "https://fit.example/s", Reasoning: "о", SignalKind: domain.SignalDirect,
+	}})
+	byCompany := assessmentsByCompany([]*domain.LeadAssessment{fits})
+	job := ports.SearchJob{ID: "j", ResultRef: []string{"fit.example"}}
+	categories := rejectionCategories(job, byCompany, map[string]app.CompanyEmail{"fit.example": {Email: "a@fit.example"}}, 0, components.ConsoleContext{})
+	if len(categories) != 0 {
+		t.Fatalf("выдуманные причины отсева: %+v", categories)
+	}
+}
+
+// TestFilterCardRows проверяет фильтр по причине отсева: карточка без
+// соответствующего свидетельства/счётчика в выборку не попадает, а снятие
+// фильтра возвращает полный список.
+func TestFilterCardRows(t *testing.T) {
+	rows := []cardRow{
+		{ID: "u", Group: cardGroupUnsuitable, Mismatches: []string{"нет отдела продаж"}},
+		{ID: "h", Group: cardGroupHypothesis, Missings: []string{"нет заявления"}},
+		{ID: "f", Group: cardGroupFits, NoEmail: true},
+		{ID: "x", Group: cardGroupUnassessed},
+	}
+	if got := filterCardRows(rows, "", ""); len(got) != 4 {
+		t.Fatalf("без фильтра список должен быть полным: %+v", got)
+	}
+	if got := filterCardRows(rows, filterReasonMismatch, "нет отдела продаж"); len(got) != 1 || got[0].ID != "u" {
+		t.Fatalf("фильтр по несоответствию = %+v", got)
+	}
+	if got := filterCardRows(rows, filterReasonMismatch, "другое"); len(got) != 0 {
+		t.Fatalf("чужая формулировка не должна выбирать карточку: %+v", got)
+	}
+	if got := filterCardRows(rows, filterReasonMissing, ""); len(got) != 1 || got[0].ID != "h" {
+		t.Fatalf("фильтр по недостающему свидетельству = %+v", got)
+	}
+	if got := filterCardRows(rows, filterReasonNoEmail, ""); len(got) != 1 || got[0].ID != "f" {
+		t.Fatalf("фильтр по отсутствию email = %+v", got)
+	}
+	if got := filterCardRows(rows, filterReasonUnassessed, ""); len(got) != 1 || got[0].ID != "x" {
+		t.Fatalf("фильтр по неоценённым = %+v", got)
 	}
 }

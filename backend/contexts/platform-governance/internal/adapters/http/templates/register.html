@@ -1,13 +1,32 @@
 {{- define "content" -}}
-<section class="register">
-  <h1>Регистрация клиента</h1>
-  {{- with .View.Notice }}
-  <p class="notice" role="status">{{.}}</p>
-  {{- end }}
-  <form method="post" action="/register">
-    {{ template "field" .View.CompanyField }}
-    {{ template "field" .View.DescriptionField }}
-    <button type="submit">Зарегистрироваться</button>
-  </form>
+<section class="register auth-shell">
+  <div class="auth-card auth-card--wide">
+    <h1>{{ text "portal.register.title" }}</h1>
+    {{ template "tabs" .View.AuthTabs }}
+    {{- with .View.Notice }}
+    <p class="notice" role="status">{{.}}</p>
+    {{- end }}
+    <form method="post" action="/register" class="auth-form">
+      <fieldset class="form-section">
+        <legend>{{ text "portal.register.section.company" }}</legend>
+        {{ template "field" .View.CompanyField }}
+        {{ template "field" .View.DescriptionField }}
+      </fieldset>
+      <fieldset class="form-section">
+        <legend>{{ text "portal.register.section.account" }}</legend>
+        {{ template "field" .View.EmailField }}
+        {{ template "field" .View.PasswordField }}
+      </fieldset>
+      <fieldset class="form-section">
+        <legend>{{ text "portal.register.section.legal" }}</legend>
+        {{ template "field" .View.INNField }}
+        {{ template "field" .View.CompanyEmailField }}
+        {{ template "field" .View.WebsiteField }}
+        {{ template "field" .View.LegalDataField }}
+      </fieldset>
+      <button type="submit">{{ text "portal.register.submit" }}</button>
+    </form>
+    <p class="auth-cta">{{ text "portal.register.have_account" }} <a href="/login">{{ text "portal.login.submit" }}</a></p>
+  </div>
 </section>
 {{- end -}}

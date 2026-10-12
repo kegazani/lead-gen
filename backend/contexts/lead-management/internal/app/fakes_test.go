@@ -240,31 +240,39 @@ func (f *fakeForum) SearchSignals(_ context.Context, _ forum.Query) ([]forum.Sig
 	return f.signals, nil
 }
 
-// memProfiles — in-memory репозиторий карточек.
+// memProfiles — in-memory репозиторий карточек с областью тенанта: повторяет
+// контракт порта (чтение и запись скоупятся активным тенантом из контекста).
 type memProfiles struct {
-	byID map[domain.CompanyID]*domain.Company
+	byID   map[domain.CompanyID]*domain.Company
+	tenant map[domain.CompanyID]string
 }
 
 func newMemProfiles() *memProfiles {
-	return &memProfiles{byID: make(map[domain.CompanyID]*domain.Company)}
+	return &memProfiles{
+		byID:   make(map[domain.CompanyID]*domain.Company),
+		tenant: make(map[domain.CompanyID]string),
+	}
 }
 
-func (m *memProfiles) Save(_ context.Context, c *domain.Company) error {
+func (m *memProfiles) Save(ctx context.Context, c *domain.Company) error {
 	m.byID[c.ID()] = c
+	m.tenant[c.ID()] = ports.TenantFrom(ctx)
 	return nil
 }
 
-func (m *memProfiles) FindByID(_ context.Context, id domain.CompanyID) (*domain.Company, error) {
-	if c, ok := m.byID[id]; ok {
-		return c, nil
+func (m *memProfiles) FindByID(ctx context.Context, id domain.CompanyID) (*domain.Company, error) {
+	c, ok := m.byID[id]
+	if !ok || m.tenant[id] != ports.TenantFrom(ctx) {
+		return nil, ports.ErrProfileNotFound
 	}
-	return nil, ports.ErrProfileNotFound
+	return c, nil
 }
 
-func (m *memProfiles) ListVisible(_ context.Context, limit int) ([]*domain.Company, error) {
+func (m *memProfiles) ListVisible(ctx context.Context, limit int) ([]*domain.Company, error) {
+	tenant := ports.TenantFrom(ctx)
 	var out []*domain.Company
-	for _, c := range m.byID {
-		if c.Hidden() {
+	for id, c := range m.byID {
+		if c.Hidden() || m.tenant[id] != tenant {
 			continue
 		}
 		out = append(out, c)
@@ -276,10 +284,11 @@ func (m *memProfiles) ListVisible(_ context.Context, limit int) ([]*domain.Compa
 	return out, nil
 }
 
-func (m *memProfiles) ListSnoozed(_ context.Context) ([]*domain.Company, error) {
+func (m *memProfiles) ListSnoozed(ctx context.Context) ([]*domain.Company, error) {
+	tenant := ports.TenantFrom(ctx)
 	var out []*domain.Company
-	for _, c := range m.byID {
-		if c.Hidden() {
+	for id, c := range m.byID {
+		if c.Hidden() || m.tenant[id] != tenant {
 			continue
 		}
 		if c.Status().SnoozeUntil != nil {
@@ -290,11 +299,12 @@ func (m *memProfiles) ListSnoozed(_ context.Context) ([]*domain.Company, error) 
 	return out, nil
 }
 
-func (m *memProfiles) Delete(_ context.Context, id domain.CompanyID) error {
-	if _, ok := m.byID[id]; !ok {
+func (m *memProfiles) Delete(ctx context.Context, id domain.CompanyID) error {
+	if _, ok := m.byID[id]; !ok || m.tenant[id] != ports.TenantFrom(ctx) {
 		return ports.ErrProfileNotFound
 	}
 	delete(m.byID, id)
+	delete(m.tenant, id)
 	return nil
 }
 
@@ -575,6 +585,16 @@ func (m *memJobs) ListSearchJobs(_ context.Context, limit int) ([]ports.SearchJo
 		out = out[:limit]
 	}
 	return out, nil
+}
+
+func (m *memJobs) GetSearchJob(_ context.Context, id string) (ports.SearchJob, error) {
+	job, ok := m.byID[id]
+	if !ok {
+		return ports.SearchJob{}, fmt.Errorf("memory: %w: %s", jobs.ErrNotFound, id)
+	}
+	copy := *job
+	copy.ResultRef = append([]string(nil), job.ResultRef...)
+	return copy, nil
 }
 
 // jobs.Store

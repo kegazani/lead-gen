@@ -69,7 +69,7 @@ type e2eFixture struct {
 // nil, а для сценариев без проверок используется осознанная заглушка.
 func newE2EFixture(t *testing.T) *e2eFixture {
 	t.Helper()
-	return newE2EFixtureWithRisk(t, composition.NoUpstreamRiskChecks)
+	return newE2EFixtureWithRisk(t, noRiskFacts)
 }
 
 // newE2EFixtureWithRisk делает то же, но с инъецированным предикатом признаков

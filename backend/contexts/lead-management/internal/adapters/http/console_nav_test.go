@@ -12,6 +12,8 @@ import (
 // общей навигации консоли. Вход один: разделы «Заявки», «Исполнение», «Лиды» и
 // «Отчёты» доступны с той же сессией, а раздел текущего сервиса («Лиды») остаётся
 // относительным, тогда как разделы других сервисов ведут по их базовым адресам.
+// Ссылки несут контекст активного тенанта и оператора (задача 3.2): выбранный
+// тенант не теряется при переходе между консолями разных сервисов.
 func TestConsoleNavOpensLeadsDashboardAndJournal(t *testing.T) {
 	env := newTestEnv()
 	seedCompany(t, env.profiles, "example.com", "Пример Компании", "Описание компании")
@@ -29,10 +31,10 @@ func TestConsoleNavOpensLeadsDashboardAndJournal(t *testing.T) {
 	}
 	html := readBody(t, home)
 	for _, want := range []string{
-		`href="https://requests.example.test/validation">Заявки`,
-		`href="https://requests.example.test/approvals">Исполнение`,
-		`href="/" class="is-active" aria-current="page">Лиды`,
-		`href="https://reports.example.test/dashboard">Отчёты`,
+		`href="https://requests.example.test/validation?actor=operator&amp;tenant_id=tenant-config">Заявки`,
+		`href="https://requests.example.test/approvals?actor=operator&amp;tenant_id=tenant-config">Исполнение`,
+		`href="/?actor=operator&amp;tenant_id=tenant-config" class="is-active" aria-current="page">Лиды`,
+		`href="https://reports.example.test/dashboard?actor=operator&amp;tenant_id=tenant-config">Отчёты`,
 		"Журнал заданий",
 	} {
 		if !strings.Contains(html, want) {

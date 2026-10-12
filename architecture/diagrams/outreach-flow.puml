@@ -7,6 +7,7 @@ participant "data-governance" as Governance
 participant "lead-management" as Leads
 participant "audience" as Audience
 participant "content-production" as Content
+participant "request-fulfillment" as Requests
 participant "outreach-orchestration" as Outreach
 participant "message-delivery" as Delivery
 participant "engagement-observation" as Engagement
@@ -20,7 +21,10 @@ Audience --> Outreach : audience-snapshot
 Content --> Outreach : content-version
 Outreach -> Governance : проверить processing-authority
 Governance --> Outreach : authority decision
-Outreach -> Outreach : создать action-draft
+Requests -> Content : content-request
+Content --> Requests : material (тема + тело)
+Requests -> Outreach : outreach-handoff [request_id]
+Outreach -> Outreach : создать кампанию заявки и action-draft
 Outreach -> Outreach : зафиксировать operator-decision
 opt выбран канал «звонок»
   Outreach -> Outreach : запланировать call (call-scheduled)
@@ -43,11 +47,11 @@ alt действие одобрено
 else действие отклонено
   Outreach --> Analytics : analytics-event
 end
-
 ' CTX:data-governance
 ' CTX:lead-management
 ' CTX:audience
 ' CTX:content-production
+' CTX:request-fulfillment
 ' CTX:outreach-orchestration
 ' CTX:message-delivery
 ' CTX:engagement-observation

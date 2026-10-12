@@ -26,6 +26,13 @@ multi-module workspace `lead-gen`. Читает Go-импорты через `go
    `lead-gen/contracts/<owner>`. Чужой `lead-gen/contexts/<owner>/internal/...`,
    чужой корневой пакет контекста и чужое хранилище
    `.../internal/adapters/persistence/**` запрещены без исключений.
+5a. HTTP-адаптер консоли (`lead-gen/backend/contexts/<ctx>/internal/adapters/http/**`)
+   не импортирует `internal/domain`, `internal/app` и прочие внутренние слои чужого
+   контекста: экран принадлежит контексту-владельцу агрегата и добирает чужие данные
+   только через опубликованный `lead-gen/contracts/<owner>` (design.md,
+   Решение 3). Свой `domain`/`app`/`ports`, чужой контракт и `platform`
+   остаются допустимыми — правило касается только чужого контекста и только
+   пакета `internal/adapters/http`.
 6. `lead-gen/frontend/public/...` не импортирует `lead-gen/contexts/...` и
    адаптеры хранилищ (любой путь `lead-gen/.../adapters/persistence`).
 7. `lead-gen/cmd/...` — composition root, границами не ограничен.

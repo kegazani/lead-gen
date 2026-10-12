@@ -1,0 +1,4 @@
+schema: spec-driven
+created: 2026-10-05
+goal: Ограничить обход Firecrawl по времени, добавить backoff опроса и
+  нормализованную ошибку таймаута

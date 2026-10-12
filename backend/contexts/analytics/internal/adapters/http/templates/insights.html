@@ -1,0 +1,117 @@
+{{- define "content" -}}
+<section class="insights" data-tenant="{{ .View.TenantID }}">
+  {{ template "live" .View.Live }}
+  <h1>{{ text "analytics.insights.title" }}</h1>
+  <p class="insights-updated" role="status" data-updated="{{ .View.UpdatedAtLabel }}">
+    {{ text "analytics.insights.updated" }} {{ .View.UpdatedAtLabel }}
+    {{- if .View.Stale }} — {{ .View.StaleReason }}{{ end }}
+  </p>
+
+  <form class="insights-filters" method="get" action="/insights">
+    <input type="hidden" name="tenant_id" value="{{ .View.TenantID }}">
+    <label>{{ text "analytics.insights.filter.job" }} <input type="text" name="job_id" value="{{ .View.Filters.JobID }}"></label>
+    <label>{{ text "analytics.insights.filter.source" }} <input type="text" name="source" value="{{ .View.Filters.Source }}"></label>
+    <label>{{ text "analytics.insights.filter.industry" }} <input type="text" name="industry" value="{{ .View.Filters.Industry }}"></label>
+    <label>{{ text "analytics.insights.filter.from" }} <input type="date" name="from" value="{{ .View.Filters.From }}"></label>
+    <label>{{ text "analytics.insights.filter.to" }} <input type="date" name="to" value="{{ .View.Filters.To }}"></label>
+    <button type="submit">{{ text "analytics.insights.filter.apply" }}</button>
+  </form>
+
+  {{- if not .View.Available }}
+  <p class="insights-unavailable" role="status">{{ text "analytics.insights.unavailable" }} {{ .View.Reason }}</p>
+  {{- else if not .View.Visible }}
+  <p class="insights-hidden" role="status">{{ .View.Reason }}</p>
+  {{- else }}
+
+  <p class="insights-watermark">
+    {{ text "analytics.insights.watermark" }} <span data-metric="watermark">{{ .View.Data.Watermark }}</span>
+    · {{ text "analytics.insights.formula" }} <span data-metric="formula">{{ .View.Data.FormulaVersion }}</span>
+  </p>
+
+  <section class="insights-verdicts" aria-label="{{ text "analytics.insights.verdicts.aria" }}">
+    <h2>{{ text "analytics.insights.verdicts.title" }}</h2>
+    <dl class="verdicts">
+      <div><dt>{{ text "analytics.insights.verdict.fits" }}</dt><dd data-verdict="fits">{{ .View.Data.Verdicts.Fits }}</dd></div>
+      <div><dt>{{ text "analytics.insights.verdict.hypothesis" }}</dt><dd data-verdict="hypothesis">{{ .View.Data.Verdicts.Hypothesis }}</dd></div>
+      <div><dt>{{ text "analytics.insights.verdict.unsuitable" }}</dt><dd data-verdict="unsuitable">{{ .View.Data.Verdicts.Unsuitable }}</dd></div>
+      <div><dt>{{ text "analytics.insights.verdict.extraction" }}</dt><dd data-verdict="extraction_error">{{ .View.Data.Verdicts.ExtractionErrors }}</dd></div>
+    </dl>
+  </section>
+
+  <section class="insights-reasons" aria-label="{{ text "analytics.insights.reasons.aria" }}">
+    <h2>{{ text "analytics.insights.reasons.title" }}</h2>
+    <ul>
+      {{- range .View.Data.Reasons }}
+      <li><span class="reasons-label">{{ .Label }}</span><span class="reasons-value" data-reason="{{ .Category }}">{{ .Count }}</span></li>
+      {{- else }}
+      <li>{{ text "analytics.insights.no_data" }}</li>
+      {{- end }}
+    </ul>
+  </section>
+
+  <section class="insights-slices">
+    <div class="insights-by-job">
+      <h3>{{ text "analytics.insights.by_job" }}</h3>
+      {{- range .View.Data.ByJob }}
+      <div class="slice" data-slice="{{ .Key }}">
+        <span class="slice-label">{{ .Label }}</span>
+        <span class="slice-total">{{ .Total }}</span>
+      </div>
+      {{- else }}
+      <p>{{ text "analytics.insights.no_data" }}</p>
+      {{- end }}
+    </div>
+    <div class="insights-by-source">
+      <h3>{{ text "analytics.insights.by_source" }}</h3>
+      {{- range .View.Data.BySource }}
+      <div class="slice" data-slice="{{ .Key }}">
+        <span class="slice-label">{{ .Label }}</span>
+        <span class="slice-total">{{ .Total }}</span>
+      </div>
+      {{- else }}
+      <p>{{ text "analytics.insights.no_data" }}</p>
+      {{- end }}
+    </div>
+    <div class="insights-by-industry">
+      <h3>{{ text "analytics.insights.by_industry" }}</h3>
+      {{- range .View.Data.ByIndustry }}
+      <div class="slice" data-slice="{{ .Key }}">
+        <span class="slice-label">{{ .Label }}</span>
+        <span class="slice-total">{{ .Total }}</span>
+      </div>
+      {{- else }}
+      <p>{{ text "analytics.insights.no_data" }}</p>
+      {{- end }}
+    </div>
+    <div class="insights-by-period">
+      <h3>{{ text "analytics.insights.by_period" }}</h3>
+      {{- range .View.Data.ByPeriod }}
+      <div class="slice" data-slice="{{ .Key }}">
+        <span class="slice-label">{{ .Label }}</span>
+        <span class="slice-total">{{ .Total }}</span>
+      </div>
+      {{- else }}
+      <p>{{ text "analytics.insights.no_data" }}</p>
+      {{- end }}
+    </div>
+  </section>
+
+  <section class="insights-recommendations" aria-label="{{ text "analytics.insights.recommendations.aria" }}">
+    <h2>{{ text "analytics.insights.recommendations.title" }}</h2>
+    <p class="insights-note">{{ text "analytics.insights.recommendations.note" }}</p>
+    <ul>
+      {{- range .View.Data.Recommendations }}
+      <li class="recommendation" data-scope="{{ .ScopeKind }}" data-scope-key="{{ .ScopeKey }}" data-reason="{{ .Reason }}">
+        <span class="recommendation-scope">{{ .ScopeLabel }}</span>
+        <span class="recommendation-action">{{ .Action }}</span>
+        <span class="recommendation-basis">{{ .Basis }}</span>
+      </li>
+      {{- else }}
+      <li class="recommendation-empty">{{ .View.Data.RecommendationReason }}</li>
+      {{- end }}
+    </ul>
+  </section>
+
+  {{- end }}
+</section>
+{{- end -}}

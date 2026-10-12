@@ -1,0 +1,118 @@
+{{- define "content" -}}
+<section class="cockpit" data-cockpit>
+  <h1>{{ text "cockpit.title.operations" }}</h1>
+  {{- with .View.Numbers.Notice }}
+  <p class="notice" role="status">{{.}}</p>
+  {{- end }}
+  {{- if .View.Numbers.Unavailable }}
+  <p class="notice" role="status">{{ text "cockpit.numbers.unavailable" }}</p>
+  {{- else if .View.Numbers.Empty }}
+  <p class="empty">{{ text "cockpit.numbers.empty" }}</p>
+  {{- else }}
+  {{- if .View.Numbers.HasNumbers }}
+  <table class="table">
+    <thead>
+      <tr>
+        <th>{{ text "cockpit.col.category" }}</th>
+        {{- range .View.Numbers.Total }}
+        <th>{{ .Label }}</th>
+        {{- end }}
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>{{ text "cockpit.col.total" }}</td>
+        {{- range .View.Numbers.Total }}
+        <td><a class="status status-{{ .Class }}" href="{{ .URL }}"><span aria-hidden="true">{{ .Icon }}</span> {{ .Count }}</a></td>
+        {{- end }}
+      </tr>
+      {{- range .View.Numbers.Clients }}
+      <tr>
+        <td>{{ .ClientID }}</td>
+        {{- range .Cells }}
+        <td><a class="status status-{{ .Class }}" href="{{ .URL }}"><span aria-hidden="true">{{ .Icon }}</span> {{ .Count }}</a></td>
+        {{- end }}
+      </tr>
+      {{- end }}
+    </tbody>
+  </table>
+  {{- end }}
+  {{- if .View.Numbers.HasPeriods }}
+  <h2>{{ text "cockpit.numbers.periods" }}</h2>
+  <table class="table">
+    <thead>
+      <tr>
+        <th>{{ text "cockpit.col.date" }}</th>
+        <th>{{ text "cockpit.category.found" }}</th>
+        <th>{{ text "cockpit.category.processed" }}</th>
+        <th>{{ text "cockpit.category.rejected" }}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{- range .View.Numbers.Periods }}
+      <tr>
+        <td>{{ .Date }}</td>
+        <td>{{ .Found }}</td>
+        <td>{{ .Processed }}</td>
+        <td>{{ .Rejected }}</td>
+      </tr>
+      {{- end }}
+    </tbody>
+  </table>
+  {{- end }}
+  {{- end }}
+
+  <h2>{{ text "cockpit.requests.heading" }}</h2>
+  {{- if .View.Requests.Unavailable }}
+  <p class="notice" role="status">{{ text "cockpit.requests.unavailable" }}</p>
+  {{- else if .View.Requests.Empty }}
+  <p class="empty">{{ text "cockpit.requests.empty" }}</p>
+  {{- else }}
+  <table class="table">
+    <thead>
+      <tr>
+        <th>{{ text "cockpit.requests.col.id" }}</th>
+        <th>{{ text "cockpit.requests.col.status" }}</th>
+        <th>{{ text "cockpit.requests.col.phase" }}</th>
+        <th>{{ text "cockpit.requests.col.workflow" }}</th>
+        <th>{{ text "cockpit.requests.col.counts" }}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{- range .View.Requests.Rows }}
+      <tr>
+        <td>{{ .RequestID }}</td>
+        <td>{{ .DomainStatus }}</td>
+        <td>{{ if eq .Phase "unavailable" }}{{ text "cockpit.requests.execution_unavailable" }}{{ else if .Phase }}{{ .Phase }}{{ else }}—{{ end }}</td>
+        <td>{{ if .WorkflowID }}{{ .WorkflowID }} / {{ .RunID }}{{ else }}—{{ end }}</td>
+        <td>{{ if .ExecutionFound }}{{ .Found }} / {{ .Target }}{{ else }}—{{ end }}</td>
+      </tr>
+      {{- end }}
+    </tbody>
+  </table>
+  {{- end }}
+
+  <h2>{{ text "cockpit.panels.heading" }}</h2>
+  <div class="cockpit-panels">
+    {{- range .View.Panels.Panels }}
+    <section class="cockpit-panel" data-panel-id="{{ .ID }}">
+      <h3>{{ .Title }}</h3>
+      <p class="hint">{{ text "cockpit.panel.source" }}: {{ .SourceLabel }} · {{ text "cockpit.panel.refresh" }}: {{ .RefreshLabel }}</p>
+      {{- if .Hidden }}
+      <p class="empty">{{ .ReasonLabel }}</p>
+      {{- else if .Available }}
+      {{ .Body }}
+      {{- else }}
+      <p class="notice" role="status">{{ .ReasonLabel }}</p>
+      {{- end }}
+      <form method="post" action="{{ .ToggleURL }}" class="inline-form">
+        <input type="hidden" name="csrf" value="{{ $.View.CSRF }}">
+        <input type="hidden" name="panel" value="{{ .ID }}">
+        <input type="hidden" name="hidden" value="{{ if .Hidden }}false{{ else }}true{{ end }}">
+        <button type="submit">{{ .ToggleLabel }}</button>
+      </form>
+    </section>
+    {{- end }}
+  </div>
+</section>
+{{- end -}}

@@ -22,6 +22,15 @@ func currentSession(r *http.Request) *consoleauth.Session {
 	return consoleauth.Current(r.Context())
 }
 
+// consoleActor возвращает логин текущего оператора из сессии для переноса в
+// ссылки навигации. Пустой актор без сессии честнее выдуманного значения.
+func consoleActor(r *http.Request) string {
+	if sess := currentSession(r); sess != nil {
+		return sess.Username()
+	}
+	return ""
+}
+
 // csrfToken возвращает CSRF-токен сессии (пусто, если сессии нет).
 func csrfToken(r *http.Request) string {
 	return consoleauth.CSRF(r)

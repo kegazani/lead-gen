@@ -13,6 +13,14 @@
 (function () {
   'use strict';
 
+  // adminBasePath возвращает внешний префикс пути консоли под единым origin
+  // (admin-proxy). Префикс вставляет сервер в <meta name="admin-base-path">,
+  // чтобы адрес потока ассистента не дублировался в скрипте.
+  function adminBasePath() {
+    var meta = document.querySelector('meta[name="admin-base-path"]');
+    return meta && meta.content ? meta.content : '';
+  }
+
   var form = document.querySelector('form[data-assistant-form]');
   if (!form || typeof window.fetch !== 'function' || typeof window.ReadableStream !== 'function') {
     return;
@@ -235,7 +243,7 @@
     body.set('plan', planField.value);
     body.set('csrf', csrfField.value);
 
-    fetch('/assistant/stream', {
+    fetch(adminBasePath() + '/assistant/stream', {
       method: 'POST',
       credentials: 'same-origin',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },

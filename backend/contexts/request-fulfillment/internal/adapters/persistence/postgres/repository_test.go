@@ -6,7 +6,9 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"lead-gen/backend/contexts/request-fulfillment/internal/adapters/persistence/postgres"
@@ -23,6 +25,7 @@ import (
 // Примеры запуска: цель `make test-postgres` поднимает одноразовую базу сама;
 // при ручном запуске задайте LEADGEN_POSTGRES_TEST_DSN на свою базу.
 const dsnEnv = "LEADGEN_POSTGRES_TEST_DSN"
+const allowSchemaResetEnv = "LEADGEN_POSTGRES_TEST_ALLOW_REQUEST_SCHEMA_RESET"
 
 // migrationsDir — каталог SQL-миграций сервиса относительно каталога теста
 // (internal/adapters/persistence/postgres). Зона данных у контекста одна — green.
@@ -36,9 +39,28 @@ var (
 
 // TestMain освобождает пул соединений после прогона.
 func TestMain(m *testing.M) {
+	var lockConn *pgx.Conn
+	if os.Getenv(dsnEnv) != "" {
+		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+		defer cancel()
+		var err error
+		lockConn, err = pgx.Connect(ctx, os.Getenv(dsnEnv))
+		if err != nil {
+			panic("подключение для блокировки request PostgreSQL suite: " + err.Error())
+		}
+		if _, err := lockConn.Exec(ctx, `SELECT pg_advisory_lock(hashtextextended('leadgen-request-fulfillment-postgres-suite', 0))`); err != nil {
+			panic("блокировка request PostgreSQL suite: " + err.Error())
+		}
+	}
 	code := m.Run()
 	if pool != nil {
 		pool.Close()
+	}
+	if lockConn != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		_, _ = lockConn.Exec(ctx, `SELECT pg_advisory_unlock(hashtextextended('leadgen-request-fulfillment-postgres-suite', 0))`)
+		cancel()
+		lockConn.Close(context.Background())
 	}
 	os.Exit(code)
 }
@@ -69,6 +91,17 @@ func TestUnitOfWorkContract(t *testing.T) {
 	})
 }
 
+// TestExecutionAttemptContract прогоняет ту же suite, что и memory, на реальном
+// PostgreSQL из LEADGEN_POSTGRES_TEST_DSN. Без DSN тест пропускается.
+func TestExecutionAttemptContract(t *testing.T) {
+	contracttest.RunExecutionAttemptContract(t, func(t *testing.T) contracttest.ExecutionAttemptHarness {
+		t.Helper()
+		p := testPool(t)
+		truncateTables(t)
+		return contracttest.ExecutionAttemptHarness{UnitOfWork: postgres.NewUnitOfWork(p), Repository: postgres.NewRepository(p), Attempts: postgres.NewExecutionAttemptRepository(p), Journal: postgres.NewJournal(p), ExpireLease: func() { time.Sleep(40 * time.Millisecond) }, AdvanceClock: func(time.Duration) { time.Sleep(5 * time.Millisecond) }}
+	})
+}
+
 // TestEmailDraftStoreContract прогоняет общий contract suite порта EmailDraftStore
 // против PostgreSQL-реализации.
 func TestEmailDraftStoreContract(t *testing.T) {
@@ -95,12 +128,18 @@ func newDraftStore(t *testing.T) ports.EmailDraftStore {
 	return postgres.NewDraftStore(pool)
 }
 
-// truncateTables очищает таблицы сервиса, сохраняя схему. Ссылочных связей между
-// таблицами нет, поэтому обычного TRUNCATE достаточно.
+// truncateTables пересоздаёт изолированную схему тестов целиком. Append-only
+// audit triggers и FK не обходятся очисткой строк: после удаления схемы миграции
+// применяются заново, как при создании новой тестовой базы.
 func truncateTables(t *testing.T) {
 	t.Helper()
-	if _, err := testPool(t).Exec(context.Background(), truncateTablesSQL); err != nil {
-		t.Fatalf("очистка таблиц: %v", err)
+	p := testPool(t)
+	ctx := context.Background()
+	if _, err := p.Exec(ctx, `DROP SCHEMA IF EXISTS "request-fulfillment" CASCADE`); err != nil {
+		t.Fatalf("удалить изолированную тестовую схему: %v", err)
+	}
+	if err := applyMigrations(ctx, p); err != nil {
+		t.Fatalf("пересоздать тестовую схему миграциями: %v", err)
 	}
 }
 
@@ -111,6 +150,9 @@ func testPool(t *testing.T) *pgxpool.Pool {
 	dsn := os.Getenv(dsnEnv)
 	if dsn == "" {
 		t.Skipf("%s не задан: PostgreSQL-тесты адаптеров пропущены", dsnEnv)
+	}
+	if os.Getenv(allowSchemaResetEnv) != "1" {
+		t.Fatalf("%s=1 обязателен: suite удаляет и пересоздаёт только принадлежащую request-fulfillment схему в disposable базе", allowSchemaResetEnv)
 	}
 
 	poolOnce.Do(func() {
@@ -147,6 +189,3 @@ func applyMigrations(ctx context.Context, pool *pgxpool.Pool) error {
 	}
 	return nil
 }
-
-// truncateTablesSQL очищает таблицы сервиса.
-const truncateTablesSQL = `TRUNCATE "request-fulfillment".request, "request-fulfillment".email_draft, "request-fulfillment".outbox`

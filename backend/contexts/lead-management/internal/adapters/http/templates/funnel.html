@@ -1,9 +1,10 @@
 {{- define "content" -}}
 {{- with .View -}}
 {{- $csrf := .CSRF }}
+{{ template "live" .Live }}
 <header class="page-head">
-  <h1>Воронка</h1>
-  <p class="hint">Перетащите лида в колонку этапа. Перенос доступен и без перетаскивания: выберите этап в форме карточки и подтвердите — тот же путь работает с клавиатуры и при отключённом JavaScript.</p>
+  <h1>{{ text "lead.funnel.title" }}</h1>
+  <p class="hint">{{ text "lead.funnel.hint" }}</p>
 </header>
 
 <section class="board">
@@ -22,20 +23,20 @@
         <span class="lead-name"><a class="link" href="/cards/{{.ID}}" draggable="false">{{.Name}}</a></span>
         <form class="lead-move" method="post" action="/funnel/{{.ID}}/stage">
           <input type="hidden" name="csrf" value="{{$csrf}}">
-          <label class="lead-move-label" for="stage-{{.ID}}">Этап для переноса</label>
+          <label class="lead-move-label" for="stage-{{.ID}}">{{ text "lead.stage.move" }}</label>
           <select id="stage-{{.ID}}" name="stage">
-            <option value="not warmed"{{if eq $stage "not warmed"}} selected{{end}}>Не прогрет</option>
-            <option value="email sent"{{if eq $stage "email sent"}} selected{{end}}>Письмо отправлено</option>
-            <option value="warming"{{if eq $stage "warming"}} selected{{end}}>Прогрев</option>
-            <option value="cold"{{if eq $stage "cold"}} selected{{end}}>Холодный</option>
+            <option value="not warmed"{{if eq $stage "not warmed"}} selected{{end}}>{{ text "lead.stage.not_warmed" }}</option>
+            <option value="email sent"{{if eq $stage "email sent"}} selected{{end}}>{{ text "lead.stage.email_sent" }}</option>
+            <option value="warming"{{if eq $stage "warming"}} selected{{end}}>{{ text "lead.stage.warming" }}</option>
+            <option value="cold"{{if eq $stage "cold"}} selected{{end}}>{{ text "lead.stage.cold" }}</option>
           </select>
-          <button class="button-secondary" type="submit">Перенести</button>
+          <button class="button-secondary" type="submit">{{ text "lead.stage.submit" }}</button>
         </form>
       </li>
     {{- end }}
     </ul>
     {{- else }}
-    <p class="empty">Лидов нет</p>
+    <p class="empty">{{ text "lead.funnel.empty" }}</p>
     {{- end }}
   </article>
 {{- end }}

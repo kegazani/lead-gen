@@ -23,6 +23,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/chromedp/cdproto/browser"
 	"github.com/chromedp/cdproto/cdp"
 	"github.com/chromedp/cdproto/emulation"
 	"github.com/chromedp/cdproto/page"
@@ -193,6 +194,21 @@ func (r *Renderer) Render(ctx context.Context, req ports.RenderRequest) (ports.R
 	}
 }
 
+// ReadinessCheck открывает или проверяет CDP-сессию командой Browser.getVersion.
+// Проверка ограничена контекстом и не генерирует документ, файл или бизнес-эффект.
+func (r *Renderer) ReadinessCheck(ctx context.Context) error {
+	checkCtx, cancel := context.WithTimeout(ctx, r.timeout)
+	defer cancel()
+	_, err := run(r, checkCtx, func(ctx context.Context, target *chromedp.Target) (struct{}, error) {
+		_, err := cdp.Call(ctx, target, browser.GetVersion, cdp.Empty{})
+		return struct{}{}, err
+	})
+	if err != nil {
+		return fmt.Errorf("%w: проверка CDP", ports.ErrRenderUnavailable)
+	}
+	return nil
+}
+
 // RenderPDF рендерит самодостаточный HTML-документ в PDF через headless
 // Chromium. Пустой HTML — отказ по качеству входа; недоступность браузера или
 // не-PDF результат — честная недоступность движка.
@@ -247,16 +263,23 @@ func (r *Renderer) render(ctx context.Context, action chromedp.Action[[]byte], k
 // session возвращает контекст вкладки, при первом вызове лениво запуская браузер.
 // Прогрев выполняется без таймаута: таймаут на первой операции остановил бы сам
 // браузер, поэтому дедлайн ставится только на рабочие операции.
-func (r *Renderer) session() (context.Context, error) {
+func (r *Renderer) session(ctx context.Context) (context.Context, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	if r.tabCtx != nil {
 		return r.tabCtx, nil
 	}
 	tabCtx, stopTab := chromedp.NewContext(r.allocCtx)
-	if err := chromedp.Do(tabCtx, warmUp); err != nil {
+	stopOnCancel := context.AfterFunc(ctx, stopTab)
+	_, err := chromedp.Run(tabCtx, warmUp)
+	stopOnCancel()
+	if err != nil {
 		stopTab()
 		return nil, fmt.Errorf("запуск браузера: %w", err)
+	}
+	if err := ctx.Err(); err != nil {
+		stopTab()
+		return nil, err
 	}
 	r.tabCtx = tabCtx
 	r.stopTab = stopTab
@@ -269,12 +292,16 @@ func run[T any](r *Renderer, ctx context.Context, action chromedp.Action[T]) (T,
 	if err := ctx.Err(); err != nil {
 		return zero, err
 	}
-	tabCtx, err := r.session()
+	tabCtx, err := r.session(ctx)
 	if err != nil {
 		return zero, err
 	}
 	opCtx, cancel := context.WithTimeout(tabCtx, r.timeout)
-	defer cancel()
+	stopOnCancel := context.AfterFunc(ctx, cancel)
+	defer func() {
+		stopOnCancel()
+		cancel()
+	}()
 	return chromedp.Run(opCtx, action)
 }
 

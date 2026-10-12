@@ -238,6 +238,7 @@ func saveSnapshot(ctx context.Context, q execer, snapshot domain.CampaignSnapsho
 		snapshot.Window.Start(),
 		snapshot.Window.End(),
 		string(snapshot.State),
+		string(snapshot.Purpose),
 		sequences,
 		executions,
 	); err != nil {
@@ -307,6 +308,7 @@ func loadSnapshot(ctx context.Context, q execer, id domain.CampaignID) (domain.C
 		&start,
 		&end,
 		&snapshot.State,
+		&snapshot.Purpose,
 		&sequences,
 		&executions,
 	)
@@ -464,14 +466,15 @@ func campaignTenant(ctx context.Context, q execer, id domain.CampaignID) (domain
 const (
 	upsertCampaign = `
 INSERT INTO "outreach-orchestration".campaign
-    (id, tenant_id, name, window_start, window_end, state, sequence_definitions, sequence_executions)
-VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+    (id, tenant_id, name, window_start, window_end, state, purpose, sequence_definitions, sequence_executions)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 ON CONFLICT (id) DO UPDATE SET
     tenant_id            = EXCLUDED.tenant_id,
     name                 = EXCLUDED.name,
     window_start         = EXCLUDED.window_start,
     window_end           = EXCLUDED.window_end,
     state                = EXCLUDED.state,
+    purpose              = EXCLUDED.purpose,
     sequence_definitions = EXCLUDED.sequence_definitions,
     sequence_executions  = EXCLUDED.sequence_executions`
 
@@ -489,7 +492,7 @@ INSERT INTO "outreach-orchestration".operator_decision
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`
 
 	selectCampaign = `
-SELECT id, tenant_id, name, window_start, window_end, state, sequence_definitions, sequence_executions
+SELECT id, tenant_id, name, window_start, window_end, state, purpose, sequence_definitions, sequence_executions
 FROM "outreach-orchestration".campaign
 WHERE id = $1`
 

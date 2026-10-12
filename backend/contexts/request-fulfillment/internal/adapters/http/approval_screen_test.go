@@ -12,6 +12,7 @@ import (
 
 	requestfulfillment "lead-gen/backend/contexts/request-fulfillment"
 	"lead-gen/backend/contexts/request-fulfillment/internal/ports"
+	"lead-gen/backend/platform/consolescope"
 )
 
 // newApprovalServer собирает сервер среза с заданными портами чтения состояния
@@ -81,6 +82,15 @@ func awaitingStatus(found int) ports.WorkflowStatus {
 	}
 }
 
+// shortfallStatus — состояние на паузе с явно заданной целью: цель, найдено и
+// недобор. Недобор — производное `цель − найдено`; при достигнутой цели он ноль.
+func shortfallStatus(target, found, shortfall int) ports.WorkflowStatus {
+	status := awaitingStatus(found)
+	status.Target = target
+	status.Shortfall = &shortfall
+	return status
+}
+
 // approvalSignaler — заглушка ports.WorkflowSignaler, запоминающая решения.
 type approvalSignaler struct {
 	calls []ports.WorkflowDecision
@@ -92,6 +102,11 @@ func (s *approvalSignaler) SignalApprovalDecision(_ context.Context, in ports.Wo
 	return nil
 }
 
+// SignalDeliveryOutcome реализует ports.WorkflowSignaler.
+func (s *approvalSignaler) SignalDeliveryOutcome(context.Context, ports.DeliveryOutcome) error {
+	return nil
+}
+
 // errorSignaler — заглушка ports.WorkflowSignaler, возвращающая заданную ошибку.
 type errorSignaler struct {
 	err error
@@ -99,6 +114,11 @@ type errorSignaler struct {
 
 // SignalApprovalDecision реализует ports.WorkflowSignaler.
 func (s *errorSignaler) SignalApprovalDecision(context.Context, ports.WorkflowDecision) error {
+	return s.err
+}
+
+// SignalDeliveryOutcome реализует ports.WorkflowSignaler.
+func (s *errorSignaler) SignalDeliveryOutcome(context.Context, ports.DeliveryOutcome) error {
 	return s.err
 }
 
@@ -143,18 +163,66 @@ func TestApprovalQueueUnavailable(t *testing.T) {
 	}
 }
 
-// TestApprovalQueueOmitsNonAwaitingPhase проверяет, что заявка в другой фазе
-// исполнения в очередь утверждения не попадает.
-func TestApprovalQueueOmitsNonAwaitingPhase(t *testing.T) {
-	server := newApprovalServer(t, stubWorkflow{status: ports.WorkflowStatus{Phase: "searching"}}, stubWorkflow{})
+// TestApprovalQueueShowsRunningExecution проверяет, что заявка в активном поиске
+// не смешивается с очередью решений, но остаётся видимой в списке исполнений.
+func TestApprovalQueueShowsRunningExecution(t *testing.T) {
+	server := newApprovalServer(t, stubWorkflow{status: ports.WorkflowStatus{
+		Phase: "searching", Execution: "Running", Found: 1,
+	}}, stubWorkflow{})
 	client := prepareApprovalClient(t, server)
 
 	body := readBody(t, client.get(t, "/approvals?tenant_id="+tenantID))
-	if strings.Contains(body, "Предлагаем автоматизацию найма") {
-		t.Fatalf("очередь показала заявку не в фазе утверждения: %s", body)
-	}
 	if !strings.Contains(body, "ожидающих утверждения, нет") {
-		t.Fatalf("очередь не пуста: %s", body)
+		t.Fatalf("активный поиск ошибочно попал в очередь решения: %s", body)
+	}
+	if !strings.Contains(body, `class="execution-history-item"`) {
+		t.Fatalf("активное исполнение не показано в истории: %s", body)
+	}
+	for _, want := range []string{"Исполнения заявок", "Поиск", "Выполняется", requestID} {
+		if !strings.Contains(visibleText(body), want) {
+			t.Fatalf("список исполнений не содержит %q: %s", want, visibleText(body))
+		}
+	}
+}
+
+func TestApprovalQueueShowsCompletedExecution(t *testing.T) {
+	server := newApprovalServer(t, stubWorkflow{status: ports.WorkflowStatus{
+		Phase: "fulfilled", Execution: "Completed", Found: 1, Drafted: 0,
+	}}, stubWorkflow{})
+	client := prepareApprovalClient(t, server)
+
+	raw := readBody(t, client.get(t, "/approvals?tenant_id="+tenantID))
+	body := visibleText(raw)
+	if !strings.Contains(raw, `class="execution-history-item"`) {
+		t.Fatalf("завершённое исполнение не показано в истории: %s", raw)
+	}
+	for _, want := range []string{"Исполнения заявок", "Завершено", requestID, "Писем сформировано:"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("завершённое исполнение не содержит %q: %s", want, body)
+		}
+	}
+	if !strings.Contains(body, "В работе") || strings.Contains(body, "Выполнена") {
+		t.Fatalf("Temporal Completed подменил доменный статус processing: %s", body)
+	}
+}
+
+func TestApprovalQueueKeepsCancelledRequestWhenWorkflowNotFound(t *testing.T) {
+	server := newApprovalServer(t, stubWorkflow{statusErr: ports.ErrWorkflowNotFound}, stubWorkflow{})
+	client := prepareApprovalClient(t, server)
+
+	resp := client.postForm(t, "/requests/"+requestID+"/cancel", url.Values{
+		"tenant_id": {tenantID}, "csrf": {client.csrf}, "reason": {"заявка отменена"},
+	})
+	if resp.StatusCode != http.StatusSeeOther {
+		t.Fatalf("отмена заявки = %d, ожидался 303: %s", resp.StatusCode, readBody(t, resp))
+	}
+	resp.Body.Close()
+
+	body := visibleText(readBody(t, client.get(t, "/approvals?tenant_id="+tenantID)))
+	for _, want := range []string{"Исполнения заявок", "Отменена", requestID} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("терминальная история не содержит %q при WorkflowNotFound: %s", want, body)
+		}
 	}
 }
 
@@ -163,11 +231,25 @@ func TestApprovalScreen(t *testing.T) {
 	server := newApprovalServer(t, stubWorkflow{status: awaitingStatus(7)}, stubWorkflow{})
 	client := prepareApprovalClient(t, server)
 
-	body := readBody(t, client.get(t, approvalScreenPath()))
-	for _, want := range []string{"awaiting-approval", "Найдено лидов: 7", "Утвердить", "Отклонить", "Предлагаем автоматизацию найма"} {
+	body := visibleText(readBody(t, client.get(t, approvalScreenPath())))
+	for _, want := range []string{"Ждёт решения", "Найдено лидов: 7", "Утвердить", "Отклонить", "Предлагаем автоматизацию найма"} {
 		if !strings.Contains(body, want) {
 			t.Fatalf("экран утверждения не содержит %q: %s", want, body)
 		}
+	}
+}
+
+func TestApprovalScreenLabelsGeneratedDraftsTruthfully(t *testing.T) {
+	status := ports.WorkflowStatus{RequestID: requestID, Phase: "drafts-generated", Execution: "COMPLETED", Found: 2}
+	server := newApprovalServer(t, stubWorkflow{status: status}, stubWorkflow{})
+	client := prepareApprovalClient(t, server)
+
+	body := visibleText(readBody(t, client.get(t, approvalScreenPath())))
+	if !strings.Contains(body, "Письма сформированы") {
+		t.Fatalf("экран не показал фактическую фазу формирования писем: %s", body)
+	}
+	if strings.Contains(body, "одобрены") || strings.Contains(body, "отправлены") {
+		t.Fatalf("экран приписал письмам не совершённое действие: %s", body)
 	}
 }
 
@@ -177,7 +259,7 @@ func TestApprovalScreenUnavailable(t *testing.T) {
 	server := newApprovalServer(t, nil, nil)
 	client := prepareApprovalClient(t, server)
 
-	body := readBody(t, client.get(t, approvalScreenPath()))
+	body := visibleText(readBody(t, client.get(t, approvalScreenPath())))
 	if !strings.Contains(body, "недоступно") {
 		t.Fatalf("экран не сообщил о недоступности исполнения: %s", body)
 	}
@@ -381,5 +463,152 @@ func TestApprovalHTMXFragment(t *testing.T) {
 	full := readBody(t, client.get(t, approvalScreenPath()))
 	if !strings.Contains(full, strings.TrimSpace(fragment)) {
 		t.Fatalf("фрагмент не совпадает с частью полной страницы:\nфрагмент: %s\nстраница: %s", fragment, full)
+	}
+}
+
+// TestApprovalQueueUsesSelectedTenantCookie проверяет, что экран без tenant_id в
+// адресе берёт выбранный оператором тенант из cookie консоли: оператор,
+// переключивший тенант, видит очередь напрямую.
+func TestApprovalQueueUsesSelectedTenantCookie(t *testing.T) {
+	server := newApprovalServer(t, stubWorkflow{status: awaitingStatus(7)}, stubWorkflow{})
+	client := prepareApprovalClient(t, server)
+
+	req, err := http.NewRequest(http.MethodGet, server.URL+"/approvals", nil)
+	if err != nil {
+		t.Fatalf("сборка запроса: %v", err)
+	}
+	req.AddCookie(&http.Cookie{Name: consoleCookie, Value: client.session})
+	req.AddCookie(&http.Cookie{Name: consolescope.CookieName, Value: tenantID})
+	resp, err := noRedirectClient().Do(req)
+	if err != nil {
+		t.Fatalf("GET /approvals: %v", err)
+	}
+	page := readBody(t, resp)
+	if !strings.Contains(page, "Предлагаем автоматизацию найма") {
+		t.Fatalf("очередь не взяла выбранный тенант из cookie: %s", page)
+	}
+}
+
+// TestApprovalScreenShowsShortfall проверяет, что экран заявки показывает цель,
+// найдено, недобор и наблюдаемый диагноз недобора.
+func TestApprovalScreenShowsShortfall(t *testing.T) {
+	server := newApprovalServer(t, stubWorkflow{status: shortfallStatus(5, 2, 3)}, stubWorkflow{})
+	client := prepareApprovalClient(t, server)
+
+	body := visibleText(readBody(t, client.get(t, approvalScreenPath())))
+	for _, want := range []string{
+		"Цель по лидам: 5",
+		"Найдено лидов: 2",
+		"Недобор: 3",
+		"Поиск остановился, не достигнув цели заявки",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("экран утверждения не содержит %q: %s", want, body)
+		}
+	}
+}
+
+// TestApprovalScreenShortfallNoLeads проверяет диагноз недобора при пустом
+// результате поиска: экран честно объясняет это наблюдаемым исходом «0 лидов».
+func TestApprovalScreenShortfallNoLeads(t *testing.T) {
+	server := newApprovalServer(t, stubWorkflow{status: shortfallStatus(3, 0, 3)}, stubWorkflow{})
+	client := prepareApprovalClient(t, server)
+
+	body := visibleText(readBody(t, client.get(t, approvalScreenPath())))
+	for _, want := range []string{
+		"Цель по лидам: 3",
+		"Найдено лидов: 0",
+		"Недобор: 3",
+		"Поиск не нашёл ни одного лида",
+	} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("экран утверждения не содержит %q: %s", want, body)
+		}
+	}
+}
+
+// TestApprovalScreenShortfallReached проверяет, что при достигнутой цели недобор
+// показан нулём, а не спрятан.
+func TestApprovalScreenShortfallReached(t *testing.T) {
+	server := newApprovalServer(t, stubWorkflow{status: shortfallStatus(5, 5, 0)}, stubWorkflow{})
+	client := prepareApprovalClient(t, server)
+
+	body := visibleText(readBody(t, client.get(t, approvalScreenPath())))
+	for _, want := range []string{"Цель по лидам: 5", "Найдено лидов: 5", "Недобор: 0", "Цель достигнута"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("экран утверждения не содержит %q: %s", want, body)
+		}
+	}
+}
+
+// TestApprovalScreenNoTargetHidesShortfall проверяет правило «цель не задана»:
+// недобор не рассчитывается и не показывается выдуманным нулём.
+func TestApprovalScreenNoTargetHidesShortfall(t *testing.T) {
+	server := newApprovalServer(t, stubWorkflow{status: awaitingStatus(7)}, stubWorkflow{})
+	client := prepareApprovalClient(t, server)
+
+	body := visibleText(readBody(t, client.get(t, approvalScreenPath())))
+	if strings.Contains(body, "Недобор:") || strings.Contains(body, "Цель по лидам:") {
+		t.Fatalf("экран показал недобор при незаданной цели: %s", body)
+	}
+}
+
+// TestApprovalScreenShortfallNotFabricated проверяет инвариант «недобор не
+// подменяется выдуманными лидами или письмами»: найдено — это наблюдаемое число,
+// а недобор виден честно, без подставных счётчиков.
+func TestApprovalScreenShortfallNotFabricated(t *testing.T) {
+	server := newApprovalServer(t, stubWorkflow{status: shortfallStatus(3, 1, 2)}, stubWorkflow{})
+	client := prepareApprovalClient(t, server)
+
+	body := visibleText(readBody(t, client.get(t, approvalScreenPath())))
+	if !strings.Contains(body, "Найдено лидов: 1") || !strings.Contains(body, "Недобор: 2") {
+		t.Fatalf("экран не показал наблюдаемые найдено/недобор: %s", body)
+	}
+	if strings.Contains(body, "Найдено лидов: 3") {
+		t.Fatalf("экран подменил недобор выдуманными лидами: %s", body)
+	}
+	if strings.Contains(body, "черновик") {
+		t.Fatalf("экран показал письма как достижение цели: %s", body)
+	}
+}
+
+// TestApprovalScreenUnavailableNoShortfallCause проверяет честную деградацию:
+// при недоступном рантайме недобор и причина не выдумываются.
+func TestApprovalScreenUnavailableNoShortfallCause(t *testing.T) {
+	server := newApprovalServer(t, nil, nil)
+	client := prepareApprovalClient(t, server)
+
+	body := visibleText(readBody(t, client.get(t, approvalScreenPath())))
+	if !strings.Contains(body, "недоступно") {
+		t.Fatalf("экран не сообщил о недоступности исполнения: %s", body)
+	}
+	if strings.Contains(body, "Недобор:") || strings.Contains(body, "Цель достигнута") {
+		t.Fatalf("экран выдумал недобор при недоступном рантайме: %s", body)
+	}
+}
+
+// TestApprovalQueueShowsShortfall проверяет, что очередь утверждения несёт
+// недобор наряду с найденным числом.
+func TestApprovalQueueShowsShortfall(t *testing.T) {
+	server := newApprovalServer(t, stubWorkflow{status: shortfallStatus(5, 2, 3)}, stubWorkflow{})
+	client := prepareApprovalClient(t, server)
+
+	body := readBody(t, client.get(t, "/approvals?tenant_id="+tenantID))
+	for _, want := range []string{"Найдено лидов: 2", "Недобор: 3"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("очередь не показала %q: %s", want, body)
+		}
+	}
+}
+
+// TestApprovalQueueHidesShortfallWithoutTarget проверяет, что без явной цели
+// очередь не показывает недобор как ноль.
+func TestApprovalQueueHidesShortfallWithoutTarget(t *testing.T) {
+	server := newApprovalServer(t, stubWorkflow{status: awaitingStatus(7)}, stubWorkflow{})
+	client := prepareApprovalClient(t, server)
+
+	body := readBody(t, client.get(t, "/approvals?tenant_id="+tenantID))
+	if strings.Contains(body, "Недобор:") {
+		t.Fatalf("очередь показала недобор при незаданной цели: %s", body)
 	}
 }

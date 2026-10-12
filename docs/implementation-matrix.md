@@ -8,7 +8,16 @@
 > Назначение — опора для приведения `docs/core-roadmap.md` и `docs/system-map.md`
 > к фактическому состоянию.
 >
-> **Снимок кода:** HEAD `78e35ae` (2026-10-03).
+> **Снимок кода:** 2026-10-06 (`intelligent-lead-operations`; HEAD `2f518ad`).
+
+> **Актуальный demo scope (план, не факт реализации; 2026-10-12).** Ведётся
+> `customer-demo-request-to-emails`: existing registration/profile approval → offer +
+> desired leads → approval заявки → настоящий thematic crawl → LLM emails, видимые
+> оператору в существующем UI. Отправка и отдельное approve писем не обязательны. Code acceptance
+> не заявлена; задачи и доказательства — в
+> [`change tasks`](../openspec/changes/customer-demo-request-to-emails/tasks.md) и
+> [`docs/e2e-plan.md`](e2e-plan.md). Не считать capability реализованной до обновления
+> фактических строк матрицы после проверки кода и live acceptance.
 
 ## 0. Заглушки к незамедлительному исправлению (P0)
 
@@ -18,9 +27,11 @@
 > Работы ведутся через OpenSpec change (создаётся отдельно на каждый пункт или
 > группу): регистр — очередь приоритета, а не замена change'у.
 >
-> **Статус (2026-10-04).** Закрыты/устранены **A1** (`message-delivery`: реальная отправка `mail`/SMTP), **A2** (`content-rendering`: реальный рендер Chromium), **A9** (`sequences-and-reporting`: движок последовательностей) и **B** (`context-persistence`: PostgreSQL для 7 контекстов).
+> **Статус (2026-10-04).** Закрыты/устранены **A1** (`message-delivery`: реальная отправка `mail`/SMTP), **A2** (`content-rendering`: реальный рендер Chromium), **A9** (`sequences-and-reporting`: движок последовательностей) и **B** (`context-persistence`: PostgreSQL для 7 контекстов). **M5:** снята заглушка роли `api` `integration-platform` (реальная HTTP-поверхность `adapter-status`/реестр, change `integration-platform-api-surface`); провайдеры `email-verification` и `company-size-assessment` не выдуманы — контур честно `unavailable`, задачи открыты (блокеры в их `tasks.md`).
 >
 > **Волна 1 (2026-10-04).** Добавлены capability `vector-recall` (реальный эмбеддер + персистентный векторный индекс `integration-platform`, миграция `0002`; in-memory `vector/memory` — только тест/dev-двойник), `request-shortfall` (недобор → авто-генерация писем) и `delivery-bridge` (мост `approved-action → delivery-command`; контракты `delivery-target` у `lead-management` и `content-version` у `content-production` — расширен темой `Subject`, связи `leads-for-delivery`/`content-to-delivery`; адаптер-источник и обёртка `ApprovedActionBridge` в `message-delivery`; `ApprovedActionSink` в `outreach-orchestration`). Отчётность `campaign-reporting` групп 9–12 реализована в `analytics`. Проводка выполнена в `cmd/lead-gen`: вектор в `request-fulfillment` и `lead-management`; мост собран (резолвер адреса → резолвер материала → источник команд → приёмник утверждённых действий в outbox-релизе). **Все три change заархивированы** (specs `vector-recall`/`request-shortfall`/`delivery-bridge` в `openspec/specs/`). Осталось: остальные срезы консоли (волна 2) и live-E2E (волна 3).
+>
+> **Волна 2 (2026-10-06, change `intelligent-lead-operations`).** Заведён новый контекст `agent-orchestration` (домен `agent-pipeline`/`agent-run`, app, порты, PostgreSQL-миграция `0001`, HTTP-роль `api`, workflow-исполнение на Temporal) и две capability: `lead-quality-insights` (`analytics`, read-модель `quality-insight`) и `operations-cockpit` (`platform-governance`, экраны роли `api`). Блоки агента, требующие невыбранных провайдеров, честно недоступны (`unavailable`), а не подменяются успехом; проводка в `cmd/lead-gen` (7.3) сделана, открыт живой сквозной прогон (8.3). Заглушек как результата волна не добавляет.
 
 ### A. Внешние интеграции (заменить на реальную систему)
 
@@ -75,22 +86,38 @@
 |---|---|---|---|---|---|---|---|---|---|---|
 | `lead-management` | api, worker | да | да | да | **PostgreSQL** (green+red, 3 мигр.) | да | Firecrawl R, LLM R, SMTP R, forum R | — | `leadsearch`, `emailgeneration` | **A** |
 | `request-fulfillment` | api, worker | да | да | да | **PostgreSQL** (2 мигр.) | да | Temporal R, leadsearch R, emailgeneration R | call U | `requestintent` | **A** |
-| `integration-platform` | api, ingest, worker, chains, schedule | да | да | да | — | нет | Firecrawl R, OpenAI R, SMTP R, vector R (персистентный индекс) | provider fake, repository M | `providerport`, `crawl`, `search`, `llm`, `mail`, `forum`, `vector`, `budget`, … | **A** |
+| `integration-platform` | api, ingest, worker, chains, schedule | да | да | да | PostgreSQL (зелёная) | да | Firecrawl R, OpenAI R, SMTP R, vector R (персистентный индекс) | provider fake, repository M | `providerport`, `adapterstatus`, `crawl`, `search`, `llm`, `mail`, `forum`, `vector`, `budget`, … | **A** |
 | `outreach-orchestration` | api, worker, chains, schedule | да | да | да | **PostgreSQL** (1 мигр.) | да | in-proc (access, transport) | — | `approvedaction`, `callintent`, `formsubmission` | **B** |
-| `platform-governance` | api, worker | да (`tenant`) | да | да | — | да | — | — | — | **B** |
-| `analytics` | api, worker, schedule | нет (read-model) | да | да | — | да | consumer очереди | — | — | **B** |
+| `platform-governance` | api, worker | да (`tenant`) | да | да | PostgreSQL (зелёная; агрегат + transactional outbox) | да | RabbitMQ publisher confirm через PostgreSQL outbox relay (composition доступен; deployment wiring/real acceptance открыты) | — | `accessdecision`, `auditrecorded`, `tenantcontext` | **B** |
+| `analytics` | api, worker | нет (read-model) | да | да | — | да | consumer очереди | — | — | **B** |
 | `data-governance` | api, worker, chains | да | да | да | — | да | access (in-proc) | — | `datazonepolicy`, `processingauthority`, `suppressionpolicy` | **C** |
 | `audience` | api, worker, schedule | да | да | да | — | да | — | — | `audiencesnapshot`, `segmentmembership` | **C** |
 | `content-production` | api, worker | да | да | да | — | да | — | renderer D | `contentrequest`, `contentversion`, `renderedartifact` | **C** |
 | `message-delivery` | sender, worker, schedule | да | да (command) | да | — | нет | — | mailer U, suppression, commandsource | `deliverycommand`, `deliveryevent`, `deliverabilitypolicy` | **C** |
 | `engagement-observation` | ingest, worker | да | да | да | — | да (ingest) | consumer очереди | — | `engagementevent`, `readsignal` | **C** |
+| `agent-orchestration` | api, worker, chains, schedule | да | да | да | **PostgreSQL** (зелёная, 1 мигр.) | да | Temporal R (workflow) | блоки с невыбранным провайдером — U | `agentcommand`, `agentrunstate`, `agentevent` | **B** |
 
-Итог: **3 контекста уровня A**, **3 уровня B**, **5 уровня C**.
+Итог: **3 контекста уровня A**, **4 уровня B** (добавлен `agent-orchestration`), **5 уровня C** — двенадцать сервисов каталога.
+
+**Обновление (2026-10-04, M5).** После `integration-platform-api-surface`
+роль `api` `integration-platform` — не каркас: HTTP-поверхность отдаёт состояние
+адаптеров (контракт `adapter-status`) и реестр регистраций; роль `ingest` честно
+сообщает об отсутствии входящего протокола. Сетевые поверхности `provider-port` и
+`vector` не выставляются, пока не сконфигурирован адаптер поставщика/эмбеддера
+(внешние ключи не требуются для `adapter-status`/реестра).
 
 **Обновление (2026-10-04).** После изменений `context-persistence` и
 `message-delivery` семь контекстов получили PostgreSQL (по СУБД — уровень
 B), а `message-delivery` — реальную отправку (A1). Колонка «СУБД» и итоговые
 уровни выше — снимок на 2026-10-03.
+
+**Обновление (2026-10-06, `intelligent-lead-operations`).** Добавлен контекст
+`agent-orchestration` (уровень B: домен + app + PostgreSQL + Temporal-адаптер;
+проводка в `cmd/lead-gen` сделана — задача 7.3). В `analytics` добавлена
+capability `lead-quality-insights` (read-модель `quality-insight`, миграция
+`0005`), в `platform-governance` — capability `operations-cockpit` (экраны роли
+`api`). Блоки агента с невыбранным внешним провайдером отвечают `unavailable`, не
+подменяя исход.
 
 ## 3. Внешние зависимости платформы (кто реально ходит в сеть)
 
@@ -118,11 +145,60 @@ B), а `message-delivery` — реальную отправку (A1). Колон
 | PostgreSQL зелёной/красной зоны | `lead-management` (green+red), `request-fulfillment` (green), `outreach-orchestration` (green) | 3 / 2 / 1 |
 | PostgreSQL (добавлено `context-persistence`, 2026-10-04) | `analytics`, `audience`, `content-production`, `data-governance`, `engagement-observation`, `integration-platform`, `platform-governance` | по 1 на контекст |
 | PostgreSQL (добавлено `message-delivery`, 2026-10-04) | `message-delivery` | 1 (green) |
+| PostgreSQL (добавлено `intelligent-lead-operations`, 2026-10-06) | `agent-orchestration` (1, green); `analytics` (+1: снимки инсайтов) | 1 |
 | Только in-memory (только тесты/dev без DSN) | in-memory адаптеры сохранены для тестов и dev-режима | — |
 
-`schema-per-service` (схема и роль СУБД на сервис) в коде **не реализована**:
-сервисы используют общий пул по DSN, разделение схем — только в дизайне
-(`service-per-context`, задачи 3.10–3.11).
+`schema-per-service` целиком **не реализована**. Для intake-пилота Compose и Tofu
+local/bare-metal переводят только runtime DSN files в отдельные generation-scoped
+named volumes: one-shot root helper читает owner-only host files и записывает их
+`65532:65532`, mode `0400`; runtime mounts read-only. Каждый intake dependency
+(`request-fulfillment`, `consoleauth`, vector-only `integration-platform`) имеет
+отдельный bundle, как и каждое DB provision/migration job; bootstrap/migration
+credentials не монтируются в runtime. Helper/конфигурация покрыты кодовыми и
+disposable Docker acceptance checks, но пользовательский Compose stack не запускался,
+Tofu не применялся, а ротация/cleanup поколений требует полного acceptance. Legacy
+database path остальных групп остаётся переходным; live deployment и полная
+изоляция не заявляются (`service-per-context`, 3.10 остаётся открытой).
+
+**Ограниченный intake-пилот (2026-10-11, tasks 3.10.2–3.10.4).** Для отдельной
+группы `request-fulfillment` добавлен opt-in `db-policy runtime-only`: три
+независимых DSN из файлов для `request-fulfillment`, `consoleauth` и
+vector-only `integration-platform`; startup проверяет runtime role и версии схем
+read-only до сборки ролей, без `Apply`/`ApplyAs`. Pools request persistence,
+consoleauth session store и PostgreSQL vector adapter раздельны; старый путь
+остаётся только для legacy-групп. Изолированный PostgreSQL 17 подтвердил
+операции этих адаптеров и запрет межсхемного доступа/DDL/запрещённого update.
+Текущий пилотный путь — раздельные request, consoleauth и vector-only pools;
+старое описание «consoleauth через request pool» и «vector через общий
+supportGreenDSN» superseded. `runtime-only` теперь требует active signed candidate
+manifest, доверенный public key, `ExecutionProtocol=v1`, соответствие generation
+RoleSet и DSN usernames; без manifest startup блокируется, static role fallback
+не используется. В runtime mounts пока не подключён active release-state volume,
+поэтому действующий Compose runtime-only intake не может стартовать до отдельной
+активационной wiring/acceptance.
+
+DB provision/migrate jobs требуют подписанный Ed25519 candidate manifest и
+совпадающую запись staging/lock/nonce/sequence в release ledger. `release-runner.py`
+формирует и подписывает manifest, записывает его immutable в state volume, передаёт
+manifest и public key DB jobs, а перед финальной attestation проверяет candidate
+runtime DSN выбранного DB target через role/schema verification. Старые Compose `db-admin` jobs не
+передают manifest и потому являются fail-closed entrypoints, а не ручным путём
+миграций; provisioning возможен только через trusted release runner. Для
+`request-fulfillment` действует exact G1.5 checksum catalog 0001–0009, но релиз
+остаётся deferred до isolated PG17 доказательства v1 approve/rerun/direct-start,
+worker/activity payload и cold-start совместимости. Это код/config wiring, не
+live deployment или production security boundary; Tofu activation, полный intake
+multi-target acceptance и независимый review не выполнены.
+
+Фактические миграции задают `integration-platform.vector_document.id` как `text
+PRIMARY KEY`, без sequence; `integration_invocation_seq_seq` принадлежит отдельной
+service-runtime identity `integration-platform`, а не vector-only intake. Это
+inventory сверено в `service-per-context` 3.10.3; vector identity не получает
+sequence grants.
+
+Детальный разбор схем, таблиц, индексов и связей — в
+[`docs/database-schema-reference.md`](database-schema-reference.md) §2–§6 (там же —
+раздел «Известные расхождения»).
 
 ## 5. Объём и тесты (факт по дереву)
 
@@ -139,6 +215,7 @@ B), а `message-delivery` — реальную отправку (A1). Колон
 | `message-delivery` | 50 | 4 318 | 10 | 1 368 |
 | `analytics` | 19 | 2 384 | 6 | 864 |
 | `platform-governance` | 25 | 2 050 | 3 | 497 |
+| `agent-orchestration` | 51 | 6 283 | 12 | 1 819 |
 
 Тестовая глубина коррелирует с уровнем: A/B несут контрактные suite и сквозные
 тесты (`e2e_test.go`, `contract_test.go`), C — в основном unit.
@@ -147,7 +224,7 @@ B), а `message-delivery` — реальную отправку (A1). Колон
 
 | Декларация | Факт |
 |---|---|
-| `docs/core-roadmap.md`, `docs/progress-log.md`: «реализованы 6 сервисов, остальные 9 — заглушка `stubService`» | Собраны **все 11** (`deploy/services.yaml`; `buildService` в `cmd/lead-gen/runners.go`). `stubService` остался только как честный отказ для неизвестного id |
+| `docs/core-roadmap.md`, `docs/progress-log.md`: «реализованы 6 сервисов, остальные 9 — заглушка `stubService`» | Собраны **все 12** (`deploy/services.yaml`; `buildService` в `cmd/lead-gen/runners.go`). `stubService` остался только как честный отказ для неизвестного id |
 | `deploy/services.yaml`: «Заглушек не осталось» | Верно для **сервисов**, но **внешние зависимости** у 5 контекстов — заглушки (раздел 3). Это разные утверждения |
 | `docs/core-roadmap.md` §2: таблица статусов (заглушка/частично) | Устарела на два коммита (`bab59e6`, `d556ab7`) |
 | `openspec/changes/data-governance` (1/33), `platform-governance` (1/34) | Код существует; `tasks.md` не синхронизирован с деревом |

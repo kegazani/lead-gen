@@ -155,6 +155,68 @@ func TestMessage_RejectsTransitions(t *testing.T) {
 	}
 }
 
+func TestMessage_CampaignFlowsToSnapshotAndEvent(t *testing.T) {
+	params := validMessageParams(t)
+	params.CampaignID = "handoff-req-7"
+	message, err := NewMessage(params)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if message.CampaignID() != "handoff-req-7" {
+		t.Fatalf("кампания не сохранена в агрегате: %q", message.CampaignID())
+	}
+	if err := message.RecordDelivery(OutcomeDelivered, "250", testTime); err != nil {
+		t.Fatal(err)
+	}
+	events := message.DomainEvents()
+	if len(events) != 1 {
+		t.Fatalf("ожидалось одно событие, got %d", len(events))
+	}
+	delivered, ok := events[0].(MessageDelivered)
+	if !ok {
+		t.Fatalf("неожиданное событие %T", events[0])
+	}
+	if delivered.CampaignID != "handoff-req-7" {
+		t.Fatalf("событие не несёт кампанию: %q", delivered.CampaignID)
+	}
+	restored, err := RehydrateMessage(message.Snapshot())
+	if err != nil {
+		t.Fatalf("RehydrateMessage: %v", err)
+	}
+	if restored.CampaignID() != "handoff-req-7" {
+		t.Fatalf("снимок не сохранил кампанию: %q", restored.CampaignID())
+	}
+}
+
+func TestMessage_UnknownOutcomeIsDurableAndEmitsNoDeliveryEvent(t *testing.T) {
+	message, err := NewMessage(validMessageParams(t))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := message.StartDelivery(testTime); err != nil {
+		t.Fatal(err)
+	}
+	if err := message.RecordDelivery(OutcomeUnknown, "outcome-unknown", testTime); err != nil {
+		t.Fatal(err)
+	}
+	if message.Status() != MessageStatusUnknown || message.IsRetryable() {
+		t.Fatalf("неизвестный исход должен оставаться отдельным неретраибельным статусом: %q", message.Status())
+	}
+	if events := message.DomainEvents(); len(events) != 0 {
+		t.Fatalf("unknown не должен публиковать событие завершения delivery: %#v", events)
+	}
+	restored, err := RehydrateMessage(message.Snapshot())
+	if err != nil {
+		t.Fatalf("RehydrateMessage: %v", err)
+	}
+	if restored.Status() != MessageStatusUnknown || restored.IsRetryable() {
+		t.Fatalf("unknown не сохранился через snapshot: status=%q retryable=%v", restored.Status(), restored.IsRetryable())
+	}
+	if outcome, ok := restored.LastOutcome(); !ok || outcome != OutcomeUnknown {
+		t.Fatalf("исход попытки не сохранён: %q, %v", outcome, ok)
+	}
+}
+
 func TestMessage_SnapshotRoundTrip(t *testing.T) {
 	message, err := NewMessage(validMessageParams(t))
 	if err != nil {

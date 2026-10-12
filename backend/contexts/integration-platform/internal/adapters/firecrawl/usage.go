@@ -2,10 +2,46 @@ package firecrawl
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"sync"
 	"time"
 )
+
+const maxProbeResponseBytes = 64 * 1024
+
+// Probe выполняет bounded GET /v2/team/credit-usage: endpoint только читает
+// остаток аккаунта и не запускает платную бизнес-операцию. Размер тела ответа
+// ограничен отдельно от сетевого timeout.
+func (c *Client) Probe(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.endpoint("/v2/team/credit-usage"), nil)
+	if err != nil {
+		return fmt.Errorf("firecrawl: probe failed")
+	}
+	req.Header.Set("Authorization", "Bearer "+c.apiKey)
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("firecrawl: probe failed")
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return fmt.Errorf("firecrawl: probe failed")
+	}
+	data, err := io.ReadAll(io.LimitReader(resp.Body, maxProbeResponseBytes+1))
+	if err != nil || len(data) > maxProbeResponseBytes {
+		return fmt.Errorf("firecrawl: probe failed")
+	}
+	var usage creditUsageJSON
+	if json.Unmarshal(data, &usage) != nil || !usage.Success || usage.Data == nil || usage.Data.RemainingCredits == nil {
+		return fmt.Errorf("firecrawl: probe failed")
+	}
+	return nil
+}
 
 // CreditUsage — результат GET /v2/team/credit-usage. Остаток аккаунта берётся
 // только из successful-ответа; PlanCredits — объём плана и НЕ является текущим
@@ -85,7 +121,8 @@ type usageBalance struct {
 	Available bool
 	// Value — значение остатка (кредиты или токены).
 	Value int
-	// UpdatedAt — время последнего успешного обновления.
+	// UpdatedAt — локальное время завершения последнего успешного fetch. API
+	// provider не возвращает observation timestamp; это поле только для TTL.
 	UpdatedAt time.Time
 }
 
@@ -100,6 +137,9 @@ type usageSnapshot struct {
 type Usage struct {
 	client *Client
 	clock  Clock
+	// creditRefresh сериализует весь fetch+commit: медленный старый HTTP-ответ
+	// не может перезаписать значение из более позднего параллельного обновления.
+	creditRefresh chan struct{}
 
 	mu      sync.Mutex
 	credits *usageSnapshot
@@ -108,18 +148,31 @@ type Usage struct {
 
 // NewUsage собирает кэш остатка поверх существующего клиента Firecrawl.
 func NewUsage(client *Client, clock Clock) *Usage {
-	return &Usage{client: client, clock: clock}
+	return &Usage{client: client, clock: clock, creditRefresh: make(chan struct{}, 1)}
 }
 
 // RefreshCredit запрашивает credit-usage и обновляет кэш при успехе. Ошибка не
 // сбрасывает последнее успешное значение (оно лишь стареет).
 func (u *Usage) RefreshCredit(ctx context.Context) error {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	select {
+	case u.creditRefresh <- struct{}{}:
+	case <-ctx.Done():
+		return ctx.Err()
+	}
+	defer func() { <-u.creditRefresh }()
+
 	usage, err := u.client.CreditUsage(ctx)
 	if err != nil {
 		return err
 	}
+	// Firecrawl API не отдаёт timestamp снимка; локальное время fetch применяется
+	// только как возраст кэшированной копии, а не выдаётся за время provider read.
+	updatedAt := now(u.clock)
 	u.mu.Lock()
-	u.credits = &usageSnapshot{value: usage.RemainingCredits, updatedAt: now(u.clock)}
+	u.credits = &usageSnapshot{value: usage.RemainingCredits, updatedAt: updatedAt}
 	u.mu.Unlock()
 	return nil
 }

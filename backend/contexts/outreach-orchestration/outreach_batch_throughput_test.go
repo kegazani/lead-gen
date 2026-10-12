@@ -1,6 +1,7 @@
 package outreachorchestration_test
 
 import (
+	"context"
 	"fmt"
 	"testing"
 	"time"
@@ -44,8 +45,8 @@ func TestBatchApprovalThroughput(t *testing.T) {
 	slice, err := composition.Build(composition.Params{
 		Clock: fixedClock{now: e2eNow()},
 		// Пакетный путь меряется без проверок риска: Build требует предикат
-		// явно, поэтому передаётся осознанная заглушка, а не nil.
-		Risk: composition.NoUpstreamRiskChecks,
+		// явно, поэтому передаётся тестовый двойник без признаков, а не nil.
+		Risk: noRiskFacts,
 	})
 	if err != nil {
 		t.Fatalf("сборка контекста среза: %v", err)
@@ -95,7 +96,7 @@ func TestBatchApprovalThroughput(t *testing.T) {
 	decisions := 0
 	minShard, maxShard := 0, 0
 	for {
-		built, err := campaign.BuildApprovalBatch(limits, composition.NoUpstreamRiskChecks)
+		built, err := campaign.BuildApprovalBatch(context.Background(), limits, noRiskFacts)
 		if err != nil {
 			t.Fatalf("формирование состава: %v", err)
 		}
@@ -125,12 +126,12 @@ func TestBatchApprovalThroughput(t *testing.T) {
 					DraftVersion: entry.Version,
 				})
 			}
-			recorded, _, err := campaign.ApproveBatch(domain.BatchApprovalParams{
+			recorded, _, err := campaign.ApproveBatch(context.Background(), domain.BatchApprovalParams{
 				Actor:       e2eOperator,
 				DecidedAt:   e2eNow(),
 				Digest:      batch.Digest(),
 				Composition: items,
-			}, composition.NoUpstreamRiskChecks)
+			}, noRiskFacts)
 			if err != nil {
 				t.Fatalf("пакетное утверждение шарда: %v", err)
 			}

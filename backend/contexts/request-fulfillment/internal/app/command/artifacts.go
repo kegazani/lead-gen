@@ -42,6 +42,7 @@ func (h artifactHandler) record(
 	record func(request *domain.Request) error,
 ) (TransitionResult, error) {
 	return applyChange(ctx, h.uow, commandKey{RequestID: requestID, TenantID: tenantID},
+		nil,
 		func(request *domain.Request) ([]domain.DomainEvent, error) {
 			return nil, record(request)
 		})

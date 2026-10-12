@@ -83,6 +83,22 @@ func TestRetryPending_DeliversOnRetry(t *testing.T) {
 	}
 }
 
+func TestRetryPending_CancellationFencePreventsRetry(t *testing.T) {
+	uow := newFakeUoW()
+	cmd := testCommand(t)
+	seedTemporarilyFailed(t, uow, cmd)
+	uow.cancelled = true
+	mailer := &fakeMailer{response: ports.ProviderResponse{Outcome: domain.OutcomeDelivered}}
+	handler := NewRetryPendingHandler(uow.messages, mailer, fixedClock{}, uow, 3)
+	summary, err := handler.RetryDue(context.Background(), 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.Attempted != 0 || summary.Skipped != 1 || len(mailer.sent) != 0 {
+		t.Fatalf("retry обошёл cancellation fence: summary=%+v отправок=%d", summary, len(mailer.sent))
+	}
+}
+
 func TestRetryPending_StopsAtAttemptLimit(t *testing.T) {
 	uow := newFakeUoW()
 	cmd := testCommand(t)

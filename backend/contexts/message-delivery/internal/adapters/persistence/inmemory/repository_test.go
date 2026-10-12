@@ -100,6 +100,31 @@ func TestMessages_CloneIsolation(t *testing.T) {
 	}
 }
 
+func TestMessages_UnknownOutcomePersistsAndIsNotRetryable(t *testing.T) {
+	ctx := context.Background()
+	repository := NewMessages()
+	message := testMessage(t, "msg-unknown", "tenant-1|act-unknown")
+	if err := message.StartDelivery(repoInstant); err != nil {
+		t.Fatal(err)
+	}
+	if err := message.RecordDelivery(domain.OutcomeUnknown, "outcome-unknown", repoInstant); err != nil {
+		t.Fatal(err)
+	}
+	if err := repository.Save(ctx, message); err != nil {
+		t.Fatal(err)
+	}
+	restored, err := repository.FindByIdempotencyKey(ctx, "tenant-1|act-unknown")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if restored.Status() != domain.MessageStatusUnknown || restored.IsRetryable() {
+		t.Fatalf("неизвестный исход восстановлен неверно: status=%q retryable=%v", restored.Status(), restored.IsRetryable())
+	}
+	if due, err := repository.ListRetryable(ctx, 10, 10); err != nil || len(due) != 0 {
+		t.Fatalf("unknown не должен попадать в retry-выборку: due=%v err=%v", due, err)
+	}
+}
+
 func TestReputations_SaveFind(t *testing.T) {
 	repository := NewReputations()
 	ctx := context.Background()

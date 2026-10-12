@@ -44,7 +44,7 @@ func (c *recordingApprovedActionConsumer) received() []approvedaction.ApprovedAc
 func TestInjectedConsumerReceivesApprovedAction(t *testing.T) {
 	consumer := &recordingApprovedActionConsumer{}
 	slice, err := outreachorchestration.Build(outreachorchestration.Params{
-		Risk:                   outreachorchestration.NoUpstreamRiskChecks,
+		Risk:                   noRiskFacts,
 		ApprovedActionConsumer: consumer,
 	})
 	if err != nil {
@@ -77,7 +77,7 @@ func TestInjectedConsumerReceivesApprovedAction(t *testing.T) {
 // приёма.
 func TestDefaultWithoutConsumerUsesOwnerPublication(t *testing.T) {
 	slice, err := outreachorchestration.Build(outreachorchestration.Params{
-		Risk: outreachorchestration.NoUpstreamRiskChecks,
+		Risk: noRiskFacts,
 	})
 	if err != nil {
 		t.Fatalf("сборка среза без внешнего потребителя: %v", err)
@@ -103,7 +103,7 @@ func TestDefaultWithoutConsumerUsesOwnerPublication(t *testing.T) {
 func TestInjectedConsumerRejectsInvalidAction(t *testing.T) {
 	consumer := &recordingApprovedActionConsumer{}
 	slice, err := outreachorchestration.Build(outreachorchestration.Params{
-		Risk:                   outreachorchestration.NoUpstreamRiskChecks,
+		Risk:                   noRiskFacts,
 		ApprovedActionConsumer: consumer,
 	})
 	if err != nil {
@@ -124,7 +124,7 @@ func TestInjectedConsumerRejectsInvalidAction(t *testing.T) {
 func TestNewAcceptsApprovedActionConsumer(t *testing.T) {
 	consumer := &recordingApprovedActionConsumer{}
 	_, err := outreachorchestration.New(outreachorchestration.Config{
-		Risk:                   outreachorchestration.NoUpstreamRiskChecks,
+		Risk:                   noRiskFacts,
 		ApprovedActionConsumer: consumer,
 		Logger:                 observ.NewLoggerWithWriter(io.Discard),
 		Metrics:                observ.NewMetrics(),

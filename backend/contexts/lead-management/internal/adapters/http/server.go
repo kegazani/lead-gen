@@ -18,6 +18,7 @@ import (
 	"errors"
 	"fmt"
 	"html/template"
+	"log"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -31,6 +32,7 @@ import (
 	"lead-gen/backend/platform/observability/observ"
 	"lead-gen/contracts/integration-platform/budget"
 	"lead-gen/contracts/integration-platform/llm"
+	"lead-gen/contracts/lead-management/addressverification"
 	"lead-gen/frontend/components"
 )
 
@@ -75,10 +77,41 @@ type Dependencies struct {
 	// эндпоинтом POST /cards/{id}/embed. nil — сценарий не смонтирован: эндпоинт
 	// честно отвечает 503.
 	EmbedCompany *app.EmbedCompany
-	Account      budget.AccountReader // nil — остаток аккаунта не показывается
-	Console      components.ConsoleBases
-	Logger       observ.Logger
-	Auth         AuthConfig
+	// ResolveDeliveryTarget — сценарий разрешения ссылки получателя (контракт
+	// delivery-target), отдаваемый эндпоинтом POST /delivery-target. nil —
+	// контракт не смонтирован: эндпоинт честно отвечает 503; адрес не
+	// выдумывается.
+	ResolveDeliveryTarget *app.ResolveDeliveryTarget
+	// AddressVerification — порт владельца верификации адреса (контракт
+	// address-verification), отдаваемый эндпоинтом POST /address-verification.
+	// nil — контракт не смонтирован: эндпоинт честно отвечает 503; вердикт
+	// владельца не выдумывается.
+	AddressVerification addressverification.Port
+	// ApplyRecommendation — сценарий применения рекомендации анализа как нового
+	// запуска поиска (контракт recommendation-apply), отдаваемый эндпоинтом
+	// POST /recommendation-apply. nil — контракт не смонтирован: эндпоинт честно
+	// отвечает 503; применение не выдумывается.
+	ApplyRecommendation *app.ApplyRecommendation
+	// LeadRelevance — сценарий чтения оценки компании относительно задания
+	// (контракт lead-relevance), отдаваемый эндпоинтом GET /lead-relevance. nil —
+	// контракт не смонтирован: эндпоинт честно отвечает 503; вердикт не
+	// выдумывается.
+	LeadRelevance *app.ReadLeadRelevance
+	Readiness     func(context.Context) (int, any)
+	Account       budget.AccountReader // nil — остаток аккаунта не показывается
+	Console       components.ConsoleBases
+	// BasePath — внешний префикс пути консоли под единым origin (admin-proxy).
+	// Пусто — консоль смонтирована в корень origin.
+	BasePath string
+	// ExternalPrefixes — префиксы других консолей единого origin: ссылки на них
+	// в навигации не переписываются под собственный префикс.
+	ExternalPrefixes []string
+	Logger           observ.Logger
+	Auth             AuthConfig
+	// TenantID — тенант конфигурации процесса (флаг -tenant, Config.TenantID).
+	// Это фолбэк активного тенанта запроса: когда запрос не несёт tenant_id,
+	// консоль работает в тенанте процесса — прежнее поведение.
+	TenantID string
 }
 
 // Server — HTTP-сервер роли api. Нулевое значение непригодно: используйте
@@ -102,14 +135,30 @@ type Server struct {
 	// embedCompany — сценарий эмбеддинга компании. nil — сценарий не смонтирован.
 	semanticRecall *app.SemanticRecall
 	embedCompany   *app.EmbedCompany
-	account        budget.AccountReader
-	sessions       *consoleauth.Manager
-	console        components.ConsoleBases
-	pages          *components.Set
-	leadsExport    *template.Template
-	static         http.Handler
-	handler        http.Handler
-	logger         observ.Logger
+	// resolveDeliveryTarget — сценарий разрешения ссылки получателя (контракт
+	// delivery-target). nil — контракт не смонтирован.
+	resolveDeliveryTarget *app.ResolveDeliveryTarget
+	// addressVerification — порт владельца верификации адреса (контракт
+	// address-verification). nil — контракт не смонтирован.
+	addressVerification addressverification.Port
+	// applyRecommendation — сценарий применения рекомендации (контракт
+	// recommendation-apply). nil — контракт не смонтирован.
+	applyRecommendation *app.ApplyRecommendation
+	// leadRelevance — сценарий чтения оценки (контракт lead-relevance). nil —
+	// контракт не смонтирован.
+	leadRelevance *app.ReadLeadRelevance
+	account       budget.AccountReader
+	// tenantID — активный тенант по умолчанию: тенант конфигурации сервиса.
+	// Используется, когда запрос не задал tenant_id (см. activeTenant).
+	tenantID    string
+	sessions    *consoleauth.Manager
+	console     components.ConsoleBases
+	pages       *components.Set
+	leadsExport *template.Template
+	static      http.Handler
+	handler     http.Handler
+	logger      observ.Logger
+	readiness   func(context.Context) (int, any)
 	// interpreter — use case интерпретации запроса для экрана ассистента. nil —
 	// интерпретация недоступна: экран показывает явное «не определена».
 	interpreter *app.InterpretQuery
@@ -139,30 +188,36 @@ func NewServer(deps Dependencies) *Server {
 	}
 
 	server := &Server{
-		runSearch:       deps.RunSearch,
-		showcase:        deps.Showcase,
-		changeStage:     deps.ChangeStage,
-		snooze:          deps.Snooze,
-		sendToLead:      deps.SendToLead,
-		sendToSegment:   deps.SendToSegment,
-		templates:       deps.Templates,
-		suggestNiches:   deps.SuggestNiches,
-		dialogue:        deps.Dialogue,
-		forumSignals:    deps.ForumSignals,
-		searchLeads:     deps.SearchLeads,
-		emailGeneration: deps.EmailGeneration,
-		semanticRecall:  deps.SemanticRecall,
-		embedCompany:    deps.EmbedCompany,
-		account:         deps.Account,
-		sessions:        consoleauth.New(deps.Auth),
-		console:         deps.Console,
-		pages:           pages,
-		leadsExport:     leadsExport,
-		static:          static,
-		logger:          deps.Logger,
-		interpreter:     interpreter,
+		runSearch:             deps.RunSearch,
+		showcase:              deps.Showcase,
+		changeStage:           deps.ChangeStage,
+		snooze:                deps.Snooze,
+		sendToLead:            deps.SendToLead,
+		sendToSegment:         deps.SendToSegment,
+		templates:             deps.Templates,
+		suggestNiches:         deps.SuggestNiches,
+		dialogue:              deps.Dialogue,
+		forumSignals:          deps.ForumSignals,
+		searchLeads:           deps.SearchLeads,
+		emailGeneration:       deps.EmailGeneration,
+		semanticRecall:        deps.SemanticRecall,
+		embedCompany:          deps.EmbedCompany,
+		resolveDeliveryTarget: deps.ResolveDeliveryTarget,
+		addressVerification:   deps.AddressVerification,
+		applyRecommendation:   deps.ApplyRecommendation,
+		leadRelevance:         deps.LeadRelevance,
+		readiness:             deps.Readiness,
+		account:               deps.Account,
+		tenantID:              deps.TenantID,
+		sessions:              consoleauth.New(deps.Auth),
+		console:               deps.Console,
+		pages:                 pages,
+		leadsExport:           leadsExport,
+		static:                static,
+		logger:                deps.Logger,
+		interpreter:           interpreter,
 	}
-	server.handler = components.SecurityHeaders(contentSecurityPolicy)(server.authMiddleware(server.routes()))
+	server.handler = components.PrefixMiddleware(deps.BasePath, components.NoStore(components.SecurityHeaders(contentSecurityPolicy)(server.authMiddleware(server.routes()))), deps.ExternalPrefixes...)
 	return server
 }
 
@@ -175,29 +230,29 @@ func (s *Server) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 func (s *Server) routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /login", s.handleLoginForm)
-	mux.HandleFunc("POST /login", s.handleLogin)
+	mux.Handle("POST /login", s.rateLimit("/login", s.handleLogin))
 	mux.HandleFunc("GET /logout", s.handleLogout)
 	mux.HandleFunc("GET /{$}", s.handleDashboard)
 	mux.HandleFunc("GET /jobs", s.handleJobs)
 	mux.HandleFunc("GET /jobs/{id}", s.handleJob)
 	mux.HandleFunc("POST /jobs/{id}/cancel", s.handleCancelJob)
-	mux.HandleFunc("POST /jobs/{id}/reassess", s.handleReassessJob)
-	mux.HandleFunc("POST /jobs/cancel", s.handleBulkCancelJobs)
-	mux.HandleFunc("POST /search", s.handleSearch)
+	mux.Handle("POST /jobs/{id}/reassess", s.rateLimit("/jobs/reassess", s.handleReassessJob))
+	mux.Handle("POST /jobs/cancel", s.rateLimit("/jobs/cancel", s.handleBulkCancelJobs))
+	mux.Handle("POST /search", s.rateLimit("/search", s.handleSearch))
 	mux.HandleFunc("GET /cards", s.handleCards)
 	mux.HandleFunc("GET /leads", s.handleLeads)
 	mux.HandleFunc("GET /leads/export", s.handleLeadsExport)
 	mux.HandleFunc("GET /leads/export.csv", s.handleLeadsExportCSV)
 	mux.HandleFunc("GET /cards/{id}", s.handleCard)
 	mux.HandleFunc("POST /cards/{id}/hide", s.handleHide)
-	mux.HandleFunc("POST /cards/{id}/delete", s.handleDelete)
-	mux.HandleFunc("POST /cards/{id}/send", s.handleSendToLead)
+	mux.Handle("POST /cards/{id}/delete", s.rateLimit("/cards/delete", s.handleDelete))
+	mux.Handle("POST /cards/{id}/send", s.rateLimit("/cards/send", s.handleSendToLead))
 	mux.HandleFunc("POST /cards/{id}/send/preview", s.handleCardPreview)
 	mux.HandleFunc("POST /cards/{id}/snooze", s.handleSnooze)
 	mux.HandleFunc("GET /funnel", s.handleFunnel)
 	mux.HandleFunc("POST /funnel/{id}/stage", s.handleChangeStage)
 	mux.HandleFunc("GET /send", s.handleSendForm)
-	mux.HandleFunc("POST /send-segment", s.handleSendToSegment)
+	mux.Handle("POST /send-segment", s.rateLimit("/send-segment", s.handleSendToSegment))
 	mux.HandleFunc("POST /send/preview", s.handleSegmentPreview)
 	mux.HandleFunc("GET /templates", s.handleTemplates)
 	mux.HandleFunc("POST /templates", s.handleCreateTemplate)
@@ -210,11 +265,56 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /forum-signals", s.handleForumSignals)
 	mux.HandleFunc("POST /lead-search", s.handleLeadSearch)
 	mux.HandleFunc("POST /email-generation", s.handleEmailGeneration)
+	mux.HandleFunc("POST /delivery-target", s.handleDeliveryTarget)
+	mux.HandleFunc("POST /address-verification", s.handleAddressVerification)
+	mux.HandleFunc("POST /recommendation-apply", s.handleRecommendationApply)
+	mux.HandleFunc("GET /lead-relevance", s.handleLeadRelevance)
 	mux.HandleFunc("POST /semantic-recall", s.handleSemanticRecall)
 	mux.HandleFunc("POST /cards/{id}/embed", s.handleEmbedCompany)
 	mux.HandleFunc("GET /healthz", handleHealth)
+	mux.HandleFunc("GET /readyz", s.handleReadiness)
 	mux.Handle("GET /static/", http.StripPrefix("/static/", s.static))
-	return mux
+	// Активный тенант запроса — область хранения тенант-скоупных данных: выборка
+	// лидов идёт в тенанте, выбранном в консоли, а без выбора — в тенанте процесса.
+	return s.tenantScope(mux)
+}
+
+// tenantScope устанавливает активный тенант запроса областью хранения
+// тенант-скоупных данных (см. ports.WithTenant). Без установки область пуста,
+// что сохраняет прежнее поведение (пустой тенант по умолчанию).
+func (s *Server) tenantScope(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		tenant := s.activeTenant(r)
+		next.ServeHTTP(w, r.WithContext(ports.WithTenant(r.Context(), tenant)))
+	})
+}
+
+// Порог и окно ограничения частоты чувствительных действий консоли.
+const (
+	sensitiveLimit  = 30
+	sensitiveWindow = time.Minute
+)
+
+// rateLimit оборачивает чувствительное действие ограничителем частоты общего слоя:
+// вход, запуск поиска, отправка и необратимые действия (web-frontend-architecture,
+// срез 7, 7.5).
+func (s *Server) rateLimit(path string, next http.HandlerFunc) http.Handler {
+	return components.RateLimit(components.RateLimitConfig{
+		Limit:  sensitiveLimit,
+		Window: sensitiveWindow,
+		OnBlocked: func(r *http.Request, key string) {
+			s.recordRateLimit(r, path, key)
+		},
+	})(next)
+}
+
+// recordRateLimit фиксирует блокировку структурированным логгером.
+func (s *Server) recordRateLimit(r *http.Request, path, key string) {
+	if s.logger != nil {
+		s.logger.Warn("консоль: превышен порог частоты", observ.Fields{}, "path", path, "key", key)
+		return
+	}
+	log.Printf("lead-management: превышен порог частоты path=%s key=%s", path, key)
 }
 
 // authMiddleware требует сессию для всех маршрутов, кроме входа, пробы живости,
@@ -225,7 +325,7 @@ func (s *Server) routes() http.Handler {
 func (s *Server) authMiddleware(next http.Handler) http.Handler {
 	return s.sessions.Middleware(consoleauth.Policy{
 		LoginPath:      "/login",
-		Public:         []string{"/login", "/healthz", "/lead-search", "/email-generation"},
+		Public:         []string{"/login", "/healthz", "/readyz", "/lead-search", "/email-generation", "/delivery-target", "/address-verification", "/recommendation-apply", "/lead-relevance"},
 		PublicPrefixes: []string{"/static/"},
 		CSRFExempt:     []string{"/logout"},
 		OnCSRFError: func(w http.ResponseWriter, _ *http.Request) {
@@ -266,7 +366,7 @@ func (s *Server) renderNotice(w http.ResponseWriter, status int, heading, messag
 
 // handleLoginForm показывает форму входа.
 func (s *Server) handleLoginForm(w http.ResponseWriter, r *http.Request) {
-	s.render(w, http.StatusOK, pageLogin, pageView("Вход", loginView{}))
+	s.render(w, http.StatusOK, pageLogin, pageView("Вход", loginView{Live: consoleLive}))
 }
 
 // handleLogin проверяет учётные данные и ставит cookie сессии.
@@ -277,7 +377,7 @@ func (s *Server) handleLogin(w http.ResponseWriter, r *http.Request) {
 	}
 	id, err := s.sessions.Login(r.FormValue("username"), r.FormValue("password"))
 	if errors.Is(err, ErrInvalidCredentials) {
-		s.render(w, http.StatusUnauthorized, pageLogin, pageView("Вход", loginView{Error: "Неверный логин или пароль."}))
+		s.render(w, http.StatusUnauthorized, pageLogin, pageView("Вход", loginView{Live: consoleLive, Error: "Неверный логин или пароль."}))
 		return
 	}
 	if err != nil {
@@ -304,7 +404,8 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		s.renderNotice(w, http.StatusInternalServerError, "Главная недоступна", "Не удалось загрузить сводку.")
 		return
 	}
-	s.render(w, http.StatusOK, pageDashboard, pageViewSidebar("Главная", s.consoleSidebar(sidebarHome), dashboardView{
+	s.render(w, http.StatusOK, pageDashboard, s.pageSection(r, "Главная", sidebarHome, dashboardView{
+		Live:                 consoleLive,
 		QueryField:           components.Field{ID: "query", Name: "query", Label: "Запрос", Required: true},
 		TargetCompaniesField: components.Field{ID: "targetCompanies", Name: "targetCompanies", Label: "Сколько найти компаний (необязательно)"},
 		MaxResultsField:      components.Field{ID: "maxResults", Name: "maxResults", Label: "Результатов на запрос (необязательно)"},
@@ -342,12 +443,14 @@ func (s *Server) handleJob(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	companies := s.resultCompanies(r.Context(), detail)
-	view := jobFrom(detail, s.jobAssessments(r.Context(), detail.Job.ID), companies)
+	assessments, assessmentsKnown := s.jobAssessments(r.Context(), detail.Job.ID)
+	links := components.ConsoleContext{TenantID: s.activeTenant(r), Actor: consoleActor(r)}
+	view := jobFrom(detail, assessments, assessmentsKnown, companies, links)
 	view.CSRF = csrfToken(r)
 	// Переоценка доступна только на терминальном задании с оценками: у running-задания
 	// компании ещё пополняются, а без оценок переоценивать нечего.
 	view.CanReassess = detail.Job.Status.Terminal() && view.Distribution.Total() > 0
-	s.render(w, http.StatusOK, pageJob, pageViewSidebar("Задание", s.consoleSidebar(sidebarHome), view))
+	s.render(w, http.StatusOK, pageJob, s.pageSection(r, "Задание", sidebarHome, view))
 }
 
 // resultCompanies читает email найденных компаний одним пакетным запросом. Email —
@@ -367,21 +470,22 @@ func (s *Server) resultCompanies(ctx context.Context, detail app.JobDetail) map[
 	return emails
 }
 
-// jobAssessments читает оценки задания. Оценка — дополнительный результат: её
-// отсутствие или ошибка чтения не роняют экран задания, а дают пустой набор —
-// распределение и основания тогда пусты, а не выдуманы.
-func (s *Server) jobAssessments(ctx context.Context, jobID string) []*domain.LeadAssessment {
+// jobAssessments читает оценки задания и признак их доступности. Оценка —
+// дополнительный результат: её отсутствие или ошибка чтения не роняют экран
+// задания, а дают пустой набор и known=false — распределение и основания тогда
+// пусты, а недоступные этапы воронки показываются недоступными, а не нулём.
+func (s *Server) jobAssessments(ctx context.Context, jobID string) ([]*domain.LeadAssessment, bool) {
 	if s.runSearch == nil || s.runSearch.Assessments == nil {
-		return nil
+		return nil, false
 	}
 	assessments, err := s.runSearch.Assessments.ListByJob(ctx, jobID)
 	if err != nil {
 		if s.logger != nil {
 			s.logger.Error("httpapi: чтение оценок задания", err, observ.Fields{}, "job", jobID)
 		}
-		return nil
+		return nil, false
 	}
-	return assessments
+	return assessments, true
 }
 
 // latestAssessments читает последнюю по времени оценку каждой из карточек
@@ -536,11 +640,14 @@ func (s *Server) handleCards(w http.ResponseWriter, r *http.Request) {
 	}
 
 	jobID := strings.TrimSpace(r.URL.Query().Get("job"))
-	view := cardsView{}
+	filter := s.cardsFilterFrom(r, jobID)
+	view := cardsView{Live: consoleLive, Filter: filter}
+	reason, reasonDetail := filterReason(filter)
 	if jobID == "" {
-		view.Fits, view.Other = splitCardRows(cardRowsWithLatestAssessments(cards, s.latestAssessments(r.Context(), cards)))
+		rows := cardRowsWithLatestAssessments(cards, s.latestAssessments(r.Context(), cards))
+		view.Fits, view.Hypothesis, view.Unsuitable, view.Unassessed = groupCardRows(filterCardRows(rows, reason, reasonDetail))
 	} else {
-		detail, err := s.showcase.Job(r.Context(), jobID)
+		jobDetail, err := s.showcase.Job(r.Context(), jobID)
 		if errors.Is(err, app.ErrJobNotFound) {
 			s.renderNotice(w, http.StatusNotFound, "Задание не найдено", "Запись не существует или была удалена.")
 			return
@@ -549,15 +656,18 @@ func (s *Server) handleCards(w http.ResponseWriter, r *http.Request) {
 			s.renderNotice(w, http.StatusInternalServerError, "Задание недоступно", "Не удалось загрузить задание.")
 			return
 		}
-		jobCards := filterCardsToJob(cards, detail.Job.ResultRef)
-		byCompany := assessmentsByCompany(s.jobAssessments(r.Context(), jobID))
-		view.Fits, view.Other = splitCardRows(cardRowsWithAssessments(jobCards, byCompany))
+		jobCards := filterCardsToJob(cards, jobDetail.Job.ResultRef)
+		assessments, _ := s.jobAssessments(r.Context(), jobID)
+		byCompany := assessmentsByCompany(assessments)
+		rows := cardRowsWithAssessments(jobCards, byCompany)
+		view.Fits, view.Hypothesis, view.Unsuitable, view.Unassessed = groupCardRows(filterCardRows(rows, reason, reasonDetail))
 		view.JobID = jobID
-		view.JobQuery = detail.Job.Query
+		view.JobQuery = jobDetail.Job.Query
 		view.JobScoped = true
 	}
+	view.Counts = cardsCountsFrom(view.Fits, view.Hypothesis, view.Unsuitable, view.Unassessed)
 
-	s.render(w, http.StatusOK, pageCards, pageViewSidebar("Карточки", s.consoleSidebar(sidebarCards), view))
+	s.render(w, http.StatusOK, pageCards, s.pageSection(r, "Карточки", sidebarCards, view))
 }
 
 // handleLeads показывает список лидов с email: по строке на лида — ссылка на
@@ -568,7 +678,8 @@ func (s *Server) handleLeads(w http.ResponseWriter, r *http.Request) {
 		s.renderNotice(w, http.StatusInternalServerError, "Лиды недоступны", "Не удалось загрузить лидов.")
 		return
 	}
-	s.render(w, http.StatusOK, pageLeads, pageViewSidebar("Лиды", s.consoleSidebar(sidebarLeads), leadsView{
+	s.render(w, http.StatusOK, pageLeads, s.pageSection(r, "Лиды", sidebarLeads, leadsView{
+		Live: consoleLive,
 		Rows: leadRows(cards),
 	}))
 }
@@ -702,7 +813,8 @@ func (s *Server) handleCard(w http.ResponseWriter, r *http.Request) {
 		assessment = s.cardAssessment(r.Context(), jobID, card.ID)
 	}
 
-	s.render(w, http.StatusOK, pageCard, pageViewSidebar(card.Name, s.consoleSidebar(sidebarCards), cardView{
+	s.render(w, http.StatusOK, pageCard, s.pageSection(r, card.Name, sidebarCards, cardView{
+		Live:         consoleLive,
 		Card:         cardDetailFrom(card, history),
 		CSRF:         csrfToken(r),
 		SendKey:      newIdempotencyKey(),
@@ -756,7 +868,8 @@ func (s *Server) handleFunnel(w http.ResponseWriter, r *http.Request) {
 		s.renderNotice(w, http.StatusInternalServerError, "Воронка недоступна", "Не удалось загрузить воронку.")
 		return
 	}
-	s.render(w, http.StatusOK, pageFunnel, pageViewSidebar("Воронка", s.consoleSidebar(sidebarFunnel), funnelView{
+	s.render(w, http.StatusOK, pageFunnel, s.pageSection(r, "Воронка", sidebarFunnel, funnelView{
+		Live:   consoleLive,
 		Stages: funnelStageRows(stages),
 		CSRF:   csrfToken(r),
 	}))
@@ -773,7 +886,7 @@ func (s *Server) handleChangeStage(w http.ResponseWriter, r *http.Request) {
 	if sess := currentSession(r); sess != nil {
 		author = sess.Username()
 	}
-	if err := s.changeStage.Change(r.Context(), r.PathValue("id"), stage, author); err != nil {
+	if err := s.changeStage.Change(r.Context(), r.PathValue("id"), stage, author, s.activeTenant(r)); err != nil {
 		s.renderNotice(w, http.StatusBadRequest, "Не удалось перенести", err.Error())
 		return
 	}
@@ -811,6 +924,7 @@ func (s *Server) handleSendToLead(w http.ResponseWriter, r *http.Request) {
 		strings.TrimSpace(r.FormValue("template")),
 		overridesFromForm(r.Form),
 		strings.TrimSpace(r.FormValue("key")),
+		s.activeTenant(r),
 	)
 	if err != nil {
 		s.renderNotice(w, http.StatusBadRequest, "Не удалось отправить", err.Error())
@@ -840,7 +954,8 @@ func (s *Server) handleSendForm(w http.ResponseWriter, r *http.Request) {
 	selected := strings.TrimSpace(r.URL.Query().Get("template"))
 	valuesHTML, previewHTML := s.composeForScreen(r.Context(), selected, "")
 
-	s.render(w, http.StatusOK, pageSend, pageViewSidebar("Отправка", s.consoleSidebar(sidebarSend), sendView{
+	s.render(w, http.StatusOK, pageSend, s.pageConsole(r, "Отправка", sendView{
+		Live:         consoleLive,
 		CSRF:         csrfToken(r),
 		Sent:         sent,
 		Skipped:      skipped,
@@ -977,7 +1092,8 @@ func (s *Server) handleDeleteTemplate(w http.ResponseWriter, r *http.Request) {
 
 // renderTemplatesPage отдаёт страницу библиотеки с заданной формой и списком.
 func (s *Server) renderTemplatesPage(w http.ResponseWriter, r *http.Request, status int, form templateFormView, list templateListView, errText string) {
-	s.render(w, status, pageTemplates, pageViewSidebar("Библиотека шаблонов", s.consoleSidebar(sidebarSend), templatesView{
+	s.render(w, status, pageTemplates, s.pageConsole(r, "Библиотека шаблонов", templatesView{
+		Live:  consoleLive,
 		CSRF:  csrfToken(r),
 		Error: errText,
 		Form:  form,
@@ -1543,7 +1659,7 @@ func (s *Server) writeStreamError(w http.ResponseWriter, message, history string
 
 // renderAssistant отрисовывает экран ассистента.
 func (s *Server) renderAssistant(w http.ResponseWriter, r *http.Request, view assistantView) {
-	s.render(w, http.StatusOK, pageAssistant, pageViewSidebar("Ассистент", s.consoleSidebar(sidebarAssistant), view))
+	s.render(w, http.StatusOK, pageAssistant, s.pageConsole(r, "Ассистент", view))
 }
 
 // defaultAssistantView собирает представление с операторскими лимитами
@@ -1557,6 +1673,7 @@ func (s *Server) defaultAssistantView(r *http.Request) assistantView {
 	maxDepth := intOrEmpty(limits.MaxDepth)
 	maxTime := intOrEmpty(limits.MaxTimeSeconds)
 	return assistantView{
+		Live:             consoleLive,
 		CSRF:             csrfToken(r),
 		MaxDepth:         maxDepth,
 		MaxTimeSeconds:   maxTime,
@@ -1575,6 +1692,7 @@ func (s *Server) formAssistantView(r *http.Request) assistantView {
 	targetCompanies := strings.TrimSpace(r.FormValue("targetCompanies"))
 	maxResults := strings.TrimSpace(r.FormValue("maxResults"))
 	return assistantView{
+		Live:             consoleLive,
 		CSRF:             csrfToken(r),
 		Message:          strings.TrimSpace(r.FormValue("message")),
 		MaxDepth:         maxDepth,
@@ -1699,6 +1817,7 @@ func intOrEmpty(v int) string {
 func (s *Server) handleForumSignals(w http.ResponseWriter, r *http.Request) {
 	query := strings.TrimSpace(r.URL.Query().Get("q"))
 	view := forumSignalsView{
+		Live:       consoleLive,
 		QueryField: components.Field{ID: "q", Name: "q", Label: "Запрос", Required: true, Value: query},
 		Query:      query,
 	}
@@ -1714,7 +1833,7 @@ func (s *Server) handleForumSignals(w http.ResponseWriter, r *http.Request) {
 		}
 		view.Signals = forumSignalRows(signals)
 	}
-	s.render(w, http.StatusOK, pageForumSignals, pageViewSidebar("Форумы", s.consoleSidebar(sidebarForum), view))
+	s.render(w, http.StatusOK, pageForumSignals, s.pageConsole(r, "Форумы", view))
 }
 
 // handleHealth — проба живости процесса.
@@ -1722,6 +1841,15 @@ func handleHealth(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.Header().Set("Cache-Control", "no-store")
 	_, _ = w.Write([]byte("ok\n"))
+}
+
+func (s *Server) handleReadiness(w http.ResponseWriter, r *http.Request) {
+	if s.readiness == nil {
+		writeJSONBody(w, http.StatusServiceUnavailable, map[string]string{"status": "unknown", "reason": "probe_not_configured"})
+		return
+	}
+	status, report := s.readiness(r.Context())
+	writeJSONBody(w, status, report)
 }
 
 // newIdempotencyKey генерирует ключ идемпотентности формы отправки.

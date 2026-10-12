@@ -42,13 +42,19 @@ func EventMessages(events []domain.DomainEvent) []ports.Message {
 	messages := make([]ports.Message, 0, len(events))
 	for _, event := range events {
 		header := event.Header()
+		correlationID := header.CorrelationID
+		if correlationID == "" {
+			// Контракт требует correlation_id. Для корневого действия event_id
+			// служит его стабильным correlation id.
+			correlationID = string(header.EventID)
+		}
 		messages = append(messages, ports.Message{
 			Contract:      string(event.Name()),
 			SchemaVersion: ContractSchemaVersion,
 			EventID:       header.EventID,
 			TenantID:      header.TenantID,
 			OccurredAt:    header.OccurredAt,
-			CorrelationID: header.CorrelationID,
+			CorrelationID: correlationID,
 			CausationID:   header.CausationID,
 			Payload:       event,
 		})
@@ -61,13 +67,15 @@ func EventMessages(events []domain.DomainEvent) []ports.Message {
 // ключ идемпотентности — (tenant_id, snapshot_version).
 func AccessDecisionMessage(tenant *domain.Tenant, at time.Time) ports.Message {
 	snapshot := tenant.AccessDecisionSnapshot(at)
+	eventID := domain.EventID(fmt.Sprintf("%s:%s:%d", tenant.ID(), ContractAccessDecision, snapshot.Version))
 	return ports.Message{
 		Contract:        ContractAccessDecision,
 		SchemaVersion:   ContractSchemaVersion,
-		EventID:         domain.EventID(fmt.Sprintf("%s:%s:%d", tenant.ID(), ContractAccessDecision, snapshot.Version)),
+		EventID:         eventID,
 		TenantID:        tenant.ID(),
 		OccurredAt:      at,
 		SnapshotVersion: snapshot.Version,
+		CorrelationID:   string(eventID),
 		Payload:         snapshot,
 	}
 }

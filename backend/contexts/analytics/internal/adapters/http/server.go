@@ -14,6 +14,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 	"time"
@@ -21,6 +22,7 @@ import (
 	"lead-gen/backend/contexts/analytics/internal/app/command"
 	"lead-gen/backend/contexts/analytics/internal/app/query"
 	"lead-gen/backend/contexts/analytics/internal/ports"
+	"lead-gen/backend/platform/observability/observ"
 	"lead-gen/frontend/components"
 )
 
@@ -61,6 +63,32 @@ type Dependencies struct {
 	// Events — применение нормализованного события к read-модели.
 	Events *command.ApplyEventHandler
 
+	// Exports — постановка длительной выгрузки отчёта в очередь заданий.
+	Exports *command.ExportReport
+
+	// ExportJobs — чтение статуса и результата заданий выгрузки.
+	ExportJobs *query.ExportJobHandler
+
+	// Jobs — чтение очереди исчерпавших попытки заданий (DLQ) и явный повтор
+	// упавших заданий; видимость DLQ ограничена администратором.
+	Jobs *query.JobsHandler
+
+	// Insights — срез анализа качества поиска (распределение вердиктов и причин).
+	Insights *query.InsightHandler
+
+	// Applications — сравнение показателей «до/после» по применённым
+	// рекомендациям.
+	Applications *query.ApplicationsHandler
+
+	// ApplyRecommendation — применение рекомендации как изменения в контуре
+	// поиска с фиксацией факта применения.
+	ApplyRecommendation *command.ApplyRecommendationHandler
+
+	// Operations — операционные агрегаты процесса (контракт campaign-report):
+	// цифры по клиентам и разбивка по времени, агрегаты для дашборда. nil —
+	// поверхность честно недоступна, а не отдаёт пустой успех.
+	Operations *query.OperationsHandler
+
 	// Access — решение о доступе (роль → ресурс). nil означает, что владелец
 	// политики не подключён: дашборд честно отвечает 503, а не открывает доступ.
 	Access ports.AccessDecider
@@ -68,6 +96,20 @@ type Dependencies struct {
 	// Console — базовые адреса сервисов консоли для общей навигации по разделам
 	// (Заявки, Исполнение, Лиды, Отчёты). Пустые адреса дают относительные пути.
 	Console components.ConsoleBases
+
+	// BasePath — внешний префикс пути сервера под единым origin (admin-proxy).
+	// Пусто — сервер смонтирован в корень; префикс добавляется к ссылкам,
+	// формам и редиректам общим middleware.
+	BasePath string
+
+	// ExternalPrefixes — префиксы других консолей единого origin: ссылки на них
+	// не переписываются под собственный префикс.
+	ExternalPrefixes []string
+
+	// Logger фиксирует превышение порога частоты чувствительных действий
+	// (web-frontend-architecture, срез 7, 7.5). nil — фиксация идёт в стандартный
+	// журнал процесса: блокировка не остаётся незамеченной.
+	Logger observ.Logger
 }
 
 // Server — HTTP-сервер среза. Нулевое значение непригодно: используйте
@@ -77,15 +119,16 @@ type Server struct {
 	handler http.Handler
 	pages   *components.Set
 	console components.ConsoleBases
+	logger  observ.Logger
 }
 
 // NewServer собирает маршруты среза из переданных сценариев. Шаблоны дашборда
 // разбираются сразу: ошибка разметки видна при сборке сервиса. Если набор не
 // собрался, экран честно отвечает 500.
 func NewServer(deps Dependencies) *Server {
-	server := &Server{deps: deps, console: deps.Console}
+	server := &Server{deps: deps, console: deps.Console, logger: deps.Logger}
 	server.pages, _ = newPages()
-	server.handler = server.routes()
+	server.handler = components.PrefixMiddleware(deps.BasePath, server.routes(), deps.ExternalPrefixes...)
 	return server
 }
 
@@ -102,16 +145,44 @@ func (s *Server) routes() http.Handler {
 	// Корень сервиса ведёт на дашборд, а не отвечает 404: адрес сервиса —
 	// точка входа в его экран.
 	mux.HandleFunc("GET /{$}", s.handleRoot)
-	mux.HandleFunc("GET /dashboard", s.handleDashboard)
+	// Экраны несут операционные данные (в том числе по сотрудникам и кампаниям),
+	// поэтому их ответы запрещено кэшировать (7.5).
+	mux.Handle("GET /dashboard", components.NoStore(http.HandlerFunc(s.handleDashboard)))
 	mux.HandleFunc("GET /dashboard/stream", s.handleStream)
 	// Отчётность: экран, JSON-срез и выгрузки CSV/XLSX с тем же фильтром.
-	mux.HandleFunc("GET /reports", s.handleReports)
-	mux.HandleFunc("GET /reports.json", s.handleReportsJSON)
-	mux.HandleFunc("GET /reports/export.csv", s.handleReportsCSV)
-	mux.HandleFunc("GET /reports/export.xlsx", s.handleReportsXLSX)
+	mux.Handle("GET /reports", components.NoStore(http.HandlerFunc(s.handleReports)))
+	mux.Handle("GET /reports.json", components.NoStore(http.HandlerFunc(s.handleReportsJSON)))
+	mux.Handle("GET /reports/export.csv", components.NoStore(http.HandlerFunc(s.handleReportsCSV)))
+	mux.Handle("GET /reports/export.xlsx", components.NoStore(http.HandlerFunc(s.handleReportsXLSX)))
+	// Длительная выгрузка: постановка возвращает идентификатор задания и ссылки,
+	// статус наблюдаем, результат отдаётся по ссылке после завершения задания.
+	// Постановка дорогого расчёта ограничена по частоте (7.5).
+	mux.Handle("POST /reports/exports", s.rateLimit("/reports/exports", http.HandlerFunc(s.handleReportExportEnqueue)))
+	mux.Handle("GET /reports/exports/{id}", components.NoStore(http.HandlerFunc(s.handleReportExportStatus)))
+	mux.Handle("GET /reports/exports/{id}/result", components.NoStore(http.HandlerFunc(s.handleReportExportResult)))
+	// Модель длительных операций (срез 6): HTML-постановка возвращает страницу
+	// прогресса (PRG), страница обновляется фрагментом по опросу, упавшее задание
+	// повторяется, а исчерпавшие попытки задания видны администратору (DLQ).
+	mux.Handle("POST /reports/exports/html", s.rateLimit("/reports/exports/html", http.HandlerFunc(s.handleReportExportEnqueueHTML)))
+	mux.Handle("GET /reports/exports/{id}/progress", components.NoStore(http.HandlerFunc(s.handleReportExportProgress)))
+	mux.Handle("POST /reports/exports/{id}/retry", s.rateLimit("/reports/exports/retry", http.HandlerFunc(s.handleReportExportRetry)))
+	mux.Handle("GET /reports/jobs", components.NoStore(http.HandlerFunc(s.handleReportJobs)))
+	// Анализ качества поиска (lead-quality-insights): распределение вердиктов и
+	// причин по разрезам, рекомендации с основанием и сравнение «до/после».
+	// Содержимое красной зоны и персональные данные сюда не попадают.
+	mux.Handle("GET /insights", components.NoStore(http.HandlerFunc(s.handleInsights)))
+	mux.Handle("GET /insights.json", components.NoStore(http.HandlerFunc(s.handleInsightsJSON)))
+	mux.Handle("GET /insights/applications.json", components.NoStore(http.HandlerFunc(s.handleInsightApplicationsJSON)))
+	mux.Handle("POST /insights/recommendations/apply", s.rateLimit("/insights/recommendations/apply", http.HandlerFunc(s.handleApplyRecommendation)))
+	// Агрегаты процесса для экрана операций (контракт campaign-report): цифры по
+	// клиентам и разбивка по времени, агрегаты по клиентам для дашборда. Только
+	// обезличенные счётчики; доступ проверяет потребитель на своём экране.
+	mux.Handle("GET /operations/numbers", components.NoStore(http.HandlerFunc(s.handleOperationsNumbers)))
+	mux.Handle("GET /operations/clients", components.NoStore(http.HandlerFunc(s.handleOperationsClients)))
 	// Приём событий — write-путь dev- и тест-контура, а не клиентский read-путь:
-	// в рабочем контуре события приходят воркером из брокера.
-	mux.HandleFunc("POST /dashboard/events", s.handleEvents)
+	// в рабочем контуре события приходят воркером из брокера. Приём тоже
+	// ограничен по частоте.
+	mux.Handle("POST /dashboard/events", s.rateLimit("/dashboard/events", http.HandlerFunc(s.handleEvents)))
 	// Общее оформление экранов раздаётся из frontend/components.
 	mux.Handle("GET /static/", http.StripPrefix("/static/", http.FileServerFS(components.StaticFS())))
 	mux.HandleFunc("GET /healthz", s.handleHealth)
@@ -119,10 +190,39 @@ func (s *Server) routes() http.Handler {
 	return mux
 }
 
+// rateLimit оборачивает чувствительный маршрут ограничителем частоты общего слоя.
+// Факт блокировки фиксируется: без фиксации отклонение неотличимо от тишины
+// (web-frontend-architecture, срез 7, 7.5).
+func (s *Server) rateLimit(path string, next http.Handler) http.Handler {
+	return components.RateLimit(components.RateLimitConfig{
+		Limit:  sensitiveLimit,
+		Window: sensitiveWindow,
+		OnBlocked: func(r *http.Request, key string) {
+			s.recordRateLimit(r, path, key)
+		},
+	})(next)
+}
+
+// recordRateLimit фиксирует блокировку: структурированным логгером при его
+// наличии либо стандартным журналом процесса.
+func (s *Server) recordRateLimit(r *http.Request, path, key string) {
+	if s.logger != nil {
+		s.logger.Warn("консоль: превышен порог частоты", observ.Fields{}, "path", path, "key", key)
+		return
+	}
+	log.Printf("analytics: превышен порог частоты path=%s key=%s", path, key)
+}
+
+// Порог и окно ограничения частоты чувствительных действий.
+const (
+	sensitiveLimit  = 30
+	sensitiveWindow = time.Minute
+)
+
 // newPages собирает набор шаблонов дашборда и отчётности: каркас и общие
 // фрагменты из frontend/components плюс страницы экранов.
 func newPages() (*components.Set, error) {
-	return components.New(templateFS, pageDashboard, pageReports)
+	return components.NewWithMessages(consoleMessages(), templateFS, pageDashboard, pageReports, pageExportProgress, pageJobs, pageInsights)
 }
 
 // handleRoot обслуживает GET /{$}: корень сервиса ведёт на дашборд, а не
@@ -150,10 +250,17 @@ func (s *Server) handleDashboard(w http.ResponseWriter, r *http.Request) {
 		CompanyID: r.URL.Query().Get("company_id"),
 	})
 	s.render(w, http.StatusOK, pageDashboard, components.Page{
-		Layout:  components.Layout{Title: "Дашборд метрик"},
-		Sidebar: components.ConsoleNav(s.console, components.ConsoleSectionReports),
-		View:    view,
+		Layout:  components.Layout{Title: consoleMessages().Text(msgDashboardTitle)},
+		Sidebar: s.consoleNav(r),
+		View:    dashboardPage{DashboardView: view, Live: components.Live{ID: "console-live"}},
 	})
+}
+
+// dashboardPage оборачивает срез дашборда областью живых объявлений: встраивание
+// сохраняет доступ к полям среза, а Live добавляет регион aria-live на страницу.
+type dashboardPage struct {
+	query.DashboardView
+	Live components.Live
 }
 
 // handleStream обслуживает GET /dashboard/stream: поток серверных событий (SSE)
@@ -284,6 +391,10 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 		Segment:    dto.Segment,
 		CampaignID: dto.CampaignID,
 		ManagerID:  dto.ManagerID,
+
+		JobID:   dto.JobID,
+		Verdict: dto.Verdict,
+		Reason:  dto.Reason,
 	}); err != nil {
 		// Событие принято проекцией, но снимок не записан на носитель: честный
 		// отказ, а не успех без эффекта.
@@ -309,6 +420,12 @@ type eventDTO struct {
 	Segment    string `json:"segment"`
 	CampaignID string `json:"campaign_id"`
 	ManagerID  string `json:"manager_id"`
+
+	// Поля исхода классификации (kind = lead-assessment): задание, вердикт и
+	// категория причины. Необязательны для прочих видов событий.
+	JobID   string `json:"job_id"`
+	Verdict string `json:"verdict"`
+	Reason  string `json:"reason"`
 }
 
 // requireAccess проверяет доступ роли к ресурсу через порт решения. Отказ — 403,
@@ -345,6 +462,11 @@ func (s *Server) render(w http.ResponseWriter, status int, page string, model co
 	if len(model.Layout.BootstrapScripts) == 0 {
 		model.Layout.BootstrapScripts = components.ConsoleBootstrapScripts
 	}
+	// Общие скрипты консоли возвращают фокус при подмене фрагмента и объявляют
+	// изменения через область aria-live (7.3).
+	if len(model.Layout.Scripts) == 0 {
+		model.Layout.Scripts = components.ConsoleScripts
+	}
 	var buf bytes.Buffer
 	if err := s.pages.Render(&buf, page, model); err != nil {
 		http.Error(w, "ошибка рендеринга дашборда", http.StatusInternalServerError)
@@ -353,6 +475,31 @@ func (s *Server) render(w http.ResponseWriter, status int, page string, model co
 	w.Header().Set("Content-Type", contentTypeHTML)
 	w.WriteHeader(status)
 	_, _ = w.Write(buf.Bytes())
+}
+
+// navContext собирает контекст навигации консоли из запроса: активный тенант и
+// актор. У консоли отчётов нет сессии оператора, поэтому актор берётся из
+// параметра запроса или заголовка X-Actor, как в админ-консоли платформы. Пустые
+// значения дают ссылки без параметров (прежнее поведение).
+func navContext(r *http.Request) components.ConsoleContext {
+	actor := strings.TrimSpace(r.URL.Query().Get("actor"))
+	if actor == "" {
+		actor = strings.TrimSpace(r.Header.Get("X-Actor"))
+	}
+	return components.ConsoleContext{
+		TenantID: strings.TrimSpace(r.URL.Query().Get("tenant_id")),
+		Actor:    actor,
+	}
+}
+
+// consoleNav собирает общую навигацию консоли аналитики: канонические разделы
+// общего слоя с активным разделом «Отчёты» (ConsoleSectionReports). Вторичных
+// групп у консоли нет — её экраны (дашборд, отчётность, задания) относятся к
+// одному разделу, поэтому сайдбар одинаков на всех экранах и не меняет состав при
+// переходах (change console-shell-navigation). Контекст активного тенанта и
+// актора переносится в ссылки.
+func (s *Server) consoleNav(r *http.Request) components.Nav {
+	return components.ConsoleNavWithContext(s.console, components.ConsoleSectionReports, navContext(r))
 }
 
 // roleOf возвращает роль запроса из параметра или заголовка, подставляя

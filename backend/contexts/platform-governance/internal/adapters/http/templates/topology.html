@@ -1,0 +1,99 @@
+{{- define "content" -}}
+<section class="console-topology" data-topology>
+  <h1>{{ text "topology.title" }}</h1>
+  {{- if .View.HasNodes }}
+  <p class="hint">{{ text "topology.generated_at" }}: {{ formatDateTime .View.GeneratedAt }}</p>
+  {{- end }}
+  {{- if .View.Unavailable }}
+  <p class="notice" role="status">{{ text "topology.unavailable" }}</p>
+  {{- end }}
+  {{- with .View.Warnings }}
+  <div class="notice" role="status">
+    <p>{{ text "topology.warnings" }}</p>
+    <ul>
+      {{- range . }}
+      <li>{{ . }}</li>
+      {{- end }}
+    </ul>
+  </div>
+  {{- end }}
+  {{- if .View.HasNodes }}
+  <figure class="topology-figure">
+    <svg class="topology-graph" viewBox="{{ .View.ViewBox }}" role="img" aria-label="{{ text "topology.graph.aria" }}" preserveAspectRatio="xMidYMid meet" data-topology-graph>
+      <title>{{ text "topology.graph.aria" }}</title>
+      <g class="topology-edges">
+        {{- range .View.Edges }}
+        <line class="topology-edge" x1="{{ .X1 }}" y1="{{ .Y1 }}" x2="{{ .X2 }}" y2="{{ .Y2 }}" data-edge-id="{{ .ID }}"></line>
+        {{- end }}
+      </g>
+      <g class="topology-nodes">
+        {{- range .View.Nodes }}
+        <g class="topology-node" data-node-id="{{ .ID }}">
+          <rect class="topology-node-box" x="{{ .BoxX }}" y="{{ .BoxY }}" width="210" height="64"></rect>
+          <text class="topology-node-label" x="{{ .LabelX }}" y="{{ .LabelY }}">{{ .Label }}</text>
+          <text class="topology-node-state" x="{{ .LabelX }}" y="{{ .StateY }}"><tspan aria-hidden="true">{{ .StateIcon }}</tspan> {{ .StateLabel }}</text>
+        </g>
+        {{- end }}
+      </g>
+    </svg>
+  </figure>
+  <h2>{{ text "topology.nodes.heading" }}</h2>
+  <table class="table">
+    <thead>
+      <tr>
+        <th>{{ text "topology.col.service" }}</th>
+        <th>{{ text "topology.col.kind" }}</th>
+        <th>{{ text "topology.col.zone" }}</th>
+        <th>{{ text "topology.col.roles" }}</th>
+        <th>{{ text "topology.col.state" }}</th>
+        <th>{{ text "topology.col.connections" }}</th>
+        <th>{{ text "topology.col.contracts" }}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{- range .View.Nodes }}
+      <tr>
+        <td><a href="{{ .CardURL }}">{{ .Label }}</a></td>
+        <td>{{ .KindLabel }}</td>
+        <td>{{ .ZoneLabel }}</td>
+        <td>{{ range $i, $value := .Roles }}{{ if $i }}, {{ end }}{{ $value }}{{ end }}</td>
+        <td><span class="status status-{{ .StateClass }}"><span aria-hidden="true">{{ .StateIcon }}</span> {{ .StateLabel }}</span></td>
+        <td>{{ range $i, $value := .Connections }}{{ if $i }}; {{ end }}{{ $value }}{{ end }}</td>
+        <td>{{ range $i, $value := .Contracts }}{{ if $i }}, {{ end }}{{ $value }}{{ end }}</td>
+      </tr>
+      {{- end }}
+    </tbody>
+  </table>
+  <h2>{{ text "topology.edges.heading" }}</h2>
+  <table class="table">
+    <thead>
+      <tr>
+        <th>{{ text "topology.col.edge" }}</th>
+        <th>{{ text "topology.col.from" }}</th>
+        <th>{{ text "topology.col.to" }}</th>
+        <th>{{ text "topology.col.integration" }}</th>
+        <th>{{ text "topology.col.transport" }}</th>
+        <th>{{ text "topology.col.mechanism" }}</th>
+        <th>{{ text "topology.col.contract" }}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{- range .View.Edges }}
+      <tr>
+        <td>{{ .ID }}</td>
+        <td>{{ .FromLabel }}</td>
+        <td>{{ .ToLabel }}</td>
+        <td>{{ .Integration }}</td>
+        <td>{{ .Transport }}</td>
+        <td>{{ .Mechanism }}</td>
+        <td>{{ .Contract }}</td>
+      </tr>
+      {{- end }}
+    </tbody>
+  </table>
+  {{- else }}
+  <p class="empty">{{ text "topology.empty" }}</p>
+  {{- end }}
+  {{ template "live" .View.Live }}
+</section>
+{{- end -}}

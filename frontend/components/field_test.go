@@ -23,6 +23,24 @@ func TestFieldRequiredForTextarea(t *testing.T) {
 	}
 }
 
+// TestFieldPasswordType проверяет, что тип password попадает в атрибут input.
+func TestFieldPasswordType(t *testing.T) {
+	var buffer bytes.Buffer
+	err := renderFragment(&buffer, "field", Field{
+		ID: "password", Name: "password", Label: "Пароль", Type: "password", Autocomplete: "new-password", Required: true,
+	})
+	if err != nil {
+		t.Fatalf("рендер поля: %v", err)
+	}
+	out := buffer.String()
+	if !strings.Contains(out, `type="password"`) {
+		t.Fatalf("поле не получило type=password:\n%s", out)
+	}
+	if !strings.Contains(out, `autocomplete="new-password"`) {
+		t.Fatalf("поле не получило autocomplete:\n%s", out)
+	}
+}
+
 // TestFieldOptionalTextareaHasNoRequired проверяет, что необязательное поле-
 // текстареа required не получает: атрибут следует за моделью, а не типом.
 func TestFieldOptionalTextareaHasNoRequired(t *testing.T) {

@@ -31,6 +31,35 @@ import (
 // testTime — фиксированный момент для детерминированных тестов.
 var testTime = time.Date(2026, time.January, 2, 10, 0, 0, 0, time.UTC)
 
+// testTenantID — тенант конфигурации тестового сервера (аналог флага -tenant):
+// фолбэк активного тенанта, когда запрос не несёт tenant_id.
+const testTenantID = "tenant-config"
+
+// recordingPublisher — издатель событий дашборда, запоминающий опубликованное:
+// тесты проверяют, в каком тенанте учтено событие консольной команды.
+type recordingPublisher struct {
+	mu     sync.Mutex
+	events []ports.AnalyticsEvent
+}
+
+// Publish запоминает событие.
+func (p *recordingPublisher) Publish(_ context.Context, event ports.AnalyticsEvent) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.events = append(p.events, event)
+	return nil
+}
+
+// last возвращает последнее опубликованное событие и признак его наличия.
+func (p *recordingPublisher) last() (ports.AnalyticsEvent, bool) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if len(p.events) == 0 {
+		return ports.AnalyticsEvent{}, false
+	}
+	return p.events[len(p.events)-1], true
+}
+
 // fakeClock — детерминированные часы.
 type fakeClock struct{ t time.Time }
 
@@ -202,6 +231,8 @@ type testEnv struct {
 	forum       *fakeForum
 	vector      *fakeVectorPort
 	recall      *app.SemanticRecall
+	events      *recordingPublisher
+	tenantID    string
 	server      *httpapi.Server
 }
 
@@ -229,6 +260,7 @@ func newTestEnvWithAuth(auth httpapi.AuthConfig) *testEnv {
 	vectorPort := &fakeVectorPort{}
 	recall := &app.SemanticRecall{Vector: vectorPort}
 	embedCompany := &app.EmbedCompany{Profiles: profiles, Vector: vectorPort, Clock: fakeClock{t: testTime}}
+	events := &recordingPublisher{}
 
 	runSearch := &app.RunSearch{
 		Jobs:        jobs,
@@ -251,6 +283,8 @@ func newTestEnvWithAuth(auth httpapi.AuthConfig) *testEnv {
 		Profiles: profiles,
 		Activity: activities,
 		Clock:    fakeClock{t: testTime},
+		Events:   events,
+		TenantID: testTenantID,
 	}
 	snooze := &app.SnoozeLead{
 		Profiles: profiles,
@@ -264,6 +298,8 @@ func newTestEnvWithAuth(auth httpapi.AuthConfig) *testEnv {
 		Mail:      mailPort,
 		From:      "operator@example.com",
 		Clock:     fakeClock{t: testTime},
+		Events:    events,
+		TenantID:  testTenantID,
 	}
 	sendToSegment := &app.SendToSegment{
 		Profiles:  profiles,
@@ -295,6 +331,7 @@ func newTestEnvWithAuth(auth httpapi.AuthConfig) *testEnv {
 		SemanticRecall: recall,
 		EmbedCompany:   embedCompany,
 		Auth:           auth,
+		TenantID:       testTenantID,
 		// Базовые адреса сервисов консоли: раздел текущего сервиса («Лиды»)
 		// остаётся относительным, остальные разделы ведут по своим адресам. Так
 		// тесты проверяют общую навигацию консоли, а не только её разметку.
@@ -318,6 +355,8 @@ func newTestEnvWithAuth(auth httpapi.AuthConfig) *testEnv {
 		forum:       forumPort,
 		vector:      vectorPort,
 		recall:      recall,
+		events:      events,
+		tenantID:    testTenantID,
 		server:      server,
 	}
 }
@@ -446,8 +485,22 @@ func readBody(t *testing.T, resp *http.Response) string {
 	return string(data)
 }
 
-// seedCompany сохраняет карточку компании с фиксированным происхождением.
+// seedCompany сохраняет карточку компании в тенанте конфигурации тестового
+// сервера (testTenantID): консольные чтения в тестах scoping'ятся этим тенантом,
+// потому данные должны быть сохранены в нём же.
 func seedCompany(t *testing.T, profiles *memory.LeadProfileRepository, id, name, description string, socials ...string) {
+	t.Helper()
+	seedCompanyInTenant(t, profiles, testTenantID, id, name, description, socials...)
+}
+
+// seedCompanyUnscoped сохраняет карточку в пустом тенанте по умолчанию: для
+// серверов без тенанта конфигурации (например, золотых рендеров).
+func seedCompanyUnscoped(t *testing.T, profiles *memory.LeadProfileRepository, id, name, description string, socials ...string) {
+	t.Helper()
+	seedCompanyInTenant(t, profiles, "", id, name, description, socials...)
+}
+
+func seedCompanyInTenant(t *testing.T, profiles *memory.LeadProfileRepository, tenant, id, name, description string, socials ...string) {
 	t.Helper()
 	prov := domain.Provenance{SourceURL: "https://" + id, ExtractedAt: testTime}
 	svals := make([]domain.AttributedValue, 0, len(socials))
@@ -464,7 +517,7 @@ func seedCompany(t *testing.T, profiles *memory.LeadProfileRepository, id, name,
 	if err != nil {
 		t.Fatalf("CreateCompany: %v", err)
 	}
-	if err := profiles.Save(context.Background(), company); err != nil {
+	if err := profiles.Save(ports.WithTenant(context.Background(), tenant), company); err != nil {
 		t.Fatalf("Save company: %v", err)
 	}
 }
@@ -1078,7 +1131,9 @@ func TestCardsCompositionIndependentOfView(t *testing.T) {
 		"data-view-set=\"tiles\"",
 		"data-view-set=\"rows\"",
 		"data-composition-set=\"fits\"",
-		"data-composition-set=\"other\"",
+		"data-composition-set=\"hypothesis\"",
+		"data-composition-set=\"unsuitable\"",
+		"data-composition-set=\"unassessed\"",
 		"composition-switch",
 		"view-switch",
 	} {
@@ -1118,7 +1173,9 @@ func TestCardsJobScopedComposition(t *testing.T) {
 	html := readBody(t, client.get(t, "/cards?job="+url.QueryEscape(job.ID)))
 	for _, want := range []string{
 		"data-group=\"fits\"",
-		"data-group=\"other\"",
+		"data-group=\"hypothesis\"",
+		"data-group=\"unsuitable\"",
+		"data-group=\"unassessed\"",
 		"verdict-hypothesis",
 		"Гипотеза",
 		"fit.example",
@@ -1164,7 +1221,9 @@ func TestCardsGlobalComposition(t *testing.T) {
 	html := readBody(t, client.get(t, "/cards"))
 	for _, want := range []string{
 		"data-group=\"fits\"",
-		"data-group=\"other\"",
+		"data-group=\"hypothesis\"",
+		"data-group=\"unsuitable\"",
+		"data-group=\"unassessed\"",
 		"verdict-unsuitable",
 		"Не подходит",
 		"Не оценено",
@@ -1300,8 +1359,8 @@ func TestCardShowsStatusAndHistory(t *testing.T) {
 		t.Fatalf("GET /cards/example.com = %d, ожидался 200", resp.StatusCode)
 	}
 	html := readBody(t, resp)
-	if !strings.Contains(html, "not warmed") {
-		t.Fatalf("карточка не показывает стадию «not warmed»:\n%s", html)
+	if !strings.Contains(html, `status-not-warmed">Не прогрет`) {
+		t.Fatalf("карточка не показывает стадию «Не прогрет» читаемой подписью:\n%s", html)
 	}
 	if !strings.Contains(html, "intro") {
 		t.Fatalf("карточка не показывает шаблон письма в истории:\n%s", html)
@@ -2166,8 +2225,8 @@ func TestCardsGroupsShowUnsuitable(t *testing.T) {
 	for _, want := range []string{
 		`data-cards-composition="fits"`,
 		`href="/cards/fit.example" data-group="fits"`,
-		`href="/cards/hypo.example" data-group="other"`,
-		`href="/cards/no.example" data-group="other"`,
+		`href="/cards/hypo.example" data-group="hypothesis"`,
+		`href="/cards/no.example" data-group="unsuitable"`,
 		"verdict-hypothesis",
 		"verdict-unsuitable",
 		"Гипотеза",
@@ -2345,5 +2404,303 @@ func TestJobsFragmentShowsTargetProgress(t *testing.T) {
 		if !strings.Contains(html, want) {
 			t.Fatalf("журнал не содержит %q:\n%s", want, html)
 		}
+	}
+}
+
+// TestLeadsSubnavReplacesSecondarySidebarGroup проверяет change
+// console-shell-navigation (задачи 2.1–2.3): вторичной группы «Экраны лидов» в
+// общем сайдбаре нет, переходы по экранам раздела вынесены во внутриэкранную
+// панель, текущий экран подсвечен, а ссылки панели несут активные tenant_id и
+// actor.
+func TestLeadsSubnavReplacesSecondarySidebarGroup(t *testing.T) {
+	env := newTestEnv()
+	ts := httptest.NewServer(env.server)
+	defer ts.Close()
+	client := newConsoleClient(ts)
+	client.login(t, "operator", "secret")
+
+	html := readBody(t, client.get(t, "/cards"))
+	if strings.Contains(html, "sidebar-group-label") || strings.Contains(html, "Экраны лидов") {
+		t.Fatalf("общий сайдбар всё ещё содержит вторичную группу:\n%s", html)
+	}
+	for _, want := range []string{
+		`<nav class="tabs">`,
+		`class="tab is-active" href="/cards?actor=operator&amp;tenant_id=tenant-config" aria-current="page">Карточки</a>`,
+		`class="tab" href="/?actor=operator&amp;tenant_id=tenant-config">Главная</a>`,
+		`class="tab" href="/leads?actor=operator&amp;tenant_id=tenant-config">Лиды</a>`,
+		`class="tab" href="/funnel?actor=operator&amp;tenant_id=tenant-config">Воронка</a>`,
+	} {
+		if !strings.Contains(html, want) {
+			t.Fatalf("внутриэкранная панель не содержит %q:\n%s", want, html)
+		}
+	}
+	// Убранные пункты не выводятся в меню.
+	for _, gone := range []string{`href="/send`, `href="/assistant`, `href="/forum-signals`} {
+		if strings.Contains(html, gone) {
+			t.Fatalf("в меню остался убранный пункт %q:\n%s", gone, html)
+		}
+	}
+}
+
+// TestLeadsRemovedMenuScreensRemainReachable проверяет задачу 4.2: маршруты
+// убранных из меню экранов сохранены и отвечают как прежде — чистка навигации не
+// удаляет функциональность.
+func TestLeadsRemovedMenuScreensRemainReachable(t *testing.T) {
+	env := newTestEnv()
+	ts := httptest.NewServer(env.server)
+	defer ts.Close()
+	client := newConsoleClient(ts)
+	client.login(t, "operator", "secret")
+
+	for _, path := range []string{"/send", "/assistant", "/forum-signals"} {
+		resp := client.get(t, path)
+		if resp.StatusCode != http.StatusOK {
+			resp.Body.Close()
+			t.Fatalf("GET %s = %d, ожидался 200: маршрут должен остаться рабочим", path, resp.StatusCode)
+		}
+		resp.Body.Close()
+	}
+}
+
+// TestLeadsSidebarStableAcrossScreens проверяет, что общий сайдбар одинаков по
+// составу и порядку на всех экранах консоли лидов: вторичная панель не меняет
+// общую навигацию.
+func TestLeadsSidebarStableAcrossScreens(t *testing.T) {
+	env := newTestEnv()
+	seedCompany(t, env.profiles, "example.com", "Пример Компании", "Описание")
+	ts := httptest.NewServer(env.server)
+	defer ts.Close()
+	client := newConsoleClient(ts)
+	client.login(t, "operator", "secret")
+
+	pages := []string{"/", "/cards", "/leads", "/funnel"}
+	want := sidebarBlock(t, client.get(t, pages[0]))
+	for _, path := range pages[1:] {
+		got := sidebarBlock(t, client.get(t, path))
+		if got != want {
+			t.Fatalf("сайдбар на %s отличается от %s:\n--- %s ---\n%s\n--- %s ---\n%s", path, pages[0], pages[0], want, path, got)
+		}
+	}
+}
+
+// sidebarBlock вырезает разметку общего сайдбара из страницы.
+func sidebarBlock(t *testing.T, resp *http.Response) string {
+	t.Helper()
+	html := readBody(t, resp)
+	start := strings.Index(html, `<nav class="sidebar"`)
+	if start < 0 {
+		t.Fatalf("страница без общего сайдбара:\n%s", html)
+	}
+	end := strings.Index(html[start:], "</nav>")
+	if end < 0 {
+		t.Fatalf("сайдбар без закрывающего тега:\n%s", html)
+	}
+	return html[start : start+end]
+}
+
+// TestJobScreenSelectionSummary проверяет сводку отбора на экране задания
+// (задачи 1.1–1.3, 2.1–2.2): цель/найдено/недобор, охват, воронка, диагноз и
+// причины отсева с переходом к отфильтрованному списку.
+func TestJobScreenSelectionSummary(t *testing.T) {
+	env := newTestEnv()
+	seedCompany(t, env.profiles, "u.example", "Не подходит", "Описание")
+	seedCompany(t, env.profiles, "h.example", "Гипотеза", "Описание")
+	job, err := env.jobs.CreateSearchJob(context.Background(), "запрос задания", 0)
+	if err != nil {
+		t.Fatalf("CreateSearchJob: %v", err)
+	}
+	if err := env.jobs.RecordResult(context.Background(), job.ID, []string{"u.example", "h.example"}); err != nil {
+		t.Fatalf("RecordResult: %v", err)
+	}
+	if err := env.jobs.RecordProgress(context.Background(), job.ID, ports.SearchJobProgress{
+		Phase: "finalizing", PagesCrawled: 9, CompaniesFound: 2,
+		TargetCompanies: 5, TargetReached: false, StopReason: "цели исчерпаны",
+		ParseErrors: 1, AssessmentErrors: 1, CreditsSpent: 2, CreditsAvailable: 8,
+	}); err != nil {
+		t.Fatalf("RecordProgress: %v", err)
+	}
+	seedAssessment(t, env.assessments, job.ID, "u.example", domain.VerdictUnsuitable, domain.SignalProfile, []domain.Evidence{{
+		Criterion: "критерий", Fact: "факт", SourceURL: "https://u.example/s", Reasoning: "связь", SignalKind: domain.SignalProfile, Mismatch: "нет собственного отдела продаж",
+	}})
+	seedAssessment(t, env.assessments, job.ID, "h.example", domain.VerdictHypothesis, domain.SignalProfile, []domain.Evidence{{
+		Criterion: "критерий", Fact: "профиль", SourceURL: "https://h.example/s", Reasoning: "связь", SignalKind: domain.SignalProfile, Missing: "прямое заявление",
+	}})
+
+	ts := httptest.NewServer(env.server)
+	defer ts.Close()
+	client := newConsoleClient(ts)
+	client.login(t, "operator", "secret")
+
+	html := readBody(t, client.get(t, "/jobs/"+url.PathEscape(job.ID)))
+	for _, want := range []string{
+		"Сводка отбора",
+		"Цель по лидам",
+		`data-shortfall>3<`,
+		"цели исчерпаны",
+		"Воронка отбора",
+		"Найдено",
+		"недоступно",
+		"Причины отсева",
+		"нет собственного отдела продаж",
+		"прямое заявление",
+		"Недобор",
+		"Диагноз",
+		"reason=mismatch",
+		"reason=missing",
+		"reason=no-email",
+		"reason=unassessed",
+	} {
+		if !strings.Contains(html, want) {
+			t.Fatalf("экран задания не содержит %q:\n%s", want, html)
+		}
+	}
+}
+
+// TestJobScreenCoverageUnavailable проверяет, что без опубликованного прогресса
+// охват поиска показывается недоступным, а не выдуманным нулём (задача 1.2).
+func TestJobScreenCoverageUnavailable(t *testing.T) {
+	env := newTestEnv()
+	job, err := env.jobs.CreateSearchJob(context.Background(), "запрос задания", 0)
+	if err != nil {
+		t.Fatalf("CreateSearchJob: %v", err)
+	}
+	ts := httptest.NewServer(env.server)
+	defer ts.Close()
+	client := newConsoleClient(ts)
+	client.login(t, "operator", "secret")
+
+	html := readBody(t, client.get(t, "/jobs/"+url.PathEscape(job.ID)))
+	if !strings.Contains(html, "Охват поиска") || !strings.Contains(html, "Недоступно") {
+		t.Fatalf("недоступный охват не показан недоступным:\n%s", html)
+	}
+}
+
+// TestJobScreenTargetNotSet проверяет, что при незаданной цели недобор не
+// показывается (задача 1.4).
+func TestJobScreenTargetNotSet(t *testing.T) {
+	env := newTestEnv()
+	job, err := env.jobs.CreateSearchJob(context.Background(), "запрос задания", 0)
+	if err != nil {
+		t.Fatalf("CreateSearchJob: %v", err)
+	}
+	if err := env.jobs.RecordProgress(context.Background(), job.ID, ports.SearchJobProgress{Phase: "finalizing", CompaniesFound: 2, PagesCrawled: 2}); err != nil {
+		t.Fatalf("RecordProgress: %v", err)
+	}
+	ts := httptest.NewServer(env.server)
+	defer ts.Close()
+	client := newConsoleClient(ts)
+	client.login(t, "operator", "secret")
+
+	html := readBody(t, client.get(t, "/jobs/"+url.PathEscape(job.ID)))
+	if strings.Contains(html, "data-shortfall") {
+		t.Fatalf("при незаданной цели недобор не показывается:\n%s", html)
+	}
+}
+
+// TestCardsFilterByReason проверяет фильтр списка карточек по причине отсева
+// (задачи 4.3): выборка сужается до выбранной причины, карточка без причины не
+// попадает, снятие фильтра возвращает полный список.
+func TestCardsFilterByReason(t *testing.T) {
+	env := newTestEnv()
+	seedCompany(t, env.profiles, "fit.example", "Подходящая", "Описание")
+	seedCompany(t, env.profiles, "hypo.example", "Гипотеза", "Описание")
+	seedCompany(t, env.profiles, "no.example", "Не подходит", "Описание")
+	seedContact(t, env.contacts, "fit.example", "a@fit.example", "", "")
+	seedContact(t, env.contacts, "hypo.example", "a@hypo.example", "", "")
+	job, err := env.jobs.CreateSearchJob(context.Background(), "запрос задания", 0)
+	if err != nil {
+		t.Fatalf("CreateSearchJob: %v", err)
+	}
+	if err := env.jobs.RecordResult(context.Background(), job.ID, []string{"fit.example", "hypo.example", "no.example"}); err != nil {
+		t.Fatalf("RecordResult: %v", err)
+	}
+	seedAssessment(t, env.assessments, job.ID, "fit.example", domain.VerdictFits, domain.SignalDirect, []domain.Evidence{{
+		Criterion: "к", Fact: "ф", SourceURL: "https://fit.example/s", Reasoning: "о", SignalKind: domain.SignalDirect,
+	}})
+	seedAssessment(t, env.assessments, job.ID, "hypo.example", domain.VerdictHypothesis, domain.SignalProfile, []domain.Evidence{{
+		Criterion: "к", Fact: "ф", SourceURL: "https://hypo.example/s", Reasoning: "о", SignalKind: domain.SignalProfile, Missing: "прямое заявление",
+	}})
+	seedAssessment(t, env.assessments, job.ID, "no.example", domain.VerdictUnsuitable, domain.SignalProfile, []domain.Evidence{{
+		Criterion: "к", Fact: "ф", SourceURL: "https://no.example/s", Reasoning: "о", SignalKind: domain.SignalProfile, Mismatch: "нет отдела продаж",
+	}})
+
+	ts := httptest.NewServer(env.server)
+	defer ts.Close()
+	client := newConsoleClient(ts)
+	client.login(t, "operator", "secret")
+
+	base := "/cards?job=" + url.QueryEscape(job.ID)
+	full := readBody(t, client.get(t, base))
+	for _, want := range []string{"fit.example", "hypo.example", "no.example"} {
+		if !strings.Contains(full, want) {
+			t.Fatalf("полный список не содержит %q:\n%s", want, full)
+		}
+	}
+
+	byMismatch := readBody(t, client.get(t, base+"&reason=mismatch&detail="+url.QueryEscape("нет отдела продаж")))
+	if !strings.Contains(byMismatch, "no.example") || strings.Contains(byMismatch, "hypo.example") || strings.Contains(byMismatch, "fit.example") {
+		t.Fatalf("фильтр по несоответствию не сузил список:\n%s", byMismatch)
+	}
+	if !strings.Contains(byMismatch, "Снять фильтр") {
+		t.Fatalf("фильтр не показал ссылку снятия:\n%s", byMismatch)
+	}
+
+	byNoEmail := readBody(t, client.get(t, base+"&reason=no-email"))
+	if !strings.Contains(byNoEmail, "no.example") || strings.Contains(byNoEmail, "hypo.example") || strings.Contains(byNoEmail, "fit.example") {
+		t.Fatalf("фильтр по отсутствию email не сузил список:\n%s", byNoEmail)
+	}
+}
+
+// TestCardsGroupCounts проверяет четыре группы состава со счётчиками, равными
+// числу карточек группы (задачи 4.1–4.2).
+func TestCardsGroupCounts(t *testing.T) {
+	env := newTestEnv()
+	seedCompany(t, env.profiles, "fit.example", "Подходящая", "Описание")
+	seedCompany(t, env.profiles, "hypo.example", "Гипотеза", "Описание")
+	seedCompany(t, env.profiles, "no.example", "Не подходит", "Описание")
+	seedCompany(t, env.profiles, "none.example", "Без оценки", "Описание")
+	seedAssessment(t, env.assessments, "job-1", "fit.example", domain.VerdictFits, domain.SignalDirect, []domain.Evidence{{
+		Criterion: "к", Fact: "ф", SourceURL: "https://fit.example/s", Reasoning: "о", SignalKind: domain.SignalDirect,
+	}})
+	seedAssessment(t, env.assessments, "job-1", "hypo.example", domain.VerdictHypothesis, domain.SignalProfile, []domain.Evidence{{
+		Criterion: "к", Fact: "ф", SourceURL: "https://hypo.example/s", Reasoning: "о", SignalKind: domain.SignalProfile, Missing: "прямое заявление",
+	}})
+	seedAssessment(t, env.assessments, "job-1", "no.example", domain.VerdictUnsuitable, domain.SignalProfile, []domain.Evidence{{
+		Criterion: "к", Fact: "ф", SourceURL: "https://no.example/s", Reasoning: "о", SignalKind: domain.SignalProfile, Mismatch: "нет отдела продаж",
+	}})
+
+	ts := httptest.NewServer(env.server)
+	defer ts.Close()
+	client := newConsoleClient(ts)
+	client.login(t, "operator", "secret")
+
+	html := readBody(t, client.get(t, "/cards"))
+	for _, want := range []string{
+		`data-composition-set="fits" aria-pressed="true">Подходит <span class="count">1</span>`,
+		`data-composition-set="hypothesis" aria-pressed="false">Гипотеза <span class="count">1</span>`,
+		`data-composition-set="unsuitable" aria-pressed="false">Не подходит <span class="count">1</span>`,
+		`data-composition-set="unassessed" aria-pressed="false">Не оценено <span class="count">1</span>`,
+	} {
+		if !strings.Contains(html, want) {
+			t.Fatalf("группа состава с числом не найдена %q:\n%s", want, html)
+		}
+	}
+}
+
+// TestCardUnassessedShowsVerdict проверяет, что карточка без оценки в контексте
+// задания показывает явный вердикт «Не оценено», а не только подсказку (задача
+// 4.5).
+func TestCardUnassessedShowsVerdict(t *testing.T) {
+	env := newTestEnv()
+	seedCompany(t, env.profiles, "none.example", "Без оценки", "Описание")
+
+	ts := httptest.NewServer(env.server)
+	defer ts.Close()
+	client := newConsoleClient(ts)
+	client.login(t, "operator", "secret")
+
+	html := readBody(t, client.get(t, "/cards/none.example?job=job-1"))
+	if !strings.Contains(html, "verdict-unknown") || !strings.Contains(html, "Не оценено") {
+		t.Fatalf("карточка без оценки не показала вердикт «Не оценено»:\n%s", html)
 	}
 }

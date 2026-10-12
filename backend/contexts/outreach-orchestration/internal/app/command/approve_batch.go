@@ -110,13 +110,16 @@ func (h *ApproveBatchHandler) Handle(ctx context.Context, cmd ApproveBatch) (App
 
 	var result ApproveBatchResult
 	err := h.uow.WithinTransaction(ctx, func(tx ports.Transaction) error {
+		if err := rejectIfCampaignCancelled(ctx, tx, cmd.TenantID.String(), cmd.CampaignID.String()); err != nil {
+			return err
+		}
 		campaign, err := loadCampaign(ctx, tx.Campaigns(), cmd.CampaignID, cmd.TenantID)
 		if err != nil {
 			return err
 		}
 
 		before := len(campaign.Decisions())
-		decisions, _, err := campaign.ApproveBatch(domain.BatchApprovalParams{
+		decisions, _, err := campaign.ApproveBatch(ctx, domain.BatchApprovalParams{
 			Actor:       cmd.Actor,
 			DecidedAt:   h.clock.Now(),
 			Digest:      cmd.Digest,

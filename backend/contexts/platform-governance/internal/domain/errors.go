@@ -23,6 +23,12 @@ var (
 	// ErrUserLoginRequired — логин пользователя пуст.
 	ErrUserLoginRequired = errors.New("домен: логин пользователя обязателен")
 
+	// ErrUserEmailRequired — email учётной записи пользователя пуст или неверен.
+	ErrUserEmailRequired = errors.New("домен: email учётной записи обязателен")
+
+	// ErrUserPasswordRequired — пароль пользователя не задан.
+	ErrUserPasswordRequired = errors.New("домен: пароль пользователя обязателен")
+
 	// ErrRolesRequired — у пользователя не задано ни одной роли.
 	ErrRolesRequired = errors.New("домен: пользователю нужна хотя бы одна роль")
 
@@ -59,4 +65,34 @@ var (
 	// ErrInvalidSnapshot — сохранённое состояние тенанта внутренне противоречиво
 	// и не может быть восстановлено без нарушения инвариантов.
 	ErrInvalidSnapshot = errors.New("домен: некорректное сохранённое состояние тенанта")
+
+	// ErrINNRequired — ИНН компании не задан.
+	ErrINNRequired = errors.New("домен: ИНН компании обязателен")
+
+	// ErrCompanyEmailRequired — email компании не задан или неверен.
+	ErrCompanyEmailRequired = errors.New("домен: email компании обязателен")
+
+	// ErrWebsiteRequired — ссылка на сайт компании не задана.
+	ErrWebsiteRequired = errors.New("домен: ссылка на сайт компании обязательна")
+
+	// ErrLegalDataRequired — юридические данные компании не заданы.
+	ErrLegalDataRequired = errors.New("домен: юридические данные компании обязательны")
+
+	// ErrDuplicateCompany — компания с такими идентифицирующими данными уже есть.
+	ErrDuplicateCompany = errors.New("домен: компания с такими данными уже зарегистрирована")
+
+	// ErrRegistrationState — действие регистрации недопустимо в текущем состоянии.
+	ErrRegistrationState = errors.New("домен: действие недопустимо в текущем состоянии заявки на регистрацию")
+
+	// ErrRegistrationReasonRequired — описание решения по регистрации пусто.
+	ErrRegistrationReasonRequired = errors.New("домен: описание решения по регистрации обязательно")
+
+	// ErrProfilePending — профиль на согласовании и не подлежит правке.
+	ErrProfilePending = errors.New("домен: профиль на согласовании, правка запрещена")
+
+	// ErrProfileIncomplete — профиль заполнен не полностью.
+	ErrProfileIncomplete = errors.New("домен: профиль заполнен не полностью")
+
+	// ErrProfileState — действие профиля недопустимо в текущем состоянии.
+	ErrProfileState = errors.New("домен: действие недопустимо в текущем состоянии профиля")
 )

@@ -33,7 +33,7 @@ func TestSearchJobErrorCodeAndMessage(t *testing.T) {
 	}
 }
 
-func TestSearchJobErrorDetailForLog(t *testing.T) {
+func TestSearchJobErrorRetainsDetailForErrorChain(t *testing.T) {
 	detail := errors.New("postgres: таймаут 10s")
 	e := newSearchJobError(ErrorCodeCrawlFailed, detail)
 	if e.Error() != detail.Error() {

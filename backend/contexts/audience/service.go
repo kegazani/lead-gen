@@ -14,11 +14,13 @@ import (
 	"net/http"
 	"time"
 
+	httpapi "lead-gen/backend/contexts/audience/internal/adapters/http"
 	"lead-gen/backend/contexts/audience/internal/app/command"
 	"lead-gen/backend/contexts/audience/internal/domain"
 	"lead-gen/backend/platform/composition"
 	platformoutbox "lead-gen/backend/platform/messaging/outbox"
 	"lead-gen/backend/platform/observability/observ"
+	"lead-gen/backend/platform/readiness"
 )
 
 // ServiceID — идентификатор сервиса, равный идентификатору контекста из
@@ -58,13 +60,15 @@ type Config struct {
 // Service — собранный сервис audience. Реализует composition.Service: честный
 // раннер на каждую объявленную каталогом роль.
 type Service struct {
-	slice    *Slice
-	relay    *platformoutbox.Relay
-	apiAddr  string
-	interval time.Duration
-	logger   observ.Logger
-	metrics  observ.Metrics
-	tracer   observ.Tracer
+	slice              *Slice
+	relay              *platformoutbox.Relay
+	apiAddr            string
+	interval           time.Duration
+	logger             observ.Logger
+	metrics            observ.Metrics
+	tracer             observ.Tracer
+	persistence        Persistence
+	readinessEvaluator *readiness.Evaluator
 }
 
 // New собирает сервис из адаптеров хранилища. При заданном DSN точка входа
@@ -85,6 +89,7 @@ func New(cfg Config) (*Service, error) {
 	if interval <= 0 {
 		interval = defaultInterval
 	}
+	readinessEvaluator := newReadinessEvaluator()
 
 	// Хранилище контекста: PostgreSQL-адаптеры при заданном DSN, иначе in-memory
 	// (dev). О dev-сборке честно сообщается: пустой DSN не должен выглядеть
@@ -94,9 +99,13 @@ func New(cfg Config) (*Service, error) {
 	}
 
 	slice, err := Build(Params{
-		Segments:   cfg.Persistence.Segments,
-		Snapshots:  cfg.Persistence.Snapshots,
-		Journal:    cfg.Persistence.Journal,
+		Segments:  cfg.Persistence.Segments,
+		Snapshots: cfg.Persistence.Snapshots,
+		Journal:   cfg.Persistence.Journal,
+		Readiness: func(ctx context.Context) httpapi.ReadinessReport {
+			report := evaluateReadiness(ctx, "api", cfg.Persistence, readinessEvaluator)
+			return httpapi.ReadinessReport(report)
+		},
 		UnitOfWork: cfg.Persistence.UnitOfWork,
 	})
 	if err != nil {
@@ -105,17 +114,21 @@ func New(cfg Config) (*Service, error) {
 
 	var relay *platformoutbox.Relay
 	if cfg.Publisher != nil {
-		relay = platformoutbox.NewRelay(slice.Journal, cfg.Publisher, interval)
+		relay = platformoutbox.NewRelay(slice.Journal, cfg.Publisher, interval).
+			WithLogger(cfg.Logger).
+			WithMetrics(cfg.Metrics)
 	}
 
 	return &Service{
-		slice:    slice,
-		relay:    relay,
-		apiAddr:  cfg.APIAddr,
-		interval: interval,
-		logger:   cfg.Logger,
-		metrics:  cfg.Metrics,
-		tracer:   cfg.Tracer,
+		slice:              slice,
+		relay:              relay,
+		apiAddr:            cfg.APIAddr,
+		interval:           interval,
+		logger:             cfg.Logger,
+		metrics:            cfg.Metrics,
+		tracer:             cfg.Tracer,
+		persistence:        cfg.Persistence,
+		readinessEvaluator: readinessEvaluator,
 	}, nil
 }
 

@@ -38,7 +38,37 @@ func TestActivityOptionsSeparateShortAndLong(t *testing.T) {
 	}
 }
 
-// TestHeartbeatIntervalFollowsTimeout проверяет связь периода heartbeat с
+// TestLegacyCompensationOptsRemainUnbounded подтверждает, что уже записанные v1
+// histories сохраняют прежние activity options.
+func TestLegacyCompensationOptsRemainUnbounded(t *testing.T) {
+	policy := ExecutionPolicy{}.withDefaults()
+	opts := compensationOpts(policy, false)
+
+	if opts.StartToCloseTimeout != policy.TransitionStartToClose {
+		t.Fatalf("StartToCloseTimeout = %v, ожидался %v", opts.StartToCloseTimeout, policy.TransitionStartToClose)
+	}
+	if opts.RetryPolicy == nil {
+		t.Fatal("компенсация обязана задавать RetryPolicy")
+	}
+	if opts.RetryPolicy.MaximumAttempts != 0 {
+		t.Fatalf("MaximumAttempts = %d, ожидался 0 (повтор до успеха)", opts.RetryPolicy.MaximumAttempts)
+	}
+	if opts.RetryPolicy.InitialInterval <= 0 || opts.RetryPolicy.MaximumInterval <= 0 {
+		t.Fatalf("интервалы повтора не заданы: %+v", opts.RetryPolicy)
+	}
+}
+
+func TestNewCompensationOptsBoundRetriesAndScheduleToClose(t *testing.T) {
+	policy := ExecutionPolicy{}.withDefaults()
+	opts := compensationOpts(policy, true)
+	if opts.RetryPolicy == nil || opts.RetryPolicy.MaximumAttempts != int32(policy.CompensationMaxAttempts) {
+		t.Fatalf("MaximumAttempts = %+v, ожидалось %d", opts.RetryPolicy, policy.CompensationMaxAttempts)
+	}
+	if opts.ScheduleToCloseTimeout != policy.CompensationScheduleToClose {
+		t.Fatalf("ScheduleToCloseTimeout = %v, ожидалось %v", opts.ScheduleToCloseTimeout, policy.CompensationScheduleToClose)
+	}
+}
+
 // настроенным HeartbeatTimeout: при коротком таймауте интервал сокращается, чтобы
 // heartbeat не опаздывал, а сверх разумного потолка не растёт.
 func TestHeartbeatIntervalFollowsTimeout(t *testing.T) {

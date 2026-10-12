@@ -1,7 +1,8 @@
 {{- define "content" -}}
 {{- with .View -}}
+{{ template "live" .Live }}
 <header class="page-head">
-  <h1>Вход в консоль рассылок</h1>
+  <h1>{{ text "outreach.login.title" }}</h1>
 </header>
 
 {{- if .Error }}
@@ -11,14 +12,14 @@
 <section class="panel">
   <form method="post" action="/login">
     <p class="field">
-      <label for="username">Имя пользователя</label>
+      <label for="username">{{ text "outreach.login.username" }}</label>
       <input id="username" name="username" type="text" autocomplete="username" required>
     </p>
     <p class="field">
-      <label for="password">Пароль</label>
+      <label for="password">{{ text "outreach.login.password" }}</label>
       <input id="password" name="password" type="password" autocomplete="current-password" required>
     </p>
-    <p class="actions"><button type="submit">Войти</button></p>
+    <p class="actions"><button type="submit">{{ text "outreach.login.submit" }}</button></p>
   </form>
 </section>
 {{- end -}}

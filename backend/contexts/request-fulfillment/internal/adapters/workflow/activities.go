@@ -13,7 +13,9 @@ import (
 	"lead-gen/backend/contexts/request-fulfillment/internal/domain"
 	"lead-gen/backend/contexts/request-fulfillment/internal/ports"
 	"lead-gen/backend/platform/observability/observ"
+	"lead-gen/contracts/content-production/contentrequest"
 	"lead-gen/contracts/lead-management/leadsearch"
+	"lead-gen/contracts/outreach-orchestration/outreachhandoff"
 )
 
 // defaultActor — автор перехода, если сигнал не назвал человека (автоматический
@@ -43,6 +45,9 @@ type SearchOutcome struct {
 	Found int
 	// Leads — ссылки на найденные компании (идентификатор и происхождение).
 	Leads []leadsearch.LeadRef
+	// PartialReason — безопасная причина, по которой поиск не смог завершить
+	// дозабор. Пусто означает, что известной причины неполноты нет.
+	PartialReason string
 }
 
 // SearchStub — источник шага поиска лидов: либо заглушка (детерминированно
@@ -113,7 +118,7 @@ func (s ContractSearch) Search(ctx context.Context, in SearchInput) (SearchOutco
 	if err != nil {
 		return SearchOutcome{}, err
 	}
-	return SearchOutcome{Found: result.Found, Leads: result.Leads}, nil
+	return SearchOutcome{Found: result.Found, Leads: result.Leads, PartialReason: result.PartialReason}, nil
 }
 
 // criteriaFromOffer собирает критерий поиска из оффера заявки: текст оффера и,
@@ -137,10 +142,19 @@ type Activities struct {
 	StartProcessing *command.StartProcessingHandler
 	Fulfill         *command.FulfillRequestHandler
 	Cancel          *command.CancelRequestHandler
-	Search          SearchStub
-	Drafts          DraftGenerator
-	Clock           ports.Clock
-	IDs             ports.IDGenerator
+	// Fail переводит заявку processing → failed при необратимом сбое шага
+	// исполнения. nil — не собран: компенсация сбоя не выполняется, о чём activity
+	// честно предупреждает.
+	Fail *command.FailRequestHandler
+	// RecordCampaign фиксирует кампанию заявки после передачи писем — чтобы
+	// события доставки можно было сопоставить с заявкой. nil — не собран: передача
+	// не сможет зафиксировать кампанию, о чём activity честно предупреждает.
+	RecordCampaign *command.RecordCampaignHandler
+	Search         SearchStub
+	Drafts         DraftGenerator
+	Handoff        HandoffSender
+	Clock          ports.Clock
+	IDs            ports.IDGenerator
 
 	// HeartbeatInterval — период отправки heartbeat длинной activity. Ноль —
 	// значение по умолчанию. Как правило выводится из настроенного HeartbeatTimeout
@@ -184,6 +198,21 @@ func (a *Activities) HandleCancelRequest(ctx context.Context, in transitionInput
 	return a.wrapTransition(ActivityCancelRequest, in, err)
 }
 
+// HandleFailRequest переводит заявку processing → failed с кодом и текстом
+// причины сбоя. Повторная доставка, когда заявка уже failed, — успех (no-op
+// решает домен); из другого терминального статуса — доменная ошибка.
+func (a *Activities) HandleFailRequest(ctx context.Context, in transitionInput) error {
+	if a.Fail == nil {
+		return notConfigured("activity: сценарий сбоя исполнения не собран")
+	}
+	_, err := a.Fail.Handle(ctx, command.FailRequest{
+		LifecycleFields: a.fields(in),
+		ReasonCode:      in.ReasonCode,
+		Reason:          reasonCode(in.Reason, reasonCode(in.ReasonCode, "исполнение прервано")),
+	})
+	return a.wrapTransition(ActivityFailRequest, in, err)
+}
+
 // SearchLeads выполняет шаг поиска лидов. Источник — подключённый контракт
 // lead-search (ContractSearch) либо прежняя заглушка (SearchStub). Доменный отказ
 // владельца не ретраится, а сбой транспорта — ретраится по политике activity.
@@ -215,7 +244,7 @@ func (a *Activities) SearchLeads(ctx context.Context, in searchInput) (searchRes
 			return searchResult{}, fmt.Errorf("activity: поиск лидов: %w", err)
 		}
 	}
-	result := searchResult{Found: outcome.Found, LeadIDs: make([]string, 0, len(outcome.Leads))}
+	result := searchResult{Found: outcome.Found, LeadIDs: make([]string, 0, len(outcome.Leads)), PartialReason: outcome.PartialReason}
 	for _, lead := range outcome.Leads {
 		result.LeadIDs = append(result.LeadIDs, lead.ID)
 	}
@@ -229,6 +258,9 @@ func (a *Activities) SearchLeads(ctx context.Context, in searchInput) (searchRes
 // счётчиком Failed.
 func (a *Activities) DraftEmails(ctx context.Context, in draftInput) (draftResult, error) {
 	if a.Drafts == nil {
+		if in.Editorial {
+			return draftResult{}, notConfigured("редакторская генерация: контракт email-generation не подключён")
+		}
 		if a.Logger != nil {
 			a.Logger.Info("activity: шаг генерации писем пропущен: контракт email-generation не подключён",
 				observ.Fields{}, "activity", ActivityDraftEmails, "request_id", in.RequestID)
@@ -241,6 +273,7 @@ func (a *Activities) DraftEmails(ctx context.Context, in draftInput) (draftResul
 		RequestID: in.RequestID,
 		TenantID:  in.TenantID,
 		LeadIDs:   in.LeadIDs,
+		Editorial: in.Editorial,
 	})
 	if err != nil {
 		return draftResult{}, fmt.Errorf("activity: генерация черновиков писем: %w", err)
@@ -251,6 +284,71 @@ func (a *Activities) DraftEmails(ctx context.Context, in draftInput) (draftResul
 			"drafted", result.Drafted, "failed", result.Failed)
 	}
 	return draftResult{Drafted: result.Drafted, Failed: result.Failed, LeadIDs: result.LeadIDs}, nil
+}
+
+// HandoffDrafts выполняет шаг передачи черновиков писем заявки в
+// outreach-orchestration. Источник — подключённые контракты content-request и
+// outreach-handoff (ContractHandoff); если они не подключены, шаг штатно
+// пропускается и логируется, а заявка идёт дальше — как шаг генерации писем без
+// контракта. Доменный отказ контракта помечается non-retryable, а сбой транспорта
+// остаётся retryable, чтобы недоступность не подменялась успехом.
+func (a *Activities) HandoffDrafts(ctx context.Context, in handoffInput) (handoffOutcome, error) {
+	if a.Handoff == nil {
+		if a.Logger != nil {
+			a.Logger.Info("activity: шаг передачи писем пропущен: контракты материала/передачи не подключены",
+				observ.Fields{}, "activity", ActivityHandoffDrafts, "request_id", in.RequestID)
+		}
+		return handoffOutcome{}, nil
+	}
+	stop := startHeartbeat(ctx, heartbeatInterval(a.HeartbeatInterval))
+	defer stop()
+	result, err := a.Handoff.Handoff(ctx, HandoffInput{
+		RequestID: in.RequestID,
+		TenantID:  in.TenantID,
+		Actor:     in.Actor,
+		Name:      in.Name,
+	})
+	if err != nil {
+		switch {
+		case errors.Is(err, outreachhandoff.ErrRejected), errors.Is(err, contentrequest.ErrRejected):
+			return handoffOutcome{}, nonRetryable(fmt.Sprintf("activity: передача писем: %v", err), "HandoffRejected", err)
+		default:
+			// Транзиентный сбой транспорта — retryable: повтор осмыслен.
+			return handoffOutcome{}, fmt.Errorf("activity: передача писем: %w", err)
+		}
+	}
+	if a.Logger != nil {
+		a.Logger.Info("activity: черновики писем переданы",
+			observ.Fields{}, "activity", ActivityHandoffDrafts, "request_id", in.RequestID,
+			"handed", result.Handed, "skipped", result.Skipped, "repeated", result.Repeated)
+	}
+	// Фиксация кампании заявки: без неё событие доставки нельзя сопоставить с
+	// заявкой (request-delivery-conclusion). Повтор идемпотентен (RecordCampaign
+	// — no-op на тот же идентификатор), поэтому повтор activity безопасен.
+	if result.CampaignID != "" {
+		if a.RecordCampaign == nil {
+			if a.Logger != nil {
+				a.Logger.Warn("activity: кампания заявки не зафиксирована: сценарий не собран",
+					observ.Fields{}, "activity", ActivityHandoffDrafts, "request_id", in.RequestID,
+					"campaign_id", result.CampaignID)
+			}
+		} else {
+			if _, err := a.RecordCampaign.Handle(ctx, command.RecordCampaign{
+				RequestID:  domain.RequestID(in.RequestID),
+				TenantID:   domain.TenantID(in.TenantID),
+				CampaignID: domain.CampaignID(result.CampaignID),
+			}); err != nil {
+				return handoffOutcome{}, fmt.Errorf("activity: фиксация кампании заявки %s: %w", in.RequestID, err)
+			}
+		}
+	}
+	return handoffOutcome{
+		Handed:     result.Handed,
+		Skipped:    result.Skipped,
+		Repeated:   result.Repeated,
+		CampaignID: result.CampaignID,
+		Expected:   result.Expected,
+	}, nil
 }
 
 // fields собирает поля перехода из входа activity, подставляя часы контекста.
@@ -302,6 +400,7 @@ func isPermanentTransitionFailure(err error) bool {
 	return errors.Is(err, domain.ErrInvalidTransition) ||
 		errors.Is(err, domain.ErrTerminalState) ||
 		errors.Is(err, domain.ErrReasonRequired) ||
+		errors.Is(err, domain.ErrInvalidReasonCode) ||
 		errors.Is(err, ports.ErrRequestNotFound) ||
 		errors.Is(err, command.ErrTenantMismatch)
 }

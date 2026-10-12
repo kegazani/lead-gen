@@ -21,6 +21,8 @@ func TestPayloadsCarryIdentifiersOnly(t *testing.T) {
 		"searchResult":           searchResult{},
 		"draftInput":             draftInput{},
 		"draftResult":            draftResult{},
+		"handoffInput":           handoffInput{},
+		"handoffOutcome":         handoffOutcome{},
 		"SearchInput":            SearchInput{},
 		"ports.StartFulfillment": ports.StartFulfillment{},
 		"ports.WorkflowRun":      ports.WorkflowRun{},

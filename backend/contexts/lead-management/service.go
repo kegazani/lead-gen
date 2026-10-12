@@ -14,6 +14,7 @@ import (
 	"lead-gen/backend/platform/consoleauth"
 	"lead-gen/backend/platform/jobs"
 	"lead-gen/backend/platform/observability/observ"
+	"lead-gen/backend/platform/readiness"
 	"lead-gen/contracts/integration-platform/budget"
 	"lead-gen/contracts/integration-platform/crawl"
 	"lead-gen/contracts/integration-platform/forum"
@@ -56,9 +57,10 @@ type Config struct {
 
 	// Наблюдаемость сервиса: логгер, метрики и трейсер впрыскиваются
 	// composition root'ом; обязательны.
-	Logger  observ.Logger
-	Metrics observ.Metrics
-	Tracer  observ.Tracer
+	Logger            observ.Logger
+	Metrics           observ.Metrics
+	Tracer            observ.Tracer
+	FailureNormalizer jobs.FailureNormalizer
 
 	// Порты внешних движков (впрыскиваются из модуля integration-platform).
 	Search search.Port
@@ -74,12 +76,27 @@ type Config struct {
 
 	// Budget — фабрика бюджета Firecrawl на задачу; nil — без бюджета.
 	Budget budget.Factory
+	// FirecrawlMaxCredits — настроенный верхний предел на одну задачу; 0 означает
+	// отсутствие per-task cap, но не отключает account admission.
+	FirecrawlMaxCredits int
 	// Account — читатель остатка аккаунта Firecrawl (кредиты и токены);
 	// nil — остаток в консоли не показывается.
 	Account budget.AccountReader
 
 	// MailFrom — адрес отправителя писем (конфигурация SMTP).
 	MailFrom string
+
+	// AddressVerifierEndpoint / AddressVerifierAPIKey — внешний сервис проверки
+	// адресов для контракта address-verification (capability email-verification).
+	// Пустой адрес — проверка честно недоступна, а не подменяется статусом.
+	AddressVerifierEndpoint string
+	AddressVerifierAPIKey   string
+	// Readiness probes получают только безопасные проверки уже собранных
+	// зависимостей. Непереданная probe остаётся unknown, а не healthy.
+	PersistenceProbe readiness.Probe
+	// ContactsProbe проверяет отдельный пул красной зоны; при nil сервис
+	// использует probe, опубликованную реальным PostgreSQL-адаптером контактов.
+	ContactsProbe readiness.Probe
 
 	// ConsoleUser / ConsolePassword — учётные данные оператора консоли. Пустые
 	// значения означают вход с пустым логином и паролем (только для локального
@@ -95,6 +112,14 @@ type Config struct {
 	// Console — базовые адреса сервисов консоли для общей навигации по разделам
 	// (Заявки, Исполнение, Лиды, Отчёты). Пустые адреса дают относительные пути.
 	Console components.ConsoleBases
+
+	// BasePath — внешний префикс пути консоли под единым origin (admin-proxy).
+	// Пусто — корень origin.
+	BasePath string
+
+	// ExternalPrefixes — префиксы других консолей единого origin: ссылки на них
+	// в навигации не переписываются под собственный префикс.
+	ExternalPrefixes []string
 
 	// Clock — часы; nil — системное время.
 	Clock ports.Clock
@@ -141,13 +166,18 @@ type Service struct {
 	// repos — собранные адаптеры хранилища. Хранятся на сервисе, чтобы точка сборки
 	// (cmd/lead-gen) могла связать контракт delivery-target с тем же хранилищем
 	// контактов, что использует сервис, а не собирать второй экземпляр.
-	repos Repositories
+	repos              Repositories
+	readinessChecks    readinessChecks
+	readinessEvaluator *readiness.Evaluator
 }
 
 // New собирает сервис из впрыснутых зависимостей. Обязательные зависимости
 // проверяются на этапе сборки, чтобы расхождение конфигурации было видно сразу,
 // а не при первом запросе.
 func New(cfg Config) (*Service, error) {
+	if cfg.FirecrawlMaxCredits < 0 {
+		return nil, fmt.Errorf("lead-management: FirecrawlMaxCredits не может быть отрицательным")
+	}
 	if cfg.Profiles == nil {
 		return nil, fmt.Errorf("lead-management: LeadProfileRepository обязателен")
 	}
@@ -187,25 +217,48 @@ func New(cfg Config) (*Service, error) {
 	if cfg.Interval <= 0 {
 		cfg.Interval = time.Second
 	}
+	persistenceProbe := cfg.PersistenceProbe
+	if persistenceProbe == nil {
+		if provider, ok := cfg.Profiles.(interface{ ReadinessProbe() readiness.Probe }); ok {
+			persistenceProbe = provider.ReadinessProbe()
+		}
+	}
+	contactsProbe := cfg.ContactsProbe
+	if contactsProbe == nil {
+		if provider, ok := cfg.Contacts.(interface{ ReadinessProbe() readiness.Probe }); ok {
+			contactsProbe = provider.ReadinessProbe()
+		}
+	}
+	readinessEval := readiness.New(readiness.Config{Timeout: time.Second, TTL: 2 * time.Second})
+	checks := readinessChecks{persistence: persistenceProbe, contacts: contactsProbe}
+	// Runner и весь путь RunSearch используют одну политику; прямые сборки
+	// сервиса без каталога получают безопасный конечный fallback владельца.
+	failureNormalizer := cfg.FailureNormalizer
+	if failureNormalizer == nil {
+		failureNormalizer = app.NewSearchFailureNormalizer()
+	}
 
 	// Один реестр отмены на процесс: роль api сигналит, роль worker слушает.
 	cancelSignals := jobs.NewCancelRegistry()
 	runSearch := &app.RunSearch{
-		Jobs:        cfg.Jobs,
-		Profiles:    cfg.Profiles,
-		Contacts:    cfg.Contacts,
-		Search:      cfg.Search,
-		Crawl:       cfg.Crawl,
-		LLM:         cfg.LLM,
-		Budget:      cfg.Budget,
-		Assessments: cfg.Assessments,
-		Signals:     cancelSignals,
-		Clock:       cfg.Clock,
-		Limits:      cfg.Limits,
-		Logger:      cfg.Logger,
-		Metrics:     cfg.Metrics,
-		Tracer:      cfg.Tracer,
-		ServiceName: ServiceID,
+		Jobs:              cfg.Jobs,
+		Profiles:          cfg.Profiles,
+		Contacts:          cfg.Contacts,
+		Search:            cfg.Search,
+		Crawl:             cfg.Crawl,
+		LLM:               cfg.LLM,
+		Budget:            cfg.Budget,
+		MaxCredits:        cfg.FirecrawlMaxCredits,
+		Assessments:       cfg.Assessments,
+		Signals:           cancelSignals,
+		Clock:             cfg.Clock,
+		Limits:            cfg.Limits,
+		Logger:            cfg.Logger,
+		Metrics:           cfg.Metrics,
+		Tracer:            cfg.Tracer,
+		FailureNormalizer: failureNormalizer,
+		ServiceName:       ServiceID,
+		TenantID:          cfg.TenantID,
 	}
 	showcase := &app.Showcase{
 		Jobs:     cfg.Jobs,
@@ -259,8 +312,8 @@ func New(cfg Config) (*Service, error) {
 	searchLeads := &app.SearchLeadsForRequest{
 		Profiles:    cfg.Profiles,
 		Contacts:    cfg.Contacts,
-		Search:      cfg.Search,
-		Crawl:       cfg.Crawl,
+		Budget:      cfg.Budget,
+		MaxCredits:  cfg.FirecrawlMaxCredits,
 		Clock:       cfg.Clock,
 		Limits:      cfg.Limits,
 		MaxResults:  cfg.LeadSearchMaxResults,
@@ -290,6 +343,29 @@ func New(cfg Config) (*Service, error) {
 		Activity:    cfg.Activity,
 		Assessments: cfg.Assessments,
 	}
+	// Резолвер получателя по контракту delivery-target (связь leads-for-delivery):
+	// та же логика, что и у in-proc адаптера, отдаётся сетевой поверхностью
+	// POST /delivery-target (live-e2e-contour, Фаза 2). Изоляция тенанта — та же:
+	// резолвер привязан к тенанту сервиса, чужая ссылка не разрешается.
+	resolveDeliveryTarget := &app.ResolveDeliveryTarget{
+		Contacts: cfg.Contacts,
+		TenantID: cfg.TenantID,
+	}
+	// Порт владельца верификации адреса (контракт address-verification): та же
+	// логика, что и у in-proc адаптера, отдаётся сетевой поверхностью
+	// POST /address-verification. Вердикт выводится политикой владельца
+	// (DecisionAllow), а без внешнего сервиса проверки честно недоступен.
+	addressVerification := NewAddressVerification(AddressVerificationDeps{
+		Repositories:     repos,
+		TenantID:         cfg.TenantID,
+		VerifierEndpoint: cfg.AddressVerifierEndpoint,
+		VerifierAPIKey:   cfg.AddressVerifierAPIKey,
+	})
+	// Применение рекомендации анализа как нового запуска поиска (контракт
+	// recommendation-apply) и чтение оценки по паре (задание, компания) (контракт
+	// lead-relevance). Обе — роль api; новых агрегатов не заводят.
+	applyRecommendation := &app.ApplyRecommendation{Jobs: cfg.Jobs, Clock: cfg.Clock}
+	readLeadRelevance := &app.ReadLeadRelevance{Assessments: cfg.Assessments}
 	server := httpapi.NewServer(httpapi.Dependencies{
 		RunSearch:       runSearch,
 		Showcase:        showcase,
@@ -305,9 +381,28 @@ func New(cfg Config) (*Service, error) {
 		EmailGeneration: draftEmail,
 		SemanticRecall:  semanticRecall,
 		EmbedCompany:    embedCompany,
-		Account:         cfg.Account,
-		Console:         cfg.Console,
-		Logger:          cfg.Logger,
+
+		ResolveDeliveryTarget: resolveDeliveryTarget,
+		AddressVerification:   addressVerification,
+		ApplyRecommendation:   applyRecommendation,
+		LeadRelevance:         readLeadRelevance,
+		Readiness: func(ctx context.Context) (int, any) {
+			report := evaluateReadiness(ctx, "api", checks, readinessEval)
+			status := http.StatusOK
+			if !report.Ready {
+				status = http.StatusServiceUnavailable
+			}
+			return status, report
+		},
+
+		Account:          cfg.Account,
+		Console:          cfg.Console,
+		BasePath:         cfg.BasePath,
+		ExternalPrefixes: cfg.ExternalPrefixes,
+		Logger:           cfg.Logger,
+		// Фолбэк активного тенанта консоли: без tenant_id в запросе консоль
+		// работает в тенанте процесса (прежнее поведение).
+		TenantID: cfg.TenantID,
 		Auth: httpapi.AuthConfig{
 			Username: cfg.ConsoleUser,
 			Password: cfg.ConsolePassword,
@@ -315,10 +410,12 @@ func New(cfg Config) (*Service, error) {
 		},
 	})
 	runner := &jobs.Runner{
-		Store:    cfg.Jobs,
-		Handler:  runSearch.Handle,
-		Interval: cfg.Interval,
-		Signals:  cancelSignals,
+		Store:             cfg.Jobs,
+		Handler:           runSearch.Handle,
+		Interval:          cfg.Interval,
+		Signals:           cancelSignals,
+		Logger:            cfg.Logger,
+		FailureNormalizer: failureNormalizer,
 		// Отклонённый переход — не сбой: задание уже терминально (например,
 		// отменено раньше, чем обработчик успел завершиться).
 		Rejected: func(jobID string, to jobs.Status) {
@@ -334,15 +431,17 @@ func New(cfg Config) (*Service, error) {
 	}
 
 	return &Service{
-		apiAddr:        cfg.APIAddr,
-		server:         server,
-		runner:         runner,
-		logger:         cfg.Logger,
-		metrics:        cfg.Metrics,
-		tracer:         cfg.Tracer,
-		embedCompany:   embedCompany,
-		semanticRecall: semanticRecall,
-		repos:          repos,
+		apiAddr:            cfg.APIAddr,
+		server:             server,
+		runner:             runner,
+		logger:             cfg.Logger,
+		metrics:            cfg.Metrics,
+		tracer:             cfg.Tracer,
+		embedCompany:       embedCompany,
+		semanticRecall:     semanticRecall,
+		repos:              repos,
+		readinessChecks:    checks,
+		readinessEvaluator: readinessEval,
 	}, nil
 }
 

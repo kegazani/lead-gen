@@ -12,6 +12,15 @@
 
 ## 2. Обязательный процесс: всё через OpenSpec (автоматически)
 
+**Актуальный приоритет demo scope:** `customer-demo-request-to-emails` — существующая
+регистрация/profile approval → заявка с отдельными offer и desired leads → approve
+заявки → реальный crawl → тематические письма, видимые оператору на существующем
+экране. Отправка и отдельное approve/reject писем не блокируют результат. Следовать
+ограниченному плану `docs/e2e-plan.md`; сначала ручной реальный crawl через UI, затем
+исправлять только наблюдаемые блокеры. Не расширять scope до whole v2, recovery/
+hardening, SMTP, отдельного crawl mode, editorial capability/CAS, PG upgrade/replay
+hardening или полного no-action-approved sweep.
+
 - **Любое** изменение поведения, кода, домена, спеки, каталога или инфраструктуры
   выполняется **только через изменение OpenSpec** (schema `spec-driven`):
   change → proposal → specs → design → tasks → apply → verify → archive.

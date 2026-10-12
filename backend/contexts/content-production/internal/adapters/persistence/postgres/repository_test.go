@@ -6,10 +6,12 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"lead-gen/backend/contexts/content-production/internal/adapters/persistence/postgres"
+	"lead-gen/backend/contexts/content-production/internal/domain"
 	"lead-gen/backend/contexts/content-production/internal/ports"
 	"lead-gen/backend/contexts/content-production/internal/ports/contracttest"
 	"lead-gen/backend/platform/migrate"
@@ -41,6 +43,34 @@ func TestMain(m *testing.M) {
 		pool.Close()
 	}
 	os.Exit(code)
+}
+
+func TestContentVersionSubjectSurvivesPostgresSnapshot(t *testing.T) {
+	pool := newState(t)
+	repo := postgres.NewContentRepository(pool)
+	locale, err := domain.NewContentLocale("ru", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	pkg, err := domain.NewContentPackage(domain.NewContentPackageParams{
+		ID: "asset-subject-pg", TenantID: "tenant-pg", Locale: locale,
+		VersionID: "version-subject-pg", Subject: " Точная тема ", Body: "  Точное тело\n",
+		ExactText: true, Actor: "actor-pg", At: time.Date(2026, 10, 12, 0, 0, 0, 0, time.UTC), EventID: "event-subject-pg",
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := repo.Save(context.Background(), pkg, 0); err != nil {
+		t.Fatal(err)
+	}
+	loaded, err := repo.FindByID(context.Background(), "asset-subject-pg")
+	if err != nil {
+		t.Fatal(err)
+	}
+	version, ok := loaded.FindVersion("version-subject-pg")
+	if !ok || version.Subject() != " Точная тема " || version.Body() != "  Точное тело\n" {
+		t.Fatalf("точные поля версии потеряны: %+v", version.Snapshot())
+	}
 }
 
 // TestContentPackageRepositoryContract прогоняет общий contract suite порта

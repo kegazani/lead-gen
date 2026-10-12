@@ -51,6 +51,13 @@ type RequestView struct {
 	CampaignID         string
 	DealID             string
 	CallID             string
+	// Phase — фаза исполнения (для упавшей заявки — "failed", иначе пусто).
+	Phase string
+	// ErrorReason — нормализованный код причины сбоя исполнения (пуст вне failed).
+	ErrorReason string
+	// ErrorMessage — текст причины сбоя исполнения (пуст вне failed).
+	ErrorMessage       string
+	ExecutionPurpose   string
 	ValidationDecision *ValidationDecisionView
 	Transitions        []TransitionView
 }
@@ -90,6 +97,7 @@ func buildView(request *domain.Request) RequestView {
 		CampaignID:         request.CampaignID().String(),
 		DealID:             request.DealID().String(),
 		CallID:             request.CallID().String(),
+		ExecutionPurpose:   request.ExecutionPurpose(),
 	}
 	if decision, ok := request.ValidationDecision(); ok {
 		view.ValidationDecision = &ValidationDecisionView{
@@ -98,6 +106,11 @@ func buildView(request *domain.Request) RequestView {
 			At:      decision.At().UTC().Format("2006-01-02T15:04:05Z07:00"),
 			Reason:  decision.Reason(),
 		}
+	}
+	if code, text, ok := request.FailureReason(); ok {
+		view.Phase = string(domain.StatusFailed)
+		view.ErrorReason = code
+		view.ErrorMessage = text
 	}
 	for _, offer := range request.OfferHistory() {
 		view.OfferHistory = append(view.OfferHistory, offerView(&offer))

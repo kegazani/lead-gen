@@ -29,7 +29,8 @@ func New() *Decider { return &Decider{} }
 // Allow реализует ports.AccessDecider.
 //
 //   - дашборд счётчиков — клиенту (и оператору/админу, которые его сопровождают);
-//   - полная CRM — только оператору и администратору, но не клиенту.
+//   - полная CRM — только оператору и администратору, но не клиенту;
+//   - задания длительных операций (DLQ, повтор) — только администратору.
 func (Decider) Allow(_ context.Context, role, resource string) (bool, error) {
 	switch resource {
 	case ports.ResourceDashboard:
@@ -40,6 +41,16 @@ func (Decider) Allow(_ context.Context, role, resource string) (bool, error) {
 			return false, nil
 		}
 	case ports.ResourceCRM:
+		switch role {
+		case roleOperator, roleAdmin:
+			return true, nil
+		default:
+			return false, nil
+		}
+	case ports.ResourceJobs:
+		return role == roleAdmin, nil
+	case ports.ResourceInsights:
+		// Анализ качества поиска — операционная работа: клиенту не показывается.
 		switch role {
 		case roleOperator, roleAdmin:
 			return true, nil

@@ -118,25 +118,67 @@ func TestRepositoryUpsertReplacesSnapshot(t *testing.T) {
 
 // newTenant собирает тенант для проверок репозитория.
 func newTenant(t *testing.T) *domain.Tenant {
+	return newTenantNamed(t, "tenant-1", "ООО Ромашка")
+}
+
+// newTenantNamed собирает тенант с заданными идентификатором и компанией.
+func newTenantNamed(t *testing.T, id, company string) *domain.Tenant {
 	t.Helper()
 	roles, err := domain.NewRoleSet(domain.RoleClient)
 	if err != nil {
 		t.Fatalf("NewRoleSet: %v", err)
 	}
 	tenant, err := domain.RegisterTenant(domain.RegisterTenantParams{
-		ID:          "tenant-1",
-		CompanyName: "ООО Ромашка",
+		ID:          domain.TenantID(id),
+		CompanyName: company,
 		Description: "Поставщик промышленного оборудования",
 		At:          time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC),
 		Actor:       "user-1",
-		EventID:     "evt-1",
-		AuditID:     "audit-1",
+		EventID:     domain.EventID("evt-" + id),
+		AuditID:     domain.AuditRecordID("audit-" + id),
 		User:        &domain.NewUser{ID: "user-1", Login: "client-1", Roles: roles},
 	})
 	if err != nil {
 		t.Fatalf("RegisterTenant: %v", err)
 	}
 	return tenant
+}
+
+// TestRepositoryList проверяет выборку тенантов: только платформенные атрибуты,
+// устойчивый порядок по компании и состоянию, включая отключённый тенант.
+func TestRepositoryList(t *testing.T) {
+	repository := newRepository(t)
+	ctx := context.Background()
+
+	second := newTenantNamed(t, "tenant-2", "ООО Василёк")
+	first := newTenantNamed(t, "tenant-3", "АО Альфа")
+	if err := first.Disable(domain.ChangeContext{
+		At:      time.Date(2026, 10, 2, 12, 0, 0, 0, time.UTC),
+		Actor:   "admin-1",
+		EventID: "evt-disable",
+		AuditID: "audit-disable",
+	}); err != nil {
+		t.Fatalf("Disable: %v", err)
+	}
+	for _, tenant := range []*domain.Tenant{second, first} {
+		if err := repository.Save(ctx, tenant); err != nil {
+			t.Fatalf("Save %s: %v", tenant.ID(), err)
+		}
+	}
+
+	summaries, err := repository.List(ctx)
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if len(summaries) != 2 {
+		t.Fatalf("тенантов = %d, ожидалось 2", len(summaries))
+	}
+	if summaries[0].ID != "tenant-3" || summaries[0].CompanyName != "АО Альфа" || summaries[0].State != domain.TenantDisabled {
+		t.Fatalf("первый тенант = %+v", summaries[0])
+	}
+	if summaries[1].ID != "tenant-2" || summaries[1].CompanyName != "ООО Василёк" || summaries[1].State != domain.TenantActive {
+		t.Fatalf("второй тенант = %+v", summaries[1])
+	}
 }
 
 // newRepository возвращает репозиторий с пустым состоянием: тест ожидает
@@ -177,21 +219,11 @@ func testPool(t *testing.T) *pgxpool.Pool {
 	return pool
 }
 
-// applyMigrations применяет миграции схемы сервиса. Файлы читаются загрузчиком
-// backend/platform/migrate, который до выполнения проверяет принадлежность схеме
-// сервиса, поэтому чужая миграция сюда попасть не может. Файл содержит несколько
-// операторов, поэтому выполняется без аргументов (простой протокол).
+// applyMigrations применяет миграции схемы сервиса. Принадлежность схеме,
+// межпроцессную сериализацию и учёт уже применённых версий обеспечивает
+// migrate.Apply, поэтому тест прогоняет реальный путь применения.
 func applyMigrations(ctx context.Context, pool *pgxpool.Pool) error {
-	migrations, err := migrate.Load(migrationsDir, migrate.OwnSchema(postgres.Schema))
-	if err != nil {
-		return err
-	}
-	for _, migration := range migrations {
-		if _, err := pool.Exec(ctx, migration.SQL); err != nil {
-			return err
-		}
-	}
-	return nil
+	return migrate.Apply(ctx, pool, migrationsDir, migrate.OwnSchema(postgres.Schema))
 }
 
 // TRUNCATE ... CASCADE очищает тенантов и подчинённые строки пользователей,

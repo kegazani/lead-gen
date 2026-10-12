@@ -1,42 +1,49 @@
 {{- define "content" -}}
 <section class="reports" data-tenant="{{ .View.TenantID }}">
-  <h1>Отчётность</h1>
+  {{ template "live" .View.Live }}
+  <h1>{{ text "analytics.reports.title" }}</h1>
   <p class="reports-updated" role="status" data-updated="{{ .View.UpdatedAtLabel }}">
-    Обновлено: {{ .View.UpdatedAtLabel }}
+    {{ text "analytics.reports.updated" }} {{ .View.UpdatedAtLabel }}
     {{- if .View.Stale }} — {{ .View.StaleReason }}{{ end }}
   </p>
 
   <form class="reports-filters" method="get" action="/reports">
     <input type="hidden" name="tenant_id" value="{{ .View.TenantID }}">
-    <label>С <input type="date" name="from" value="{{ .View.Filters.From }}"></label>
-    <label>По <input type="date" name="to" value="{{ .View.Filters.To }}"></label>
-    <label>Сегмент <input type="text" name="segment" value="{{ .View.Filters.Segment }}"></label>
-    <label>Источник <input type="text" name="source" value="{{ .View.Filters.Source }}"></label>
-    <label>Кампания <input type="text" name="campaign_id" value="{{ .View.Filters.CampaignID }}"></label>
-    <button type="submit">Применить</button>
+    <label>{{ text "analytics.reports.filter.from" }} <input type="date" name="from" value="{{ .View.Filters.From }}"></label>
+    <label>{{ text "analytics.reports.filter.to" }} <input type="date" name="to" value="{{ .View.Filters.To }}"></label>
+    <label>{{ text "analytics.reports.filter.segment" }} <input type="text" name="segment" value="{{ .View.Filters.Segment }}"></label>
+    <label>{{ text "analytics.reports.filter.source" }} <input type="text" name="source" value="{{ .View.Filters.Source }}"></label>
+    <label>{{ text "analytics.reports.filter.campaign" }} <input type="text" name="campaign_id" value="{{ .View.Filters.CampaignID }}"></label>
+    <button type="submit">{{ text "analytics.reports.filter.apply" }}</button>
   </form>
 
   <p class="reports-export">
-    <a href="/reports/export.csv?tenant_id={{ .View.TenantID }}&from={{ .View.Filters.From }}&to={{ .View.Filters.To }}&segment={{ .View.Filters.Segment }}&source={{ .View.Filters.Source }}&campaign_id={{ .View.Filters.CampaignID }}">Выгрузить CSV</a>
-    <a href="/reports/export.xlsx?tenant_id={{ .View.TenantID }}&from={{ .View.Filters.From }}&to={{ .View.Filters.To }}&segment={{ .View.Filters.Segment }}&source={{ .View.Filters.Source }}&campaign_id={{ .View.Filters.CampaignID }}">Выгрузить XLSX</a>
+    <a href="/reports/export.csv?tenant_id={{ .View.TenantID }}&from={{ .View.Filters.From }}&to={{ .View.Filters.To }}&segment={{ .View.Filters.Segment }}&source={{ .View.Filters.Source }}&campaign_id={{ .View.Filters.CampaignID }}">{{ text "analytics.reports.export.csv" }}</a>
+    <a href="/reports/export.xlsx?tenant_id={{ .View.TenantID }}&from={{ .View.Filters.From }}&to={{ .View.Filters.To }}&segment={{ .View.Filters.Segment }}&source={{ .View.Filters.Source }}&campaign_id={{ .View.Filters.CampaignID }}">{{ text "analytics.reports.export.xlsx" }}</a>
+    <form class="reports-export-async" method="post" action="/reports/exports/html?tenant_id={{ .View.TenantID }}&format=csv&from={{ .View.Filters.From }}&to={{ .View.Filters.To }}&segment={{ .View.Filters.Segment }}&source={{ .View.Filters.Source }}&campaign_id={{ .View.Filters.CampaignID }}">
+      <button type="submit">{{ text "analytics.reports.export.async" }}</button>
+    </form>
+    {{- if .View.CanManageJobs }}
+    <a class="reports-jobs-link" href="/reports/jobs">{{ text "analytics.reports.jobs.link" }}</a>
+    {{- end }}
   </p>
 
   {{- if not .View.Available }}
   <p class="reports-unavailable" role="status">
-    Метрики недоступны: {{ .View.StaleReason }}. Отсутствующие значения нулём не подменяются.
+    {{ text "analytics.reports.unavailable" }} {{ .View.StaleReason }}{{ text "analytics.reports.unavailable.tail" }}
   </p>
   {{- else if not .View.Visible }}
   <p class="reports-hidden" role="status">{{ .View.Data.HiddenReason }}</p>
   {{- else }}
 
-  <section class="reports-campaigns" aria-label="Кампании">
-    <h2>Кампании за период «{{ .View.PeriodLabel }}»</h2>
-    <p class="reports-unapproved">Неутверждённых черновиков всего: <span data-metric="unapproved">{{ .View.Data.Unapproved }}</span></p>
+  <section class="reports-campaigns" aria-label="{{ text "analytics.reports.campaigns.aria" }}">
+    <h2>{{ text "analytics.reports.campaigns.title" }} «{{ .View.PeriodLabel }}»</h2>
+    <p class="reports-unapproved">{{ text "analytics.reports.unapproved" }} <span data-metric="unapproved">{{ .View.Data.Unapproved }}</span></p>
     <table>
       <thead>
         <tr>
-          <th>Кампания</th><th>Записей</th><th>Отправлено</th><th>Доставлено</th>
-          <th>Переходы</th><th>Ответы</th><th>Отписки</th><th>Отказы</th><th>Неутв. черновики</th>
+          <th>{{ text "analytics.reports.header.campaign" }}</th><th>{{ text "analytics.reports.header.records" }}</th><th>{{ text "analytics.reports.header.sent" }}</th><th>{{ text "analytics.reports.header.delivered" }}</th>
+          <th>{{ text "analytics.reports.header.transitions" }}</th><th>{{ text "analytics.reports.header.replies" }}</th><th>{{ text "analytics.reports.header.unsubscribes" }}</th><th>{{ text "analytics.reports.header.bounces" }}</th><th>{{ text "analytics.reports.header.unapproved" }}</th>
         </tr>
       </thead>
       <tbody>
@@ -53,50 +60,50 @@
           <td>{{ .Unapproved }}</td>
         </tr>
         {{- else }}
-        <tr><td colspan="9">Нет данных за период</td></tr>
+        <tr><td colspan="9">{{ text "analytics.reports.no_period_data" }}</td></tr>
         {{- end }}
       </tbody>
     </table>
   </section>
 
-  <section class="reports-leadgen" aria-label="Лидогенерация">
-    <h2>Лидогенерация</h2>
+  <section class="reports-leadgen" aria-label="{{ text "analytics.reports.leadgen.aria" }}">
+    <h2>{{ text "analytics.reports.leadgen.title" }}</h2>
     <div class="reports-columns">
       <div class="reports-sources">
-        <h3>По источникам</h3>
+        <h3>{{ text "analytics.reports.by_sources" }}</h3>
         <ul>
           {{- range .View.Data.Sources }}
           <li><span class="reports-label">{{ .Label }}</span><span class="reports-value" data-metric="source">{{ .Count }}</span></li>
           {{- else }}
-          <li>Нет данных</li>
+          <li>{{ text "analytics.reports.no_data" }}</li>
           {{- end }}
         </ul>
       </div>
       <div class="reports-industries">
-        <h3>По отраслям</h3>
+        <h3>{{ text "analytics.reports.by_industries" }}</h3>
         <ul>
           {{- range .View.Data.Industries }}
           <li><span class="reports-label">{{ .Label }}</span><span class="reports-value" data-metric="industry">{{ .Count }}</span></li>
           {{- else }}
-          <li>Нет данных</li>
+          <li>{{ text "analytics.reports.no_data" }}</li>
           {{- end }}
         </ul>
       </div>
       <div class="reports-periods">
-        <h3>По периодам</h3>
+        <h3>{{ text "analytics.reports.by_periods" }}</h3>
         <ul>
           {{- range .View.Data.Periods }}
           <li><span class="reports-label">{{ .Date }}</span><span class="reports-value" data-metric="period">{{ .Count }}</span></li>
           {{- else }}
-          <li>Нет данных</li>
+          <li>{{ text "analytics.reports.no_data" }}</li>
           {{- end }}
         </ul>
       </div>
     </div>
   </section>
 
-  <section class="reports-funnel" aria-label="Воронка">
-    <h2>Воронка «лид → коммуникация → ответ → сделка»</h2>
+  <section class="reports-funnel" aria-label="{{ text "analytics.reports.funnel.aria" }}">
+    <h2>{{ text "analytics.reports.funnel.title" }}</h2>
     {{- range .View.Data.Funnel }}
     <div class="funnel-row">
       <span class="funnel-label">{{ .Label }}</span>
@@ -107,22 +114,22 @@
     {{- end }}
   </section>
 
-  <section class="reports-quality" aria-label="Качество базы">
-    <h2>Качество базы</h2>
+  <section class="reports-quality" aria-label="{{ text "analytics.reports.quality.aria" }}">
+    <h2>{{ text "analytics.reports.quality.title" }}</h2>
     <dl class="quality">
-      <div><dt>Всего контактов</dt><dd data-metric="quality-total">{{ .View.Data.Quality.Total }}</dd></div>
-      <div><dt>Доля валидных</dt><dd data-metric="quality-valid">{{ .View.Data.Quality.ValidShare }}</dd></div>
-      <div><dt>Доля отказов</dt><dd data-metric="quality-bounce">{{ .View.Data.Quality.BounceShare }}</dd></div>
-      <div><dt>Доля дублей</dt><dd data-metric="quality-duplicate">{{ .View.Data.Quality.DuplicateShare }}</dd></div>
+      <div><dt>{{ text "analytics.reports.quality.total" }}</dt><dd data-metric="quality-total">{{ .View.Data.Quality.Total }}</dd></div>
+      <div><dt>{{ text "analytics.reports.quality.valid" }}</dt><dd data-metric="quality-valid">{{ .View.Data.Quality.ValidShare }}</dd></div>
+      <div><dt>{{ text "analytics.reports.quality.bounce" }}</dt><dd data-metric="quality-bounce">{{ .View.Data.Quality.BounceShare }}</dd></div>
+      <div><dt>{{ text "analytics.reports.quality.duplicate" }}</dt><dd data-metric="quality-duplicate">{{ .View.Data.Quality.DuplicateShare }}</dd></div>
     </dl>
   </section>
 
-  <section class="reports-managers" aria-label="Управленческая отчётность">
-    <h2>Управленческая отчётность</h2>
-    <p class="reports-note">Активность и конверсия сотрудников отделены от отчётности по лидам.</p>
+  <section class="reports-managers" aria-label="{{ text "analytics.reports.managers.aria" }}">
+    <h2>{{ text "analytics.reports.managers.title" }}</h2>
+    <p class="reports-note">{{ text "analytics.reports.managers.note" }}</p>
     <table>
       <thead>
-        <tr><th>Менеджер</th><th>Активность</th><th>Объём</th><th>Ответы</th><th>Сделки</th><th>Конверсия</th></tr>
+        <tr><th>{{ text "analytics.reports.header.manager" }}</th><th>{{ text "analytics.reports.header.activity" }}</th><th>{{ text "analytics.reports.header.volume" }}</th><th>{{ text "analytics.reports.header.replies" }}</th><th>{{ text "analytics.reports.header.deals" }}</th><th>{{ text "analytics.reports.header.conversion" }}</th></tr>
       </thead>
       <tbody>
         {{- range .View.Data.Managers }}
@@ -135,7 +142,7 @@
           <td>{{ .Conversion }}</td>
         </tr>
         {{- else }}
-        <tr><td colspan="6">Нет данных</td></tr>
+        <tr><td colspan="6">{{ text "analytics.reports.no_data" }}</td></tr>
         {{- end }}
       </tbody>
     </table>

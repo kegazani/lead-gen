@@ -11,11 +11,13 @@ import (
 
 	"lead-gen/backend/contexts/lead-management/internal/domain"
 	"lead-gen/backend/contexts/lead-management/internal/ports"
+	"lead-gen/backend/platform/readiness"
 )
 
 // ContactRepository — PostgreSQL-реализация ports.ContactRepository.
 type ContactRepository struct {
-	db execer
+	db   execer
+	pool *pgxpool.Pool
 }
 
 // ContactRepository реализует порт репозитория контактов.
@@ -26,7 +28,17 @@ func NewContactRepository(pool *pgxpool.Pool) *ContactRepository {
 	if pool == nil {
 		panic("postgres: NewContactRepository с nil-пулом")
 	}
-	return &ContactRepository{db: pool}
+	return &ContactRepository{db: pool, pool: pool}
+}
+
+// ReadinessProbe проверяет без мутаций доступность реального пула красной зоны.
+func (r *ContactRepository) ReadinessProbe() readiness.Probe {
+	return func(ctx context.Context) (readiness.ProbeResult, error) {
+		if err := r.pool.Ping(ctx); err != nil {
+			return readiness.ProbeResult{}, err
+		}
+		return readiness.ProbeResult{Status: readiness.StatusUp, Reason: readiness.ReasonNone}, nil
+	}
 }
 
 // Save сохраняет контакт целиком как снимок в JSONB. Повторный вызов для того же

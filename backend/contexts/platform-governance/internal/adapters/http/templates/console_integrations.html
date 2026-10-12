@@ -1,29 +1,25 @@
 {{- define "content" -}}
 <section class="console-integrations">
-  <h1>Интеграции и адаптеры</h1>
-  {{- with .View.Notice }}
-  <p class="notice" role="status">{{.}}</p>
-  {{- end }}
+  <h1>{{ text "console.integrations.title" }}</h1>
   {{- if .View.Unavailable }}
-  <p class="watermark" role="status">Состояние интеграций недоступно</p>
+  <p class="watermark" role="status">{{ text "console.integrations.unavailable" }}</p>
   {{- else if .View.Adapters }}
   <table class="table">
     <thead>
-      <tr><th>Адаптер</th><th>Набор возможностей</th><th>Состояние</th><th>Причина</th></tr>
+      <tr><th>{{ text "console.integrations.col.adapter" }}</th><th>{{ text "console.integrations.col.state" }}</th><th>{{ text "console.integrations.col.reason" }}</th></tr>
     </thead>
     <tbody>
       {{- range .View.Adapters }}
       <tr>
-        <td>{{ .Name }}</td>
-        <td>{{ .Version }}</td>
-        <td><span class="status status-{{ .Class }}">{{ .Health }}</span></td>
+        <td>{{ .Adapter }}</td>
+        <td><span class="status status-{{ .Class }}">{{ .StateLabel }}</span></td>
         <td>{{ .ReasonLabel }}</td>
       </tr>
       {{- end }}
     </tbody>
   </table>
   {{- else }}
-  <p class="portal-empty">Адаптеры не объявлены.</p>
+  <p class="portal-empty">{{ text "console.integrations.empty" }}</p>
   {{- end }}
 </section>
 {{- end -}}

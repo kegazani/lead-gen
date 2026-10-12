@@ -10,6 +10,7 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -22,6 +23,7 @@ import (
 	"lead-gen/backend/contexts/engagement-observation/internal/app/query"
 	"lead-gen/backend/contexts/engagement-observation/internal/domain"
 	"lead-gen/backend/contexts/engagement-observation/internal/ports"
+	"lead-gen/backend/platform/readiness"
 )
 
 const (
@@ -35,6 +37,7 @@ const (
 
 // Dependencies — прикладные сценарии, которыми пользуется HTTP-адаптер.
 type Dependencies struct {
+	Readiness func(context.Context) readiness.Snapshot
 	// IngestEvent — приём и квалификация сырого сигнала.
 	IngestEvent *command.IngestEventHandler
 	// RecordTransition — учёт перехода по трекинг-ссылке (read-signal).
@@ -71,7 +74,21 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /r/{ref}", s.handleResolve)
 	mux.HandleFunc("GET /engagements/{id}", s.handleGetEngagement)
 	mux.HandleFunc("GET /healthz", s.handleHealth)
+	mux.HandleFunc("GET /readyz", s.handleReady)
 	return mux
+}
+
+func (s *Server) handleReady(w http.ResponseWriter, r *http.Request) {
+	if s.deps.Readiness == nil {
+		writeJSON(w, http.StatusServiceUnavailable, readiness.Snapshot{Status: readiness.StatusUnknown, Ready: false})
+		return
+	}
+	report := s.deps.Readiness(r.Context())
+	status := http.StatusOK
+	if !report.Ready {
+		status = http.StatusServiceUnavailable
+	}
+	writeJSON(w, status, report)
 }
 
 // healthResponse — форма ответа проверки живости.

@@ -9,6 +9,15 @@ import (
 // CampaignState — состояние кампании.
 type CampaignState string
 
+// CampaignPurpose separates editorial review from delivery approval. Empty/old
+// snapshots are normalized to delivery for legacy behavior.
+type CampaignPurpose string
+
+const (
+	CampaignPurposeDelivery  CampaignPurpose = "delivery"
+	CampaignPurposeEditorial CampaignPurpose = "editorial"
+)
+
 const (
 	// CampaignStateDraft — кампания создана, черновиков ещё нет.
 	CampaignStateDraft CampaignState = "draft"
@@ -37,6 +46,7 @@ type CreateCampaignParams struct {
 	TenantID TenantID
 	Name     string
 	Window   CampaignWindow
+	Purpose  CampaignPurpose
 }
 
 // DecisionParams — данные решения оператора по черновику.
@@ -67,6 +77,7 @@ type Campaign struct {
 	name      string
 	window    CampaignWindow
 	state     CampaignState
+	purpose   CampaignPurpose
 	drafts    map[DraftID]*ActionDraft
 	order     []DraftID
 	decisions []OperatorDecision
@@ -96,12 +107,20 @@ func CreateCampaign(params CreateCampaignParams) (*Campaign, error) {
 	if err := params.Window.validate(); err != nil {
 		return nil, fmt.Errorf("%w: кампания %s", err, params.ID)
 	}
+	purpose := params.Purpose
+	if purpose == "" {
+		purpose = CampaignPurposeDelivery
+	}
+	if purpose != CampaignPurposeDelivery && purpose != CampaignPurposeEditorial {
+		return nil, ErrInvalidCampaignPurpose
+	}
 	return &Campaign{
 		id:          params.ID,
 		tenantID:    params.TenantID,
 		name:        strings.TrimSpace(params.Name),
 		window:      params.Window,
 		state:       CampaignStateDraft,
+		purpose:     purpose,
 		drafts:      make(map[DraftID]*ActionDraft),
 		definitions: make(map[SequenceID]*SequenceDefinition),
 		executions:  make(map[ExecutionID]*SequenceExecution),
@@ -123,10 +142,21 @@ func (c *Campaign) Window() CampaignWindow { return c.window }
 // State возвращает состояние кампании.
 func (c *Campaign) State() CampaignState { return c.state }
 
+// Purpose returns campaign execution purpose.
+func (c *Campaign) Purpose() CampaignPurpose {
+	if c.purpose == "" {
+		return CampaignPurposeDelivery
+	}
+	return c.purpose
+}
+
 // DraftAction создаёт черновик действия и сразу ставит его на утверждение.
 // Созданный черновик не исполняется: до положительного решения он остаётся в
 // состоянии «ожидает утверждения».
 func (c *Campaign) DraftAction(id DraftID, spec DraftSpec, at time.Time) (*ActionDraft, []DomainEvent, error) {
+	if c.Purpose() == CampaignPurposeEditorial {
+		return nil, nil, ErrEditorialDeliveryForbidden
+	}
 	if c.state == CampaignStateCompleted {
 		return nil, nil, fmt.Errorf("%w: кампания %s", ErrCampaignCompleted, c.id)
 	}
@@ -367,6 +397,9 @@ func (c *Campaign) commitDecision(
 	outcome DecisionOutcome,
 	batchDigest string,
 ) (OperatorDecision, []DomainEvent, error) {
+	if c.Purpose() == CampaignPurposeEditorial {
+		return OperatorDecision{}, nil, ErrEditorialDeliveryForbidden
+	}
 	if c.state == CampaignStateCompleted {
 		return OperatorDecision{}, nil, fmt.Errorf("%w: кампания %s", ErrCampaignCompleted, c.id)
 	}
@@ -434,6 +467,8 @@ func (c *Campaign) commitDecision(
 			DecisionID:   decision.ID(),
 			Actor:        decision.Actor(),
 			Channel:      draft.Channel(),
+			Material:     draft.Spec().Material,
+			Recipient:    draft.Spec().Recipient,
 			At:           decision.DecidedAt(),
 		})
 		c.events = append(c.events, events...)

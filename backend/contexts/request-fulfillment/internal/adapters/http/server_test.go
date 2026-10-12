@@ -3,9 +3,11 @@ package httpapi_test
 import (
 	"bytes"
 	"encoding/json"
+	"html"
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"regexp"
 	"strings"
 	"testing"
 
@@ -236,4 +238,13 @@ func decodeView(t *testing.T, resp *http.Response) map[string]any {
 		t.Fatalf("разбор ответа: %v", err)
 	}
 	return out
+}
+
+// visibleText возвращает видимый текст страницы: теги заменяются пробелом,
+// пробельные символы схлопываются. Экраны показывают сведения парами «подпись —
+// значение» в разных элементах (dt/dd), поэтому проверка «Найдено лидов: 7»
+// идёт по тексту, который видит оператор, а не по разметке.
+func visibleText(page string) string {
+	withoutTags := regexp.MustCompile(`(?s)<[^>]*>`).ReplaceAllString(page, " ")
+	return strings.Join(strings.Fields(html.UnescapeString(withoutTags)), " ")
 }

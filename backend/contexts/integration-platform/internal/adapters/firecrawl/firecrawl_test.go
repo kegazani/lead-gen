@@ -549,3 +549,87 @@ func TestSearchExpiredContextReturnsError(t *testing.T) {
 		t.Fatal("Search завис: дедлайн контекста не проброшен в HTTP-запрос")
 	}
 }
+
+// hangingCrawlServer поднимает сервер, чьё асинхронное задание обхода никогда не
+// достигает терминального статуса: POST /v1/crawl отдаёт id, а опрос всегда
+// отвечает status=scraping. Это воспроизводит зависание обхода из живого прогона.
+func hangingCrawlServer(t *testing.T, pageURL string) *httptest.Server {
+	t.Helper()
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v1/crawl", func(w http.ResponseWriter, _ *http.Request) {
+		writeJSON(t, w, map[string]any{"success": true, "id": "job-1"})
+	})
+	mux.HandleFunc("/v1/crawl/job-1", func(w http.ResponseWriter, _ *http.Request) {
+		body := map[string]any{"success": true, "status": "scraping"}
+		if pageURL != "" {
+			body["data"] = []map[string]any{{"url": pageURL, "markdown": "# страница"}}
+		}
+		writeJSON(t, w, body)
+	})
+	return httptest.NewServer(mux)
+}
+
+// TestCrawlHonorsMaxTimeSecondsAgainstHangingCrawl проверяет воспроизведение и
+// исправление зависания обхода: при незавершающемся crawl и заданном
+// MaxTimeSeconds обход возвращает crawl.ErrTimeout за ограниченное время, а не
+// висит бесконечно.
+func TestCrawlHonorsMaxTimeSecondsAgainstHangingCrawl(t *testing.T) {
+	srv := hangingCrawlServer(t, "")
+	defer srv.Close()
+
+	client := New(Config{BaseURL: srv.URL})
+	start := time.Now()
+	_, err := client.Crawl(context.Background(), crawl.Request{
+		StartURL: "https://example.com", MaxPages: 5, MaxTimeSeconds: 1,
+	})
+	elapsed := time.Since(start)
+	if err != crawl.ErrTimeout {
+		t.Fatalf("Crawl = %v, ожидалась crawl.ErrTimeout", err)
+	}
+	if elapsed > 5*time.Second {
+		t.Fatalf("обход не ограничен заданным временем: %v", elapsed)
+	}
+}
+
+// TestCrawlContextDeadlineKeepsPartialPages проверяет, что при исчерпании времени
+// (дедлайн контекста) обход не теряет уже собранные страницы: они возвращаются
+// вместе с crawl.ErrTimeout.
+func TestCrawlContextDeadlineKeepsPartialPages(t *testing.T) {
+	srv := hangingCrawlServer(t, "https://example.com/a")
+	defer srv.Close()
+
+	client := New(Config{BaseURL: srv.URL})
+	ctx, cancel := context.WithTimeout(context.Background(), 200*time.Millisecond)
+	defer cancel()
+
+	outcome, err := client.Crawl(ctx, crawl.Request{StartURL: "https://example.com", MaxPages: 5})
+	if err != crawl.ErrTimeout {
+		t.Fatalf("Crawl = %v, ожидалась crawl.ErrTimeout", err)
+	}
+	if len(outcome.Pages) != 1 || outcome.Pages[0].URL != "https://example.com/a" {
+		t.Fatalf("частичные страницы не сохранены при таймауте: %+v", outcome.Pages)
+	}
+}
+
+// TestCrawlExpiredDeadlineIsTimeoutNotCancelled проверяет нормализацию причины:
+// истёкший дедлайн контекста — это crawl.ErrTimeout, а не crawl.ErrCancelled.
+func TestCrawlExpiredDeadlineIsTimeoutNotCancelled(t *testing.T) {
+	client := New(Config{BaseURL: "https://api.firecrawl.dev"})
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+	defer cancel()
+
+	if _, err := client.Crawl(ctx, crawl.Request{StartURL: "https://example.com"}); err != crawl.ErrTimeout {
+		t.Fatalf("Crawl = %v, ожидалась crawl.ErrTimeout", err)
+	}
+}
+
+// TestNextPollIntervalBackoffCapsAtCeiling проверяет backoff опроса: пауза растёт
+// и не превышает потолок.
+func TestNextPollIntervalBackoffCapsAtCeiling(t *testing.T) {
+	if got := nextPollInterval(pollInterval); got <= pollInterval {
+		t.Fatalf("пауза не растёт: %v", got)
+	}
+	if got := nextPollInterval(maxPollInterval); got != maxPollInterval {
+		t.Fatalf("пауза не ограничена потолком: %v", got)
+	}
+}

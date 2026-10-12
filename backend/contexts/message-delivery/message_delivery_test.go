@@ -111,6 +111,28 @@ func TestSlice_DeliverCommandAndPublishEvent(t *testing.T) {
 	}
 }
 
+func TestSlice_DeliveryEventCarriesCampaign(t *testing.T) {
+	sink := &captureSink{}
+	slice, err := Build(Params{Sink: sink})
+	if err != nil {
+		t.Fatalf("Build: %v", err)
+	}
+	command := validPortCommand()
+	command.CampaignID = "handoff-req-42"
+	if _, err := NewDeliveryCommandPort(slice).Deliver(context.Background(), command); err != nil {
+		t.Fatalf("Deliver: %v", err)
+	}
+	if _, err := slice.Relay.PublishPending(context.Background()); err != nil {
+		t.Fatalf("PublishPending: %v", err)
+	}
+	if len(sink.events) != 1 {
+		t.Fatalf("ожидался один контракт, got %d", len(sink.events))
+	}
+	if got := sink.events[0].CampaignID; got != "handoff-req-42" {
+		t.Fatalf("событие доставки не несёт кампанию: got %q", got)
+	}
+}
+
 func TestService_RoleRunner(t *testing.T) {
 	service, err := New(Config{
 		Logger:  observ.NewLogger(),

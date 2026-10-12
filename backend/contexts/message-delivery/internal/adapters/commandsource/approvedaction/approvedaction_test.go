@@ -150,6 +150,52 @@ func TestPublishDuplicateDoesNotEnqueueAgain(t *testing.T) {
 	}
 }
 
+func TestPublishSameIdempotencyKeyWithDifferentPayloadConflicts(t *testing.T) {
+	adapter := newAdapter(t, &fakeRecipients{address: "info@example.com"}, &fakeMaterials{})
+	first := validAction()
+	if err := adapter.Publish(context.Background(), first); err != nil {
+		t.Fatal(err)
+	}
+	conflicting := first
+	conflicting.DecisionID = "different-decision"
+	if err := adapter.Publish(context.Background(), conflicting); !errors.Is(err, ErrPayloadConflict) {
+		t.Fatalf("ожидался конфликт payload, получено %v", err)
+	}
+	if adapter.queue.Len() != 1 {
+		t.Fatalf("в очереди %d команд, ожидалась одна", adapter.queue.Len())
+	}
+}
+
+// Анализ разных кампаний к одному получателю: идентификаторы утверждённых действий
+// кампанийно-уникальны, поэтому второе действие — не повтор и даёт вторую команду.
+func TestPublishPerCampaignSameRecipientBuildsTwoCommands(t *testing.T) {
+	recipients := &fakeRecipients{address: "info@norbit.ru"}
+	adapter := newAdapter(t, recipients, &fakeMaterials{})
+
+	first := validAction()
+	first.DraftID = "info@norbit.ru"
+	first.CampaignID = "camp-1"
+	first.ApprovedActionID = contracts.ApprovedActionIdentity("camp-1", "info@norbit.ru", 1)
+	first.DraftVersion = 1
+	if err := adapter.Publish(context.Background(), first); err != nil {
+		t.Fatalf("Publish первой кампании: %v", err)
+	}
+
+	second := validAction()
+	second.EventID = "evt-2"
+	second.DraftID = "info@norbit.ru"
+	second.CampaignID = "camp-2"
+	second.ApprovedActionID = contracts.ApprovedActionIdentity("camp-2", "info@norbit.ru", 1)
+	second.DraftVersion = 1
+	if err := adapter.Publish(context.Background(), second); err != nil {
+		t.Fatalf("Publish второй кампании: %v", err)
+	}
+
+	if got := adapter.queue.Len(); got != 2 {
+		t.Fatalf("в очереди %d команд, ожидалось 2 (разные кампании — не повтор)", got)
+	}
+}
+
 // Не-email канал отклоняется без внешнего вызова.
 func TestPublishRejectsNonEmailChannel(t *testing.T) {
 	recipients := &fakeRecipients{address: "user@example.com"}

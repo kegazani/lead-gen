@@ -30,12 +30,12 @@ package main
 //
 // Честно НЕ покрыто и почему (AGENTS.md §3 — без подмены успехом):
 //   - transport контрактов при разделении сервисов (сетевые адаптеры — точка
-//     расширения), Temporal/SMTP-провайдер реального мира не поднимаются;
-//   - отображение relay (MapActionApproved) намеренно НЕ несёт ссылку на
-//     материал: MaterialVersionRef остаётся пустым, поэтому письмо из пути
-//     approve→outbox→relay уходит с пустыми темой и телом. Это свойство текущего
-//     отображения, а не сбой теста; ветка материала проверяется отдельным
-//     шагом через публичный Sink моста (с заданным MaterialVersionRef).
+//     расширения), Temporal/SMTP-провайдер реального мира не поднимаются.
+//
+// Основной путь несёт материал: событие action-approved несёт ссылку на версию
+// материала черновика, relay переносит её в approved-action, и мост разрешает тему
+// и тело письма. Идемпотентность и отказ на не-email канал проверяются на том же
+// публичном Sink моста.
 
 import (
 	"bufio"
@@ -44,6 +44,8 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"mime"
+	"mime/quotedprintable"
 	"net"
 	"net/http"
 	"strings"
@@ -60,6 +62,7 @@ import (
 	"lead-gen/backend/platform/transport/amqp"
 	"lead-gen/contracts/content-production/contentrequest"
 	"lead-gen/contracts/content-production/contentversion"
+	"lead-gen/contracts/integration-platform/budget"
 	"lead-gen/contracts/integration-platform/crawl"
 	"lead-gen/contracts/integration-platform/search"
 	"lead-gen/contracts/lead-management/leadsearch"
@@ -112,16 +115,18 @@ func TestApprovedActionToSentInProcess(t *testing.T) {
 	// --- Владелец получателя: lead-management (публичные фабрики) -------------
 	// Поиск под заявку создаёт карточку компании и контакт (ID = нормализованный
 	// email). Резолвер delivery-target разрешает ссылку-идентификатор контакта в
-	// адрес: так утверждённое действие (несущее draft_id как ссылку) доходит до
+	// адрес: так утверждённое действие (несущее получателя черновика) доходит до
 	// адреса, не поднимая PII в контракт approved-action.
 	repos := leadmanagement.NewMemoryRepositories()
 	searcher := leadmanagement.NewLeadSearch(leadmanagement.LeadSearchDeps{
 		Repositories: repos,
-		Search:       e2eSearchPort{results: []search.Result{{URL: e2eLeadURL}}},
-		Crawl:        e2eCrawlPort{pages: map[string]crawl.Page{e2eLeadURL: e2eLeadPage()}},
-		Limits:       leadmanagement.CrawlLimits{MaxDepth: 1, MaxPages: 4, MaxTimeSeconds: 30},
-		MaxResults:   1,
-		Logger:       logger,
+		Budget: e2eLeadSearchBudget{task: e2eLeadSearchTask{
+			search: e2eSearchPort{results: []search.Result{{URL: e2eLeadURL}}},
+			crawl:  e2eCrawlPort{pages: map[string]crawl.Page{e2eLeadURL: e2eLeadPage()}},
+		}},
+		Limits:     leadmanagement.CrawlLimits{MaxDepth: 1, MaxPages: 4, MaxTimeSeconds: 30},
+		MaxResults: 1,
+		Logger:     logger,
 	})
 	found, err := searcher.Search(ctx, leadsearch.Query{
 		RequestID: "e2e-request",
@@ -207,9 +212,14 @@ func TestApprovedActionToSentInProcess(t *testing.T) {
 	waitContentSubject(t, ctx, contentVersion, produced.AssetID, produced.VersionID, "Тема письма E2E")
 
 	// --- Шаг 1. Утверждение черновика: approve → outbox → relay → мост → SMTP ---
-	// draft_id служит непрозрачной ссылкой получателя (так его проставляет relay:
-	// MapActionApproved кладёт в RecipientRef именно draft_id). Контакт владельца
-	// имеет ID = email, поэтому черновик называем email-ом получателя.
+	// Получателя несёт само событие action-approved (поле recipient черновика), а не
+	// draft_id: идентификатор черновика — ссылка на материал (asset@version), у
+	// черновика агента они различаются. Контакт владельца имеет ID = email, поэтому
+	// получателем черновика называем email получателя.
+	//
+	// material_id — реальная ссылка на версию материала (asset@version): её несёт
+	// событие action-approved, relay переносит её в approved-action, а мост
+	// разрешает тему и тело письма. Так основной путь даёт непустое письмо.
 	postJSON(t, baseURL+"/campaigns", map[string]any{
 		"command_id":   "command-e2e",
 		"campaign_id":  e2eCampaignID,
@@ -223,9 +233,9 @@ func TestApprovedActionToSentInProcess(t *testing.T) {
 		"tenant_id":    e2eTenantID,
 		"actor_id":     e2eOperatorID,
 		"draft_id":     e2eRecipient,
-		"material_id":  "material-e2e",
+		"material_id":  materialRef,
 		"segment_id":   "segment-e2e",
-		"recipient_id": "recipient-e2e",
+		"recipient_id": e2eRecipient,
 		"channel":      approvedaction.ChannelEmailName,
 	})
 	postJSON(t, baseURL+"/campaigns/"+e2eCampaignID+"/drafts/"+e2eRecipient+"/approve", map[string]any{
@@ -240,33 +250,32 @@ func TestApprovedActionToSentInProcess(t *testing.T) {
 	if approved.to != e2eRecipient {
 		t.Fatalf("адрес письма %q, ожидался %q", approved.to, e2eRecipient)
 	}
-	// Честный факт: отображение relay не несёт MaterialVersionRef, поэтому тема и
-	// тело письма из этого пути пусты. Проверяем именно это (а не выдумываем успех).
-	if subj := headerValue(approved.data, "Subject"); subj != "" {
-		t.Fatalf("тема письма из пути approve→relay = %q, ожидалась пустая (relay не несёт материал)", subj)
+	// Основной путь несёт материал: тема и тело берутся из разрешённой ссылки.
+	encodedSubject := headerValue(approved.data, "Subject")
+	gotSubject, err := new(mime.WordDecoder).DecodeHeader(encodedSubject)
+	if err != nil || gotSubject != "Тема письма E2E" {
+		t.Fatalf("тема письма основного пути = %q (encoded %q), ожидалась %q, decode err=%v", gotSubject, encodedSubject, "Тема письма E2E", err)
+	}
+	body, decodeErr := io.ReadAll(quotedprintable.NewReader(strings.NewReader(messageBody(approved.data))))
+	if decodeErr != nil || !strings.Contains(string(body), "Тело письма E2E.") {
+		t.Fatalf("тело письма основного пути не содержит текст: %q, decode err=%v", body, decodeErr)
 	}
 
-	// --- Шаг 2. Ветка материала через публичный Sink моста ----------------------
-	// Relay не заполняет MaterialVersionRef, поэтому материал проверяем, подавая
-	// утверждённое действие в тот же мост (bridge.Sink()) — тот же адаптер, что
-	// читает роль sender.
+	// --- Шаг 2. Идемпотентность моста: повтор действия не создаёт второго письма --
+	// То же действие подаётся в тот же мост (bridge.Sink()) дважды. Внешний эффект
+	// должен остаться один: повтор распознаётся по ключу идемпотентности.
 	materialAction := approvedActionFixture("approved-material", materialRef)
 	if err := bridge.Sink()(ctx, materialAction); err != nil {
 		t.Fatalf("приём утверждённого действия с материалом: %v", err)
 	}
-	letters := smtpCapture.wait(t, 2, 15*time.Second)
-	materialLetter := letters[1]
-	if materialLetter.to != e2eRecipient {
-		t.Fatalf("адрес письма материала %q, ожидался %q", materialLetter.to, e2eRecipient)
+	repeat := smtpCapture.wait(t, 2, 15*time.Second)[1]
+	if repeat.to != e2eRecipient {
+		t.Fatalf("адрес письма материала %q, ожидался %q", repeat.to, e2eRecipient)
 	}
-	if got := headerValue(materialLetter.data, "Subject"); got != "Тема письма E2E" {
-		t.Fatalf("тема письма материала = %q, ожидалась %q", got, "Тема письма E2E")
+	repeatSubject, decodeErr := new(mime.WordDecoder).DecodeHeader(headerValue(repeat.data, "Subject"))
+	if decodeErr != nil || repeatSubject != "Тема письма E2E" {
+		t.Fatalf("тема письма материала = %q, ожидалась %q, decode err=%v", repeatSubject, "Тема письма E2E", decodeErr)
 	}
-	if body := messageBody(materialLetter.data); !strings.Contains(body, "Тело письма E2E.") {
-		t.Fatalf("тело письма материала не содержит текст: %q", body)
-	}
-
-	// --- Шаг 3. Идемпотентность: повтор не создаёт второго письма --------------
 	if err := bridge.Sink()(ctx, materialAction); err != nil {
 		t.Fatalf("повторная подача того же действия не должна быть ошибкой: %v", err)
 	}
@@ -275,7 +284,7 @@ func TestApprovedActionToSentInProcess(t *testing.T) {
 		t.Fatalf("после повтора доставок %d, ожидалось 2 (повтор дедуплицируется)", got)
 	}
 
-	// --- Шаг 4. Не-email канал отклоняется честно, без отправки -----------------
+	// --- Шаг 3. Не-email канал отклоняется честно, без отправки -----------------
 	callAction := approvedActionFixture("approved-call", "")
 	callAction.Channel = approvedaction.ChannelCallName
 	if err := bridge.Sink()(ctx, callAction); err == nil {
@@ -316,6 +325,33 @@ func approvedActionFixture(id, materialRef string) approvedaction.ApprovedAction
 // e2eSearchPort — двойник порта поиска Firecrawl: отдаёт заранее заданный набор
 // URL. Порт — публичный контракт integration-platform.
 type e2eSearchPort struct{ results []search.Result }
+
+// e2eLeadSearchBudget и e2eLeadSearchTask — тестовые двойники контракта бюджета
+// для сквозного сценария отправки. Реальная Firecrawl admission проверяется
+// отдельно контролируемым HTTP adapter suite в lead-management.
+type e2eLeadSearchBudget struct{ task budget.Task }
+
+func (b e2eLeadSearchBudget) Begin(string, int) (budget.Task, error) { return b.task, nil }
+func (e2eLeadSearchBudget) Finish(context.Context, string) error     { return nil }
+
+type e2eLeadSearchTask struct {
+	search search.Port
+	crawl  crawl.Port
+}
+
+func (t e2eLeadSearchTask) Search(ctx context.Context, q search.Query) ([]search.Result, error) {
+	return t.search.Search(ctx, q)
+}
+
+func (t e2eLeadSearchTask) Crawl(ctx context.Context, r crawl.Request) (crawl.CrawlOutcome, error) {
+	return t.crawl.Crawl(ctx, r)
+}
+
+func (t e2eLeadSearchTask) Extract(ctx context.Context, r crawl.ExtractRequest) ([]crawl.ContactCandidate, error) {
+	return t.crawl.Extract(ctx, r)
+}
+
+func (e2eLeadSearchTask) Snapshot() budget.Snapshot { return budget.Snapshot{} }
 
 func (p e2eSearchPort) Search(ctx context.Context, _ search.Query) ([]search.Result, error) {
 	if err := ctx.Err(); err != nil {

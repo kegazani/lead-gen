@@ -8,9 +8,10 @@ func TestMessageValidate(t *testing.T) {
 		message Message
 		wantErr bool
 	}{
-		{name: "валидное", message: Message{From: "a@example.com", To: "b@example.com", Subject: "тема", Body: "тело"}},
+		{name: "валидное", message: Message{MessageID: "message-1", From: "a@example.com", To: "b@example.com", Subject: "тема", Body: "тело"}},
 		{name: "без отправителя", message: Message{To: "b@example.com"}, wantErr: true},
 		{name: "без получателя", message: Message{From: "a@example.com"}, wantErr: true},
+		{name: "без идентификатора", message: Message{From: "a@example.com", To: "b@example.com"}, wantErr: true},
 		{name: "пустые оба", message: Message{}, wantErr: true},
 	}
 	for _, tc := range cases {

@@ -97,6 +97,13 @@ func (h *DeliverMessageHandler) reserve(
 	key string,
 ) (reserved *domain.Message, replayed bool, err error) {
 	err = h.uow.WithinTransaction(ctx, func(tx ports.Transaction) error {
+		cancelled, fenceErr := tx.CampaignCancelled(ctx, cmd.TenantID.String(), cmd.CampaignID)
+		if fenceErr != nil {
+			return fmt.Errorf("проверка отмены кампании: %w", fenceErr)
+		}
+		if cancelled {
+			return ports.ErrCampaignCancelled
+		}
 		existing, findErr := tx.Messages().FindByIdempotencyKey(ctx, key)
 		if findErr == nil {
 			reserved = existing
@@ -131,6 +138,7 @@ func (h *DeliverMessageHandler) reserve(
 			ID:               domain.MessageID(cmd.CommandID),
 			TenantID:         cmd.TenantID,
 			ApprovedActionID: cmd.ApprovedActionID,
+			CampaignID:       cmd.CampaignID,
 			RecipientRef:     cmd.RecipientRef,
 			Address:          cmd.Address,
 			SenderDomain:     cmd.SenderDomain,
@@ -178,6 +186,12 @@ func sendMessage(
 	if err != nil {
 		if ctx.Err() != nil {
 			// Отменённый или просроченный вызов не выдаётся за исход доставки.
+			return "", "", fmt.Errorf("отправка сообщения %s: %w", message.ID(), err)
+		}
+		if errors.Is(err, ports.ErrMailerOutcomeUnknown) {
+			// Резерв sending уже зафиксирован. Не переводим неизвестный исход во
+			// временный retryable результат: это могло бы продублировать принятое
+			// Gmail письмо. Сообщение остаётся заблокированным до сверки.
 			return "", "", fmt.Errorf("отправка сообщения %s: %w", message.ID(), err)
 		}
 		if !errors.Is(err, ports.ErrMailerUnavailable) {

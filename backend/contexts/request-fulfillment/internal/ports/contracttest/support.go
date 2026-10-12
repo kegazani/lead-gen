@@ -9,6 +9,7 @@
 package contracttest
 
 import (
+	"sync"
 	"testing"
 	"time"
 
@@ -18,6 +19,16 @@ import (
 // baseTime — детерминированная точка отсчёта, чтобы проверки не зависели от
 // системных часов и совпадали для всех реализаций.
 var baseTime = time.Date(2026, time.January, 2, 3, 4, 5, 0, time.UTC)
+
+// ManualClock — потокобезопасные внедрённые часы для общих storage-контрактов.
+type ManualClock struct {
+	mu  sync.RWMutex
+	now time.Time
+}
+
+func NewManualClock(now time.Time) *ManualClock { return &ManualClock{now: now} }
+func (c *ManualClock) Now() time.Time           { c.mu.RLock(); defer c.mu.RUnlock(); return c.now }
+func (c *ManualClock) Advance(d time.Duration)  { c.mu.Lock(); c.now = c.now.Add(d); c.mu.Unlock() }
 
 // at возвращает момент времени, сдвинутый на minutes минут от baseTime.
 func at(minutes int) time.Time {

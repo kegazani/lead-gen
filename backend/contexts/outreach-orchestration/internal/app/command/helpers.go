@@ -65,6 +65,9 @@ func handleDecision(
 
 	var result DraftDecisionResult
 	err := deps.uow.WithinTransaction(ctx, func(tx ports.Transaction) error {
+		if err := rejectIfCampaignCancelled(ctx, tx, req.TenantID.String(), req.CampaignID.String()); err != nil {
+			return err
+		}
 		campaign, err := loadCampaign(ctx, tx.Campaigns(), req.CampaignID, req.TenantID)
 		if err != nil {
 			return err

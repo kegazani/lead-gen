@@ -8,6 +8,7 @@
 package httpapi
 
 import (
+	"context"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -18,6 +19,7 @@ import (
 	"lead-gen/backend/contexts/content-production/internal/app/query"
 	"lead-gen/backend/contexts/content-production/internal/domain"
 	"lead-gen/backend/contexts/content-production/internal/ports"
+	"lead-gen/backend/platform/readiness"
 )
 
 const (
@@ -31,6 +33,7 @@ const (
 // Dependencies — внешние зависимости HTTP-адаптера: прикладные сценарии
 // контекста.
 type Dependencies struct {
+	Readiness               func(context.Context) readiness.Snapshot
 	CreateContentPackage    *command.CreateContentPackageHandler
 	PublishContentVersion   *command.PublishContentVersionHandler
 	RequestRender           *command.RequestRenderHandler
@@ -42,6 +45,7 @@ type Dependencies struct {
 	ProposeLandingStructure *query.ProposeLandingStructureHandler
 	GenerateLandingTexts    *command.GenerateLandingTextsHandler
 	CollectSite             *command.CollectSiteHandler
+	ParseDocuments          *command.ParseDocumentsHandler
 	CheckLandingTexts       *command.CheckLandingTextsHandler
 }
 
@@ -72,17 +76,33 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST /content/packages/{assetID}/versions", s.handlePublishVersion)
 	mux.HandleFunc("POST /content/packages/{assetID}/versions/{versionID}/restore", s.handleRestoreVersion)
 	mux.HandleFunc("GET /content/packages/{assetID}", s.handleGetContent)
+	mux.HandleFunc("POST /content-version", s.handleContentVersion)
 	mux.HandleFunc("GET /content/packages/{assetID}/landing-page", s.handleGetLandingPage)
 	mux.HandleFunc("POST /content/packages/{assetID}/render-jobs", s.handleRequestRender)
 	mux.HandleFunc("POST /content/produce", s.handleProduce)
 	mux.HandleFunc("POST /content/landing-structure", s.handleProposeLandingStructure)
 	mux.HandleFunc("POST /content/landing-texts", s.handleGenerateLandingTexts)
 	mux.HandleFunc("POST /content/landing-collect", s.handleCollectSite)
+	mux.HandleFunc("POST /content/landing-documents", s.handleParseDocuments)
 	mux.HandleFunc("POST /content/landing-check", s.handleCheckLandingTexts)
 	mux.HandleFunc("GET /content/render-jobs/{renderJobID}", s.handleGetRenderJob)
 	mux.HandleFunc("GET /healthz", s.handleHealth)
+	mux.HandleFunc("GET /readyz", s.handleReady)
 
 	return mux
+}
+
+func (s *Server) handleReady(w http.ResponseWriter, r *http.Request) {
+	if s.deps.Readiness == nil {
+		writeJSON(w, http.StatusServiceUnavailable, readiness.Snapshot{Status: readiness.StatusUnknown, Ready: false})
+		return
+	}
+	report := s.deps.Readiness(r.Context())
+	status := http.StatusOK
+	if !report.Ready {
+		status = http.StatusServiceUnavailable
+	}
+	writeJSON(w, status, report)
 }
 
 // errorResponse — единая форма ошибки HTTP-слоя.
@@ -175,6 +195,7 @@ func statusForError(err error) int {
 		errors.Is(err, command.ErrVersionRequired),
 		errors.Is(err, command.ErrPackageRequired),
 		errors.Is(err, command.ErrCollectionInput),
+		errors.Is(err, command.ErrDocumentInput),
 		errors.Is(err, linguistics.ErrInvalidRequest),
 		errors.Is(err, linguistics.ErrUnsourcedClaims):
 		return http.StatusBadRequest

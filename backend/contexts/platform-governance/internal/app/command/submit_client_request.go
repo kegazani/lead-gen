@@ -18,10 +18,11 @@ const defaultActor = "client"
 
 // SubmitClientRequest — команда подачи заявки клиентом: что предлагает и кому.
 type SubmitClientRequest struct {
-	TenantID string
-	Content  string
-	Target   string
-	Actor    string
+	TenantID      string
+	Content       string
+	Target        string
+	Actor         string
+	SenderCompany *requestintent.SenderCompanySnapshot
 }
 
 // SubmitClientRequestResult — результат подачи: идентификатор заявки и её статус.
@@ -55,18 +56,29 @@ func (h *SubmitClientRequestHandler) Handle(ctx context.Context, cmd SubmitClien
 		return SubmitClientRequestResult{}, fmt.Errorf("%w: %v", app.ErrRejected, domain.ErrEmptyID)
 	}
 	result, err := h.requests.Submit(ctx, requestintent.SubmitIntent{
-		RequestID: h.ids.NewRequestID(),
-		OfferID:   h.ids.NewOfferID(),
-		TenantID:  tenant,
-		Content:   cmd.Content,
-		Target:    cmd.Target,
-		Actor:     actorOrDefault(cmd.Actor),
+		RequestID:        h.ids.NewRequestID(),
+		OfferID:          h.ids.NewOfferID(),
+		TenantID:         tenant,
+		Content:          cmd.Content,
+		Target:           cmd.Target,
+		Actor:            actorOrDefault(cmd.Actor),
+		ExecutionPurpose: "editorial",
+		SenderCompany:    cloneSenderSnapshot(cmd.SenderCompany),
 	})
 	if err != nil {
 		return SubmitClientRequestResult{}, app.TranslateRequestIntent(err)
 	}
 	h.projection.Remember(domain.TenantID(tenant), result.RequestID)
 	return SubmitClientRequestResult{RequestID: result.RequestID, Status: result.Status}, nil
+}
+
+func cloneSenderSnapshot(in *requestintent.SenderCompanySnapshot) *requestintent.SenderCompanySnapshot {
+	if in == nil {
+		return nil
+	}
+	copy := *in
+	copy.Services = append([]requestintent.SenderServiceSnapshot(nil), in.Services...)
+	return &copy
 }
 
 // actorOrDefault подставляет актора по умолчанию, если он не задан.

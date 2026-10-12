@@ -33,11 +33,12 @@ func (c fixedClock) Now() time.Time { return c.at }
 // среза. Это позволяет провести сквозной сценарий без Temporal и проверить, что
 // повторная отправка решения не применяется дважды.
 type statefulWorkflow struct {
-	mu        sync.Mutex
-	slice     *requestfulfillment.Slice
-	tenant    string
-	started   []ports.StartFulfillment
-	decisions []ports.WorkflowDecision
+	mu         sync.Mutex
+	slice      *requestfulfillment.Slice
+	tenant     string
+	started    []ports.StartFulfillment
+	decisions  []ports.WorkflowDecision
+	deliveries []ports.DeliveryOutcome
 }
 
 // StartFulfillment реализует ports.WorkflowStarter.
@@ -96,6 +97,26 @@ func (f *statefulWorkflow) SignalApprovalDecision(ctx context.Context, in ports.
 		LifecycleFields: fields,
 		Reason:          "решение оператора: отклонено",
 	})
+	return err
+}
+
+// SignalDeliveryOutcome реализует ports.WorkflowSignaler: исход доставки в тесте
+// завершает заявку через ту же команду, что и граф исполнения (все письма
+// доставлены → fulfilled; недоставка → no-op, решение остаётся за графом).
+func (f *statefulWorkflow) SignalDeliveryOutcome(ctx context.Context, in ports.DeliveryOutcome) error {
+	f.mu.Lock()
+	f.deliveries = append(f.deliveries, in)
+	f.mu.Unlock()
+	if !in.Delivered {
+		// Недоставка завершением не считается — решение остаётся за графом.
+		return nil
+	}
+	fields := command.LifecycleFields{
+		RequestID: domain.RequestID(in.RequestID),
+		TenantID:  domain.TenantID(f.tenant),
+		Actor:     "delivery",
+	}
+	_, err := f.slice.FulfillRequest.Handle(ctx, command.FulfillRequest{LifecycleFields: fields})
 	return err
 }
 

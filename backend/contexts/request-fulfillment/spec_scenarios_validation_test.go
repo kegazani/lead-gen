@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	requestfulfillment "lead-gen/backend/contexts/request-fulfillment"
 	"lead-gen/backend/contexts/request-fulfillment/internal/app/command"
@@ -240,6 +241,37 @@ func TestInitiateCallThroughContract(t *testing.T) {
 	}
 	if request.CallID() != "call-77" {
 		t.Fatalf("заявка не сохранила call_id: %q", request.CallID())
+	}
+}
+
+// TestCallContractRunsOutsideTransaction проверяет, что call-intent I/O не
+// выполняется под memory UoW gate: provider может начать независимую транзакцию
+// с переданным caller context, а не получает transaction-scoped txCtx.
+func TestCallContractRunsOutsideTransaction(t *testing.T) {
+	ctx := context.Background()
+	var uow ports.UnitOfWork
+	provider := callintent.InProc(func(callCtx context.Context, _ callintent.Intent) (callintent.Result, error) {
+		watchdogCtx, cancel := context.WithTimeout(callCtx, 2*time.Second)
+		defer cancel()
+		err := uow.WithinTransaction(watchdogCtx, func(context.Context, ports.Transaction) error { return nil })
+		if err != nil {
+			return callintent.Result{}, err
+		}
+		return callintent.Result{CallID: "call-outside"}, nil
+	})
+	built, err := requestfulfillment.Build(requestfulfillment.Config{CallContract: provider})
+	if err != nil {
+		t.Fatal(err)
+	}
+	uow = built.UnitOfWork
+	if _, err = built.SubmitRequest.Handle(ctx, command.SubmitRequest{RequestID: "req-call-outside", OfferID: "offer-call-outside", TenantID: "tenant-1", Content: "Оффер", Actor: "client"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = built.StartValidation.Handle(ctx, command.StartValidation{LifecycleFields: command.LifecycleFields{RequestID: "req-call-outside", TenantID: "tenant-1", Actor: "admin"}}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = built.InitiateCall.Handle(ctx, command.InitiateCall{RequestID: "req-call-outside", TenantID: "tenant-1"}); err != nil {
+		t.Fatalf("call provider invoked within transaction scope: %v", err)
 	}
 }
 

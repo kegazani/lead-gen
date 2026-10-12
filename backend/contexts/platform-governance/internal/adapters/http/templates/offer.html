@@ -1,14 +1,13 @@
 {{- define "content" -}}
 <section class="offer-form">
-  <h1>Заявка</h1>
+  <h1>{{ text "portal.offer.title" }}</h1>
   {{- with .View.Notice }}
   <p class="notice" role="status">{{.}}</p>
   {{- end }}
   <form method="post" action="/portal/request">
-    <input type="hidden" name="tenant_id" value="{{ .View.TenantID }}">
     {{ template "field" .View.ContentField }}
     {{ template "field" .View.TargetField }}
-    <button type="submit">Отправить заявку</button>
+    <button type="submit">{{ text "portal.offer.submit" }}</button>
   </form>
 </section>
 {{- end -}}

@@ -1,0 +1,3 @@
+{{- define "live" -}}
+<p class="live-region"{{ with .ID }} id="{{.}}"{{ end }} role="status" aria-live="polite" aria-atomic="true" aria-label="{{ text "live.label" }}" data-live-region>{{.Text}}</p>
+{{- end -}}

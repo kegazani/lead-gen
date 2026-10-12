@@ -10,6 +10,14 @@ const (
 	ActionTenantCreated AuditAction = "tenant-created"
 	// ActionTenantDisabled — отключение тенанта.
 	ActionTenantDisabled AuditAction = "tenant-disabled"
+	// ActionRegistrationApproved — заявка на регистрацию одобрена.
+	ActionRegistrationApproved AuditAction = "registration-approved"
+	// ActionRegistrationRejected — заявка на регистрацию отклонена.
+	ActionRegistrationRejected AuditAction = "registration-rejected"
+	// ActionProfileApproved — профиль компании подтверждён.
+	ActionProfileApproved AuditAction = "profile-approved"
+	// ActionProfileRejected — профиль компании отклонён.
+	ActionProfileRejected AuditAction = "profile-rejected"
 	// ActionRoleAssigned — назначение роли пользователю.
 	ActionRoleAssigned AuditAction = "role-assigned"
 	// ActionRoleRevoked — отзыв роли у пользователя.
@@ -20,11 +28,15 @@ const (
 
 // auditActions — закрытый перечень значимых действий.
 var auditActions = map[AuditAction]struct{}{
-	ActionTenantCreated:  {},
-	ActionTenantDisabled: {},
-	ActionRoleAssigned:   {},
-	ActionRoleRevoked:    {},
-	ActionAuditCorrected: {},
+	ActionTenantCreated:        {},
+	ActionTenantDisabled:       {},
+	ActionRegistrationApproved: {},
+	ActionRegistrationRejected: {},
+	ActionProfileApproved:      {},
+	ActionProfileRejected:      {},
+	ActionRoleAssigned:         {},
+	ActionRoleRevoked:          {},
+	ActionAuditCorrected:       {},
 }
 
 // isValid сообщает, что действие объявлено доменом.

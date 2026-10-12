@@ -1,21 +1,88 @@
 {{- define "content" -}}
 <section class="approval-queue">
-  <h1>Очередь утверждения</h1>
-  <p class="hint">Заявки, чьё исполнение стоит в фазе awaiting-approval. Тенант: {{.View.TenantID}}</p>
+  {{ template "live" .View.Live }}
+  <h1>{{ text "request.approval_queue.title" }}</h1>
+  <p class="hint">{{ text "request.approval_queue.hint" }} <span class="tenant-label">{{ text "request.tenant" }} {{.View.TenantID}}</span></p>
   {{- if .View.Unavailable }}
-  <p class="watermark" role="status">Исполнение недоступно: рантайм workflow не подключён</p>
+  <p class="watermark" role="status">{{ text "request.approval_queue.unavailable" }}</p>
   {{- else }}
-  <ul class="queue">
-  {{- range .View.Items }}
-    <li class="queue-item">
-      <a href="/requests/{{.RequestID}}/approval?tenant_id={{urlquery $.View.TenantID}}">{{.Offer.Content}}</a>
-      <span class="status status-{{.Phase}}">{{.Phase}}</span>
-      <span class="found">Найдено лидов: {{.Found}}</span>
-    </li>
-  {{- else }}
-    <li class="queue-empty">Заявок, ожидающих утверждения, нет</li>
+  <table class="table queue">
+    <thead>
+      <tr>
+        <th scope="col">{{ text "request.queue.col.request" }}</th>
+        <th scope="col">{{ text "request.queue.col.phase" }}</th>
+        <th scope="col">{{ text "request.queue.col.found" }}</th>
+        <th scope="col">{{ text "request.queue.col.shortfall" }}</th>
+        <th scope="col"><span class="live-region">{{ text "request.queue.col.action" }}</span></th>
+      </tr>
+    </thead>
+    <tbody>
+    {{- range .View.Items }}
+      <tr class="queue-item">
+        <td>
+          <a class="cell-main" href="/requests/{{.RequestID}}/approval?tenant_id={{urlquery $.View.TenantID}}">{{.Offer.Content}}</a>
+          <span class="cell-sub">{{ text "request.number" }} {{.RequestID}} · {{ text "request.version" }} {{.Version}}</span>
+        </td>
+        <td><span class="status status-{{.Phase}}">{{ label "request.phase" .Phase }}</span></td>
+        <td>
+          <span class="progress{{if gt .ShortfallCount 0}} is-short{{end}}" aria-label="{{ text "request.approval_queue.found" }} {{.Found}}">
+            {{- if gt .Target 0 }}
+            <progress value="{{.Found}}" max="{{.Target}}"></progress>
+            <span class="num">{{.Found}} / {{.Target}}</span>
+            {{- else }}
+            <span class="num">{{.Found}}</span>
+            {{- end }}
+          </span>
+        </td>
+        <td>
+          {{- if .HasShortfall }}
+          <span class="shortfall status {{if gt .ShortfallCount 0}}status-pending{{else}}status-done{{end}}">{{ text "request.approval.shortfall" }} {{.ShortfallCount}}</span>
+          {{- else }}
+          <span class="cell-sub">—</span>
+          {{- end }}
+        </td>
+        <td><a class="button button-secondary" href="/requests/{{.RequestID}}/approval?tenant_id={{urlquery $.View.TenantID}}">{{ text "request.queue.open" }}</a></td>
+      </tr>
+    {{- else }}
+      <tr><td colspan="5" class="queue-empty">{{ text "request.approval_queue.empty" }}</td></tr>
+    {{- end }}
+    </tbody>
+  </table>
   {{- end }}
-  </ul>
-  {{- end }}
+  <section class="execution-history" aria-labelledby="execution-history-title">
+    <h2 id="execution-history-title">{{ text "request.execution_history.title" }}</h2>
+    {{- if .View.HistoryUnavailable }}
+    <p class="watermark" role="status">{{ text "request.execution_history.unavailable" }}</p>
+    {{- else }}
+    {{- if .View.Executions }}
+    <table class="table execution-history-table">
+      <thead>
+        <tr>
+          <th scope="col">{{ text "request.queue.col.request" }}</th>
+          <th scope="col">{{ text "request.queue.col.status" }}</th>
+          <th scope="col">{{ text "request.approval.execution.phase" }}</th>
+          <th scope="col">{{ text "request.queue.col.found" }}</th>
+          <th scope="col">{{ text "request.execution_history.drafted" }}</th>
+          <th scope="col"><span class="live-region">{{ text "request.queue.col.action" }}</span></th>
+        </tr>
+      </thead>
+      <tbody>
+      {{- range .View.Executions }}
+        <tr class="execution-history-item">
+          <td>{{ text "request.number" }} {{.RequestID}}</td>
+          <td>{{ label "request.status" .Status }}</td>
+          <td>{{- if .Phase }}<span class="status status-{{.Phase}}">{{ label "request.phase" .Phase }}</span>{{- end }}{{- if .Execution }} · {{.Execution}}{{- end }}</td>
+          <td>{{.Found}}</td>
+          <td>{{.Drafted}}</td>
+          <td><a class="button button-secondary" href="/requests/{{.RequestID}}/approval?tenant_id={{urlquery $.View.TenantID}}">{{ text "request.queue.open" }}</a></td>
+        </tr>
+      {{- end }}
+      </tbody>
+    </table>
+    {{- else }}
+    <p class="queue-empty">{{ text "request.execution_history.empty" }}</p>
+    {{- end }}
+    {{- end }}
+  </section>
 </section>
 {{- end -}}

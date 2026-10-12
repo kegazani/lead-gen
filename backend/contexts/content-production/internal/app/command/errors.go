@@ -2,6 +2,11 @@ package command
 
 import "errors"
 
+var (
+	ErrUnknownContentMode  = errors.New("команда: неизвестный режим производства контента")
+	ErrVersionOnlyConflict = errors.New("команда: ключ версии уже использован с другим текстом")
+)
+
 // Ошибки прикладного слоя контекста content-production.
 var (
 	// ErrTenantMismatch — контент-пакет принадлежит другому тенанту. Сценарий не
@@ -18,4 +23,8 @@ var (
 	// ErrCollectionInput — вход сбора сведений с сайта некорректен: адрес сайта
 	// отсутствует или границы обхода заданы недопустимо.
 	ErrCollectionInput = errors.New("сценарий: некорректный вход сбора сведений с сайта")
+
+	// ErrDocumentInput — вход разбора документов некорректен: документы не
+	// предоставлены.
+	ErrDocumentInput = errors.New("сценарий: некорректный вход разбора документов")
 )

@@ -29,7 +29,13 @@ type approvedEvent struct {
 	DecisionID   domain.DecisionID `json:"decision_id"`
 	Actor        domain.ActorID    `json:"actor"`
 	Channel      string            `json:"channel"`
-	At           time.Time         `json:"at"`
+	// Material — необязательная ссылка на версию материала черновика. Старые
+	// записи без поля читаются как есть (пустой материал).
+	Material domain.MaterialID `json:"material,omitempty"`
+	// Recipient — непрозрачная ссылка на получателя черновика. Старые записи без
+	// поля читаются как есть: получатель тогда берётся из DraftID (совместимость).
+	Recipient domain.RecipientID `json:"recipient,omitempty"`
+	At        time.Time          `json:"at"`
 }
 
 // stateChangedEvent — проводимая форма domain.CampaignStateChanged.
@@ -75,6 +81,8 @@ func encodeEvent(event domain.DomainEvent) (string, []byte, error) {
 			DecisionID:   e.DecisionID,
 			Actor:        e.Actor,
 			Channel:      channel,
+			Material:     e.Material,
+			Recipient:    e.Recipient,
 			At:           e.At,
 		})
 		if err != nil {
@@ -138,6 +146,8 @@ func decodeEvent(name string, payload []byte) (domain.DomainEvent, error) {
 			DecisionID:   wire.DecisionID,
 			Actor:        wire.Actor,
 			Channel:      channel,
+			Material:     wire.Material,
+			Recipient:    wire.Recipient,
 			At:           wire.At,
 		}, nil
 

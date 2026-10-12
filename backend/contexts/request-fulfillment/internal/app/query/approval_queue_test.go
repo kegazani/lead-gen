@@ -78,6 +78,26 @@ func (s *stubRequestRepository) ListByStatus(_ context.Context, status domain.Re
 	return s.requests, s.listErr
 }
 
+// FindByCampaign реализует ports.RequestRepository; очереди утверждения не нужен.
+func (s *stubRequestRepository) FindByCampaign(context.Context, domain.TenantID, domain.CampaignID) (*domain.Request, error) {
+	return nil, ports.ErrRequestNotFound
+}
+
+// CountByTenant реализует ports.RequestRepository; очереди утверждения не нужен.
+func (s *stubRequestRepository) CountByTenant(context.Context, domain.TenantID) (int, error) {
+	return 0, nil
+}
+
+// CountInWork реализует ports.RequestRepository; очереди утверждения не нужен.
+func (s *stubRequestRepository) CountInWork(context.Context, domain.TenantID) (int, error) {
+	return 0, nil
+}
+
+// ListByTenant реализует ports.RequestRepository; очереди утверждения не нужен.
+func (s *stubRequestRepository) ListByTenant(context.Context, domain.TenantID) ([]*domain.Request, error) {
+	return nil, nil
+}
+
 // stubStatusReader — читатель фазы исполнения: отсутствие записи отвечает
 // ErrWorkflowNotFound, общая ошибка — на весь читатель, errs — на конкретную заявку.
 type stubStatusReader struct {
@@ -225,13 +245,15 @@ func TestApprovalQueueRepositoryError(t *testing.T) {
 }
 
 // TestApprovalQueueItemFields проверяет состав строки очереди: идентификаторы,
-// оффер, версия, фаза, состояние исполнения и найденное число.
+// оффер, версия, фаза, состояние исполнения, найденное число, цель и недобор.
 func TestApprovalQueueItemFields(t *testing.T) {
+	shortfall := 2
 	requests := []*domain.Request{processingRequest(t, "req-a", "tenant-1", "Оффер A", "IT-компании")}
 	reader := &stubStatusReader{statuses: map[string]ports.WorkflowStatus{
 		"req-a": {
 			RequestID: "req-a", WorkflowID: "fulfillment-req-a", RunID: "run-1",
 			Phase: query.ApprovalPhaseAwaitingApproval, Execution: "RUNNING", Found: 7,
+			Target: 9, Shortfall: &shortfall,
 		},
 	}}
 	repository := &stubRequestRepository{requests: requests}
@@ -256,6 +278,9 @@ func TestApprovalQueueItemFields(t *testing.T) {
 	}
 	if item.Phase != query.ApprovalPhaseAwaitingApproval || item.Execution != "RUNNING" || item.Found != 7 {
 		t.Fatalf("состояние строки = %q/%q/%d", item.Phase, item.Execution, item.Found)
+	}
+	if item.Target != 9 || item.Shortfall == nil || *item.Shortfall != 2 {
+		t.Fatalf("цель/недобор строки = %d/%v", item.Target, item.Shortfall)
 	}
 	if repository.status != domain.StatusProcessing {
 		t.Fatalf("запрошен статус %q, ожидался processing", repository.status)

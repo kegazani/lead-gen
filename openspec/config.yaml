@@ -43,6 +43,16 @@ context: |
   отмечается выполненной, пока заглушка на её пути. Честный `unavailable`-отказ
   допустим только как явное состояние нереализованного контура; тестовые двойники
   — только в тестах и dev. Полные правила — `AGENTS.md` §3.
+
+  ## Ограниченный приоритет customer demo
+  Активный demo change — `customer-demo-request-to-emails`. Объём и каноническая
+  последовательность зафиксированы в `docs/e2e-plan.md`: существующие registration
+  + profile approval → request с отдельными offer/desired leads → approval заявки →
+  реальный тематический crawl → LLM emails по найденным → просмотр в существующем
+  operator UI. Сначала ручной crawl через UI. Доставка и отдельное email approval не
+  блокируют результат. Не вводить editorial capability/CAS, durable editorial handoff,
+  forced-crawl mode, whole v2, recovery/hardening, PG upgrade/replay hardening или
+  полный no-action-approved sweep.
 # Per-artifact rules (optional)
 # Add custom rules for specific artifacts.
 rules:

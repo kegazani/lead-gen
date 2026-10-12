@@ -24,6 +24,14 @@ type UnitOfWork struct {
 	mu      sync.Mutex
 	repo    *persistence.Repository
 	journal *Journal
+	fences  map[string]memoryFence
+}
+
+type memoryFence struct {
+	tenantID   string
+	requestID  string
+	campaignID string
+	cancelled  bool
 }
 
 // UnitOfWork реализует порт транзакции.
@@ -31,7 +39,7 @@ var _ ports.UnitOfWork = (*UnitOfWork)(nil)
 
 // NewUnitOfWork создаёт unit-of-work с собственным репозиторием и журналом.
 func NewUnitOfWork() *UnitOfWork {
-	return &UnitOfWork{repo: persistence.New(), journal: NewJournal()}
+	return &UnitOfWork{repo: persistence.New(), journal: NewJournal(), fences: make(map[string]memoryFence)}
 }
 
 // NewUnitOfWorkWith собирает unit-of-work из готовых репозитория и журнала.
@@ -43,7 +51,7 @@ func NewUnitOfWorkWith(repo *persistence.Repository, journal *Journal) *UnitOfWo
 	if journal == nil {
 		journal = NewJournal()
 	}
-	return &UnitOfWork{repo: repo, journal: journal}
+	return &UnitOfWork{repo: repo, journal: journal, fences: make(map[string]memoryFence)}
 }
 
 // Repository возвращает репозиторий, состояние которого меняется коммитами
@@ -70,11 +78,13 @@ func (u *UnitOfWork) WithinTransaction(_ context.Context, fn func(tx ports.Trans
 
 	working := u.repo.Clone()
 	outbox := &transactionOutbox{}
-	if err := fn(&transaction{repo: working, outbox: outbox}); err != nil {
+	fences := cloneFences(u.fences)
+	if err := fn(&transaction{repo: working, outbox: outbox, fences: fences}); err != nil {
 		return err
 	}
 
 	u.repo.ReplaceWith(working)
+	u.fences = fences
 	u.journal.appendEvents(outbox.events...)
 	return nil
 }
@@ -83,10 +93,51 @@ func (u *UnitOfWork) WithinTransaction(_ context.Context, fn func(tx ports.Trans
 type transaction struct {
 	repo   *persistence.Repository
 	outbox *transactionOutbox
+	fences map[string]memoryFence
 }
 
 func (t *transaction) Campaigns() ports.CampaignRepository { return t.repo }
 func (t *transaction) Outbox() ports.Outbox                { return t.outbox }
+func (t *transaction) RequestCancellationFence() ports.RequestCancellationFence {
+	return memoryRequestFence{fences: t.fences}
+}
+
+func cloneFences(source map[string]memoryFence) map[string]memoryFence {
+	copy := make(map[string]memoryFence, len(source))
+	for key, fence := range source {
+		copy[key] = fence
+	}
+	return copy
+}
+
+type memoryRequestFence struct{ fences map[string]memoryFence }
+
+func fenceKey(tenantID, requestID string) string { return tenantID + "\x00" + requestID }
+
+func (f memoryRequestFence) Cancel(_ context.Context, tenantID, requestID string) error {
+	key := fenceKey(tenantID, requestID)
+	entry := f.fences[key]
+	entry.tenantID, entry.requestID, entry.cancelled = tenantID, requestID, true
+	f.fences[key] = entry
+	return nil
+}
+
+func (f memoryRequestFence) RegisterHandoff(_ context.Context, tenantID, requestID, campaignID string) (bool, error) {
+	key := fenceKey(tenantID, requestID)
+	entry := f.fences[key]
+	entry.tenantID, entry.requestID, entry.campaignID = tenantID, requestID, campaignID
+	f.fences[key] = entry
+	return entry.cancelled, nil
+}
+
+func (f memoryRequestFence) CampaignCancelled(_ context.Context, tenantID, campaignID string) (bool, error) {
+	for _, entry := range f.fences {
+		if entry.tenantID == tenantID && entry.campaignID == campaignID && entry.cancelled {
+			return true, nil
+		}
+	}
+	return false, nil
+}
 
 // transactionOutbox копит события до commit. Ни один метод не публикует
 // события сам: перенос в журнал делает UnitOfWork после успешного завершения.

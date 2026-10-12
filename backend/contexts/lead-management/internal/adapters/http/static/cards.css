@@ -1,0 +1,97 @@
+/*
+ * Консоль лидов: расширение локальных экранов.
+ *
+ * Общий слой (frontend/components) задаёт состав результатов списка карточек
+ * двумя группами (fits/other). Здесь состав расширен до четырёх групп и добавлен
+ * режим фильтра по причине отсева; правила дополняют общее оформление, не меняя
+ * его. Файл внутри контекста — правки общего слоя не требуются.
+ */
+
+/* Состав результатов: четыре группы. Обе оси (состав и представление)
+   независимы; карточки всех групп остаются в DOM, переключение меняет видимую.
+   Режим «filter» (активен фильтр по причине) не скрывает ничего: выборку уже
+   сузил серверный фильтр. */
+.cards[data-cards-composition="fits"] .cards-item:not([data-group="fits"]),
+.cards[data-cards-composition="fits"] .cards-empty:not([data-group="fits"]),
+.cards[data-cards-composition="hypothesis"] .cards-item:not([data-group="hypothesis"]),
+.cards[data-cards-composition="hypothesis"] .cards-empty:not([data-group="hypothesis"]),
+.cards[data-cards-composition="unsuitable"] .cards-item:not([data-group="unsuitable"]),
+.cards[data-cards-composition="unsuitable"] .cards-empty:not([data-group="unsuitable"]),
+.cards[data-cards-composition="unassessed"] .cards-item:not([data-group="unassessed"]),
+.cards[data-cards-composition="unassessed"] .cards-empty:not([data-group="unassessed"]) {
+  display: none;
+}
+
+/* Счётчик у группы состава. */
+.composition-switch .count {
+  font-variant-numeric: tabular-nums;
+  color: var(--muted, inherit);
+}
+
+/* Панель активного фильтра по причине отсева. */
+.cards-filter {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  margin: 0 0 0.75rem;
+}
+
+/* Воронка отбора на экране задания. */
+.selection-funnel {
+  list-style: none;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+  margin: 0.5rem 0;
+  padding: 0;
+}
+
+.funnel-point {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 0.4rem;
+}
+
+.funnel-point.is-unavailable {
+  opacity: 0.7;
+}
+
+.funnel-label {
+  font-size: 0.78rem;
+}
+
+.funnel-count {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Причины отсева задания. */
+.rejection-categories {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.rejection-head {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.rejection-head .count {
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+.rejection-groups {
+  list-style: none;
+  margin: 0.25rem 0 0.75rem 1rem;
+  padding: 0;
+}
+
+.rejection-groups .count {
+  font-variant-numeric: tabular-nums;
+}

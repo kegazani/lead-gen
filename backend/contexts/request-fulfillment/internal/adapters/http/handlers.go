@@ -1,12 +1,17 @@
 package httpapi
 
 import (
+	"encoding/json"
 	"net/http"
+	"strings"
+	"time"
 
 	"lead-gen/backend/contexts/request-fulfillment/internal/app/command"
 	"lead-gen/backend/contexts/request-fulfillment/internal/app/query"
 	"lead-gen/backend/contexts/request-fulfillment/internal/domain"
 	"lead-gen/backend/contexts/request-fulfillment/internal/ports"
+	"lead-gen/backend/platform/readiness"
+	"lead-gen/contracts/request-fulfillment/requestintent"
 )
 
 // transitionBody — общее тело команд перехода над существующей заявкой.
@@ -20,14 +25,16 @@ type transitionBody struct {
 
 // submitBody — тело команды подачи заявки.
 type submitBody struct {
-	RequestID     string `json:"request_id"`
-	OfferID       string `json:"offer_id"`
-	TenantID      string `json:"tenant_id"`
-	Actor         string `json:"actor"`
-	Content       string `json:"content"`
-	Target        string `json:"target,omitempty"`
-	CorrelationID string `json:"correlation_id,omitempty"`
-	CausationID   string `json:"causation_id,omitempty"`
+	RequestID        string                               `json:"request_id"`
+	OfferID          string                               `json:"offer_id"`
+	TenantID         string                               `json:"tenant_id"`
+	Actor            string                               `json:"actor"`
+	Content          string                               `json:"content"`
+	Target           string                               `json:"target,omitempty"`
+	CorrelationID    string                               `json:"correlation_id,omitempty"`
+	CausationID      string                               `json:"causation_id,omitempty"`
+	ExecutionPurpose string                               `json:"execution_purpose,omitempty"`
+	SenderCompany    *requestintent.SenderCompanySnapshot `json:"sender_company,omitempty"`
 }
 
 // reviseOfferBody — тело команды правки оффера.
@@ -61,14 +68,16 @@ func (s *Server) handleSubmit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	result, err := s.deps.SubmitRequest.Handle(r.Context(), command.SubmitRequest{
-		RequestID:     domain.RequestID(body.RequestID),
-		OfferID:       domain.OfferID(body.OfferID),
-		TenantID:      domain.TenantID(body.TenantID),
-		Content:       body.Content,
-		Target:        body.Target,
-		Actor:         domain.ActorID(body.Actor),
-		CorrelationID: domain.CorrelationID(body.CorrelationID),
-		CausationID:   domain.CausationID(body.CausationID),
+		RequestID:        domain.RequestID(body.RequestID),
+		OfferID:          domain.OfferID(body.OfferID),
+		TenantID:         domain.TenantID(body.TenantID),
+		Content:          body.Content,
+		Target:           body.Target,
+		Actor:            domain.ActorID(body.Actor),
+		CorrelationID:    domain.CorrelationID(body.CorrelationID),
+		CausationID:      domain.CausationID(body.CausationID),
+		ExecutionPurpose: body.ExecutionPurpose,
+		SenderCompany:    domainSenderCompany(body.SenderCompany),
 	})
 	if err != nil {
 		writeDomainError(w, err)
@@ -79,6 +88,20 @@ func (s *Server) handleSubmit(w http.ResponseWriter, r *http.Request) {
 		Status:    result.Status,
 		Version:   result.Version,
 	})
+}
+
+func domainSenderCompany(snapshot *requestintent.SenderCompanySnapshot) *domain.SenderCompanySnapshot {
+	if snapshot == nil {
+		return nil
+	}
+	result := &domain.SenderCompanySnapshot{
+		CompanyName: snapshot.CompanyName, Website: snapshot.Website, Description: snapshot.Description,
+		Services: make([]domain.SenderServiceSnapshot, len(snapshot.Services)),
+	}
+	for i, service := range snapshot.Services {
+		result.Services[i] = domain.SenderServiceSnapshot{Name: service.Name, Short: service.Short, Full: service.Full}
+	}
+	return result
 }
 
 // handleGet обслуживает GET /requests/{requestID}.
@@ -92,6 +115,20 @@ func (s *Server) handleGet(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, view)
+}
+
+// handleList обслуживает GET /requests?tenant_id=: список заявок тенанта (для
+// сетевого транспорта контракта request-intent). Чужие тенанты не попадают в
+// выборку.
+func (s *Server) handleList(w http.ResponseWriter, r *http.Request) {
+	items, err := s.deps.ListRequests.Handle(r.Context(), query.ListRequests{
+		TenantID: domain.TenantID(r.URL.Query().Get("tenant_id")),
+	})
+	if err != nil {
+		writeDomainError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, items)
 }
 
 // handleStartValidation обслуживает POST /requests/{requestID}/validation/start.
@@ -181,12 +218,21 @@ func (s *Server) handleCancel(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
+	fields := lifecycleFields(w, r, body)
+	fields.Actor = domain.ActorID(actorOf(r))
 	result, err := s.deps.CancelRequest.Handle(r.Context(), command.CancelRequest{
-		LifecycleFields: lifecycleFields(w, r, body),
+		LifecycleFields: fields,
 		Reason:          body.Reason,
 	})
 	if err != nil {
 		writeDomainError(w, err)
+		return
+	}
+	if err := s.requestWorkflowCancellation(r.Context(), fields.TenantID.String(), result.RequestID.String()); err != nil {
+		writeJSON(w, http.StatusAccepted, map[string]any{
+			"request_id": result.RequestID.String(), "status": result.Status,
+			"execution_cancel_pending": true,
+		})
 		return
 	}
 	writeJSON(w, http.StatusOK, toTransitionResponse(result))
@@ -338,12 +384,49 @@ type workflowStatusResponse struct {
 	Execution  string `json:"execution,omitempty"`
 	Found      int    `json:"found"`
 	Drafted    int    `json:"drafted"`
-	NoLeads    bool   `json:"no_leads"`
+	// Target и Shortfall наблюдаемы вместе: Shortfall отсутствует только при
+	// незаданной цели, поэтому недобор не подменяется нулём.
+	Target        int    `json:"target,omitempty"`
+	Shortfall     *int   `json:"shortfall,omitempty"`
+	NoLeads       bool   `json:"no_leads"`
+	PartialReason string `json:"partial_reason,omitempty"`
 }
 
 // handleWorkflowStatus обслуживает GET .../workflow: состояние бегущего
 // исполнения заявки видно в API и, через него, в консоли.
 func (s *Server) handleWorkflowStatus(w http.ResponseWriter, r *http.Request) {
+	if s.deps.ExecutionProtocol == ports.ExecutionProtocolV2 {
+		if s.deps.ExecutionState == nil {
+			writeErrorMessage(w, http.StatusServiceUnavailable, "durable execution projection недоступна")
+			return
+		}
+		view, err := s.deps.ExecutionState.Handle(r.Context(), query.ExecutionState{
+			RequestID: domain.RequestID(r.PathValue("requestID")), TenantID: domain.TenantID(r.URL.Query().Get("tenant_id")),
+		})
+		if err != nil {
+			writeDomainError(w, err)
+			return
+		}
+		var target *int
+		if view.Target.State == domain.LeadTargetExplicit {
+			value := view.Target.Value
+			target = &value
+		}
+		writeJSON(w, http.StatusOK, executionStateResponse{
+			RequestID: string(view.RequestID), WorkflowID: view.WorkflowID, AttemptID: view.AttemptID,
+			CommandID: string(view.CommandID), Generation: view.Generation, State: view.State,
+			TargetState: string(view.Target.State), LeadTarget: target, ExecutionHistoryKnown: view.ExecutionHistoryKnown,
+		})
+		return
+	}
+	_, err := s.deps.GetRequest.Handle(r.Context(), query.GetRequest{
+		RequestID: domain.RequestID(r.PathValue("requestID")),
+		TenantID:  domain.TenantID(r.URL.Query().Get("tenant_id")),
+	})
+	if err != nil {
+		writeDomainError(w, err)
+		return
+	}
 	if s.deps.WorkflowStatus == nil {
 		writeErrorMessage(w, http.StatusServiceUnavailable, "исполнение: рантайм workflow не подключён")
 		return
@@ -354,23 +437,31 @@ func (s *Server) handleWorkflowStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, workflowStatusResponse{
-		RequestID:  status.RequestID,
-		WorkflowID: status.WorkflowID,
-		RunID:      status.RunID,
-		Phase:      status.Phase,
-		Execution:  status.Execution,
-		Found:      status.Found,
-		Drafted:    status.Drafted,
-		NoLeads:    status.NoLeads,
+		RequestID:     status.RequestID,
+		WorkflowID:    status.WorkflowID,
+		RunID:         status.RunID,
+		Phase:         status.Phase,
+		Execution:     status.Execution,
+		Found:         status.Found,
+		Drafted:       status.Drafted,
+		Target:        status.Target,
+		Shortfall:     status.Shortfall,
+		NoLeads:       status.NoLeads,
+		PartialReason: status.PartialReason,
 	})
 }
 
 // startWorkflowBody — тело запуска исполнения заявки. Только идентификаторы и
 // цель по лидам: оффер в payload не поднимается.
 type startWorkflowBody struct {
-	TenantID      string `json:"tenant_id"`
-	CorrelationID string `json:"correlation_id,omitempty"`
-	LeadTarget    int    `json:"lead_target,omitempty"`
+	TenantID       string          `json:"tenant_id"`
+	CorrelationID  string          `json:"correlation_id,omitempty"`
+	LeadTarget     *int            `json:"lead_target,omitempty"`
+	RequestVersion int             `json:"request_version,omitempty"`
+	OfferRevision  int             `json:"offer_revision,omitempty"`
+	Reason         string          `json:"reason,omitempty"`
+	Confidence     *float64        `json:"confidence,omitempty"`
+	FormParameters json.RawMessage `json:"form_parameters,omitempty"`
 }
 
 // handleStartWorkflow обслуживает POST .../workflow: запускает durable-исполнение
@@ -378,6 +469,45 @@ type startWorkflowBody struct {
 // текущем статусе. Повторный старт уже бегущего исполнения — не 503, а явный
 // идемпотентный исход «уже запущено» (200).
 func (s *Server) handleStartWorkflow(w http.ResponseWriter, r *http.Request) {
+	if s.deps.ExecutionProtocol == ports.ExecutionProtocolV2 {
+		if !s.executionAdmissionReady() {
+			writeErrorMessage(w, http.StatusServiceUnavailable, "durable admission недоступна: нет активного consumer")
+			return
+		}
+		commandID := r.Header.Get("Idempotency-Key")
+		if strings.TrimSpace(commandID) == "" {
+			writeErrorMessage(w, http.StatusBadRequest, "требуется заголовок Idempotency-Key")
+			return
+		}
+		var body startWorkflowBody
+		if err := decodeJSON(w, r, &body); err != nil {
+			writeErrorMessage(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		if body.LeadTarget != nil {
+			if err := validateLeadTarget(*body.LeadTarget); err != nil {
+				writeDomainError(w, err)
+				return
+			}
+		}
+		admission, err := s.deps.AdmitExecution.Handle(r.Context(), command.AdmitExecution{
+			LifecycleFields: command.LifecycleFields{
+				RequestID:     domain.RequestID(r.PathValue("requestID")),
+				TenantID:      domain.TenantID(body.TenantID),
+				CorrelationID: domain.CorrelationID(body.CorrelationID),
+				Actor:         domain.ActorID("api"),
+			},
+			CommandID: domain.CommandID(commandID), Kind: command.AdmissionExecute, LeadTarget: body.LeadTarget,
+			RequestVersion: body.RequestVersion, OfferRevision: body.OfferRevision, Reason: body.Reason,
+			Confidence: body.Confidence, FormParameters: body.FormParameters,
+		})
+		if err != nil {
+			writeDomainError(w, err)
+			return
+		}
+		writeJSON(w, http.StatusAccepted, admissionResponse(admission))
+		return
+	}
 	if s.deps.WorkflowStarter == nil {
 		writeErrorMessage(w, http.StatusServiceUnavailable, "исполнение: рантайм workflow не подключён")
 		return
@@ -387,11 +517,25 @@ func (s *Server) handleStartWorkflow(w http.ResponseWriter, r *http.Request) {
 		writeErrorMessage(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	if body.LeadTarget != nil {
+		if err := validateLeadTarget(*body.LeadTarget); err != nil {
+			writeDomainError(w, err)
+			return
+		}
+	}
+	requestView, err := s.deps.GetRequest.Handle(r.Context(), query.GetRequest{
+		RequestID: domain.RequestID(r.PathValue("requestID")), TenantID: domain.TenantID(body.TenantID),
+	})
+	if err != nil {
+		writeDomainError(w, err)
+		return
+	}
 	run, err := s.deps.WorkflowStarter.StartFulfillment(r.Context(), ports.StartFulfillment{
-		RequestID:     r.PathValue("requestID"),
-		TenantID:      body.TenantID,
-		CorrelationID: body.CorrelationID,
-		LeadTarget:    body.LeadTarget,
+		RequestID:        r.PathValue("requestID"),
+		TenantID:         body.TenantID,
+		CorrelationID:    body.CorrelationID,
+		LeadTarget:       targetValue(body.LeadTarget),
+		ExecutionPurpose: requestView.ExecutionPurpose,
 	})
 	if err != nil {
 		writeDomainError(w, err)
@@ -413,9 +557,10 @@ type workflowRunResponse struct {
 	AlreadyStarted bool   `json:"already_started,omitempty"`
 }
 
-// workflowDecisionBody — тело сигнала человеческой паузы workflow. Только
-// решение и актор: содержание оффера в payload не поднимается.
+// workflowDecisionBody — прежнее JSON-представление сигнала. Actor принимается
+// только для совместимости формы запроса, но никогда не используется как субъект.
 type workflowDecisionBody struct {
+	TenantID string `json:"tenant_id"`
 	Approved bool   `json:"approved"`
 	Actor    string `json:"actor,omitempty"`
 }
@@ -423,19 +568,42 @@ type workflowDecisionBody struct {
 // handleWorkflowApprovalDecision обслуживает POST .../workflow/approval-decision:
 // подаёт бегущему исполнению сигнал утверждения результата.
 func (s *Server) handleWorkflowApprovalDecision(w http.ResponseWriter, r *http.Request) {
+	var tenant string
+	var approved bool
+	if strings.Contains(r.Header.Get("Content-Type"), "application/json") {
+		var body workflowDecisionBody
+		if err := decodeJSON(w, r, &body); err != nil {
+			writeErrorMessage(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		tenant, approved = body.TenantID, body.Approved
+	} else {
+		if err := r.ParseForm(); err != nil {
+			writeErrorMessage(w, http.StatusBadRequest, "не удалось разобрать форму")
+			return
+		}
+		tenant, approved = r.FormValue("tenant_id"), r.FormValue("approved") == "true"
+	}
+	tenantID := domain.TenantID(tenant)
+	if _, err := s.deps.GetRequest.Handle(r.Context(), query.GetRequest{
+		RequestID: domain.RequestID(r.PathValue("requestID")), TenantID: tenantID,
+	}); err != nil {
+		writeDomainError(w, err)
+		return
+	}
 	if s.deps.WorkflowSignaler == nil {
 		writeErrorMessage(w, http.StatusServiceUnavailable, "исполнение: рантайм workflow не подключён")
 		return
 	}
-	var body workflowDecisionBody
-	if err := decodeJSON(w, r, &body); err != nil {
-		writeErrorMessage(w, http.StatusBadRequest, err.Error())
+	actor := actorOf(r)
+	if actor == "" {
+		writeErrorMessage(w, http.StatusUnauthorized, "требуется сессия оператора")
 		return
 	}
 	if err := s.deps.WorkflowSignaler.SignalApprovalDecision(r.Context(), ports.WorkflowDecision{
 		RequestID: r.PathValue("requestID"),
-		Approved:  body.Approved,
-		Actor:     body.Actor,
+		Approved:  approved,
+		Actor:     actor,
 	}); err != nil {
 		writeDomainError(w, err)
 		return
@@ -452,12 +620,17 @@ func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 // handleReadyz обслуживает GET /readyz: готовность обслуживать работу с учётом
 // доступности рантайма durable-исполнения. Недоступный рантайм — неготовность
 // (503), тогда как /healthz продолжает отвечать как проба живости.
-func (s *Server) handleReadyz(w http.ResponseWriter, _ *http.Request) {
-	if s.deps.Runtime != nil && !s.deps.Runtime.Ready() {
-		writeJSON(w, http.StatusServiceUnavailable, map[string]string{"status": "not-ready"})
-		return
+func (s *Server) handleReadyz(w http.ResponseWriter, r *http.Request) {
+	evaluator := s.deps.ReadinessEvaluator
+	if evaluator == nil {
+		evaluator = readiness.New(readiness.Config{Timeout: 750 * time.Millisecond, TTL: 2 * time.Second})
 	}
-	writeJSON(w, http.StatusOK, map[string]string{"status": "ready"})
+	snapshot := evaluator.Evaluate(r.Context(), s.deps.Readiness)
+	status := http.StatusOK
+	if !snapshot.Ready {
+		status = http.StatusServiceUnavailable
+	}
+	writeJSON(w, status, snapshot)
 }
 
 // decodeTransition разбирает общее тело команды перехода.

@@ -115,6 +115,44 @@ func TestRootRedirectsToDashboard(t *testing.T) {
 	}
 }
 
+// TestConsoleNavCanonicalWithoutGroups проверяет change console-shell-navigation
+// (задачи 5.1–5.2, в части аналитики): общая навигация консоли отчётов состоит
+// только из канонических разделов в порядке общего слоя, не несёт вторичных групп
+// и отмечает активным ровно раздел «Отчёты» на своих экранах.
+func TestConsoleNavCanonicalWithoutGroups(t *testing.T) {
+	server := newServer(t, day(10))
+	seed(t, server)
+
+	for _, path := range []string{"/dashboard?tenant_id=t1", "/reports?tenant_id=t1"} {
+		status, page := getPage(t, server, path)
+		if status != http.StatusOK {
+			t.Fatalf("GET %s = %d, ожидался 200", path, status)
+		}
+		if strings.Contains(page, "sidebar-group-label") || strings.Contains(page, `<nav class="tabs">`) {
+			t.Fatalf("экран %s не должен нести вторичную навигацию в сайдбаре или панели:\n%s", path, page)
+		}
+		// Разделы идут в каноническом порядке общего слоя.
+		previous := -1
+		for _, label := range []string{">Заявки</a>", ">Исполнение</a>", ">Лиды</a>", ">Отчёты</a>", ">Рассылки</a>"} {
+			at := strings.Index(page, label)
+			if at < 0 {
+				t.Fatalf("экран %s не содержит раздел %q:\n%s", path, label, page)
+			}
+			if at < previous {
+				t.Fatalf("порядок разделов на экране %s нарушен у %q:\n%s", path, label, page)
+			}
+			previous = at
+		}
+		// Активен ровно один раздел — «Отчёты».
+		if active := strings.Count(page, `class="is-active"`); active != 1 {
+			t.Fatalf("на экране %s активных разделов %d, ожидался 1:\n%s", path, active, page)
+		}
+		if !strings.Contains(page, `class="is-active" aria-current="page">Отчёты</a>`) {
+			t.Fatalf("экран %s не отметил активным раздел «Отчёты»:\n%s", path, page)
+		}
+	}
+}
+
 // TestDashboardLinksSharedStylesheet проверяет, что экран подключает общее
 // оформление компонентов и оно реально раздаётся.
 func TestDashboardLinksSharedStylesheet(t *testing.T) {

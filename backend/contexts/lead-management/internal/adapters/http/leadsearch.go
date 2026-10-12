@@ -35,10 +35,11 @@ type leadRefBody struct {
 
 // leadSearchResponse — ответ команды поиска лидов (200 OK).
 type leadSearchResponse struct {
-	Found    int           `json:"found"`
-	FromPool int           `json:"from_pool"`
-	Crawled  int           `json:"crawled"`
-	Leads    []leadRefBody `json:"leads"`
+	Found         int           `json:"found"`
+	FromPool      int           `json:"from_pool"`
+	Crawled       int           `json:"crawled"`
+	Leads         []leadRefBody `json:"leads"`
+	PartialReason string        `json:"partial_reason,omitempty"`
 }
 
 // errorBody — единая форма ошибки HTTP-слоя.
@@ -74,10 +75,11 @@ func (s *Server) handleLeadSearch(w http.ResponseWriter, r *http.Request) {
 		leads = append(leads, leadRefBody{ID: lead.CompanyID, Origin: string(lead.Origin)})
 	}
 	writeJSONBody(w, http.StatusOK, leadSearchResponse{
-		Found:    result.Found,
-		FromPool: result.FromPool,
-		Crawled:  result.Crawled,
-		Leads:    leads,
+		Found:         result.Found,
+		FromPool:      result.FromPool,
+		Crawled:       result.Crawled,
+		Leads:         leads,
+		PartialReason: result.PartialReason,
 	})
 }
 

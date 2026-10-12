@@ -1,0 +1,5 @@
+schema: spec-driven
+created: 2026-10-11
+goal: Направлять все Search/Crawl/Extract в HTTP /lead-search через реальную
+  бюджетную и ограничительную политику Firecrawl с безопасным учётом
+  неопределённых исходов.

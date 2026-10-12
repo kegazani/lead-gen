@@ -25,7 +25,9 @@ type ApprovalQueue struct {
 }
 
 // ApprovalItem — строка очереди утверждения: идентификаторы, оффер и наблюдаемое
-// состояние исполнения. Строка не решает — она показывает.
+// состояние исполнения. Строка не решает — она показывает. Target и Shortfall —
+// цель по лидам и недобор: показываются только при явно заданной цели (Shortfall
+// nil — цели нет, недобор не рассчитывается и не подменяется нулём).
 type ApprovalItem struct {
 	RequestID string
 	TenantID  string
@@ -34,6 +36,8 @@ type ApprovalItem struct {
 	Phase     string
 	Execution string
 	Found     int
+	Target    int
+	Shortfall *int
 }
 
 // ApprovalQueueHandler — use case чтения очереди утверждения.
@@ -87,6 +91,8 @@ func (h *ApprovalQueueHandler) Handle(ctx context.Context, q ApprovalQueue) ([]A
 			Phase:     status.Phase,
 			Execution: status.Execution,
 			Found:     status.Found,
+			Target:    status.Target,
+			Shortfall: status.Shortfall,
 		})
 	}
 	return items, nil

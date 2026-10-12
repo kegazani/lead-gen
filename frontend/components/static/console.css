@@ -1,9 +1,9 @@
-/* Оформление консоли оператора lead-management. Направление — «термальная
-   прозрачность» с хромом из выгрузки лидов (change console-theme-switcher):
-   градиентное полотно, стеклянные поверхности и кнопки, а температура лида
-   остаётся главным смысловым цветом. Тёмная тема — переопределение тех же
-   ролей под :root[data-theme="dark"]; режим «как в системе» разрешается до
-   отрисовки скриптом theme.js.
+/* Оформление серверных экранов (консоль оператора, клиентский портал, дашборд).
+   Направление — «матовое жидкое стекло» (change console-liquid-glass): спокойная
+   подложка из размытых пятен без фиолетового, полупрозрачные поверхности с
+   бликом по краю, графитовый акцент. Цвет в интерфейсе несут только статусы.
+   Тёмная тема — переопределение тех же ролей под :root[data-theme="dark"];
+   режим «как в системе» разрешается до отрисовки скриптом theme.js.
 
    Отдельный файл, а не встроенный стиль: CSP консоли запрещает inline-стили и
    скрипты. Ни один компонент не задаёт цвет напрямую — только через токен. */
@@ -13,54 +13,79 @@
 :root {
   color-scheme: light;
 
-  /* Служебные роли поверхности и текста (почти бесцветны). */
-  --paper: #eef1f9;
-  --paper-2: #e6eaf5;
-  --surface: #ffffff;
-  --glass: rgba(255, 255, 255, 0.62);
-  --glass-border: rgba(255, 255, 255, 0.6);
-  --ink: #14161f;
-  --ink-soft: #5f6577;
-  --line: rgba(20, 22, 40, 0.10);
-  --line-strong: rgba(20, 22, 40, 0.20);
-  --shadow: 0 10px 30px -22px rgba(20, 22, 30, 0.5);
+  /* Полотно и поверхности. --surface — непрозрачный эквивалент стекла на
+     подложке: по нему считается контраст и им заменяется стекло, если браузер
+     не умеет backdrop-filter. */
+  --paper: #eef1f5;
+  --paper-2: #e3e7ed;
+  --surface: #f8f9fb;
+  --glass: rgba(255, 255, 255, 0.55);
+  --glass-strong: rgba(255, 255, 255, 0.82);
+  --glass-border: rgba(255, 255, 255, 0.75);
+  --glass-hi: rgba(255, 255, 255, 0.95);
+  --glass-lo: rgba(255, 255, 255, 0.45);
+  --glass-blur: 20px;
+  --fill: rgba(118, 118, 128, 0.12);
+  --fill-2: rgba(118, 118, 128, 0.07);
+  --ink: #1c1c1e;
+  --ink-soft: #595d68;
+  --line: rgba(60, 60, 67, 0.12);
+  --line-strong: rgba(60, 60, 67, 0.24);
+  --shadow: 0 1px 2px rgba(16, 24, 40, 0.04), 0 10px 30px rgba(16, 24, 40, 0.08);
+  --shadow-float: 0 2px 6px rgba(16, 24, 40, 0.05), 0 18px 48px rgba(16, 24, 40, 0.12);
 
-  /* Градиент фона — «полотно» консоли. */
-  --bg-1: #eef1fb;
-  --bg-2: #f6f2fd;
-  --bg-3: #eaf0fb;
+  /* Подложка: небо, тёплый песок и мята — неяркие пятна, чтобы стекло читалось. */
+  --wall-1: #b7d0f0;
+  --wall-2: #f1d6b0;
+  --wall-3: #b6e2d6;
+  --bg-1: var(--wall-1);
+  --bg-2: var(--wall-2);
+  --bg-3: var(--wall-3);
 
-  /* Акцент хрома: ссылки, активные пункты, кнопки. Не несёт доменного смысла. */
-  --accent: #5560ea;
-  --accent-2: #a04fe0;
-  --accent-soft: rgba(85, 96, 234, 0.14);
+  /* Акцент хрома — графит: кнопки, активные пункты, фокус. Не несёт смысла. */
+  --accent: #1c1c1e;
+  --accent-2: #3a3a3c;
+  --accent-soft: rgba(28, 28, 30, 0.08);
+  --btn-fg: #ffffff;
 
-  /* Стадии воронки — «температура» лида. Чем теплее стадия, тем насыщеннее. */
-  --stage-notwarmed: #576c80;
-  --stage-notwarmed-soft: rgba(87, 108, 128, 0.16);
-  --stage-email: #5a45d0;
-  --stage-email-soft: rgba(90, 69, 208, 0.14);
-  --stage-warming: #8f5f10;
-  --stage-warming-soft: rgba(143, 95, 16, 0.16);
-  --stage-cold: #2a63a3;
-  --stage-cold-soft: rgba(42, 99, 163, 0.14);
+  /* Стадии воронки — «температура» лида. */
+  --stage-notwarmed: #8e8e93;
+  --stage-notwarmed-soft: rgba(142, 142, 147, 0.18);
+  --stage-email: #007aff;
+  --stage-email-soft: rgba(0, 122, 255, 0.12);
+  --stage-warming: #ff9500;
+  --stage-warming-soft: rgba(255, 149, 0, 0.16);
+  --stage-cold: #30b0c7;
+  --stage-cold-soft: rgba(48, 176, 199, 0.16);
 
-  /* Светофор исходов письма и вердиктов оценки. */
-  --ok: #157a4b;
-  --ok-soft: rgba(21, 122, 75, 0.14);
-  --warn: #8f5f10;
-  --warn-soft: rgba(143, 95, 16, 0.16);
-  --bad: #b73636;
-  --bad-soft: rgba(183, 54, 54, 0.14);
-  --neutral: #616a7d;
-  --neutral-soft: rgba(97, 106, 125, 0.16);
+  /* Светофор исходов письма и вердиктов оценки (системная палитра). */
+  --ok: #34c759;
+  --ok-soft: rgba(52, 199, 89, 0.16);
+  --warn: #ff9500;
+  --warn-soft: rgba(255, 149, 0, 0.16);
+  --bad: #ff3b30;
+  --bad-soft: rgba(255, 59, 48, 0.12);
+  --neutral: #8e8e93;
+  --neutral-soft: rgba(142, 142, 147, 0.18);
+
+  /* Чернила подписей статусов: затемнённые варианты, чтобы подпись читалась на
+     своей мягкой подложке с контрастом WCAG AA. Отдельны от базовых ролей, чтобы
+     правка контраста не задевала декор (точки, полосы, фоны вне бейджа). */
+  --status-ink-ok: #18692f;
+  --status-ink-warn: #8a4600;
+  --status-ink-bad: #b0201a;
+  --status-ink-neutral: #4e5058;
+  --status-ink-notwarmed: #4c5059;
+  --status-ink-email: #0052b8;
+  --status-ink-cold: #0b5f70;
 
   /* Геометрия и ритм. */
   --spacing: 1.25rem;
-  --radius: 0.9rem;
-  --radius-sm: 0.55rem;
-  --sidebar-w: minmax(12.5rem, 15rem);
-  --ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+  --radius: 1.15rem;
+  --radius-sm: 0.75rem;
+  --radius-xl: 1.6rem;
+  --sidebar-w: 15.5rem;
+  --ease: cubic-bezier(0.32, 0.72, 0, 1);
 }
 
 /* Тёмный режим — переопределение тех же ролей, а не инверсия значений: любой
@@ -68,47 +93,62 @@
 :root[data-theme="dark"] {
   color-scheme: dark;
 
-  --paper: #0b1024;
-  --paper-2: #070a18;
-  --surface: #141a2e;
-  --glass: rgba(28, 34, 58, 0.55);
-  --glass-border: rgba(255, 255, 255, 0.10);
-  --ink: #eef1ff;
-  --ink-soft: #9aa3bd;
-  --line: rgba(255, 255, 255, 0.10);
-  --line-strong: rgba(255, 255, 255, 0.22);
-  --shadow: 0 18px 48px -28px rgba(0, 0, 0, 0.9);
+  --paper: #0d0f12;
+  --paper-2: #1b1e23;
+  --surface: #1a1d22;
+  --glass: rgba(34, 36, 42, 0.55);
+  --glass-strong: rgba(70, 72, 80, 0.62);
+  --glass-border: rgba(255, 255, 255, 0.11);
+  --glass-hi: rgba(255, 255, 255, 0.24);
+  --glass-lo: rgba(255, 255, 255, 0.08);
+  --fill: rgba(118, 118, 128, 0.26);
+  --fill-2: rgba(118, 118, 128, 0.16);
+  --ink: #f5f5f7;
+  --ink-soft: #a3a6af;
+  --line: rgba(255, 255, 255, 0.09);
+  --line-strong: rgba(255, 255, 255, 0.2);
+  --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 10px 30px rgba(0, 0, 0, 0.4);
+  --shadow-float: 0 2px 6px rgba(0, 0, 0, 0.4), 0 18px 48px rgba(0, 0, 0, 0.55);
 
-  --bg-1: #0c1024;
-  --bg-2: #171233;
-  --bg-3: #0a1420;
+  --wall-1: #17345a;
+  --wall-2: #4a3417;
+  --wall-3: #0f3d35;
 
-  --accent: #8b9cff;
-  --accent-2: #d79bff;
-  --accent-soft: rgba(139, 156, 255, 0.18);
+  --accent: #f5f5f7;
+  --accent-2: #d1d1d6;
+  --accent-soft: rgba(255, 255, 255, 0.1);
+  --btn-fg: #1c1c1e;
 
-  --stage-notwarmed: #9fb2c6;
-  --stage-notwarmed-soft: rgba(159, 178, 198, 0.16);
-  --stage-email: #9a8cff;
-  --stage-email-soft: rgba(154, 140, 255, 0.16);
-  --stage-warming: #f0b65a;
-  --stage-warming-soft: rgba(240, 182, 90, 0.16);
-  --stage-cold: #5aa2e6;
-  --stage-cold-soft: rgba(90, 162, 230, 0.16);
+  --stage-notwarmed: #aeb2bb;
+  --stage-notwarmed-soft: rgba(174, 178, 187, 0.16);
+  --stage-email: #4da3ff;
+  --stage-email-soft: rgba(77, 163, 255, 0.16);
+  --stage-warming: #ffb340;
+  --stage-warming-soft: rgba(255, 179, 64, 0.16);
+  --stage-cold: #5ad1e6;
+  --stage-cold-soft: rgba(90, 209, 230, 0.15);
 
-  --ok: #4fc98a;
-  --ok-soft: rgba(79, 201, 138, 0.16);
-  --warn: #f0b65a;
-  --warn-soft: rgba(240, 182, 90, 0.16);
-  --bad: #f0655f;
-  --bad-soft: rgba(240, 101, 95, 0.16);
-  --neutral: #8b95ad;
-  --neutral-soft: rgba(139, 149, 173, 0.16);
+  --ok: #30d158;
+  --ok-soft: rgba(48, 209, 88, 0.16);
+  --warn: #ffb340;
+  --warn-soft: rgba(255, 179, 64, 0.16);
+  --bad: #ff6961;
+  --bad-soft: rgba(255, 105, 97, 0.16);
+  --neutral: #a1a1a8;
+  --neutral-soft: rgba(161, 161, 168, 0.16);
+
+  /* В тёмной теме базовые роли уже читаются на мягких подложках. */
+  --status-ink-ok: var(--ok);
+  --status-ink-warn: var(--warn);
+  --status-ink-bad: var(--bad);
+  --status-ink-neutral: var(--neutral);
+  --status-ink-notwarmed: var(--stage-notwarmed);
+  --status-ink-email: var(--stage-email);
+  --status-ink-cold: var(--stage-cold);
 }
 
-/* Совместимость: прежние имена указывают на новые роли (см. использование в
-   оформлении). Ссылки через var() разрешаются в контексте темы, поэтому
-   достаточно объявить их один раз. */
+/* Совместимость: прежние имена указывают на новые роли. Ссылки через var()
+   разрешаются в контексте темы, поэтому достаточно объявить их один раз. */
 :root {
   --cold: var(--accent);
   --warming: var(--warn);
@@ -120,6 +160,7 @@
   --sent-soft: var(--ok-soft);
   --cooled-soft: var(--stage-cold-soft);
   --fail-soft: var(--bad-soft);
+  --muted: var(--ink-soft);
 }
 
 /* ============================================================= База */
@@ -130,54 +171,97 @@
 
 body {
   margin: 0;
-  background: var(--paper);
+  min-height: 100vh;
   color: var(--ink);
-  font-family: system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  line-height: 1.55;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 0.9375rem;
+  line-height: 1.5;
   -webkit-font-smoothing: antialiased;
+  /* Подложка под стеклом: без неё прозрачность не видна. Пятна размыты и
+     неярки, поэтому не спорят с содержимым. */
+  background-color: var(--paper);
+  background-image:
+    radial-gradient(48vw 42vw at 4% -6%, var(--wall-1), transparent 70%),
+    radial-gradient(36vw 34vw at 102% 18%, var(--wall-2), transparent 70%),
+    radial-gradient(46vw 40vw at 46% 112%, var(--wall-3), transparent 70%);
+  background-attachment: fixed;
 }
 
-/* Каркас с боковым меню: меню — отдельный слой над полотном. Гейт :has() не
-   трогает страницы без меню (вход, уведомление, публичный edge). */
+/* Каркас с боковым меню: меню — плавающая стеклянная панель над полотном.
+   Гейт :has() не трогает страницы без меню (вход, уведомление, публичный edge). */
 body:has(> .sidebar) {
   display: grid;
-  grid-template-columns: var(--sidebar-w) 1fr;
+  grid-template-columns: var(--sidebar-w) minmax(0, 1fr);
   align-items: start;
 }
 
 h1,
 h2,
 h3 {
-  font-weight: 660;
   letter-spacing: -0.02em;
   line-height: 1.2;
+  color: var(--ink);
 }
 
 h1 {
-  font-size: clamp(1.45rem, 1.15rem + 1vw, 1.9rem);
-  margin: 0 0 0.75rem;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", system-ui, sans-serif;
+  font-size: clamp(1.7rem, 1.35rem + 1vw, 2.1rem);
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  margin: 0.25rem 0 0.5rem;
 }
 
 h2 {
-  font-size: 1.1rem;
-  margin: 0 0 0.75rem;
+  font-size: 1.15rem;
+  font-weight: 680;
+  margin: 1.75rem 0 0.75rem;
 }
 
 h3 {
   font-size: 0.95rem;
-  margin: 0 0 0.5rem;
-  color: var(--ink-soft);
-  font-weight: 600;
+  font-weight: 640;
+  margin: 1.25rem 0 0.5rem;
+}
+
+.panel > h2:first-child,
+.card > h2:first-child,
+.cockpit-panel > h2:first-child,
+.panel > h3:first-child,
+.card > h3:first-child {
+  margin-top: 0;
+}
+
+p {
+  margin: 0.5rem 0;
+}
+
+a {
+  color: var(--ink);
+  text-decoration-color: var(--line-strong);
+  text-underline-offset: 3px;
+}
+
+a:hover {
+  text-decoration-color: var(--ink);
+}
+
+code {
+  font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85em;
+  padding: 0.05rem 0.35rem;
+  border-radius: 0.35rem;
+  background: var(--fill);
 }
 
 .page {
   margin: 0 auto;
-  max-width: 74rem;
+  max-width: 76rem;
   padding: var(--spacing);
 }
 
 body:has(> .sidebar) .page {
-  padding: clamp(1.25rem, 1rem + 1.5vw, 2.5rem);
+  width: 100%;
+  padding: 1.75rem clamp(1rem, 0.5rem + 2vw, 2.5rem) 3rem;
 }
 
 .page-head {
@@ -187,34 +271,91 @@ body:has(> .sidebar) .page {
 .hint {
   color: var(--ink-soft);
   font-size: 0.9rem;
-  margin: 0.75rem 0 0;
+  margin: 0.25rem 0 1rem;
 }
 
 .error-text {
-  color: var(--fail);
+  color: var(--status-ink-bad);
   font-size: 0.88rem;
+}
+
+/* ============================================================= Материал стекла */
+
+/* Матовое стекло: полупрозрачная заливка, размытие подложки, яркий кант по краю
+   (блик сверху-слева, отражение снизу-справа) и мягкое внутреннее свечение. */
+.sidebar,
+.panel,
+.card,
+.notice,
+.stage-col,
+.cockpit-panel,
+.cockpit-agent-row,
+.cockpit-figure,
+.topology-figure,
+.kpi-card,
+.cards-item,
+.offer,
+.approval-status,
+.export-progress-panel,
+.decision-bar,
+.fact-panel,
+.auth-card,
+.queue,
+.page table,
+.watermark,
+.timeline-detail {
+  background: var(--glass);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(180%);
+  backdrop-filter: blur(var(--glass-blur)) saturate(180%);
+  border: 1px solid var(--glass-border);
+  box-shadow:
+    inset 1px 1px 0 var(--glass-hi),
+    inset -1px -1px 0 var(--glass-lo),
+    var(--shadow);
+}
+
+@supports not (backdrop-filter: blur(1px)) {
+  .sidebar,
+  .panel,
+  .card,
+  .notice,
+  .stage-col,
+  .cockpit-panel,
+  .cockpit-agent-row,
+  .cockpit-figure,
+  .topology-figure,
+  .kpi-card,
+  .cards-item,
+  .offer,
+  .approval-status,
+  .export-progress-panel,
+  .decision-bar,
+  .fact-panel,
+  .auth-card,
+  .queue,
+  .page table,
+  .watermark {
+    background: var(--surface);
+  }
 }
 
 /* ============================================================= Боковое меню */
 
 .sidebar {
   position: sticky;
-  top: 0;
+  top: 0.75rem;
   align-self: start;
-  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  height: calc(100vh - 1.5rem);
+  margin: 0.75rem 0 0.75rem 0.75rem;
   overflow-y: auto;
-  padding: 1.4rem 1rem;
-  background: var(--glass);
-  border-right: 1px solid var(--line);
-  /* Стекло = слоистость: меню лежит над полотном (design.md, Решение 4). */
-  backdrop-filter: blur(14px) saturate(150%);
-  -webkit-backdrop-filter: blur(14px) saturate(150%);
-}
-
-@supports not (backdrop-filter: blur(1px)) {
-  .sidebar {
-    background: var(--surface);
-  }
+  padding: 1rem 0.75rem;
+  border-radius: var(--radius-xl);
+  box-shadow:
+    inset 1px 1px 0 var(--glass-hi),
+    inset -1px -1px 0 var(--glass-lo),
+    var(--shadow-float);
 }
 
 .sidebar-list {
@@ -223,7 +364,7 @@ body:has(> .sidebar) .page {
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 0.12rem;
+  gap: 0.15rem;
 }
 
 .sidebar-list li {
@@ -239,76 +380,96 @@ body:has(> .sidebar) .page {
 .sidebar-list a {
   position: relative;
   display: block;
-  padding: 0.52rem 0.7rem;
-  border-radius: var(--radius-sm);
-  color: var(--ink-soft);
+  padding: 0.55rem 0.8rem;
+  border-radius: 0.8rem;
+  color: var(--ink);
+  font-weight: 500;
   text-decoration: none;
-  transition: color 0.18s var(--ease), background 0.18s var(--ease);
+  transition: background 0.2s var(--ease), box-shadow 0.2s var(--ease);
 }
 
 .sidebar-list a:hover {
-  color: var(--ink);
-  background: var(--paper-2);
+  background: var(--fill-2);
 }
 
+/* Активный пункт — приподнятая «линза»: светлее стекла и с тенью. */
 .sidebar-list a.is-active {
-  color: var(--ink);
-  font-weight: 620;
-  background: var(--paper-2);
-}
-
-/* Активный пункт помечается термальной полосой — единственное место, где
-   рампа работает как «направление», а не как статус. */
-.sidebar-list a.is-active::before {
-  content: "";
-  position: absolute;
-  left: -0.5rem;
-  top: 0.45rem;
-  bottom: 0.45rem;
-  width: 3px;
-  border-radius: 3px;
-  background: linear-gradient(var(--cold), var(--warming));
+  font-weight: 640;
+  background: var(--glass-strong);
+  box-shadow: inset 1px 1px 0 var(--glass-hi), 0 1px 3px rgba(0, 0, 0, 0.08), 0 4px 14px rgba(0, 0, 0, 0.06);
 }
 
 /* Вторичная группа под общим разделом: подпункты экранов сервиса. */
 .sidebar-group-label {
   margin: 1rem 0 0.3rem;
-  padding: 0 0.7rem;
-  font-size: 0.72rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
+  padding: 0 0.8rem;
+  font-size: 0.75rem;
+  font-weight: 600;
   color: var(--ink-soft);
 }
 
 .sidebar-list-group a {
-  padding-left: 1.2rem;
+  padding-left: 1.3rem;
+}
+
+/* Переключатель темы в подвале меню — капсула. */
+.theme-toggle {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.55rem 0.9rem;
+  border: 0;
+  border-radius: 999px;
+  background: var(--fill);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.85rem;
+  cursor: pointer;
+  box-shadow: none;
+  transition: background 0.2s var(--ease), transform 0.15s var(--ease);
+}
+
+.theme-toggle:hover {
+  background: var(--glass-strong);
+  transform: none;
+  box-shadow: inset 1px 1px 0 var(--glass-hi), 0 2px 8px rgba(0, 0, 0, 0.06);
+}
+
+.theme-toggle-label {
+  color: var(--ink-soft);
+}
+
+.theme-toggle-value {
+  margin-left: auto;
+  font-weight: 620;
 }
 
 /* ============================================================= Поверхности */
 
-/* Роли поверхностей различаются, а не сливаются в одинаковые плашки
-   (design.md, Решение 8): секция, карточка сущности, строка списка, уведомление. */
+/* Роли поверхностей различаются: секция, карточка сущности, строка списка,
+   уведомление. Все — стекло, различие в радиусе, отступах и тени. */
 
 .panel {
-  background: var(--surface);
-  border: 1px solid var(--line);
   border-radius: var(--radius);
   padding: var(--spacing);
   margin-bottom: var(--spacing);
 }
 
-/* Карточка сущности — старшая по иерархии: крупнее радиус, мягкая тень. */
+/* Карточка сущности — старшая по иерархии: крупнее радиус и тень. */
 .card {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: calc(var(--radius) + 0.2rem);
-  box-shadow: var(--shadow);
-  padding: calc(var(--spacing) * 1.15);
+  border-radius: calc(var(--radius) + 0.25rem);
+  padding: calc(var(--spacing) * 1.2);
   margin-bottom: var(--spacing);
+  box-shadow:
+    inset 1px 1px 0 var(--glass-hi),
+    inset -1px -1px 0 var(--glass-lo),
+    var(--shadow-float);
 }
 
 .card-head h2 {
-  margin-bottom: 0.25rem;
+  margin: 0 0 0.25rem;
 }
 
 .card-source {
@@ -331,30 +492,155 @@ body:has(> .sidebar) .page {
 
 .card-actions {
   display: flex;
+  flex-wrap: wrap;
   gap: 0.5rem;
   margin-top: var(--spacing);
   padding-top: var(--spacing);
   border-top: 1px solid var(--line);
 }
 
-/* Уведомление — отдельная роль: тёплая левая грань, без тени. */
+/* Уведомление — отдельная роль: тёплая полоса слева. */
 .notice {
-  border: 1px solid var(--line);
-  border-left: 4px solid var(--warming);
-  background: var(--surface);
+  position: relative;
   border-radius: var(--radius);
-  padding: var(--spacing);
+  padding: 0.9rem var(--spacing) 0.9rem calc(var(--spacing) + 0.25rem);
+  margin: 0.75rem 0;
+}
+
+.notice::before {
+  content: "";
+  position: absolute;
+  left: 0.6rem;
+  top: 0.8rem;
+  bottom: 0.8rem;
+  width: 3px;
+  border-radius: 3px;
+  background: var(--warn);
 }
 
 .notice h1 {
   margin-top: 0;
 }
 
-/* ============================================================= Раскрытие (карточки) */
+/* Честное «недоступно» (рантайм не подключён, источник молчит): заметная, но
+   спокойная плашка, а не пустой экран и не ноль. */
+.watermark {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  border-radius: var(--radius);
+  padding: 0.9rem var(--spacing);
+  color: var(--ink-soft);
+  margin: 0.75rem 0;
+}
 
-/* Анимация открытия/закрытия — по действию пользователя, не по таймеру
-   (design.md, Решения 8–9). Механизм grid-template-rows даёт плавную высоту
-   без измерения из скрипта. */
+.watermark::before {
+  content: "";
+  flex: none;
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  border: 2px solid var(--neutral);
+}
+
+/* Блок «поле — значение»: сведения о сущности одной сеткой, подпись слева. */
+.facts,
+.job-facts,
+.export-status,
+.ops,
+.cockpit-agent-summary {
+  display: grid;
+  grid-template-columns: minmax(9rem, max-content) 1fr;
+  gap: 0.55rem 1.5rem;
+  margin: 0.75rem 0 0;
+}
+
+.facts > div,
+.export-status > div,
+.ops > div {
+  display: contents;
+}
+
+.facts dt,
+.job-facts dt,
+.export-status dt,
+.ops dt,
+.cockpit-agent-summary dt {
+  color: var(--ink-soft);
+  font-size: 0.88rem;
+}
+
+.facts dd,
+.job-facts dd,
+.export-status dd,
+.ops dd,
+.cockpit-agent-summary dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+
+.fact-panel,
+.offer,
+.approval-status,
+.export-progress-panel {
+  border-radius: var(--radius);
+  padding: var(--spacing);
+  margin: 0 0 var(--spacing);
+}
+
+.offer h2,
+.approval-status h2,
+.fact-panel h2 {
+  margin-top: 0;
+}
+
+.offer-content {
+  font-size: 1.05rem;
+  font-weight: 560;
+}
+
+.offer-target,
+.offer-revision {
+  color: var(--ink-soft);
+  font-size: 0.9rem;
+}
+
+/* Панель решения: необратимое действие отделено от прочего, «отклонить» слева,
+   основное действие справа. */
+.decision-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  border-radius: var(--radius);
+  padding: 0.85rem var(--spacing);
+  margin: 0 0 var(--spacing);
+}
+
+.decision-bar form {
+  margin: 0;
+}
+
+.decision-note {
+  margin: 0 auto 0 0;
+  color: var(--ink-soft);
+  font-size: 0.85rem;
+  max-width: 30rem;
+}
+
+/* Сетка из двух колонок для экранов с карточкой и сведениями. */
+.split {
+  display: grid;
+  grid-template-columns: minmax(0, 1.3fr) minmax(0, 1fr);
+  gap: var(--spacing);
+  align-items: start;
+}
+
+/* ============================================================= Раскрытие */
+
+/* Анимация открытия/закрытия — по действию пользователя, не по таймеру.
+   Механизм grid-template-rows даёт плавную высоту без измерения из скрипта. */
 .reveal {
   display: grid;
   grid-template-rows: 0fr;
@@ -372,19 +658,20 @@ details[open] > .reveal {
 
 .disclosure {
   border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border-radius: var(--radius-sm);
+  background: var(--fill-2);
   overflow: hidden;
-  margin-top: var(--spacing);
+  margin-top: 0.75rem;
 }
 
 .disclosure > summary {
   cursor: pointer;
-  padding: 0.75rem var(--spacing);
+  padding: 0.7rem var(--spacing);
   font-weight: 600;
   list-style: none;
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.6rem;
   transition: background 0.18s var(--ease);
 }
 
@@ -394,8 +681,8 @@ details[open] > .reveal {
 
 .disclosure > summary::before {
   content: "";
-  width: 0.5rem;
-  height: 0.5rem;
+  width: 0.45rem;
+  height: 0.45rem;
   border-right: 2px solid var(--ink-soft);
   border-bottom: 2px solid var(--ink-soft);
   transform: rotate(-45deg);
@@ -407,7 +694,7 @@ details[open] > .reveal {
 }
 
 .disclosure > summary:hover {
-  background: var(--paper-2);
+  background: var(--fill-2);
 }
 
 .disclosure-body {
@@ -416,28 +703,153 @@ details[open] > .reveal {
 
 /* ============================================================= Формы */
 
-.field {
-  margin-bottom: 0.75rem;
+.auth-form {
+  max-width: 40rem;
 }
 
-.field label {
-  display: block;
+.auth-form--narrow {
+  max-width: 26rem;
+}
+
+/* Анонимные экраны входа и регистрации: центрированная карточка без рабочего
+   сайдбара. Карточка ограничивает ширину, поэтому поля не «расползаются». */
+.auth-shell {
+  display: flex;
+  justify-content: center;
+  padding: clamp(1.5rem, 6vh, 4.5rem) 0 2rem;
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 30rem;
+  padding: clamp(1.5rem, 1rem + 2vw, 2.5rem);
+  border-radius: var(--radius-xl);
+}
+
+.auth-card--wide {
+  max-width: 48rem;
+}
+
+.auth-card > h1 {
+  margin-top: 0;
+}
+
+.auth-card .auth-form {
+  max-width: none;
+}
+
+.auth-card .tabs {
+  margin-bottom: 1.25rem;
+}
+
+.form-section {
+  border: 0;
+  margin: 0 0 1.25rem;
+  padding: 0;
+  min-width: 0;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.9rem 1.25rem;
+}
+
+.form-section legend {
+  padding: 0;
+  margin-bottom: 0.75rem;
+  font-weight: 620;
+  font-size: 1rem;
+  color: var(--ink);
+}
+
+.form-section > .field {
+  margin: 0;
+}
+
+.form-section .field.span-2 {
+  grid-column: 1 / -1;
+}
+
+.auth-cta {
+  margin: 1rem 0 0;
+  font-size: 0.95rem;
+  color: var(--ink-soft);
+}
+
+.auth-cta a {
   font-weight: 600;
-  margin-bottom: 0.3rem;
+}
+
+@media (min-width: 52rem) {
+  .form-section {
+    grid-template-columns: 1fr 1fr;
+  }
+}
+
+.field {
+  margin: 0 0 0.9rem;
+}
+
+.field label,
+.filters label,
+.page form > label {
+  display: block;
+  font-size: 0.88rem;
+  font-weight: 560;
+  color: var(--ink-soft);
+  margin-bottom: 0.35rem;
 }
 
 .field input[type="text"],
 .field input[type="password"],
 .field textarea,
-.field select {
+.field select,
+.page input[type="text"],
+.page input[type="password"],
+.page input[type="number"],
+.page input[type="email"],
+.page input[type="search"],
+.page input[type="url"],
+.page input:not([type]),
+.page textarea,
+.page select {
   width: 100%;
-  border: 1px solid var(--line-strong);
+  border: 1px solid var(--line);
   border-radius: var(--radius-sm);
-  padding: 0.55rem 0.7rem;
+  padding: 0.6rem 0.85rem;
   font: inherit;
-  background: var(--surface);
+  background: var(--glass-strong);
   color: var(--ink);
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.04);
   transition: border-color 0.16s var(--ease), box-shadow 0.16s var(--ease);
+}
+
+.page textarea {
+  min-height: 6rem;
+  resize: vertical;
+}
+
+.page select {
+  appearance: none;
+  padding-right: 2.2rem;
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--ink-soft) 50%),
+    linear-gradient(135deg, var(--ink-soft) 50%, transparent 50%);
+  background-position: calc(100% - 1.05rem) 55%, calc(100% - 0.75rem) 55%;
+  background-size: 0.3rem 0.3rem;
+  background-repeat: no-repeat;
+}
+
+.page input:focus,
+.page textarea:focus,
+.page select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 4px var(--accent-soft);
+}
+
+.page input[type="checkbox"],
+.page input[type="radio"] {
+  width: auto;
+  accent-color: var(--accent);
 }
 
 .field input:focus-visible,
@@ -446,25 +858,70 @@ details[open] > .reveal {
 button:focus-visible,
 a:focus-visible,
 summary:focus-visible {
-  outline: 2px solid var(--cold);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+.field-hint {
+  display: block;
+  color: var(--ink-soft);
+  font-size: 0.82rem;
+  margin-top: 0.3rem;
+}
+
+/* Скип-ссылка: доступна с клавиатуры, скрыта, пока не получила фокус. */
+.skip-link {
+  position: absolute;
+  left: -9999px;
+  top: 0;
+  z-index: 10;
+  padding: 0.5rem 0.9rem;
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  background: var(--surface);
+  color: var(--ink);
+  text-decoration: none;
+}
+
+.skip-link:focus {
+  left: 0.75rem;
+  top: 0.75rem;
+}
+
+/* Область живых объявлений: визуально скрыта, но читается ассистентами. */
+.live-region {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 .field input[aria-invalid="true"],
 .field textarea[aria-invalid="true"] {
-  border-color: var(--fail);
+  border-color: var(--bad);
+  box-shadow: 0 0 0 4px var(--bad-soft);
 }
 
 .field-error {
-  color: var(--fail);
+  display: block;
+  margin-top: 0.3rem;
+  color: var(--status-ink-bad);
   font-size: 0.85rem;
 }
 
-.search-form {
+.search-form,
+.filters {
   display: flex;
   align-items: flex-end;
-  gap: 1rem;
+  gap: 0.75rem 1rem;
   flex-wrap: wrap;
+  margin: 0 0 var(--spacing);
 }
 
 .search-form .field {
@@ -472,82 +929,146 @@ summary:focus-visible {
   margin: 0;
 }
 
+.filters label {
+  flex: 1 1 10rem;
+  margin: 0;
+}
+
 .actions {
   display: flex;
   gap: 0.5rem;
   flex-wrap: wrap;
-  margin: 0.75rem 0 0;
+  margin: 0.9rem 0 0;
 }
 
-/* Кнопки нейтральны: термо-рампа не тратится на действие. */
-button {
-  background: var(--ink);
-  color: var(--paper);
-  border: 1px solid var(--ink);
-  border-radius: var(--radius-sm);
-  padding: 0.55rem 1rem;
+/* ============================================================= Кнопки */
+
+/* Основная кнопка — графитовая капсула; вторичная — стекло; опасная — мягкая
+   красная подложка. Цвет акцента не несёт смысла, смысл — в подписи. */
+button,
+.button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  background: var(--accent);
+  color: var(--btn-fg);
+  border: 1px solid transparent;
+  border-radius: 999px;
+  padding: 0.55rem 1.15rem;
   font: inherit;
   font-weight: 600;
+  letter-spacing: -0.005em;
+  text-decoration: none;
   cursor: pointer;
-  transition: transform 0.12s var(--ease), opacity 0.16s var(--ease);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 4px 14px rgba(0, 0, 0, 0.14);
+  transition: transform 0.15s var(--ease), box-shadow 0.25s var(--ease), opacity 0.16s var(--ease), background 0.2s var(--ease);
 }
 
-button:hover {
-  opacity: 0.9;
+button:hover,
+.button:hover {
+  opacity: 0.92;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 6px 20px rgba(0, 0, 0, 0.18);
 }
 
-button:active {
-  transform: translateY(1px);
+button:active,
+.button:active {
+  transform: scale(0.97);
 }
 
 button:disabled {
-  opacity: 0.45;
+  opacity: 0.4;
   cursor: not-allowed;
+  transform: none;
 }
 
 .button-secondary {
-  background: transparent;
+  background: var(--glass-strong);
   color: var(--ink);
-  border: 1px solid var(--line-strong);
+  border: 1px solid var(--glass-border);
+  box-shadow: inset 1px 1px 0 var(--glass-hi), 0 2px 8px rgba(0, 0, 0, 0.06);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+}
+
+.button-secondary:hover {
+  opacity: 1;
+  background: var(--glass-strong);
+  box-shadow: inset 1px 1px 0 var(--glass-hi), 0 4px 14px rgba(0, 0, 0, 0.1);
 }
 
 .button-danger {
-  background: transparent;
-  color: var(--fail);
-  border: 1px solid var(--fail);
+  background: var(--bad-soft);
+  color: var(--status-ink-bad);
+  border: 1px solid transparent;
+  box-shadow: none;
+}
+
+.button-danger:hover {
+  opacity: 1;
+  box-shadow: 0 0 0 4px var(--bad-soft);
 }
 
 /* ============================================================= Таблицы */
 
-.table {
+.table,
+.page table {
   width: 100%;
-  border-collapse: collapse;
+  border-collapse: separate;
+  border-spacing: 0;
+}
+
+/* Таблица — стеклянная поверхность с закруглением; строки разделены линией. */
+.page table {
+  border-radius: var(--radius);
+  overflow: hidden;
+  margin: 0 0 var(--spacing);
+}
+
+.panel .table,
+.card .table,
+.panel table,
+.card table,
+.cockpit-panel table {
+  background: transparent;
+  border: 0;
+  box-shadow: none;
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
+  border-radius: 0;
+  margin: 0;
 }
 
 .table th,
-.table td {
+.table td,
+.page th,
+.page td {
   text-align: left;
-  padding: 0.6rem 0.75rem;
+  padding: 0.75rem 1rem;
   border-bottom: 1px solid var(--line);
-  vertical-align: top;
+  vertical-align: middle;
 }
 
-.table th {
+.table th,
+.page th {
   color: var(--ink-soft);
-  font-size: 0.78rem;
-  font-weight: 600;
-  letter-spacing: 0.02em;
+  font-size: 0.8rem;
+  font-weight: 560;
+  white-space: nowrap;
 }
 
-.table tbody tr {
+.table tbody tr,
+.page tbody tr {
   transition: background 0.16s var(--ease);
 }
 
-.table tbody tr:hover {
-  background: var(--paper-2);
+.table tbody tr:hover,
+.page tbody tr:hover {
+  background: var(--fill-2);
 }
 
-.table tbody tr:last-child td {
+.table tbody tr:last-child td,
+.page tbody tr:last-child td {
   border-bottom: 0;
 }
 
@@ -592,7 +1113,7 @@ button:disabled {
 }
 
 .journal-row:hover {
-  background: var(--paper-2);
+  background: var(--fill-2);
 }
 
 .journal-item {
@@ -604,9 +1125,10 @@ button:disabled {
   display: flex;
   align-items: center;
   gap: 0.75rem;
-  padding: 0.6rem 0.75rem;
+  padding: 0.65rem 0.75rem;
   cursor: pointer;
   list-style: none;
+  border-radius: var(--radius-sm);
   transition: background 0.16s var(--ease);
 }
 
@@ -614,7 +1136,7 @@ button:disabled {
   display: none;
 }
 
-/* Указатель раскрытия — тот же треугольник, что у общего disclosure. */
+/* Указатель раскрытия — тот же уголок, что у общего disclosure. */
 .journal-summary::before {
   content: "";
   flex: none;
@@ -631,7 +1153,7 @@ button:disabled {
 }
 
 .journal-summary:hover {
-  background: var(--paper-2);
+  background: var(--fill-2);
 }
 
 .journal-date {
@@ -674,6 +1196,14 @@ button:disabled {
   font-weight: 600;
 }
 
+.cell-sub {
+  display: block;
+  color: var(--ink-soft);
+  font-size: 0.82rem;
+  font-weight: 400;
+  margin-top: 0.1rem;
+}
+
 .cell-select {
   flex: none;
   width: 2.2rem;
@@ -681,36 +1211,128 @@ button:disabled {
   text-align: center;
 }
 
+.num {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Очередь — список строк на стеклянной поверхности (для списков, а не таблиц). */
+ul.queue {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 var(--spacing);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+ul.queue .queue-item {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 1rem;
+  padding: 0.8rem 1rem;
+  border-bottom: 1px solid var(--line);
+}
+
+ul.queue .queue-item:last-child {
+  border-bottom: 0;
+}
+
+ul.queue .queue-item > a:first-child {
+  flex: 1 1 16rem;
+  font-weight: 600;
+  text-decoration: none;
+}
+
+.queue-empty,
+.portal-empty,
+.jobs-empty {
+  color: var(--ink-soft);
+  text-align: center;
+  padding: 1.5rem 1rem;
+  list-style: none;
+}
+
+tr.is-risky td:first-child {
+  box-shadow: inset 3px 0 0 var(--warn);
+}
+
+/* Полоса прогресса: найдено относительно цели. */
+.progress {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-width: 9rem;
+}
+
+.progress-track,
+.funnel-track {
+  flex: 1;
+  display: block;
+  height: 6px;
+  min-width: 4rem;
+  border-radius: 99px;
+  background: var(--fill);
+  overflow: hidden;
+}
+
+.progress-bar,
+.funnel-bar {
+  display: block;
+  height: 100%;
+  border-radius: 99px;
+  background: var(--accent);
+}
+
+.progress.is-short .progress-bar {
+  background: var(--warn);
+}
+
+progress {
+  appearance: none;
+  -webkit-appearance: none;
+  height: 6px;
+  width: 12rem;
+  border: 0;
+  border-radius: 99px;
+  background: var(--fill);
+  overflow: hidden;
+  vertical-align: middle;
+}
+
+progress::-webkit-progress-bar {
+  background: var(--fill);
+  border-radius: 99px;
+}
+
+progress::-webkit-progress-value {
+  background: var(--accent);
+  border-radius: 99px;
+}
+
+progress::-moz-progress-bar {
+  background: var(--accent);
+  border-radius: 99px;
+}
+
 /* ============================================================= Экран задания */
 
 .job-query {
   margin: 0;
-  font-size: 1.02rem;
+  font-size: 1.05rem;
   font-weight: 600;
   overflow-wrap: anywhere;
 }
 
-.job-id {
+.job-id,
+.request-id {
   color: var(--ink-soft);
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 0.82rem;
+  font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.8rem;
 }
 
 .job-facts {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: 0.35rem 1rem;
+  gap: 0.4rem 1.25rem;
   margin: 0;
-}
-
-.job-facts dt {
-  color: var(--ink-soft);
-  font-size: 0.85rem;
-}
-
-.job-facts dd {
-  margin: 0;
-  overflow-wrap: anywhere;
 }
 
 .empty {
@@ -746,27 +1368,32 @@ button:disabled {
 .method {
   display: inline-block;
   margin-left: 0.4rem;
-  padding: 0.05rem 0.4rem;
-  border-radius: 0.3rem;
-  background: var(--paper-2);
+  padding: 0.05rem 0.45rem;
+  border-radius: 999px;
+  background: var(--fill);
   color: var(--ink-soft);
   font-size: 0.75rem;
 }
 
-/* Вкладки (для экранов, где они появятся). */
+/* Вкладки раздела — сегментированный переключатель-капсула. */
 .tabs {
-  display: flex;
-  gap: 0.25rem;
-  border-bottom: 1px solid var(--line);
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.15rem;
+  padding: 0.2rem;
   margin-bottom: var(--spacing);
+  border-radius: 999px;
+  background: var(--fill);
 }
 
 .tab {
-  padding: 0.6rem 1rem;
+  padding: 0.4rem 1rem;
+  border-radius: 999px;
   text-decoration: none;
   color: var(--ink-soft);
-  border-bottom: 2px solid transparent;
-  transition: color 0.16s var(--ease);
+  font-size: 0.9rem;
+  font-weight: 560;
+  transition: color 0.16s var(--ease), background 0.2s var(--ease);
 }
 
 .tab:hover {
@@ -775,25 +1402,25 @@ button:disabled {
 
 .tab.is-active {
   color: var(--ink);
-  border-bottom-color: var(--warming);
   font-weight: 620;
+  background: var(--glass-strong);
+  box-shadow: inset 1px 1px 0 var(--glass-hi), 0 1px 3px rgba(0, 0, 0, 0.08), 0 3px 10px rgba(0, 0, 0, 0.06);
 }
 
 /* ============================================================= Бейдж статуса */
 
-/* Форма маркера кодирует тип, цвет — температуру. Статус читается без цвета
-   (design.md, Решение 5). */
+/* Форма маркера кодирует тип, цвет — смысл. Статус читается без цвета. */
 .status {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
-  padding: 0.15rem 0.6rem;
+  padding: 0.18rem 0.65rem 0.18rem 0.55rem;
   border-radius: 999px;
   font-size: 0.78rem;
   font-weight: 600;
   white-space: nowrap;
-  background: var(--paper-2);
-  color: var(--ink-soft);
+  background: var(--neutral-soft);
+  color: var(--status-ink-neutral);
 }
 
 .status::before {
@@ -805,52 +1432,110 @@ button:disabled {
   flex: none;
 }
 
+/* Цифра-статус экрана операций — ссылка на срез: подчёркивание убрано, чтобы
+   бейдж не распадался на текст и линию. */
+a.status {
+  text-decoration: none;
+}
+
 /* Ожидание — полый круг. */
 .status-queued {
   background: var(--neutral-soft);
-  color: var(--neutral);
+  color: var(--status-ink-neutral);
 }
 
-/* Не прогрет — полый круг, бледный серо-голубой (тепла ещё нет). */
+/* Не прогрет — полый круг, серый (тепла ещё нет). */
 .status-not-warmed {
   background: var(--stage-notwarmed-soft);
-  color: var(--stage-notwarmed);
+  color: var(--status-ink-notwarmed);
 }
 
 .status-queued::before,
-.status-not-warmed::before {
+.status-not-warmed::before,
+.status-validating::before,
+.status-received::before {
   background: transparent;
   border: 2px solid currentColor;
 }
 
-/* Прогрев — заполненный круг. */
+/* В работе — заполненный круг тёплого тона. */
 .status-running {
   background: var(--warn-soft);
-  color: var(--warn);
+  color: var(--status-ink-warn);
 }
 
 .status-warming {
   background: var(--stage-warming-soft);
-  color: var(--stage-warming);
+  color: var(--status-ink-warn);
 }
 
-/* Отправлено — заполненный круг. */
+/* Ждёт решения человека — треугольник «внимание». */
+.status-awaiting-approval,
+.status-pending,
+.status-stalled {
+  background: var(--warn-soft);
+  color: var(--status-ink-warn);
+}
+
+.status-awaiting-approval::before,
+.status-pending::before,
+.status-stalled::before {
+  width: 0;
+  height: 0;
+  border-radius: 0;
+  background: transparent;
+  border-left: 0.3rem solid transparent;
+  border-right: 0.3rem solid transparent;
+  border-bottom: 0.52rem solid currentColor;
+}
+
+/* Процесс идёт — круг с мягким ореолом. */
+.status-processing,
+.status-searching,
+.status-starting-processing,
+.status-fulfilling,
+.status-approved {
+  background: var(--stage-email-soft);
+  color: var(--status-ink-email);
+}
+
+.status-processing::before,
+.status-searching::before,
+.status-starting-processing::before,
+.status-fulfilling::before {
+  box-shadow: 0 0 0 2px var(--stage-email-soft);
+}
+
+/* Готово — заполненный круг. */
 .status-done,
-.status-sent {
+.status-sent,
+.status-fulfilled,
+.status-delivered {
   background: var(--ok-soft);
-  color: var(--ok);
+  color: var(--status-ink-ok);
 }
 
-/* Письмо отправлено — фиалковый: действие, а не температура. */
+/* Результат процесса на экране операций — терминальное положительное состояние:
+   та же семантика, что у «отправлено». Класс приходит от владельца экрана. */
+.status-active {
+  background: var(--ok-soft);
+  color: var(--status-ink-ok);
+}
+
+/* Письмо отправлено — синий: действие, а не температура. */
 .status-email-sent {
   background: var(--stage-email-soft);
-  color: var(--stage-email);
+  color: var(--status-ink-email);
 }
 
-/* Остыл — заполненный круг, холодный синий. */
+/* Остыл — квадрат, холодный бирюзовый. */
 .status-cold {
   background: var(--stage-cold-soft);
-  color: var(--stage-cold);
+  color: var(--status-ink-cold);
+}
+
+.status-cold::before {
+  border-radius: 2px;
 }
 
 /* Сбой — ромб. Красный используется только здесь. */
@@ -858,8 +1543,8 @@ button:disabled {
 .status-bounced,
 .status-rejected,
 .status-unsubscribed {
-  background: var(--fail-soft);
-  color: var(--fail);
+  background: var(--bad-soft);
+  color: var(--status-ink-bad);
 }
 
 .status-failed::before,
@@ -870,15 +1555,66 @@ button:disabled {
   transform: rotate(45deg);
 }
 
+/* Отменено — перечёркнутый полый круг: нейтрально, без тревоги. */
 .status-cancelled {
-  background: var(--paper-2);
+  background: var(--neutral-soft);
+  color: var(--status-ink-neutral);
+}
+
+.status-cancelled::before {
+  background: linear-gradient(135deg, transparent 42%, currentColor 42%, currentColor 58%, transparent 58%);
+  border: 1.5px solid currentColor;
+}
+
+/* ============================================================= Верификация адреса */
+
+/* Словарь BRD §3.18: смысл несут подпись и значок, цвет только дополняет. */
+.verify {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.18rem 0.65rem;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  white-space: nowrap;
+  background: var(--neutral-soft);
+  color: var(--status-ink-neutral);
+}
+
+.verify-icon {
+  font-weight: 700;
+  line-height: 1;
+}
+
+.verify-deliverable {
+  background: var(--ok-soft);
+  color: var(--status-ink-ok);
+}
+
+.verify-risky {
+  background: var(--warn-soft);
+  color: var(--status-ink-warn);
+}
+
+.verify-unknown {
+  background: var(--neutral-soft);
+  color: var(--status-ink-neutral);
+}
+
+.verify-invalid {
+  background: var(--bad-soft);
+  color: var(--status-ink-bad);
+}
+
+.verify-meta {
+  font-weight: 400;
   color: var(--ink-soft);
 }
 
 /* ============================================================= Таймлайн статусов */
 
-/* Прямой линейный таймлайн: позиция точки = этап, форма маркера = тип
-   (design.md, Решение 6). */
+/* Прямой линейный таймлайн: позиция точки = этап, форма маркера = тип. */
 .timeline {
   display: flex;
   align-items: flex-start;
@@ -900,11 +1636,11 @@ button:disabled {
 .timeline-point::before {
   content: "";
   position: absolute;
-  top: 7px;
+  top: 8px;
   left: 0;
   right: 0;
   height: 2px;
-  background: var(--line-strong);
+  background: var(--fill);
 }
 
 .timeline-point:first-child::before {
@@ -918,8 +1654,8 @@ button:disabled {
 .timeline-dot {
   position: relative;
   z-index: 1;
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
   border-radius: 50%;
   border: 2px solid var(--line-strong);
   background: var(--surface);
@@ -927,8 +1663,8 @@ button:disabled {
 }
 
 .timeline-point.is-done .timeline-dot {
-  border-color: var(--ok);
-  background: var(--ok);
+  border-color: var(--accent);
+  background: var(--accent);
 }
 
 .timeline-point.is-current .timeline-dot {
@@ -947,7 +1683,7 @@ button:disabled {
 
 .timeline-label {
   margin-top: 0.45rem;
-  font-size: 0.76rem;
+  font-size: 0.78rem;
   color: var(--ink-soft);
 }
 
@@ -979,17 +1715,13 @@ button:disabled {
   pointer-events: none;
   transition: opacity 0.18s var(--ease), transform 0.18s var(--ease);
   max-width: 16rem;
-  padding: 0.5rem 0.7rem;
-  font-size: 0.78rem;
+  padding: 0.5rem 0.75rem;
+  font-size: 0.8rem;
   font-weight: 400;
   color: var(--ink);
   text-align: left;
-  background: var(--glass);
-  border: 1px solid var(--glass-border);
   border-radius: var(--radius-sm);
-  box-shadow: var(--shadow);
-  backdrop-filter: blur(12px) saturate(150%);
-  -webkit-backdrop-filter: blur(12px) saturate(150%);
+  background: var(--glass-strong);
 }
 
 /* Компактный таймлайн в строке истории переписки. */
@@ -1007,6 +1739,10 @@ button:disabled {
   height: 12px;
 }
 
+.timeline-inline .timeline-point::before {
+  top: 5px;
+}
+
 .timeline-inline .timeline-label {
   font-size: 0.72rem;
 }
@@ -1021,8 +1757,6 @@ button:disabled {
 }
 
 .stage-col {
-  background: var(--surface);
-  border: 1px solid var(--line);
   border-radius: var(--radius);
   padding: 0.9rem;
   transition: border-color 0.18s var(--ease), box-shadow 0.18s var(--ease), background 0.18s var(--ease);
@@ -1030,8 +1764,8 @@ button:disabled {
 
 /* Зона приёма нагревается под перетаскиваемым лидом. */
 .stage-col.is-over {
-  border-color: var(--warming);
-  box-shadow: 0 0 0 3px var(--warming-soft);
+  border-color: var(--warn);
+  box-shadow: 0 0 0 4px var(--warn-soft);
 }
 
 .stage-col.is-heating {
@@ -1059,17 +1793,18 @@ button:disabled {
   background: var(--line-strong);
 }
 
-.stage-col[data-stage="not warmed"] .stage-dot { background: var(--stage-notwarmed); }
+.stage-col[data-stage="not warmed"] .stage-dot { background: transparent; border: 2px solid var(--stage-notwarmed); }
 .stage-col[data-stage="email sent"] .stage-dot { background: var(--stage-email); }
 .stage-col[data-stage="warming"] .stage-dot { background: var(--stage-warming); }
-.stage-col[data-stage="cold"] .stage-dot { background: var(--stage-cold); }
+.stage-col[data-stage="cold"] .stage-dot { background: var(--stage-cold); border-radius: 3px; }
 
 .stage-count {
   font-size: 0.78rem;
+  font-weight: 600;
   color: var(--ink-soft);
-  background: var(--paper-2);
+  background: var(--fill);
   border-radius: 999px;
-  padding: 0.05rem 0.5rem;
+  padding: 0.05rem 0.55rem;
 }
 
 .lead-list {
@@ -1082,17 +1817,18 @@ button:disabled {
 }
 
 .lead {
-  background: var(--paper);
-  border: 1px solid var(--line);
+  background: var(--glass-strong);
+  border: 1px solid var(--glass-border);
   border-radius: var(--radius-sm);
-  padding: 0.55rem 0.65rem;
+  padding: 0.6rem 0.7rem;
   cursor: grab;
+  box-shadow: inset 1px 1px 0 var(--glass-hi);
   transition: transform 0.14s var(--ease), box-shadow 0.14s var(--ease), opacity 0.14s var(--ease);
 }
 
 .lead:hover {
   transform: translateY(-1px);
-  box-shadow: var(--shadow);
+  box-shadow: inset 1px 1px 0 var(--glass-hi), var(--shadow);
 }
 
 .lead.is-dragging {
@@ -1121,20 +1857,16 @@ button:disabled {
   clip: rect(0 0 0 0);
 }
 
-.lead-move select {
+.page .lead-move select {
   flex: 1;
   min-width: 0;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-sm);
-  padding: 0.3rem 0.4rem;
-  font: inherit;
+  width: auto;
+  padding: 0.3rem 1.8rem 0.3rem 0.6rem;
   font-size: 0.82rem;
-  background: var(--surface);
-  color: var(--ink);
 }
 
 .lead-move button {
-  padding: 0.3rem 0.55rem;
+  padding: 0.3rem 0.7rem;
   font-size: 0.82rem;
 }
 
@@ -1152,7 +1884,8 @@ button:disabled {
 .history-item {
   border: 1px solid var(--line);
   border-radius: var(--radius-sm);
-  padding: 0.6rem 0.75rem;
+  background: var(--fill-2);
+  padding: 0.65rem 0.8rem;
 }
 
 .history-head {
@@ -1184,26 +1917,33 @@ button:disabled {
 
 .dialogue li {
   max-width: 44rem;
-  padding: 0.6rem 0.85rem;
-  border-radius: var(--radius);
+  padding: 0.6rem 0.95rem;
+  border-radius: 1.1rem;
   animation: turn-in 0.26s var(--ease) both;
 }
 
+/* Реплика оператора — графитовый «пузырь» справа, ассистента — стекло слева. */
 .dialogue-operator {
   align-self: flex-end;
-  background: var(--cold-soft);
-  border: 1px solid var(--line);
+  background: var(--accent);
+  color: var(--btn-fg);
+  border-bottom-right-radius: 0.35rem;
 }
 
 .dialogue-agent {
   align-self: flex-start;
-  background: var(--paper-2);
-  border: 1px solid var(--line);
+  background: var(--glass-strong);
+  border: 1px solid var(--glass-border);
+  border-bottom-left-radius: 0.35rem;
+}
+
+.dialogue-error {
+  color: var(--status-ink-bad);
 }
 
 .plan-limits {
   border: 1px solid var(--line);
-  border-radius: var(--radius);
+  border-radius: var(--radius-sm);
   padding: 0.75rem var(--spacing) var(--spacing);
   margin: 0 0 var(--spacing);
 }
@@ -1233,11 +1973,10 @@ button:disabled {
   display: inline-flex;
   align-items: baseline;
   gap: 0.35rem;
-  padding: 0.2rem 0.6rem;
-  border: 1px solid var(--line-strong);
+  padding: 0.22rem 0.7rem;
   border-radius: 999px;
   font-size: 0.82rem;
-  background: var(--paper);
+  background: var(--fill);
 }
 
 .chip-label {
@@ -1290,79 +2029,8 @@ button:disabled {
   margin-bottom: 0.25rem;
 }
 
-/* ============================================================= Движение */
-
-/* Движение только в ответ на действие; один оркестрованный момент — «нагрев»
-   лида (design.md, Решение 9). */
-@keyframes rail-in {
-  from {
-    opacity: 0;
-    transform: translateX(-6px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-@keyframes turn-in {
-  from {
-    opacity: 0;
-    transform: translateY(4px);
-  }
-  to {
-    opacity: 1;
-    transform: none;
-  }
-}
-
-@keyframes heat {
-  0%,
-  100% {
-    box-shadow: 0 0 0 3px var(--warming-soft);
-  }
-  50% {
-    box-shadow: 0 0 0 7px var(--warming-soft);
-  }
-}
-
-/* Обязательное уважение пользовательской настройки: переходы мгновенны, но
-   действия остаются доступны. */
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.001ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 0.001ms !important;
-    scroll-behavior: auto !important;
-  }
-}
-
-/* ============================================================= Адаптив */
-
-@media (max-width: 52rem) {
-  body:has(> .sidebar) {
-    grid-template-columns: 1fr;
-  }
-
-  .sidebar {
-    position: static;
-    height: auto;
-    border-right: 0;
-    border-bottom: 1px solid var(--line);
-  }
-
-  .sidebar-list {
-    flex-direction: row;
-    flex-wrap: wrap;
-  }
-}
-
 /* ============================================================= Библиотека шаблонов */
 
-/* Список шаблонов — строка списка (design.md, Решение 8): то же полотно, что у
-   панелей, но без рамки-плашки; активная строка помечается фоновой ролью. */
 .template-list {
   list-style: none;
   margin: 0;
@@ -1376,14 +2044,14 @@ button:disabled {
   display: flex;
   flex-direction: column;
   gap: 0.12rem;
-  padding: 0.5rem 0.7rem;
+  padding: 0.55rem 0.8rem;
   border-radius: var(--radius-sm);
   border: 1px solid transparent;
 }
 
 .template-item.is-selected {
-  background: var(--paper-2);
-  border-color: var(--line-strong);
+  background: var(--glass-strong);
+  border-color: var(--glass-border);
 }
 
 .template-meta {
@@ -1425,12 +2093,10 @@ button:disabled {
   min-width: 11rem;
 }
 
-.variable-row input[type="text"] {
-  padding: 0.4rem 0.6rem;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-sm);
-  background: var(--paper);
-  color: var(--ink);
+.page .variable-row input[type="text"] {
+  width: auto;
+  flex: 1 1 10rem;
+  padding: 0.4rem 0.7rem;
 }
 
 /* Предпросмотр собранного письма. */
@@ -1451,56 +2117,68 @@ button:disabled {
 /* ============================================================= Витрина карточек */
 
 /* Список карточек в двух представлениях: одна модель карточки, различие —
-   контейнер и его класс data-cards-view (design.md, Решение 1). */
+   контейнер и его класс data-cards-view. */
 .cards-toolbar {
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 0.75rem;
   flex-wrap: wrap;
-  margin-bottom: 0.75rem;
+  margin-bottom: 0.9rem;
 }
 
+/* Переключатели состава и представления — сегментированные капсулы. */
 .composition-switch,
 .view-switch {
   display: inline-flex;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-sm);
-  overflow: hidden;
+  flex-wrap: wrap;
+  gap: 0.15rem;
+  padding: 0.2rem;
+  border-radius: 999px;
+  background: var(--fill);
 }
 
 .view-option {
   margin: 0;
   border: 0;
-  border-radius: 0;
-  background: var(--paper);
+  border-radius: 999px;
+  background: transparent;
   color: var(--ink-soft);
-  padding: 0.35rem 0.85rem;
+  padding: 0.35rem 0.9rem;
   font: inherit;
+  font-size: 0.88rem;
+  font-weight: 560;
   cursor: pointer;
+  box-shadow: none;
+  transition: color 0.16s var(--ease), background 0.2s var(--ease);
 }
 
 .view-option + .view-option {
-  border-left: 1px solid var(--line-strong);
+  border-left: 0;
 }
 
 .view-option:hover {
-  background: var(--paper-2);
+  opacity: 1;
+  color: var(--ink);
+  background: transparent;
+  box-shadow: none;
 }
 
 .view-option.is-active {
-  background: var(--cold-soft);
+  background: var(--glass-strong);
   color: var(--ink);
+  font-weight: 620;
+  box-shadow: inset 1px 1px 0 var(--glass-hi), 0 1px 3px rgba(0, 0, 0, 0.08), 0 3px 10px rgba(0, 0, 0, 0.06);
 }
 
 .view-option:focus-visible {
-  outline: 2px solid var(--cold);
-  outline-offset: -2px;
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 .cards {
   display: grid;
-  gap: 0.6rem;
+  gap: 0.7rem;
   align-items: stretch;
 }
 
@@ -1512,27 +2190,27 @@ button:disabled {
   grid-template-columns: 1fr;
 }
 
-/* Карточка — строка списка (design.md, Решение 8): то же полотно, что у панелей,
-   но кликабельная целиком и без внешней тени. */
+/* Карточка — строка списка: стекло, кликабельная целиком. */
 .cards-item {
   display: grid;
   gap: 0.3rem;
-  padding: 0.85rem 1rem;
-  border: 1px solid var(--line);
+  padding: 0.9rem 1.05rem;
   border-radius: var(--radius);
-  background: var(--surface);
   color: inherit;
   text-decoration: none;
-  transition: border-color 0.18s var(--ease), box-shadow 0.18s var(--ease);
+  transition: transform 0.18s var(--ease), box-shadow 0.18s var(--ease);
 }
 
 .cards-item:hover {
-  border-color: var(--line-strong);
-  box-shadow: var(--shadow);
+  transform: translateY(-1px);
+  box-shadow:
+    inset 1px 1px 0 var(--glass-hi),
+    inset -1px -1px 0 var(--glass-lo),
+    var(--shadow-float);
 }
 
 .cards-item:focus-visible {
-  outline: 2px solid var(--cold);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
 
@@ -1542,17 +2220,17 @@ button:disabled {
 
 .cards-item .card-desc {
   color: var(--ink-soft);
-  font-size: 0.85rem;
+  font-size: 0.86rem;
 }
 
 .cards-item .card-email {
   color: var(--ink-soft);
-  font-size: 0.85rem;
+  font-size: 0.86rem;
   word-break: break-all;
 }
 
 .cards-item .card-no-email {
-  color: var(--fail);
+  color: var(--status-ink-bad);
   font-weight: 600;
 }
 
@@ -1567,21 +2245,21 @@ button:disabled {
   align-items: baseline;
 }
 
-/* Карточка без email выделяется красным. Цвет — не единственный носитель
-   смысла: отсутствие письма озвучено меткой «нет email» в строке и aria-label на
-   карточке (design.md, Решение 6). */
+/* Карточка без email выделяется красной полосой слева и подписью «нет email»;
+   цвет — не единственный носитель смысла (метка и aria-label). */
 .cards-item.is-no-email {
-  border-color: var(--fail);
-  background: var(--fail-soft);
+  box-shadow:
+    inset 3px 0 0 var(--bad),
+    inset 1px 1px 0 var(--glass-hi),
+    var(--shadow);
 }
 
 .cards-item.is-no-email .card-name {
-  color: var(--fail);
+  color: var(--status-ink-bad);
 }
 
 /* Строка найденной компании на экране задания: email рядом с идентификатором и
-   та же красная подсветка «нет email», что и в списке карточек. Отсутствие письма
-   — не только цвет: рядом стоит метка «нет email» и aria-label на строке. */
+   та же красная пометка «нет email», что и в списке карточек. */
 .job-company {
   display: flex;
   align-items: baseline;
@@ -1590,16 +2268,16 @@ button:disabled {
 }
 
 .job-company.is-no-email {
-  border-color: var(--fail);
-  background: var(--fail-soft);
+  border-color: var(--bad);
+  background: var(--bad-soft);
 }
 
 .job-company.is-no-email .link {
-  color: var(--fail);
+  color: var(--status-ink-bad);
 }
 
 .job-company .card-no-email {
-  color: var(--fail);
+  color: var(--status-ink-bad);
   font-weight: 600;
 }
 
@@ -1624,34 +2302,35 @@ button:disabled {
 /* Вердикт оценки: цвет — не единственный носитель смысла, рядом всегда стоит
    текстовая подпись вердикта. */
 .verdict {
-  display: inline-block;
-  padding: 0.1rem 0.5rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.15rem 0.6rem;
   border-radius: 999px;
-  border: 1px solid var(--line-strong);
   font-size: 0.78rem;
+  font-weight: 600;
   white-space: nowrap;
+  background: var(--neutral-soft);
+  color: var(--status-ink-neutral);
 }
 
 .verdict-fits {
   background: var(--ok-soft);
-  border-color: var(--ok);
-  color: var(--ok);
+  color: var(--status-ink-ok);
 }
 
 .verdict-hypothesis {
   background: var(--warn-soft);
-  border-color: var(--warn);
-  color: var(--warn);
+  color: var(--status-ink-warn);
 }
 
 .verdict-unsuitable {
   background: var(--neutral-soft);
-  border-color: var(--line-strong);
-  color: var(--neutral);
+  color: var(--status-ink-neutral);
 }
 
 .verdict-unknown {
-  background: var(--paper-2);
+  background: var(--fill);
   color: var(--ink-soft);
 }
 
@@ -1683,21 +2362,21 @@ button:disabled {
 
 .evidence-item {
   border: 1px solid var(--line);
-  border-radius: var(--radius);
-  padding: 0.6rem 0.8rem;
-  background: var(--surface);
+  border-radius: var(--radius-sm);
+  padding: 0.7rem 0.9rem;
+  background: var(--fill-2);
 }
 
 .evidence-facts {
   display: grid;
   grid-template-columns: minmax(6rem, 10rem) 1fr;
-  gap: 0.2rem 0.75rem;
+  gap: 0.25rem 0.9rem;
   margin: 0;
 }
 
 .evidence-facts dt {
   color: var(--ink-soft);
-  font-size: 0.8rem;
+  font-size: 0.82rem;
 }
 
 .evidence-facts dd {
@@ -1715,8 +2394,9 @@ button:disabled {
 
 .fit-item {
   border: 1px solid var(--line);
-  border-radius: var(--radius);
-  padding: 0.6rem 0.8rem;
+  border-radius: var(--radius-sm);
+  background: var(--fill-2);
+  padding: 0.7rem 0.9rem;
 }
 
 .verdict-distribution {
@@ -1763,138 +2443,154 @@ button:disabled {
   color: var(--ink-soft);
 }
 
-/* ============================================================= Хром консоли
-   Вид из выгрузки лидов (change console-theme-switcher): градиентное полотно,
-   стеклянные поверхности и кнопки, мягкие анимации по действию. */
+/* ============================================================= Отчёты и дашборд */
 
-/* Цвет текста на акцентной кнопке различается по теме. */
-:root {
-  --btn-fg: #ffffff;
+/* Плитки ключевых цифр: подпись сверху, крупное число, доля мелко. */
+.kpi-cards {
+  list-style: none;
+  margin: 0 0 var(--spacing);
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr));
+  gap: 0.9rem;
 }
 
-:root[data-theme="dark"] {
-  --btn-fg: #0b1024;
-}
-
-body {
-  background-color: var(--paper);
-  background-image:
-    radial-gradient(55vw 55vw at 8% -10%, var(--accent-soft), transparent 60%),
-    radial-gradient(50vw 50vw at 105% 4%, var(--accent-soft), transparent 55%),
-    linear-gradient(160deg, var(--bg-1), var(--bg-2) 55%, var(--bg-3));
-  background-attachment: fixed;
-}
-
-/* Меню — колонка, переключатель темы прижат к низу. */
-.sidebar {
+.kpi-card {
   display: flex;
   flex-direction: column;
+  gap: 0.2rem;
+  padding: 1rem 1.15rem;
+  border-radius: var(--radius);
 }
 
-/* Активный пункт — акцент хрома, а не термо-рампа. */
-.sidebar-list a.is-active::before {
-  background: linear-gradient(var(--accent), var(--accent-2));
+.kpi-label {
+  color: var(--ink-soft);
+  font-size: 0.86rem;
 }
 
-.panel,
-.stage-col {
-  background: var(--glass);
-  border: 1px solid var(--line);
-  backdrop-filter: blur(18px) saturate(140%);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
-  box-shadow: 0 24px 60px -36px rgba(3, 6, 20, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+.kpi-value {
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", system-ui, sans-serif;
+  font-size: 1.9rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
 }
 
-@supports not (backdrop-filter: blur(1px)) {
-  .panel,
-  .stage-col {
-    background: var(--surface);
-  }
+.kpi-share {
+  color: var(--ink-soft);
+  font-size: 0.82rem;
 }
 
-button {
-  background: linear-gradient(120deg, var(--accent), var(--accent-2));
-  color: var(--btn-fg);
-  border: 1px solid transparent;
-  box-shadow: 0 10px 24px -16px var(--accent);
-  transition: transform 0.18s var(--ease), box-shadow 0.25s var(--ease), opacity 0.16s var(--ease);
+.growth {
+  margin: 0 0 var(--spacing);
 }
 
-button:hover {
-  opacity: 1;
-  transform: translateY(-1px);
-  box-shadow: 0 14px 30px -12px var(--accent);
+.growth figcaption {
+  color: var(--ink-soft);
+  font-size: 0.86rem;
+  margin-bottom: 0.5rem;
 }
 
-button:active {
-  transform: translateY(1px) scale(0.99);
-}
-
-.button-secondary {
-  background: var(--glass);
-  color: var(--ink);
-  border: 1px solid var(--line-strong);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-}
-
-.button-secondary:hover {
-  border-color: var(--accent);
-  box-shadow: 0 10px 24px -12px var(--accent);
-}
-
-.button-danger {
-  background: transparent;
-  color: var(--bad);
-  border: 1px solid var(--bad);
-  box-shadow: none;
-}
-
-.button-danger:hover {
-  box-shadow: 0 10px 24px -12px var(--bad);
-}
-
-/* Переключатель темы в подвале меню. */
-.theme-toggle {
-  margin-top: auto;
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
+.growth-chart {
+  display: block;
   width: 100%;
-  padding: 0.55rem 0.7rem;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--radius-sm);
-  background: var(--glass);
-  color: var(--ink);
-  font: inherit;
-  font-size: 0.85rem;
-  cursor: pointer;
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  box-shadow: none;
-  transition: transform 0.18s var(--ease), border-color 0.18s var(--ease), box-shadow 0.25s var(--ease);
+  height: auto;
 }
 
-.theme-toggle:hover {
-  border-color: var(--accent);
-  transform: translateY(-1px);
-  box-shadow: 0 10px 24px -14px var(--accent);
+.growth-line {
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
 }
 
-.theme-toggle-label {
+.growth-area {
+  fill: var(--accent-soft);
+}
+
+.chart-empty,
+.dashboard-hidden,
+.reports-hidden,
+.insights-hidden,
+.reports-unavailable,
+.insights-unavailable {
   color: var(--ink-soft);
 }
 
-.theme-toggle-value {
-  margin-left: auto;
-  font-weight: 620;
+/* Воронка отчёта: подпись, полоса, число. */
+.funnel-row {
+  display: grid;
+  grid-template-columns: minmax(8rem, 14rem) 1fr minmax(3rem, max-content);
+  align-items: center;
+  gap: 0.9rem;
+  padding: 0.4rem 0;
 }
 
-/* Появление списков лент — короткое, по загрузке страницы. */
+.funnel-count,
+.funnel-share {
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.export-progress-value {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.export-progress-label,
+.export-step,
+.export-error-code {
+  color: var(--ink-soft);
+  font-size: 0.88rem;
+}
+
+.export-error {
+  color: var(--status-ink-bad);
+}
+
+/* ============================================================= Движение */
+
+/* Движение только в ответ на действие и при загрузке; один оркестрованный
+   момент — «нагрев» лида. */
+@keyframes rail-in {
+  from {
+    opacity: 0;
+    transform: translateX(-6px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes turn-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes heat {
+  0%,
+  100% {
+    box-shadow: 0 0 0 3px var(--warn-soft);
+  }
+  50% {
+    box-shadow: 0 0 0 7px var(--warn-soft);
+  }
+}
+
+/* Появление строк и карточек — короткое, по загрузке страницы. */
 @keyframes console-rise {
   from {
     opacity: 0;
-    transform: translateY(8px);
+    transform: translateY(6px);
   }
   to {
     opacity: 1;
@@ -1904,13 +2600,287 @@ button:active {
 
 .table tbody tr,
 .cards-item {
-  animation: console-rise 0.45s var(--ease) both;
+  animation: console-rise 0.4s var(--ease) both;
 }
 
+/* Обязательное уважение пользовательской настройки: переходы мгновенны, но
+   действия остаются доступны. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
   *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* ============================================================= Адаптив */
+
+@media (max-width: 52rem) {
+  body:has(> .sidebar) {
+    grid-template-columns: 1fr;
+  }
+
+  .sidebar {
+    position: static;
+    height: auto;
+    margin: 0.75rem 0.75rem 0;
+    border-radius: var(--radius);
+  }
+
+  .sidebar-list {
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .theme-toggle {
+    margin-top: 0.75rem;
+  }
+
+  .split {
+    grid-template-columns: 1fr;
+  }
+
+  .facts,
+  .job-facts,
+  .export-status,
+  .ops,
+  .cockpit-agent-summary {
+    grid-template-columns: 1fr;
+    gap: 0.15rem;
+  }
+
+  .facts dd,
+  .export-status dd,
+  .ops dd {
+    margin-bottom: 0.5rem;
+  }
+
+  .page table {
+    display: block;
+    overflow-x: auto;
+  }
+}
+
+/* ============================================================= Экран операций
+   Общий слой экрана операций (operations-cockpit). Классы с префиксом cockpit-
+   несут только вид: панели, лента агентов, граф процессов и полноэкранный
+   дашборд. Цвета берутся из токенов темы, поэтому обе темы корректны без
+   отдельных правил. Смысл статуса несут подпись и форма маркера общего бейджа
+   .status; цвет — только дополнение. */
+
+.cockpit,
+.cockpit-agents,
+.cockpit-process,
+.cockpit-agent,
+.cockpit-dashboard {
+  display: block;
+}
+
+/* Панели — стеклянные, сеткой: состав расширяется регистрацией, поэтому
+   раскладка не знает числа панелей. Отказ одной панели не смещает остальные. */
+.cockpit-panels {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
+  gap: var(--spacing);
+  margin-top: var(--spacing);
+}
+
+.cockpit-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  min-width: 0;
+  border-radius: var(--radius);
+  padding: var(--spacing);
+}
+
+.cockpit-panel h3,
+.cockpit-panel .hint {
+  margin-top: 0;
+}
+
+/* Форма скрытия панели — строчная и без отступов по умолчанию. */
+.inline-form {
+  display: inline-flex;
+  margin: 0;
+}
+
+/* Кнопка скрытия панели прижата к низу: панели разной высоты выравниваются. */
+.cockpit-panel .inline-form {
+  margin-top: auto;
+}
+
+/* Выбираемый срез графа (текущий workflow): выделение не только фоном, но и
+   полосой слева — читается без цвета. */
+.table tbody tr.is-active {
+  background: var(--accent-soft);
+}
+
+.table tbody tr.is-active td:first-child {
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+/* Лента агентов: строка — раскрытие details с сохранённым состоянием. */
+.cockpit-agents-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin-top: var(--spacing);
+}
+
+.cockpit-agent-row {
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  animation: console-rise 0.4s var(--ease) both;
+}
+
+.cockpit-agent-row > summary {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.65rem 0.9rem;
+  cursor: pointer;
+  list-style: none;
+  transition: background 0.16s var(--ease);
+}
+
+.cockpit-agent-row > summary::-webkit-details-marker {
+  display: none;
+}
+
+.cockpit-agent-row > summary::before {
+  content: "";
+  flex: none;
+  width: 0.45rem;
+  height: 0.45rem;
+  border-right: 2px solid var(--ink-soft);
+  border-bottom: 2px solid var(--ink-soft);
+  transform: rotate(-45deg);
+  transition: transform 0.22s var(--ease);
+}
+
+.cockpit-agent-row[open] > summary::before {
+  transform: rotate(45deg);
+}
+
+.cockpit-agent-row > summary:hover,
+.cockpit-agent-row[open] > summary {
+  background: var(--fill-2);
+}
+
+.cockpit-agent-company {
+  font-weight: 600;
+}
+
+.cockpit-agent-client {
+  margin-left: auto;
+  color: var(--ink-soft);
+  font-size: 0.85rem;
+}
+
+.cockpit-agent-meta {
+  list-style: none;
+  margin: 0;
+  padding: 0 0.9rem 0.75rem 1.9rem;
+  display: grid;
+  gap: 0.25rem;
+  color: var(--ink-soft);
+  font-size: 0.88rem;
+}
+
+.cockpit-agent-summary {
+  margin: 0 0 var(--spacing);
+}
+
+/* Граф процессов и топологии: узлы и рёбра берут цвет из токенов, а не из
+   чёрного по умолчанию, — иначе в тёмной теме текст узлов пропадает. */
+.cockpit-figure,
+.topology-figure {
+  margin: 0 0 var(--spacing);
+  padding: var(--spacing);
+  border-radius: var(--radius);
+  overflow-x: auto;
+}
+
+.cockpit-graph,
+.cockpit-timeline,
+.topology-graph {
+  display: block;
+  width: 100%;
+  min-width: 32rem;
+  height: auto;
+}
+
+.cockpit-edge {
+  stroke: var(--line-strong);
+  stroke-width: 1.5;
+}
+
+.topology-edge {
+  stroke: var(--line-strong);
+  stroke-width: 1.5;
+}
+
+.cockpit-node-box {
+  fill: var(--glass-strong);
+  stroke: var(--line-strong);
+  stroke-width: 1;
+  rx: 12px;
+  ry: 12px;
+}
+
+.topology-node-box {
+  fill: var(--glass-strong);
+  stroke: var(--line-strong);
+  stroke-width: 1;
+  rx: 12px;
+  ry: 12px;
+}
+
+.cockpit-node-label {
+  fill: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.topology-node-label {
+  fill: var(--ink);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.cockpit-node-state {
+  fill: var(--ink-soft);
+  font-size: 12px;
+}
+
+.topology-node-state {
+  fill: var(--ink-soft);
+  font-size: 12px;
+}
+
+/* Полноэкранный дашборд: занимает полотно целиком, боковое меню скрыто; возврат
+   к экрану операций — ссылкой в самом дашборде. Гейт :has() не трогает
+   остальные экраны консоли. */
+body:has(.cockpit-dashboard) {
+  grid-template-columns: 1fr;
+}
+
+body:has(.cockpit-dashboard) .sidebar {
+  display: none;
+}
+
+body:has(.cockpit-dashboard) .page {
+  max-width: none;
+}
+
+/* Уважение пользовательской настройки движения: анимации экрана операций
+   отключаются, действие остаётся доступным. */
+@media (prefers-reduced-motion: reduce) {
+  .cockpit-agent-row,
+  .cockpit-agent-row > summary::before {
     animation: none !important;
     transition: none !important;
   }

@@ -1,6 +1,7 @@
 package audience
 
 import (
+	"context"
 	"errors"
 	"time"
 
@@ -39,6 +40,7 @@ func (SystemClock) Now() time.Time { return time.Now() }
 // передать снаружи: так сборка получает PostgreSQL-адаптеры вместо in-memory, а
 // тесты — своё состояние. nil означает in-memory-реализацию (dev).
 type Params struct {
+	Readiness func(context.Context) httpapi.ReadinessReport
 	// Clock — источник времени. nil → SystemClock.
 	Clock ports.Clock
 
@@ -134,6 +136,7 @@ func Build(params Params) (*Slice, error) {
 		FixSnapshot:    fixSnapshot,
 		GetSnapshot:    getSnapshot,
 		SegmentMembers: segmentMembers,
+		Readiness:      params.Readiness,
 	})
 
 	return &Slice{

@@ -40,6 +40,11 @@ const (
 
 	// KindLeadOutcome — исход лида сверх переписки (сделка): исход won/lost.
 	KindLeadOutcome Kind = "lead-outcome"
+
+	// KindLeadAssessment — исход классификации компании относительно задания
+	// (вердикт и причина). Питает проекцию качества поиска (lead-quality-insights),
+	// а не дашборд клиента: отдельный вид, чтобы вердикты не искажали воронку.
+	KindLeadAssessment Kind = "lead-assessment"
 )
 
 // Event — нормализованное доменное событие, применяемое к проекции.
@@ -175,6 +180,24 @@ func New() *ReadModel {
 		tenants:  make(map[string]map[string]*company),
 		watchers: make(map[string]map[chan struct{}]struct{}),
 	}
+}
+
+// Tenants возвращает идентификаторы тенантов проекции в возрастающем порядке.
+// Список нужен владельцу, чтобы построить сводные агрегаты по всем клиентам
+// (экран операций) без обхода чужих хранилищ. Персональных данных метод не
+// раскрывает: это только идентификаторы.
+func (m *ReadModel) Tenants() []string {
+	if m == nil {
+		return nil
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make([]string, 0, len(m.tenants))
+	for id := range m.tenants {
+		out = append(out, id)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // Apply применяет нормализованное событие к проекции и уведомляет подписчиков

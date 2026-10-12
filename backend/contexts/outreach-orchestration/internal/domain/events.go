@@ -33,6 +33,11 @@ type DomainEvent interface {
 //
 // Несёт точную версию черновика: получателю разрешено исполнить именно эту
 // версию, а более поздняя правка потребует нового решения (инвариант I2).
+//
+// Material — ссылка на версию материала из состава утверждённого черновика.
+// Без неё публикуемое утверждённое действие не несло бы материал письма, и
+// получатель не смог бы его разрешить: ссылка относится к точной версии
+// черновика, поэтому принадлежит событию.
 type ActionApproved struct {
 	CampaignID   CampaignID
 	TenantID     TenantID
@@ -41,7 +46,12 @@ type ActionApproved struct {
 	DecisionID   DecisionID
 	Actor        ActorID
 	Channel      ActionChannel
-	At           time.Time
+	Material     MaterialID
+	// Recipient — непрозрачная ссылка на получателя черновика. Её несёт само
+	// событие: идентификатор черновика (DraftID) — ссылка на материал, а не на
+	// получателя, поэтому подстановка DraftID в recipientRef доставки неверна.
+	Recipient RecipientID
+	At        time.Time
 }
 
 // Name реализует DomainEvent.

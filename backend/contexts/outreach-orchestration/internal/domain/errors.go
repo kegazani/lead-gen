@@ -8,6 +8,8 @@ import "errors"
 // Вызывающий различает причину через errors.Is, поэтому ошибки объявлены
 // как именованные значения, а не как текст.
 var (
+	ErrInvalidCampaignPurpose     = errors.New("домен: неизвестное назначение кампании")
+	ErrEditorialDeliveryForbidden = errors.New("домен: editorial campaign не допускает delivery approval/execution")
 	// ErrEmptyID — идентификатор отсутствует или состоит из пробелов.
 	ErrEmptyID = errors.New("домен: пустой идентификатор")
 
@@ -95,6 +97,11 @@ var (
 	// ErrBatchDraftNotEligible — черновик несёт признак риска и не может быть
 	// включён в пакет; исключение нельзя обойти.
 	ErrBatchDraftNotEligible = errors.New("домен: черновик с признаком риска не входит в пакет")
+
+	// ErrRiskFactsUnavailable — факты риска недоступны: предикат не задан или
+	// вернул ошибку. Недоступность не трактуется как «рисков нет» и не исключает
+	// черновик самовольно: пакетное решение честно не выдаётся.
+	ErrRiskFactsUnavailable = errors.New("домен: факты риска недоступны")
 
 	// ErrPostponeDeadlineRequired — срок отложения решения не задан.
 	ErrPostponeDeadlineRequired = errors.New("домен: срок отложения решения не задан")

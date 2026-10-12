@@ -106,10 +106,44 @@ func (o *transactionOutbox) Append(_ context.Context, events ...domain.DomainEve
 type fakeTransaction struct {
 	repo   *fakeRepository
 	outbox *transactionOutbox
+	fences map[string]fakeFence
 }
 
 func (t *fakeTransaction) Campaigns() ports.CampaignRepository { return t.repo }
 func (t *fakeTransaction) Outbox() ports.Outbox                { return t.outbox }
+func (t *fakeTransaction) RequestCancellationFence() ports.RequestCancellationFence {
+	return fakeRequestFence{fences: t.fences}
+}
+
+type fakeFence struct {
+	tenantID, requestID, campaignID string
+	cancelled                       bool
+}
+type fakeRequestFence struct{ fences map[string]fakeFence }
+
+func fakeFenceKey(tenantID, requestID string) string { return tenantID + "\x00" + requestID }
+func (f fakeRequestFence) Cancel(_ context.Context, tenantID, requestID string) error {
+	key := fakeFenceKey(tenantID, requestID)
+	entry := f.fences[key]
+	entry.tenantID, entry.requestID, entry.cancelled = tenantID, requestID, true
+	f.fences[key] = entry
+	return nil
+}
+func (f fakeRequestFence) RegisterHandoff(_ context.Context, tenantID, requestID, campaignID string) (bool, error) {
+	key := fakeFenceKey(tenantID, requestID)
+	entry := f.fences[key]
+	entry.tenantID, entry.requestID, entry.campaignID = tenantID, requestID, campaignID
+	f.fences[key] = entry
+	return entry.cancelled, nil
+}
+func (f fakeRequestFence) CampaignCancelled(_ context.Context, tenantID, campaignID string) (bool, error) {
+	for _, entry := range f.fences {
+		if entry.tenantID == tenantID && entry.campaignID == campaignID && entry.cancelled {
+			return true, nil
+		}
+	}
+	return false, nil
+}
 
 type fakeUnitOfWork struct {
 	repo        *fakeRepository
@@ -117,10 +151,11 @@ type fakeUnitOfWork struct {
 	txOutboxErr error
 	commits     int
 	rollbacks   int
+	fences      map[string]fakeFence
 }
 
 func newFakeUnitOfWork(repo *fakeRepository, outbox *fakeOutbox) *fakeUnitOfWork {
-	return &fakeUnitOfWork{repo: repo, outbox: outbox}
+	return &fakeUnitOfWork{repo: repo, outbox: outbox, fences: make(map[string]fakeFence)}
 }
 
 func (u *fakeUnitOfWork) WithinTransaction(ctx context.Context, fn func(ports.Transaction) error) error {
@@ -130,13 +165,18 @@ func (u *fakeUnitOfWork) WithinTransaction(ctx context.Context, fn func(ports.Tr
 	}
 
 	txOutbox := &transactionOutbox{err: u.txOutboxErr}
-	if err := fn(&fakeTransaction{repo: u.repo, outbox: txOutbox}); err != nil {
+	workingFences := make(map[string]fakeFence, len(u.fences))
+	for key, fence := range u.fences {
+		workingFences[key] = fence
+	}
+	if err := fn(&fakeTransaction{repo: u.repo, outbox: txOutbox, fences: workingFences}); err != nil {
 		u.repo.campaigns = snapshot
 		u.rollbacks++
 		return err
 	}
 	u.commits++
 	u.outbox.events = append(u.outbox.events, txOutbox.buffered...)
+	u.fences = workingFences
 	return nil
 }
 

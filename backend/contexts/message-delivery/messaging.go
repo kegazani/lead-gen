@@ -7,8 +7,11 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/jackc/pgx/v5/pgxpool"
+
 	"lead-gen/backend/contexts/message-delivery/internal/adapters/commandsource"
 	approvedactionadapter "lead-gen/backend/contexts/message-delivery/internal/adapters/commandsource/approvedaction"
+	approvedactionpostgres "lead-gen/backend/contexts/message-delivery/internal/adapters/commandsource/postgres"
 	"lead-gen/backend/contexts/message-delivery/internal/adapters/mailer"
 	"lead-gen/backend/contexts/message-delivery/internal/adapters/mailer/provider"
 	outboxinmemory "lead-gen/backend/contexts/message-delivery/internal/adapters/outbox/inmemory"
@@ -22,6 +25,7 @@ import (
 	"lead-gen/backend/contexts/message-delivery/internal/ports"
 	platformcontracts "lead-gen/backend/platform/contracts"
 	outbox "lead-gen/backend/platform/messaging/outbox"
+	"lead-gen/backend/platform/observability/observ"
 	"lead-gen/backend/platform/transport/amqp"
 	"lead-gen/contracts/data-governance/suppressionpolicy"
 	"lead-gen/contracts/integration-platform/mail"
@@ -146,6 +150,11 @@ func Build(params Params) (*Slice, error) {
 	if source == nil {
 		source = commandsource.New(0)
 	}
+	if binder, ok := unitOfWork.(ports.CampaignFenceBinder); ok {
+		if reader, ok := source.(ports.CampaignFenceReader); ok {
+			binder.BindCampaignFence(reader)
+		}
+	}
 
 	var publication *relay.Relay
 	if params.Sink != nil && relaySource != nil {
@@ -220,6 +229,7 @@ func (s *Slice) mapCommand(cmd deliverycommand.Command) (domain.DeliveryCommand,
 		CommandID:        domain.CommandID(cmd.CommandID),
 		TenantID:         domain.TenantID(cmd.TenantID),
 		ApprovedActionID: domain.ApprovedActionID(cmd.ApprovedActionID),
+		CampaignID:       cmd.CampaignID,
 		RecipientRef:     domain.RecipientRef(cmd.RecipientRef),
 		Address:          address,
 		SenderDomain:     sender,
@@ -300,6 +310,35 @@ func NewApprovedActionSource(
 	return bridge, bridge, nil
 }
 
+// NewPostgresApprovedActionSource собирает approved-action bridge с долговечной
+// PostgreSQL inbox. Возвращённые source/publisher предназначены для последующей
+// явной передачи в Config.Source и Config.Intake; composition root не подключает
+// их автоматически. Pool должен использовать уже применённую миграцию 0002.
+func NewPostgresApprovedActionSource(
+	pool *pgxpool.Pool,
+	recipients deliverytarget.Resolver,
+	materials ports.MaterialResolver,
+	senderDomain string,
+	lease time.Duration,
+) (ports.ClaimedCommandSource, approvedaction.Publisher, error) {
+	queue, err := approvedactionpostgres.NewApprovedQueue(pool, lease)
+	if err != nil {
+		return nil, nil, fmt.Errorf("message-delivery: PostgreSQL inbox: %w", err)
+	}
+	recipientResolver, err := reference.NewRecipientResolver(recipients)
+	if err != nil {
+		return nil, nil, fmt.Errorf("message-delivery: резолвер получателя: %w", err)
+	}
+	bridge, err := approvedactionadapter.New(approvedactionadapter.Config{
+		Recipients: recipientResolver, Materials: materials, SenderDomain: senderDomain,
+		DurableQueue: queue,
+	})
+	if err != nil {
+		return nil, nil, fmt.Errorf("message-delivery: durable bridge approved-action: %w", err)
+	}
+	return bridge, bridge, nil
+}
+
 // ExchangeMessageDelivery — topic exchange контекста-владельца. Имя совпадает с
 // идентификатором сервиса.
 const ExchangeMessageDelivery = ServiceID
@@ -329,6 +368,19 @@ func NewAMQPSink(publisher amqp.Publisher, interval time.Duration) *AMQPSink {
 		journal: journal,
 		relay:   outbox.NewRelay(journal, publisher, interval),
 	}
+}
+
+// WithLogger задаёт логгер жизненного цикла публикации транспортного outbox и
+// возвращает адаптер.
+func (s *AMQPSink) WithLogger(logger observ.Logger) *AMQPSink {
+	s.relay = s.relay.WithLogger(logger)
+	return s
+}
+
+// WithMetrics задаёт приёмник метрик для счётчика отказов публикации.
+func (s *AMQPSink) WithMetrics(metrics observ.Metrics) *AMQPSink {
+	s.relay = s.relay.WithMetrics(metrics)
+	return s
 }
 
 // Publish реализует relay.Sink. Контракт проверяется и записывается в outbox;

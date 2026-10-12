@@ -12,7 +12,7 @@ const ContractName = "content-request"
 // SchemaVersion — текущая версия схемы контракта. Версионирование — semver:
 // MAJOR несовместимо, MINOR добавляет опциональное поле, PATCH уточняет смысл без
 // изменения состава полей.
-const SchemaVersion = "1.0.0"
+const SchemaVersion = "1.1.0"
 
 // ErrRejected — запрос отклонён владельцем по доменной причине (пустой текст,
 // неизвестный формат, недопустимая локаль). Потребитель различает этот отказ от
@@ -43,6 +43,11 @@ type Intent struct {
 	// Body — исходный текст. Для нового пакета обязателен; для существующего
 	// непустой и отличный текст публикует новую версию.
 	Body string
+	// Mode задаёт способ обработки. Пустое значение сохраняет legacy render;
+	// version-only фиксирует точные Subject и Body без задания рендеринга.
+	Mode string `json:"mode,omitempty"`
+	// Subject — точная тема версии в режиме version-only.
+	Subject *string `json:"subject,omitempty"`
 	// Actor — инициатор производства.
 	Actor string
 	// CorrelationID — сквозной сценарий; пусто — владелец берёт RequestID.
@@ -58,6 +63,10 @@ type Result struct {
 	RenderJobID string
 	State       string
 }
+
+const (
+	ModeVersionOnly = "version-only"
+)
 
 // Port — команда производства контента владельцу. ErrRejected — доменный отказ,
 // ErrUnavailable — сбой транспорта или отсутствие контракта.

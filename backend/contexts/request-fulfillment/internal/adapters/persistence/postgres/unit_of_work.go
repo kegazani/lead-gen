@@ -40,7 +40,10 @@ func NewUnitOfWork(pool *pgxpool.Pool) *UnitOfWork {
 // События, накопленные в буфере транзакции, flush-ятся в таблицу outbox до
 // commit, поэтому они фиксируются атомарно с агрегатом. Ошибка fn или запись
 // outbox ведёт к откату.
-func (u *UnitOfWork) WithinTransaction(ctx context.Context, fn func(tx ports.Transaction) error) error {
+func (u *UnitOfWork) WithinTransaction(ctx context.Context, fn func(txCtx context.Context, tx ports.Transaction) error) error {
+	if ports.HasTransactionScope(ctx) {
+		return ports.ErrNestedTransaction
+	}
 	if fn == nil {
 		return errors.New("postgres: WithinTransaction без функции транзакции")
 	}
@@ -50,16 +53,23 @@ func (u *UnitOfWork) WithinTransaction(ctx context.Context, fn func(tx ports.Tra
 	}
 	// После успешного commit повторный Rollback возвращает ErrTxClosed, поэтому
 	// ошибка отката здесь намеренно игнорируется.
-	defer func() { _ = tx.Rollback(ctx) }()
+	defer func() { _ = tx.Rollback(context.WithoutCancel(ctx)) }()
 
-	t := &transaction{requests: NewTx(tx), outbox: &transactionOutbox{journal: newTxJournal(tx)}}
-	if err := fn(t); err != nil {
+	t := &transaction{requests: NewTx(tx), attempts: NewExecutionAttemptRepository(tx), resolutions: NewExecutionResolutionRepository(tx), outbox: &transactionOutbox{journal: newTxJournal(tx)}}
+	txCtx := ports.WithTransactionScope(ctx)
+	if err := txCtx.Err(); err != nil {
 		return err
 	}
-	if err := t.outbox.flush(ctx); err != nil {
+	if err := fn(txCtx, t); err != nil {
 		return err
 	}
-	if err := tx.Commit(ctx); err != nil {
+	if err := t.outbox.flush(txCtx); err != nil {
+		return err
+	}
+	if err := txCtx.Err(); err != nil {
+		return err
+	}
+	if err := tx.Commit(txCtx); err != nil {
 		return fmt.Errorf("postgres: коммит транзакции: %w", err)
 	}
 	return nil
@@ -67,12 +77,21 @@ func (u *UnitOfWork) WithinTransaction(ctx context.Context, fn func(tx ports.Tra
 
 // transaction — фасад над транзакцией: репозиторий и outbox, привязанные к ней.
 type transaction struct {
-	requests *Repository
-	outbox   *transactionOutbox
+	requests    *Repository
+	attempts    *ExecutionAttemptRepository
+	resolutions *ExecutionResolutionRepository
+	outbox      *transactionOutbox
 }
 
-func (t *transaction) Requests() ports.RequestRepository { return t.requests }
-func (t *transaction) Outbox() ports.Outbox              { return t.outbox }
+func (t *transaction) Requests() ports.RequestRepository                   { return t.requests }
+func (t *transaction) Outbox() ports.Outbox                                { return t.outbox }
+func (t *transaction) ExecutionAttempts() ports.ExecutionAttemptRepository { return t.attempts }
+func (t *transaction) ExecutionResolutions() ports.ExecutionResolutionRepository {
+	return t.resolutions
+}
+func (t *transaction) VerifiedRuntimeResolutions() ports.VerifiedRuntimeResolutionWriter {
+	return t.resolutions
+}
 
 // transactionOutbox копит события до flush и записывает их в журнал,
 // привязанный к той же транзакции. Кодирование формы записи общее с

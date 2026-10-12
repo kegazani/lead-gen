@@ -6,6 +6,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"lead-gen/backend/contexts/outreach-orchestration/internal/domain"
+	"lead-gen/contracts/outreach-orchestration/approvedaction"
 )
 
 var testInstant = time.Date(2026, 9, 18, 12, 0, 0, 0, time.UTC)
@@ -194,10 +197,10 @@ func TestApprovedAction_ValidatesChannelByDomainValueObject(t *testing.T) {
 	}
 }
 
-// Ключ идемпотентности approved-action — (tenant_id, draft_id, draft_version).
+// Ключ идемпотентности approved-action — (tenant_id, campaign_id, draft_id, draft_version).
 func TestApprovedAction_IdempotencyKey(t *testing.T) {
 	a := validApprovedAction()
-	if got, want := a.IdempotencyKey(), "tenant-1|draft-1|3"; got != want {
+	if got, want := a.IdempotencyKey(), "tenant-1|camp-1|draft-1|3"; got != want {
 		t.Fatalf("ключ идемпотентности: got %q, want %q", got, want)
 	}
 	b := a
@@ -208,6 +211,49 @@ func TestApprovedAction_IdempotencyKey(t *testing.T) {
 	b.DraftVersion = 4
 	if b.IdempotencyKey() == a.IdempotencyKey() {
 		t.Fatal("новая версия черновика должна менять ключ идемпотентности")
+	}
+	otherCampaign := a
+	otherCampaign.CampaignID = "camp-2"
+	if otherCampaign.IdempotencyKey() == a.IdempotencyKey() {
+		t.Fatal("действие другой кампании должно менять ключ идемпотентности")
+	}
+}
+
+// FromActionApproved строит кампанийно-уникальный идентификатор утверждённого
+// действия: один получатель-черновик в разных кампаниях — разные действия, повтор
+// одного действия — тот же идентификатор.
+func TestFromActionApprovedUsesCampaignScopedIdentity(t *testing.T) {
+	channel, err := domain.ParseActionChannel(domain.ActionChannelEmailName)
+	if err != nil {
+		t.Fatalf("ParseActionChannel: %v", err)
+	}
+	common := domain.ActionApproved{
+		TenantID:     "tenant-1",
+		DraftID:      "info@norbit.ru",
+		DraftVersion: 1,
+		DecisionID:   "dec-1",
+		Channel:      channel,
+		Recipient:    "info@norbit.ru",
+		At:           testInstant,
+	}
+	first := common
+	first.CampaignID = "camp-1"
+	second := common
+	second.CampaignID = "camp-2"
+
+	a := FromActionApproved(first)
+	b := FromActionApproved(second)
+	if a.ApprovedActionID == b.ApprovedActionID {
+		t.Fatalf("идентификаторы разных кампаний совпали: %q", a.ApprovedActionID)
+	}
+	if want := approvedaction.ApprovedActionIdentity("camp-1", "info@norbit.ru", 1); a.ApprovedActionID != want {
+		t.Fatalf("идентификатор кампании 1: got %q, want %q", a.ApprovedActionID, want)
+	}
+	if repeat := FromActionApproved(first); repeat.ApprovedActionID != a.ApprovedActionID {
+		t.Fatalf("повтор действия дал другой идентификатор: %q != %q", repeat.ApprovedActionID, a.ApprovedActionID)
+	}
+	if a.IdempotencyKey() == b.IdempotencyKey() {
+		t.Fatal("действия разных кампаний не должны считаться повтором")
 	}
 }
 

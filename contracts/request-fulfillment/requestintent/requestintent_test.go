@@ -2,11 +2,48 @@ package requestintent_test
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 
 	"lead-gen/contracts/request-fulfillment/requestintent"
 )
+
+// TestSchemaVersionMinorBump — смена схемы наблюдаема: добавлены опциональные
+// purpose и snapshot отправителя.
+func TestSchemaVersionMinorBump(t *testing.T) {
+	if requestintent.SchemaVersion != "1.2.0" {
+		t.Fatalf("SchemaVersion = %q, ожидалась 1.2.0", requestintent.SchemaVersion)
+	}
+}
+
+// TestStatusResultAdditiveSerialization — новые поля аддитивны: старый ответ без
+// них читается, а новый ответ с причиной сбоя сериализуется целиком.
+func TestStatusResultAdditiveSerialization(t *testing.T) {
+	var old requestintent.StatusResult
+	if err := json.Unmarshal([]byte(`{"RequestID":"req-1","Status":"submitted"}`), &old); err != nil {
+		t.Fatalf("старый ответ не читается: %v", err)
+	}
+	if old.Phase != "" || old.ErrorReason != "" || old.ErrorMessage != "" {
+		t.Fatalf("старый ответ не должен нести новых полей: %+v", old)
+	}
+
+	failed := requestintent.StatusResult{
+		RequestID: "req-f", Status: "failed", Phase: "failed",
+		ErrorReason: "search_failed", ErrorMessage: "поиск упал",
+	}
+	raw, err := json.Marshal(failed)
+	if err != nil {
+		t.Fatalf("сериализация: %v", err)
+	}
+	var back requestintent.StatusResult
+	if err := json.Unmarshal(raw, &back); err != nil {
+		t.Fatalf("разбор: %v", err)
+	}
+	if back.ErrorReason != "search_failed" || back.ErrorMessage != "поиск упал" || back.Phase != "failed" {
+		t.Fatalf("round-trip: %+v", back)
+	}
+}
 
 // TestInProcDelegates проверяет, что прямой адаптер передаёт команду и запрос
 // обработчикам и возвращает их результат.

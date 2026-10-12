@@ -1,25 +1,26 @@
 {{- define "content" -}}
 <section class="batch-screen">
-  <h1>Состав пакетов кампании {{.View.CampaignID}}</h1>
+  {{ template "live" .View.Live }}
+  <h1>{{ text "outreach.batch.title" }} {{.View.CampaignID}}</h1>
   {{- with .View.Notice }}<p class="notice" role="alert">{{.}}</p>{{end}}
 
   {{- if .View.Unavailable }}
-  <p class="watermark" role="status">Состав недоступен: хранилище не подключено</p>
+  <p class="watermark" role="status">{{ text "outreach.batch.unavailable" }}</p>
   {{- else }}
   {{- range .View.Batches }}
   <section class="batch">
-    <h2>Пакет: {{.MaterialID}} + {{.SegmentID}}</h2>
-    <p>Число черновиков в пакете: <b>{{.Size}}</b></p>
-    <p>Основание однородности: материал <code>{{.MaterialID}}</code>, сегмент <code>{{.SegmentID}}</code></p>
-    <p>Образец: получатель {{.SampleRecipient}}, канал {{.SampleChannel}}</p>
-    <p class="digest">Digest состава: <code>{{.Digest}}</code></p>
+    <h2>{{ text "outreach.batch.packet" }} {{.MaterialID}} + {{.SegmentID}}</h2>
+    <p>{{ text "outreach.batch.size" }} <b>{{.Size}}</b></p>
+    <p>{{ text "outreach.batch.homogeneity" }} <code>{{.MaterialID}}</code>, {{ text "outreach.batch.segment" }} <code>{{.SegmentID}}</code></p>
+    <p>{{ text "outreach.batch.sample" }} {{.SampleRecipient}}, {{ text "outreach.batch.channel" }} {{.SampleChannel}}</p>
+    <p class="digest">{{ text "outreach.batch.digest" }} <code>{{.Digest}}</code></p>
     <ul class="batch-entries">
     {{- range .Entries }}
-      <li>{{.DraftID}} v{{.Version}} — {{.RecipientID}} / {{.Channel}} (<a href="{{.ScreenURL}}">индивидуально</a>)</li>
+      <li>{{.DraftID}} v{{.Version}} — {{.RecipientID}} / {{.Channel}} (<a href="{{.ScreenURL}}">{{ text "outreach.action.individual" }}</a>)</li>
     {{- end }}
     </ul>
     {{- if .Differences }}
-    <h3>Отличия от образца</h3>
+    <h3>{{ text "outreach.batch.differences" }}</h3>
     <ul class="differences">
     {{- range .Differences }}
       <li>{{.DraftID}}: {{.Field}} {{.From}} → {{.To}}</li>
@@ -36,39 +37,39 @@
       <input type="hidden" name="draft_id" value="{{.DraftID}}">
       <input type="hidden" name="draft_version" value="{{.Version}}">
       {{- end }}
-      <label>Причина (необязательно) <input type="text" name="reason"></label>
-      <button type="submit">Утвердить пакет ({{.Size}})</button>
+      <label>{{ text "outreach.batch.reason" }} <input type="text" name="reason"></label>
+      <button type="submit">{{ text "outreach.batch.approve" }} ({{.Size}})</button>
     </form>
   </section>
   {{- else }}
-  <p class="queue-empty">Пакетов нет: однородных черновиков меньше минимального размера.</p>
+  <p class="queue-empty">{{ text "outreach.batch.empty" }}</p>
   {{- end }}
 
   <section class="excluded">
-    <h2>Исключено из пакета: {{.View.ExcludedCount}}</h2>
+    <h2>{{ text "outreach.batch.excluded" }} {{.View.ExcludedCount}}</h2>
     {{- range .View.Excluded }}
     <p class="excluded-item">
       {{.DraftID}} v{{.Version}} — {{range $i, $r := .Reasons}}{{if $i}}, {{end}}{{$r}}{{end}}
-      (<a href="{{.ScreenURL}}">индивидуально</a>)
+      (<a href="{{.ScreenURL}}">{{ text "outreach.action.individual" }}</a>)
     </p>
     {{- else }}
-    <p>Исключённых черновиков нет.</p>
+    <p>{{ text "outreach.batch.excluded_empty" }}</p>
     {{- end }}
   </section>
 
   {{- if .View.Individual }}
   <section class="individual">
-    <h2>На индивидуальное рассмотрение</h2>
+    <h2>{{ text "outreach.batch.individual" }}</h2>
     <ul>
     {{- range .View.Individual }}
-      <li>{{.DraftID}} v{{.Version}} — {{.RecipientID}} / {{.Channel}} (<a href="{{.ScreenURL}}">открыть</a>)</li>
+      <li>{{.DraftID}} v{{.Version}} — {{.RecipientID}} / {{.Channel}} (<a href="{{.ScreenURL}}">{{ text "outreach.batch.individual_url" }}</a>)</li>
     {{- end }}
     </ul>
   </section>
   {{- end }}
 
   {{- if .View.HasMore }}
-  <p class="notice">Окно не покрыло всю очередь: показана часть состава.</p>
+  <p class="notice">{{ text "outreach.batch.more" }}</p>
   {{- end }}
   {{- end }}
 </section>

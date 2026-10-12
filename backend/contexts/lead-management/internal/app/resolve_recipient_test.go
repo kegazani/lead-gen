@@ -39,6 +39,40 @@ func TestResolveDeliveryTargetRejectsUnknownRef(t *testing.T) {
 	}
 }
 
+// TestResolveDeliveryTargetResolvesCompanyRef проверяет, что ссылка-компания
+// (RecipientRef без контакта с таким id) разрешается в адрес контакта компании —
+// контракт campaign-command использует CompanyID как минимального получателя.
+func TestResolveDeliveryTargetResolvesCompanyRef(t *testing.T) {
+	contacts := newMemContacts()
+	seedContact(contacts, "norbit.ru", "info@norbit.ru", "Общий")
+
+	resolver := &ResolveDeliveryTarget{Contacts: contacts, TenantID: "tenant-1"}
+	recipient, err := resolver.Run(context.Background(), ResolveRecipientInput{
+		TenantID: "tenant-1", RecipientRef: "norbit.ru",
+	})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if recipient.Address != "info@norbit.ru" {
+		t.Fatalf("Address = %q, ожидался info@norbit.ru", recipient.Address)
+	}
+}
+
+// TestResolveDeliveryTargetRejectsCompanyWithoutAddress проверяет, что компания
+// без контакта с адресом — доменный отказ, а не выдуманный адрес.
+func TestResolveDeliveryTargetRejectsCompanyWithoutAddress(t *testing.T) {
+	contacts := newMemContacts()
+	seedContactWithoutEmail(contacts, "norbit.ru", "phone-only")
+
+	resolver := &ResolveDeliveryTarget{Contacts: contacts, TenantID: "tenant-1"}
+	_, err := resolver.Run(context.Background(), ResolveRecipientInput{
+		TenantID: "tenant-1", RecipientRef: "norbit.ru",
+	})
+	if !errors.Is(err, ErrInvalidDeliveryTarget) {
+		t.Fatalf("ошибка = %v, ожидалась ErrInvalidDeliveryTarget", err)
+	}
+}
+
 // TestResolveDeliveryTargetRejectsForeignTenant проверяет изоляцию тенанта: ссылка
 // через резолвер чужого тенанта не разрешается.
 func TestResolveDeliveryTargetRejectsForeignTenant(t *testing.T) {

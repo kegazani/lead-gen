@@ -6,34 +6,47 @@
   <script src="/static/theme.js"></script>
   <title>Задание</title>
   <link rel="stylesheet" href="/static/console.css">
+  <link rel="stylesheet" href="/static/cards.css">
   <script src="/static/htmx.min.js" defer></script>
   <script src="/static/console.js" defer></script>
   <script src="/static/assistant.js" defer></script>
+  <script src="/static/console-a11y.js" defer></script>
 </head>
 <body>
-  <nav class="sidebar">
+  <a class="skip-link" href="#main-content">Перейти к содержимому</a>
+  <nav class="sidebar" aria-label="Основная навигация">
   <ul class="sidebar-list">
-    <li><a href="/validation">Заявки</a></li>
-    <li><a href="/approvals">Исполнение</a></li>
-    <li><a href="/" class="is-active" aria-current="page">Лиды</a></li>
-    <li><a href="/dashboard">Отчёты</a></li>
+    <li><a href="/validation?actor=operator">Заявки</a></li>
+    <li><a href="/approvals?actor=operator">Исполнение</a></li>
+    <li><a href="/?actor=operator" class="is-active" aria-current="page">Лиды</a></li>
+    <li><a href="/dashboard?actor=operator">Отчёты</a></li>
+    <li><a href="/outreach/drafts?actor=operator">Рассылки</a></li>
+    <li><a href="/console/tenant?actor=operator">Тенант</a></li>
+    <li><a href="/console/users?actor=operator">Пользователи</a></li>
+    <li><a href="/console/registrations?actor=operator">Регистрации</a></li>
+    <li><a href="/console/integrations?actor=operator">Интеграции</a></li>
+    <li><a href="/console/audit?actor=operator">Аудит</a></li>
+    <li><a href="/platform/topology?actor=operator">Топология</a></li>
+    <li><a href="/platform/operations?actor=operator">Операции</a></li>
   </ul>
-  <p class="sidebar-group-label">Экраны лидов</p>
-  <ul class="sidebar-list sidebar-list-group">
-    <li><a href="/" class="is-active" aria-current="page">Главная</a></li>
-    <li><a href="/cards">Карточки</a></li>
-    <li><a href="/leads">Лиды</a></li>
-    <li><a href="/funnel">Воронка</a></li>
-    <li><a href="/send">Отправка</a></li>
-    <li><a href="/assistant">Ассистент</a></li>
-    <li><a href="/forum-signals">Форумы</a></li>
-  </ul>
-  <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Тема оформления">
+  <button class="theme-toggle" id="theme-toggle" type="button"
+    aria-label="Тема оформления"
+    data-theme-label-system="Как в системе"
+    data-theme-label-light="Светлая"
+    data-theme-label-dark="Тёмная"
+    data-theme-aria="Тема оформления: %s. Нажмите, чтобы сменить.">
     <span class="theme-toggle-label">Тема</span>
     <b class="theme-toggle-value" data-theme-name>Как в системе</b>
   </button>
 </nav>
-  <main class="page">
+  <main class="page" id="main-content">
+<nav class="tabs">
+  <a class="tab is-active" href="/?actor=operator" aria-current="page">Главная</a>
+  <a class="tab" href="/cards?actor=operator">Карточки</a>
+  <a class="tab" href="/leads?actor=operator">Лиды</a>
+  <a class="tab" href="/funnel?actor=operator">Воронка</a>
+</nav>
+<p class="live-region" id="console-live" role="status" aria-live="polite" aria-atomic="true" aria-label="Объявления" data-live-region></p>
 <header class="page-head">
   <h1>Задание</h1>
 </header>
@@ -43,7 +56,7 @@
     <h2>Запрос</h2>
     <p class="job-query">агентства автоматизации B2B</p>
     <p class="card-source">
-      <span class="status status-done" title="найдено компаний 2">done</span>
+      <span class="status status-done" title="найдено компаний 2">Готово</span>
       <span class="job-id">job-1</span>
     </p>
   </header>
@@ -51,15 +64,70 @@
   <section class="card-section">
     <h3>Сводка</h3>
     <dl class="job-facts">
-      <dt>Создано</dt><dd> 2026-01-02 10:00:00</dd>
-      <dt>Обновлено</dt><dd> 2026-01-02 10:00:00</dd>
+      <dt>Создано</dt><dd> 02.01.2026 10:00</dd>
+      <dt>Обновлено</dt><dd> 02.01.2026 10:00</dd>
       <dt>Найдено компаний</dt><dd> 2</dd>
       <dt>Бюджет</dt><dd> —</dd>
       <dt>Ход</dt><dd> завершение · страниц 12 · компаний 2 · токенов 340</dd>
     </dl>
   </section>
 
-  
+  <section class="card-section">
+    <h3>Сводка отбора</h3>
+    <dl class="job-facts">
+      <dt>Цель по лидам</dt><dd>—</dd>
+      <dt>Найдено</dt><dd>2</dd>
+    </dl>
+
+    <h4>Охват поиска</h4>
+    <dl class="job-facts">
+      <dt>Обойдено страниц</dt><dd>12</dd>
+      <dt>Найдено компаний</dt><dd>2</dd>
+      <dt>Ошибок разбора</dt><dd>0</dd>
+      <dt>Ошибок оценки</dt><dd>0</dd><dt>Токены</dt><dd>340</dd>
+    </dl>
+
+    <h4>Воронка отбора</h4>
+    <ol class="selection-funnel">
+      <li class="funnel-point is-known">
+        <span class="funnel-label">Найдено</span>
+        <span class="funnel-count">2</span>
+      </li>
+      <li class="funnel-point is-known">
+        <span class="funnel-label">Email проверен</span>
+        <span class="funnel-count">0</span>
+      </li>
+      <li class="funnel-point is-known">
+        <span class="funnel-label">Оценено</span>
+        <span class="funnel-count">2</span>
+      </li>
+      <li class="funnel-point is-known">
+        <span class="funnel-label">Подходит</span>
+        <span class="funnel-count">1</span>
+      </li>
+      <li class="funnel-point is-known">
+        <span class="funnel-label">Гипотеза</span>
+        <span class="funnel-count">1</span>
+      </li>
+      <li class="funnel-point is-known">
+        <span class="funnel-label">Не подходит</span>
+        <span class="funnel-count">0</span>
+      </li>
+      <li class="funnel-point is-unavailable">
+        <span class="funnel-label">Писем</span>
+        <span class="funnel-count">недоступно</span>
+      </li>
+      <li class="funnel-point is-unavailable">
+        <span class="funnel-label">Отправлено</span>
+        <span class="funnel-count">недоступно</span>
+      </li>
+      <li class="funnel-point is-unavailable">
+        <span class="funnel-label">Ответили</span>
+        <span class="funnel-count">недоступно</span>
+      </li>
+    </ol>
+  </section>
+
   <section class="card-section">
     <h3>Распределение оценок</h3>
     <dl class="verdict-distribution">
@@ -70,7 +138,29 @@
     <p class="hint"><a class="link" href="/cards?job=job-1">Открыть список результатов по оценкам</a></p>
   </section>
 
-  
+  <section class="card-section">
+    <h3>Причины отсева</h3>
+    <ul class="rejection-categories">
+      <li class="rejection-category">
+        <p class="rejection-head">
+          <a class="link" href="/cards?job=job-1&amp;reason=missing&amp;actor=operator">Гипотеза</a>
+          <span class="count">1</span>
+          <a class="link" href="/cards?job=job-1&amp;reason=missing&amp;actor=operator">К списку</a>
+        </p>
+        <ul class="rejection-groups">
+          <li><a class="link" href="/cards?detail=%D0%BF%D1%80%D1%8F%D0%BC%D0%BE%D0%B5&#43;%D0%B7%D0%B0%D1%8F%D0%B2%D0%BB%D0%B5%D0%BD%D0%B8%D0%B5&#43;%D0%BE&#43;%D0%BF%D0%BE%D1%82%D1%80%D0%B5%D0%B1%D0%BD%D0%BE%D1%81%D1%82%D0%B8&amp;job=job-1&amp;reason=missing&amp;actor=operator">прямое заявление о потребности</a> <span class="count">1</span></li>
+        </ul>
+      </li>
+      <li class="rejection-category">
+        <p class="rejection-head">
+          <a class="link" href="/cards?job=job-1&amp;reason=no-email&amp;actor=operator">нет email / email недоступен</a>
+          <span class="count">2</span>
+          <a class="link" href="/cards?job=job-1&amp;reason=no-email&amp;actor=operator">К списку</a>
+        </p>
+      </li>
+    </ul>
+  </section>
+
   <section class="card-section">
     <h3>Подходящие: основания и источники</h3>
     <ul class="fit-list">
@@ -83,8 +173,8 @@
         <ul class="evidence-list">
   <li class="evidence-item">
     <dl class="evidence-facts">
-      <dt>Критерий</dt><dd>агентства автоматизации B2B-продаж</dd><dt>Факт</dt><dd>компания наняла руководителя отдела продаж</dd><dt>Источник</dt><dd><a class="link" href="https://example.com/careers" rel="noopener noreferrer">https://example.com/careers</a></dd><dt>Объяснение связи</dt><dd>рост отдела продаж указывает на потребность в автоматизации</dd>
-      <dt>Тип сигнала</dt><dd>косвенный сигнал</dd>
+      <dt>Критерий</dt><dd>агентства автоматизации B2B-продаж</dd><dt>Факт</dt><dd>компания наняла руководителя отдела продаж</dd><dt>Объяснение связи</dt><dd>рост отдела продаж указывает на потребность в автоматизации</dd>
+      <dt>Тип сигнала</dt><dd>косвенный сигнал</dd><dt>Источник</dt><dd><a class="link" href="https://example.com/careers" rel="noopener noreferrer">https://example.com/careers</a></dd>
     </dl>
   </li>
 </ul>
@@ -109,17 +199,17 @@
   <section class="card-section">
     <h3>Ход выполнения</h3>
     <ol class="timeline">
-  <li class="timeline-point is-done" data-detail="2026-01-02 10:00:00" title="2026-01-02 10:00:00">
+  <li class="timeline-point is-done" data-detail="02.01.2026 10:00" title="02.01.2026 10:00">
     <span class="timeline-dot" aria-hidden="true"></span>
-    <span class="timeline-label">Поставлено в очередь</span><span class="timeline-detail" role="tooltip">2026-01-02 10:00:00</span>
+    <span class="timeline-label">Поставлено в очередь</span><span class="timeline-detail" role="tooltip">02.01.2026 10:00</span>
   </li>
-  <li class="timeline-point is-done" data-detail="2026-01-02 10:00:00 · обход · страниц 10 · компаний 2" title="2026-01-02 10:00:00 · обход · страниц 10 · компаний 2">
+  <li class="timeline-point is-done" data-detail="02.01.2026 10:00 · обход · страниц 10 · компаний 2" title="02.01.2026 10:00 · обход · страниц 10 · компаний 2">
     <span class="timeline-dot" aria-hidden="true"></span>
-    <span class="timeline-label">Фаза: обход</span><span class="timeline-detail" role="tooltip">2026-01-02 10:00:00 · обход · страниц 10 · компаний 2</span>
+    <span class="timeline-label">Фаза: обход</span><span class="timeline-detail" role="tooltip">02.01.2026 10:00 · обход · страниц 10 · компаний 2</span>
   </li>
-  <li class="timeline-point is-done" data-detail="2026-01-02 10:00:00 · завершение · страниц 12 · компаний 2 · токенов 340" title="2026-01-02 10:00:00 · завершение · страниц 12 · компаний 2 · токенов 340">
+  <li class="timeline-point is-done" data-detail="02.01.2026 10:00 · завершение · страниц 12 · компаний 2 · токенов 340" title="02.01.2026 10:00 · завершение · страниц 12 · компаний 2 · токенов 340">
     <span class="timeline-dot" aria-hidden="true"></span>
-    <span class="timeline-label">Завершено</span><span class="timeline-detail" role="tooltip">2026-01-02 10:00:00 · завершение · страниц 12 · компаний 2 · токенов 340</span>
+    <span class="timeline-label">Завершено</span><span class="timeline-detail" role="tooltip">02.01.2026 10:00 · завершение · страниц 12 · компаний 2 · токенов 340</span>
   </li>
 </ol>
   </section>

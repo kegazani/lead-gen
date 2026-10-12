@@ -27,6 +27,7 @@ func (s *Server) handleDraftQueue(w http.ResponseWriter, r *http.Request) {
 	actor := actorOf(r)
 
 	view := draftQueueView{
+		Live:           consoleLive,
 		TenantID:       tenant,
 		Actor:          actor,
 		CSRF:           csrfOf(r),
@@ -50,7 +51,8 @@ func (s *Server) handleDraftQueue(w http.ResponseWriter, r *http.Request) {
 		view.Unavailable = true
 		s.render(w, http.StatusOK, pageDraftQueue, components.Page{
 			Layout:  components.Layout{Title: "Очередь черновиков"},
-			Sidebar: s.consoleNav(consoleNavDrafts),
+			Sidebar: s.consoleNav(tenant, actor),
+			Subnav:  outreachSubnav(consoleNavDrafts, tenant, actor),
 			View:    view,
 		})
 		return
@@ -80,7 +82,8 @@ func (s *Server) handleDraftQueue(w http.ResponseWriter, r *http.Request) {
 	view.Items = queueRows(items)
 	s.render(w, http.StatusOK, pageDraftQueue, components.Page{
 		Layout:  components.Layout{Title: "Очередь черновиков"},
-		Sidebar: s.consoleNav(consoleNavDrafts),
+		Sidebar: s.consoleNav(tenant, actor),
+		Subnav:  outreachSubnav(consoleNavDrafts, tenant, actor),
 		View:    view,
 	})
 }
@@ -95,12 +98,13 @@ func (s *Server) handleBatchScreen(w http.ResponseWriter, r *http.Request) {
 // renderBatchScreen собирает модель состава и рисует экран.
 func (s *Server) renderBatchScreen(w http.ResponseWriter, r *http.Request, status int, tenant, actor, notice string) {
 	campaignID := r.PathValue("campaignID")
-	view := batchScreenView{TenantID: tenant, Actor: actor, CSRF: csrfOf(r), CampaignID: campaignID, Notice: notice}
+	view := batchScreenView{Live: consoleLive, TenantID: tenant, Actor: actor, CSRF: csrfOf(r), CampaignID: campaignID, Notice: notice}
 	if s.deps.BuildBatch == nil {
 		view.Unavailable = true
 		s.render(w, status, pageBatchScreen, components.Page{
 			Layout:  components.Layout{Title: "Состав пакетов " + campaignID},
-			Sidebar: s.consoleNav(consoleNavDrafts),
+			Sidebar: s.consoleNav(tenant, actor),
+			Subnav:  outreachSubnav(consoleNavDrafts, tenant, actor),
 			View:    view,
 		})
 		return
@@ -127,7 +131,8 @@ func (s *Server) renderBatchScreen(w http.ResponseWriter, r *http.Request, statu
 	view.HasMore = result.HasMore
 	s.render(w, status, pageBatchScreen, components.Page{
 		Layout:  components.Layout{Title: "Состав пакетов " + campaignID},
-		Sidebar: s.consoleNav(consoleNavDrafts),
+		Sidebar: s.consoleNav(tenant, actor),
+		Subnav:  outreachSubnav(consoleNavDrafts, tenant, actor),
 		View:    view,
 	})
 }
@@ -189,6 +194,7 @@ func (s *Server) renderDraftScreen(w http.ResponseWriter, r *http.Request, statu
 	campaignID := r.PathValue("campaignID")
 	draftID := r.PathValue("draftID")
 	view := draftScreenView{
+		Live:     consoleLive,
 		TenantID: tenant, Actor: actor, CSRF: csrfOf(r),
 		CampaignID: campaignID, DraftID: draftID, Notice: notice,
 	}
@@ -196,7 +202,8 @@ func (s *Server) renderDraftScreen(w http.ResponseWriter, r *http.Request, statu
 		view.Unavailable = true
 		s.render(w, status, pageDraftScreen, components.Page{
 			Layout:  components.Layout{Title: "Черновик " + draftID},
-			Sidebar: s.consoleNav(consoleNavDrafts),
+			Sidebar: s.consoleNav(tenant, actor),
+			Subnav:  outreachSubnav(consoleNavDrafts, tenant, actor),
 			View:    view,
 		})
 		return
@@ -217,7 +224,8 @@ func (s *Server) renderDraftScreen(w http.ResponseWriter, r *http.Request, statu
 	}
 	s.render(w, status, pageDraftScreen, components.Page{
 		Layout:  components.Layout{Title: "Черновик " + draftID},
-		Sidebar: s.consoleNav(consoleNavDrafts),
+		Sidebar: s.consoleNav(tenant, actor),
+		Subnav:  outreachSubnav(consoleNavDrafts, tenant, actor),
 		View:    view,
 	})
 }
@@ -355,7 +363,7 @@ func (s *Server) loadDraftItem(r *http.Request, tenant, actor, campaignID, draft
 func (s *Server) handleStalledQueue(w http.ResponseWriter, r *http.Request) {
 	tenant := r.URL.Query().Get("tenant_id")
 	actor := actorOf(r)
-	view := stalledView{TenantID: tenant, Actor: actor}
+	view := stalledView{Live: consoleLive, TenantID: tenant, Actor: actor}
 	if s.deps.StalledDrafts == nil {
 		view.Unavailable = true
 	} else {
@@ -373,7 +381,8 @@ func (s *Server) handleStalledQueue(w http.ResponseWriter, r *http.Request) {
 	}
 	s.render(w, http.StatusOK, pageStalledQueue, components.Page{
 		Layout:  components.Layout{Title: "Зависшие черновики"},
-		Sidebar: s.consoleNav(consoleNavStalled),
+		Sidebar: s.consoleNav(tenant, actor),
+		Subnav:  outreachSubnav(consoleNavStalled, tenant, actor),
 		View:    view,
 	})
 }

@@ -9,6 +9,12 @@ package "Generic" {
   rectangle "Управление платформой\nи доступом\n<<generic>>" as Platform
   rectangle "Управление данными\n<<generic>>" as Governance
   rectangle "Интеграционная платформа\n<<generic, ACL>>" as Integration
+  note right of Integration
+    capability: provider-token-budget
+    primary owner: integration-platform
+    lead-management consumes published LLM
+    budget contract; no foreign domain import
+  end note
 }
 package "Core" {
   rectangle "Управление лидами\n<<core>>" as Leads
@@ -19,6 +25,7 @@ package "Core" {
   rectangle "Оркестрация исходящих\nдействий\n<<core>>" as Outreach
   rectangle "Доставка сообщений\n<<core>>" as Delivery
   rectangle "Исполнение заявок\nклиента\n<<core>>" as Requests
+  rectangle "Оркестрация агентов\nкомпаний\n<<core>>" as Agents
 }
 package "Supporting" {
   rectangle "Производство контента\n<<supporting>>" as Content
@@ -31,8 +38,15 @@ Governance --> Outreach : processing-authority
 Governance --> Delivery : suppression-policy
 Platform --> Outreach : access-decision
 Platform --> Requests : tenant-context
+Platform --> Agents : access-decision
 Leads --> Audience : lead-profile
 Leads --> Requests : lead-profile
+Leads --> Agents : lead-search / email-generation
+Outreach --> Agents : campaign-command
+Delivery --> Agents : delivery-event
+Engagement --> Agents : engagement-event
+Agents --> Analytics : agent-event
+Analytics --> Platform : campaign-report
 Audience --> Outreach : audience-snapshot
 Audience --> Requests : audience-snapshot
 Content --> Outreach : content-version
@@ -40,16 +54,18 @@ Outreach --> Delivery : approved-action
 Delivery --> Engagement : delivery-event
 Engagement --> Outreach : engagement-event
 Outreach --> Requests : campaign-state
+Delivery --> Requests : delivery-event
 Outreach --> Analytics
 Delivery --> Analytics
 Engagement --> Analytics
 Integration ..> Leads : ACL / provider-port
 Integration ..> Content : ACL / provider-port
 Integration ..> Delivery : ACL / provider-port
+Integration --> Platform : adapter-status
 
 legend bottom
   Границы сервисов совпадают с границами bounded contexts:
-  один контекст — один сервис (11 сервисов).
+  один контекст — один сервис (12 сервисов).
   Роли api / ingest / sender / worker / chains / schedule —
   режимы запуска внутри сервиса, а не единицы размещения.
   Консоль топологии — эксплуатационная проекция роли api
@@ -69,4 +85,5 @@ endlegend
 ' CTX:analytics
 ' CTX:integration-platform
 ' CTX:request-fulfillment
+' CTX:agent-orchestration
 @enduml

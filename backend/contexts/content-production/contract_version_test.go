@@ -2,10 +2,12 @@ package contentproduction
 
 import (
 	"context"
+	"errors"
 	"testing"
 
 	"lead-gen/backend/contexts/content-production/internal/app/command"
 	"lead-gen/backend/contexts/content-production/internal/domain"
+	"lead-gen/contracts/content-production/contentrequest"
 	"lead-gen/contracts/content-production/contentversion"
 )
 
@@ -43,6 +45,38 @@ func TestNewContentVersionReturnsMaterialSubject(t *testing.T) {
 	}
 	if version.Body == "" {
 		t.Fatalf("тело материала пусто: %+v", version)
+	}
+}
+
+func TestVersionOnlyPreservesExactTextWithoutRenderAndIsIdempotent(t *testing.T) {
+	ctx := context.Background()
+	slice := buildSlice(t)
+	subject := ""
+	intent := contentrequest.Intent{RequestID: "editorial-version-1", AssetID: "asset-editorial", TenantID: "tenant-1", Language: "ru", Actor: "actor-1", Mode: contentrequest.ModeVersionOnly, Subject: &subject, Body: "  Точный текст\nбез изменений.  "}
+	created, err := NewContentRequest(slice).RequestContent(ctx, intent)
+	if err != nil {
+		t.Fatalf("RequestContent: %v", err)
+	}
+	if created.RenderJobID != "" {
+		t.Fatalf("version-only создал render job: %+v", created)
+	}
+	if jobs, err := slice.RenderJobs.ListPending(ctx, 10); err != nil || len(jobs) != 0 {
+		t.Fatalf("ожидалась пустая render queue, jobs=%d err=%v", len(jobs), err)
+	}
+	version, err := NewContentVersion(slice).Version(ctx, contentversion.Query{AssetID: intent.AssetID, TenantID: intent.TenantID, VersionID: created.VersionID})
+	if err != nil {
+		t.Fatalf("Version: %v", err)
+	}
+	if version.Subject != subject || version.Body != intent.Body {
+		t.Fatalf("текст версии изменён: subject=%q body=%q", version.Subject, version.Body)
+	}
+	replayed, err := NewContentRequest(slice).RequestContent(ctx, intent)
+	if err != nil || replayed.VersionID != created.VersionID {
+		t.Fatalf("повтор: result=%+v err=%v", replayed, err)
+	}
+	intent.Body += " изменено"
+	if _, err := NewContentRequest(slice).RequestContent(ctx, intent); !errors.Is(err, contentrequest.ErrRejected) {
+		t.Fatalf("изменённый повтор должен конфликтовать, получено %v", err)
 	}
 }
 

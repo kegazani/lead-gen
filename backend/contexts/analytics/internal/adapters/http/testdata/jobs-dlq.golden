@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script src="/static/theme.js"></script>
+  <title>Исчерпавшие попытки</title>
+  <link rel="stylesheet" href="/static/console.css">
+  <script src="/static/console-a11y.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main-content">Перейти к содержимому</a>
+  <nav class="sidebar" aria-label="Основная навигация">
+  <ul class="sidebar-list">
+    <li><a href="/validation">Заявки</a></li>
+    <li><a href="/approvals">Исполнение</a></li>
+    <li><a href="/">Лиды</a></li>
+    <li><a href="/dashboard" class="is-active" aria-current="page">Отчёты</a></li>
+    <li><a href="/outreach/drafts">Рассылки</a></li>
+    <li><a href="/console/tenant">Тенант</a></li>
+    <li><a href="/console/users">Пользователи</a></li>
+    <li><a href="/console/registrations">Регистрации</a></li>
+    <li><a href="/console/integrations">Интеграции</a></li>
+    <li><a href="/console/audit">Аудит</a></li>
+    <li><a href="/platform/topology">Топология</a></li>
+    <li><a href="/platform/operations">Операции</a></li>
+  </ul>
+  <button class="theme-toggle" id="theme-toggle" type="button"
+    aria-label="Тема оформления"
+    data-theme-label-system="Как в системе"
+    data-theme-label-light="Светлая"
+    data-theme-label-dark="Тёмная"
+    data-theme-aria="Тема оформления: %s. Нажмите, чтобы сменить.">
+    <span class="theme-toggle-label">Тема</span>
+    <b class="theme-toggle-value" data-theme-name>Как в системе</b>
+  </button>
+</nav>
+  <main class="page" id="main-content">
+<section class="jobs-dlq">
+  <p class="live-region" id="console-live" role="status" aria-live="polite" aria-atomic="true" aria-label="Объявления" data-live-region></p>
+  <h1>Исчерпавшие попытки</h1>
+  <p class="jobs-note">Задания, которые раннер не смог довести до результата за отпущенный бюджет попыток. Повтор возвращает задание в очередь.</p>
+  <table class="table">
+    <caption>Задания к повтору</caption>
+    <thead>
+      <tr>
+        <th>Задание</th>
+        <th>Попыток</th>
+        <th>Причина</th>
+        <th>Обновлено</th>
+        <th>Действие</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="jobs-id">dead-golden</td>
+        <td class="jobs-attempts">2</td>
+        <td class="jobs-reason">Не удалось собрать файл выгрузки</td>
+        <td class="jobs-updated">TIME</td>
+        <td class="jobs-action">
+          <form method="post" action="/reports/exports/dead-golden/retry">
+            <button type="submit">Повторить</button>
+          </form>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+  </main>
+</body>
+</html>

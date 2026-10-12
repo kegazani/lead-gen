@@ -1,10 +1,15 @@
 package httpapi_test
 
 import (
+	"bytes"
 	"context"
+	"errors"
+	"flag"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -17,17 +22,21 @@ import (
 
 // consoleFakeCatalog — управляемый порт чтения адаптеров для тестов консоли.
 type consoleFakeCatalog struct {
-	states []ports.AdapterState
+	states []ports.AdapterStatus
+	err    error
 }
 
 // States реализует ports.AdapterCatalog.
-func (f consoleFakeCatalog) States(context.Context) ([]ports.AdapterState, error) {
-	return f.states, nil
+func (f consoleFakeCatalog) States(context.Context) ([]ports.AdapterStatus, error) {
+	return f.states, f.err
 }
 
-// newConsoleServer собирает сервер консоли с администратором user-1 в тенанте
+// updateGolden перезаписывает золотые файлы экранов при запуске тестов с -update.
+var updateGolden = flag.Bool("update", false, "перезаписать золотые файлы экранов")
+
+// newConsoleSlice собирает срез консоли с администратором user-1 в тенанте
 // tenant-1 и клиентом user-3 в тенанте tenant-2.
-func newConsoleServer(t *testing.T, adapters ports.AdapterCatalog) *httptest.Server {
+func newConsoleSlice(t *testing.T, adapters ports.AdapterCatalog) *platformgovernance.Slice {
 	t.Helper()
 	grantsTable, err := grants.New(map[string][]string{
 		"admin-1": {string(domain.RoleAdmin)},
@@ -40,22 +49,27 @@ func newConsoleServer(t *testing.T, adapters ports.AdapterCatalog) *httptest.Ser
 	if err != nil {
 		t.Fatalf("сборка среза: %v", err)
 	}
-	createTenantForConsole(t, slice, "cmd-1", "tenant-1", "user-1", []string{string(domain.RoleAdmin)})
-	createTenantForConsole(t, slice, "cmd-2", "tenant-2", "user-3", []string{string(domain.RoleClient)})
+	createTenantForConsole(t, slice, "cmd-1", "tenant-1", "ООО Ромашка", "user-1", []string{string(domain.RoleAdmin)})
+	createTenantForConsole(t, slice, "cmd-2", "tenant-2", "ООО Василёк", "user-3", []string{string(domain.RoleClient)})
+	return slice
+}
 
-	server := httptest.NewServer(slice.Server)
+// newConsoleServer собирает сервер консоли поверх собранного среза.
+func newConsoleServer(t *testing.T, adapters ports.AdapterCatalog) *httptest.Server {
+	t.Helper()
+	server := httptest.NewServer(newConsoleSlice(t, adapters).Server)
 	t.Cleanup(server.Close)
 	return server
 }
 
 // createTenantForConsole создаёт тенант консоли с одним пользователем.
-func createTenantForConsole(t *testing.T, slice *platformgovernance.Slice, commandID, tenantID, userID string, roles []string) {
+func createTenantForConsole(t *testing.T, slice *platformgovernance.Slice, commandID, tenantID, company, userID string, roles []string) {
 	t.Helper()
 	if _, err := slice.CreateTenant.Handle(context.Background(), command.CreateTenant{
 		Actor:       "admin-1",
 		CommandID:   commandID,
 		TenantID:    tenantID,
-		CompanyName: "ООО Ромашка",
+		CompanyName: company,
 		Description: "Поставщик промышленного оборудования",
 		UserID:      userID,
 		Login:       "login-" + userID,
@@ -192,25 +206,48 @@ func TestConsoleAuditImmutableAndExport(t *testing.T) {
 }
 
 // TestConsoleIntegrationsUnavailable проверяет честный исход при неподключённом
-// владельце адаптеров: явное сообщение, а не пустой успех.
+// владельце адаптеров: явное сообщение и статус недоступности, а не пустой успех.
 func TestConsoleIntegrationsUnavailable(t *testing.T) {
 	server := newConsoleServer(t, nil)
-	page := body(t, get(t, server, "/console/integrations?tenant_id=tenant-1&actor=user-1"))
+	resp := get(t, server, "/console/integrations?tenant_id=tenant-1&actor=user-1")
+	page := body(t, resp)
+	if resp.StatusCode != http.StatusBadGateway {
+		t.Fatalf("неподключённый владелец = %d, ожидался 502", resp.StatusCode)
+	}
 	if !strings.Contains(page, "Состояние интеграций недоступно") {
 		t.Fatalf("раздел не сообщил о недоступности:\n%s", page)
 	}
 }
 
-// TestConsoleIntegrationsMasked проверяет, что произвольный текст причины не
-// проходит в разметку, а объявленная причина показывается нормализованной.
-func TestConsoleIntegrationsMasked(t *testing.T) {
-	catalog := consoleFakeCatalog{states: []ports.AdapterState{
-		{Name: "crawler", CapabilitySetVersion: "1.2.0", Health: ports.AdapterDown, Reason: ports.AdapterReason("token=supersecret")},
-		{Name: "mail", CapabilitySetVersion: "1.0.0", Health: ports.AdapterDown, Reason: ports.AdapterReasonUnreachable},
+// TestConsoleIntegrationsShowsStates проверяет, что раздел показывает адаптеры
+// с нормализованными состояниями, а несконфигурированный адаптер не выдаётся за
+// «в норме».
+func TestConsoleIntegrationsShowsStates(t *testing.T) {
+	catalog := consoleFakeCatalog{states: []ports.AdapterStatus{
+		{Adapter: "crawler", State: ports.AdapterStateUp},
+		{Adapter: "mail", State: ports.AdapterStateDegraded, Reason: ports.AdapterReasonRateLimited},
+		{Adapter: "smtp", State: "", Reason: ""},
 	}}
 	server := newConsoleServer(t, catalog)
 	page := body(t, get(t, server, "/console/integrations?tenant_id=tenant-1&actor=user-1"))
-	if strings.Contains(page, "supersecret") {
+	for _, want := range []string{"crawler", "работает", "mail", "деградация", "ограничение частоты", "smtp", "неизвестно"} {
+		if !strings.Contains(page, want) {
+			t.Fatalf("раздел не показал %q:\n%s", want, page)
+		}
+	}
+}
+
+// TestConsoleIntegrationsMasked проверяет, что произвольный текст причины и
+// состояния не проходит в разметку, а объявленная причина показывается
+// нормализованной.
+func TestConsoleIntegrationsMasked(t *testing.T) {
+	catalog := consoleFakeCatalog{states: []ports.AdapterStatus{
+		{Adapter: "crawler", State: "weird", Reason: "token=supersecret"},
+		{Adapter: "mail", State: ports.AdapterStateDown, Reason: ports.AdapterReasonUnreachable},
+	}}
+	server := newConsoleServer(t, catalog)
+	page := body(t, get(t, server, "/console/integrations?tenant_id=tenant-1&actor=user-1"))
+	if strings.Contains(page, "supersecret") || strings.Contains(page, "token=") {
 		t.Fatalf("секрет утёк в разметку:\n%s", page)
 	}
 	if !strings.Contains(page, "crawler") || !strings.Contains(page, "mail") {
@@ -218,5 +255,98 @@ func TestConsoleIntegrationsMasked(t *testing.T) {
 	}
 	if !strings.Contains(page, "не отвечает") {
 		t.Fatalf("объявленная причина не показана:\n%s", page)
+	}
+}
+
+// TestConsoleIntegrationsErrorHasNoSecrets проверяет, что текст ошибки владельца
+// не попадает в HTML и сообщение об ошибке экрана.
+func TestConsoleIntegrationsErrorHasNoSecrets(t *testing.T) {
+	const secret = "token=supersecret-value"
+	server := newConsoleServer(t, consoleFakeCatalog{err: errors.New("источник недоступен: " + secret)})
+	resp := get(t, server, "/console/integrations?tenant_id=tenant-1&actor=user-1")
+	page := body(t, resp)
+	if resp.StatusCode != http.StatusBadGateway {
+		t.Fatalf("сбой владельца = %d, ожидался 502", resp.StatusCode)
+	}
+	if strings.Contains(page, secret) || strings.Contains(page, "supersecret") {
+		t.Fatalf("секрет из ошибки утёк в разметку:\n%s", page)
+	}
+	if !strings.Contains(page, "Состояние интеграций недоступно") {
+		t.Fatalf("раздел не сообщил о недоступности:\n%s", page)
+	}
+}
+
+// TestConsoleTenantListsPlatformAttributes проверяет, что экран выбора показывает
+// список тенантов с идентификатором, компанией и состоянием, но без персональных
+// данных пользователей (логинов).
+func TestConsoleTenantListsPlatformAttributes(t *testing.T) {
+	server := newConsoleServer(t, nil)
+	page := body(t, get(t, server, "/console/tenant?tenant_id=tenant-1&actor=user-1"))
+	for _, want := range []string{"tenant-1", "tenant-2", "ООО Ромашка", "ООО Василёк", "активен"} {
+		if !strings.Contains(page, want) {
+			t.Fatalf("список не показал %q:\n%s", want, page)
+		}
+	}
+	for _, pii := range []string{"login-user-1", "login-user-3"} {
+		if strings.Contains(page, pii) {
+			t.Fatalf("экран раскрыл персональные данные %q:\n%s", pii, page)
+		}
+	}
+}
+
+// TestConsoleTenantOffersSwitchFromList проверяет, что экран предлагает выбор
+// через форму переключения (а не ручной ввод) и не предлагает выбрать текущий
+// тенант.
+func TestConsoleTenantOffersSwitchFromList(t *testing.T) {
+	server := newConsoleServer(t, nil)
+	page := body(t, get(t, server, "/console/tenant?tenant_id=tenant-1&actor=user-1"))
+	if !strings.Contains(page, `action="/console/tenant/switch"`) {
+		t.Fatalf("экран не предлагает форму переключения тенанта:\n%s", page)
+	}
+	if !strings.Contains(page, "Текущий") {
+		t.Fatalf("экран не отметил активный тенант:\n%s", page)
+	}
+}
+
+// TestConsoleTenantDeniedForNonAdmin проверяет, что список тенантов закрыт для
+// актора без права управления тенантами: отказ приходит с сервера, а не зависит
+// от видимости пункта навигации.
+func TestConsoleTenantDeniedForNonAdmin(t *testing.T) {
+	server := newConsoleServer(t, nil)
+	resp := get(t, server, "/console/tenant?tenant_id=tenant-2&actor=user-3")
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("клиентский актор = %d, ожидался 403", resp.StatusCode)
+	}
+}
+
+// TestConsoleTenantGolden сравнивает отрисовку экрана выбора тенанта с золотым
+// файлом. Разметка детерминирована (без ключей команд), поэтому сравнение
+// полное. С флагом -update золотой файл перезаписывается.
+func TestConsoleTenantGolden(t *testing.T) {
+	slice := newConsoleSlice(t, nil)
+	req := httptest.NewRequest(http.MethodGet, "/console/tenant?tenant_id=tenant-1&actor=user-1", nil)
+	rec := httptest.NewRecorder()
+	slice.Server.ServeHTTP(rec, req)
+	if rec.Code != http.StatusOK {
+		t.Fatalf("статус экрана = %d, ожидался 200", rec.Code)
+	}
+	got := rec.Body.Bytes()
+	golden := filepath.Join("testdata", "console_tenant.golden")
+	if *updateGolden {
+		if err := os.MkdirAll(filepath.Dir(golden), 0o755); err != nil {
+			t.Fatalf("создание testdata: %v", err)
+		}
+		if err := os.WriteFile(golden, got, 0o644); err != nil {
+			t.Fatalf("запись золотого файла: %v", err)
+		}
+		return
+	}
+	want, err := os.ReadFile(golden)
+	if err != nil {
+		t.Fatalf("чтение золотого файла %s: %v; запустите тест с -update", golden, err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Fatalf("рендер экрана не совпадает с %s\n--- получено ---\n%s\n--- ожидалось ---\n%s", golden, got, want)
 	}
 }

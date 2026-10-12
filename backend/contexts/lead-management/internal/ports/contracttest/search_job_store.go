@@ -61,6 +61,21 @@ func RunSearchJobStoreContract(t *testing.T, newStore SearchJobStoreFactory) {
 		}
 	})
 
+	t.Run("повтор создания задания по идентификатору", func(t *testing.T) {
+		store := newStore(t)
+		payload, err := ports.EncodeSearchJobPayload(ports.SearchJobPayload{Query: "дубль"})
+		if err != nil {
+			t.Fatalf("кодирование запроса: %v", err)
+		}
+		job := jobs.Job{ID: "dup-job", Status: jobs.StatusQueued, Payload: payload, CreatedAt: at(1)}
+		if err := store.Create(ctx, job); err != nil {
+			t.Fatalf("первое Create: %v", err)
+		}
+		if err := store.Create(ctx, job); !errors.Is(err, ports.ErrSearchJobExists) {
+			t.Fatalf("второе Create: ошибка %v не удовлетворяет errors.Is(err, ErrSearchJobExists)", err)
+		}
+	})
+
 	t.Run("пустая очередь", func(t *testing.T) {
 		store := newStore(t)
 		job, err := store.TakeQueued(ctx)

@@ -42,6 +42,7 @@ func (s *DraftStore) SaveDrafts(ctx context.Context, drafts []ports.EmailDraft) 
 			draft.Subject,
 			draft.Body,
 			draft.Language,
+			draft.RecipientRef,
 		); err != nil {
 			return fmt.Errorf("postgres: сохранение черновика %s/%s: %w", draft.RequestID, draft.LeadID, err)
 		}
@@ -61,7 +62,7 @@ func (s *DraftStore) ListByRequest(ctx context.Context, requestID, tenantID stri
 	drafts := make([]ports.EmailDraft, 0)
 	for rows.Next() {
 		draft := ports.EmailDraft{RequestID: requestID, TenantID: tenantID}
-		if err := rows.Scan(&draft.LeadID, &draft.Subject, &draft.Body, &draft.Language); err != nil {
+		if err := rows.Scan(&draft.LeadID, &draft.Subject, &draft.Body, &draft.Language, &draft.RecipientRef); err != nil {
 			return nil, fmt.Errorf("postgres: разбор черновика заявки %s: %w", requestID, err)
 		}
 		drafts = append(drafts, draft)
@@ -77,19 +78,20 @@ const (
 	// Позиция нового черновика — следующий номер заявки; при конфликте по лиду
 	// position не обновляется, поэтому прежнее место сохраняется.
 	upsertEmailDraft = `
-INSERT INTO "request-fulfillment".email_draft (request_id, tenant_id, lead_id, subject, body, language, position)
+INSERT INTO "request-fulfillment".email_draft (request_id, tenant_id, lead_id, subject, body, language, recipient_ref, position)
 VALUES (
-    $1, $2, $3, $4, $5, $6,
+    $1, $2, $3, $4, $5, $6, $7,
     COALESCE((SELECT MAX(position) + 1 FROM "request-fulfillment".email_draft WHERE request_id = $1), 0)
 )
 ON CONFLICT (request_id, lead_id) DO UPDATE SET
-    tenant_id = EXCLUDED.tenant_id,
-    subject   = EXCLUDED.subject,
-    body      = EXCLUDED.body,
-    language  = EXCLUDED.language`
+    tenant_id     = EXCLUDED.tenant_id,
+    subject       = EXCLUDED.subject,
+    body          = EXCLUDED.body,
+    language      = EXCLUDED.language,
+    recipient_ref = EXCLUDED.recipient_ref`
 
 	selectEmailDrafts = `
-SELECT lead_id, subject, body, language
+SELECT lead_id, subject, body, language, recipient_ref
 FROM "request-fulfillment".email_draft
 WHERE request_id = $1 AND tenant_id = $2
 ORDER BY position ASC, lead_id ASC`

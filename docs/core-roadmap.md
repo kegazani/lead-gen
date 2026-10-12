@@ -5,16 +5,29 @@ core», из каких изменений он состоит, в каком п
 подхватывать работу. Это план, а не спецификация: требования живут в
 `openspec/`, канонические границы — в `architecture/domain-catalog.yaml`.
 
-**Статус на 2026-10-03.** Собраны **все одиннадцать сервисов каталога** (сборка в
-`backend/cmd/lead-gen`, `buildService`; `stubService` остался только как честный
-отказ для неизвестного идентификатора). Зрелость контекстов различается — точная
+**Приоритет demo scope (2026-10-12):** перед продолжением общей roadmap выполняется
+ограниченный change [`customer-demo-request-to-emails`](../openspec/changes/customer-demo-request-to-emails/).
+Последовательность — [`docs/e2e-plan.md`](e2e-plan.md): existing registration/profile
+approval → offer/desired leads → approval заявки → реальный тематический crawl → LLM
+emails, видимые оператору на существующем экране. Доставка и отдельное approve писем не
+блокируют результат. Статус
+реализации сверять по change tasks и `docs/implementation-matrix.md`; план не означает
+готовность контура.
+
+**Статус на 2026-10-06.** Модули есть у **всех двенадцати сервисов каталога**; сборка в
+`backend/cmd/lead-gen` (`buildService`) подключена для одиннадцати — модуль
+`agent-orchestration` собран и покрыт тестами, но его проводка в `buildService`
+ещё открыта (задача 7.3 change'а `intelligent-lead-operations`), поэтому группа
+`agents` контуром не запускается (`stubService` — честный отказ для неизвестного
+идентификатора). Зрелость контекстов различается — точная
 фактура по слоям, персистентности и внешним адаптерам в
 [`docs/implementation-matrix.md`](implementation-matrix.md):
 
 - **уровень A — рабочий контур** (домен + app + PostgreSQL + реальная внешняя
   зависимость): `lead-management`, `request-fulfillment`, `integration-platform`;
 - **уровень B** (домен + app + СУБД, внешние связи — заглушки/в процессе):
-  `outreach-orchestration` (PostgreSQL), `platform-governance`, `analytics`;
+  `outreach-orchestration` (PostgreSQL), `platform-governance`, `analytics`,
+  `agent-orchestration` (PostgreSQL + Temporal; проводка в `cmd/lead-gen` открыта);
 - **уровень C — вертикальный срез в памяти** (домен + app + порты + in-memory,
   внешние порты — честные заглушки): `data-governance`, `audience`,
   `content-production`, `message-delivery`, `engagement-observation`.
@@ -60,6 +73,7 @@ importlint, archlint, OpenSpec) зелёный, а контрактные suite 
 | `outreach-orchestration` | `campaign` (есть), `call` | `outreach-approval` (есть), `outreach-sequences`, `outreach-channel-form` | **B** — домен + app + PG, внешние связи in-proc |
 | `message-delivery` | `message`, `sender-reputation` | `outreach-channel-email`, `domain-deliverability` | **C** — срез в памяти |
 | `request-fulfillment` | `request` | `client-request`, `request-validation` | **A** — рабочий контур (PG, Temporal) |
+| `agent-orchestration` | `agent-pipeline`, `agent-run` | `company-agent-orchestration` | **B** — домен + app + PG + Temporal; проводка в `cmd/lead-gen` открыта (7.3) |
 
 Уровни зрелости (A/B/C) и фактура по слоям — [`docs/implementation-matrix.md`](implementation-matrix.md). Статус задач — `tasks.md` соответствующих change'ей.
 
@@ -112,7 +126,7 @@ Core не существует в вакууме. Полный цикл треб
 
 ## 5. Инвентарь изменений OpenSpec
 
-**Текущий факт (2026-10-03).** Собраны все одиннадцать сервисов каталога; заглушек сервисов нет (`stubService` — только честный отказ для неизвестного id). Различие — в глубине: `lead-management`, `request-fulfillment`, `integration-platform` — рабочий контур; `outreach-orchestration`, `platform-governance`, `analytics` — домен + app + СУБД; остальные пять — вертикальные срезы в памяти с заглушками внешних зависимостей (коммит `bab59e6`). Точная фактура — [`docs/implementation-matrix.md`](implementation-matrix.md). Таблица ниже — план; статусы задач уточняются в `tasks.md` соответствующих change'ей.
+**Текущий факт (2026-10-06).** Модули есть у всех двенадцати сервисов каталога; `buildService` в `cmd/lead-gen` собирает все двенадцать (`agent-orchestration` подключён — задача 7.3 change'а `intelligent-lead-operations`). Заглушек сервисов нет (`stubService` — только честный отказ для неизвестного id). Различие — в глубине: `lead-management`, `request-fulfillment`, `integration-platform` — рабочий контур; `outreach-orchestration`, `platform-governance`, `analytics`, `agent-orchestration` — домен + app + СУБД; остальные пять — вертикальные срезы в памяти с заглушками внешних зависимостей (коммит `bab59e6`). Точная фактура — [`docs/implementation-matrix.md`](implementation-matrix.md). Таблица ниже — план; статусы задач уточняются в `tasks.md` соответствующих change'ей.
 
 ### Есть (в работе)
 
@@ -136,6 +150,8 @@ Core не существует в вакууме. Полный цикл треб
 | `migrate-platform-to-go` | 2/27 | каркас |
 | `system-map-and-cpp-baseline` | 14/23 | карта системы |
 | `archive-order-and-rule-deltas` | 0/17 | служебное |
+| `intelligent-lead-operations` | 43/44 | core: `agent-orchestration` + `lead-quality-insights` (`analytics`) + `operations-cockpit` (`platform-governance`); открыт живой прогон 8.3 |
+| `search-quality-feedback` | ✅ | обратная связь анализа в контур поиска: `search-recommendation` (`lead-management`) + read-контракт `lead-relevance` |
 
 ### Нет — нужно создать
 
@@ -177,7 +193,7 @@ Core не существует в вакууме. Полный цикл треб
   рамку, на которой построены 12 capability. Подтвердить до ЭТАПА 1.
 - **Отсутствующие контракты.** Часть межконтекстных связей каталога не имеет
   объявленных контрактов (зафиксировано в `service-per-context`, задачи 3.19 /
-  6.4: покрыто 4 связи из 28). Расширение контрактов — часть этапов, а не
+  6.4: покрыто 4 связи из 49 каталога). Расширение контрактов — часть этапов, а не
   отдельная задача «потом».
 - **schema-per-service не реализована.** Разделение схем и прав СУБД описано
   только в дизайне (`service-per-context` 3.10–3.11). Первый контекст,
@@ -190,7 +206,8 @@ Core не существует в вакууме. Полный цикл треб
 
 ## 8. Масштаб (честно)
 
-- Собраны все одиннадцать сервисов, но большинство — срезы в памяти: без
+- Модули есть у всех двенадцати сервисов (`buildService` в `cmd/lead-gen` собирает
+  все двенадцать), но большинство — срезы в памяти: без
   PostgreSQL и без реальных внешних интеграций (см.
   [`docs/implementation-matrix.md`](implementation-matrix.md)). Это не «нулевая
   база», а «есть что доводить»: персистентность, внешние порты, сквозные сценарии.

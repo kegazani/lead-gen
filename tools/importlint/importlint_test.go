@@ -2,6 +2,7 @@ package main
 
 import (
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -187,6 +188,92 @@ func TestRealTreeClean(t *testing.T) {
 	}
 	if analysis.Files == 0 {
 		t.Fatal("на реальном дереве не разобрано ни одного файла")
+	}
+}
+
+// TestConsoleHTTPAdapterFixtures проверяет правило HTTP-адаптеров консоли на
+// фикстурах: импорт domain/app и прочих внутренних слоёв чужого контекста
+// обнаруживается с отдельной причиной, а корректная фикстура остаётся зелёной.
+func TestConsoleHTTPAdapterFixtures(t *testing.T) {
+	denied := []struct {
+		fixture  string
+		imported string
+	}{
+		{"console_http_to_foreign_domain", "lead-gen/backend/contexts/beta/internal/domain"},
+		{"console_http_to_foreign_app", "lead-gen/backend/contexts/beta/internal/app"},
+		{"console_http_to_foreign_internal", "lead-gen/backend/contexts/beta/internal/ports"},
+	}
+	for _, testCase := range denied {
+		t.Run(testCase.fixture, func(t *testing.T) {
+			root := filepath.Join("testdata", testCase.fixture)
+			analysis, err := analyze(root, defaultModule)
+			if err != nil {
+				t.Fatalf("analyze(%s): %v", root, err)
+			}
+			if len(analysis.Violations) != 1 {
+				t.Fatalf("ожидалось 1 нарушение, получено %d: %+v", len(analysis.Violations), analysis.Violations)
+			}
+			violation := analysis.Violations[0]
+			if violation.Imported != testCase.imported {
+				t.Fatalf("импорт нарушителя: получено %q, ожидалось %q", violation.Imported, testCase.imported)
+			}
+			if !strings.Contains(violation.Reason, "HTTP-адаптер консоли") {
+				t.Fatalf("причина должна ссылаться на правило HTTP-адаптера консоли, получено %q", violation.Reason)
+			}
+		})
+	}
+
+	root := filepath.Join("testdata", "console_http_clean")
+	analysis, err := analyze(root, defaultModule)
+	if err != nil {
+		t.Fatalf("analyze(%s): %v", root, err)
+	}
+	if len(analysis.Violations) != 0 {
+		t.Fatalf("корректный HTTP-адаптер консоли не должен нарушать: %+v", analysis.Violations)
+	}
+}
+
+// TestConsoleHTTPAdapterRule таблично фиксирует границу HTTP-адаптера консоли.
+// Отдельная причина выставляется только для чужого контекста и только для
+// пакета internal/adapters/http; прочие адаптеры и свой контекст не задеты.
+func TestConsoleHTTPAdapterRule(t *testing.T) {
+	consumer := "lead-gen/backend/contexts/alpha"
+	httpAdapter := consumer + "/internal/adapters/http"
+	cases := []struct {
+		name     string
+		importer string
+		imported string
+		console  bool
+		allowed  bool
+	}{
+		{"чужой domain", httpAdapter, "lead-gen/backend/contexts/beta/internal/domain", true, false},
+		{"чужой app", httpAdapter, "lead-gen/backend/contexts/beta/internal/app", true, false},
+		{"чужой ports", httpAdapter, "lead-gen/backend/contexts/beta/internal/ports", true, false},
+		{"чужой adapters", httpAdapter, "lead-gen/backend/contexts/beta/internal/adapters/http", true, false},
+		{"чужое хранилище", httpAdapter, "lead-gen/backend/contexts/beta/internal/adapters/persistence/postgres", true, false},
+		{"чужой корневой пакет", httpAdapter, "lead-gen/backend/contexts/beta", true, false},
+		{"контракт владельца", httpAdapter, "lead-gen/contracts/beta", false, true},
+		{"свой domain", httpAdapter, consumer + "/internal/domain", false, true},
+		{"свой app", httpAdapter, consumer + "/internal/app", false, true},
+		{"platform", httpAdapter, "lead-gen/backend/platform/foo", false, true},
+		{"не HTTP-адаптер", consumer + "/internal/adapters/persistence/memory", "lead-gen/backend/contexts/beta/internal/domain", false, false},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			reason := forbiddenLayer(parseRole(defaultModule, testCase.importer), parseRole(defaultModule, testCase.imported))
+			if testCase.allowed && reason != "" {
+				t.Fatalf("ребро %s -> %s должно быть допустимо, получено %q", testCase.importer, testCase.imported, reason)
+			}
+			if !testCase.allowed && reason == "" {
+				t.Fatalf("ребро %s -> %s должно быть запрещено", testCase.importer, testCase.imported)
+			}
+			if testCase.console && !strings.Contains(reason, "HTTP-адаптер консоли") {
+				t.Fatalf("причина правила консоли: получено %q", reason)
+			}
+			if !testCase.console && strings.Contains(reason, "HTTP-адаптер консоли") {
+				t.Fatalf("правило консоли применено не должно: %q", reason)
+			}
+		})
 	}
 }
 

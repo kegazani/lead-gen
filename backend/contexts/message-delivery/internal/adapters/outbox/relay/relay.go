@@ -137,6 +137,7 @@ func MapDeliveryEvent(event domain.DomainEvent) (deliveryevent.DeliveryEvent, bo
 		})
 		out.MessageID = e.MessageID.String()
 		out.ApprovedActionID = e.ApprovedActionID.String()
+		out.CampaignID = e.CampaignID
 		out.RecipientRef = e.RecipientRef.String()
 		out.SenderDomain = e.SenderDomain.String()
 		out.Outcome = deliveryevent.OutcomeDelivered
@@ -152,6 +153,7 @@ func MapDeliveryEvent(event domain.DomainEvent) (deliveryevent.DeliveryEvent, bo
 		})
 		out.MessageID = e.MessageID.String()
 		out.ApprovedActionID = e.ApprovedActionID.String()
+		out.CampaignID = e.CampaignID
 		out.RecipientRef = e.RecipientRef.String()
 		out.SenderDomain = e.SenderDomain.String()
 		out.Outcome = deliveryevent.OutcomeFailed

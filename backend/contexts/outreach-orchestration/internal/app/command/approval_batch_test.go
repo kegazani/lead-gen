@@ -56,11 +56,11 @@ func riskFor(ids ...domain.DraftID) domain.CanBeDecidedInPackage {
 	for _, id := range ids {
 		marked[id] = struct{}{}
 	}
-	return func(id domain.DraftID, _ int) []domain.RiskReason {
-		if _, ok := marked[id]; ok {
-			return []domain.RiskReason{domain.RiskPersonalDataDetected}
+	return func(_ context.Context, req domain.RiskFactsRequest) ([]domain.RiskReason, error) {
+		if _, ok := marked[req.DraftID]; ok {
+			return []domain.RiskReason{domain.RiskStopRuleTriggered}, nil
 		}
-		return nil
+		return nil, nil
 	}
 }
 
@@ -148,7 +148,7 @@ func TestBuildBatchReturnsCompositionWithExclusions(t *testing.T) {
 	if excluded.DraftID != domain.DraftID("draft-3") {
 		t.Fatalf("исключён не тот черновик: %q", excluded.DraftID)
 	}
-	if len(excluded.Reasons) != 1 || excluded.Reasons[0] != domain.RiskPersonalDataDetected {
+	if len(excluded.Reasons) != 1 || excluded.Reasons[0] != domain.RiskStopRuleTriggered {
 		t.Fatalf("причина исключения: got %v", excluded.Reasons)
 	}
 }
@@ -156,7 +156,7 @@ func TestBuildBatchReturnsCompositionWithExclusions(t *testing.T) {
 func TestBuildBatchBelowMinimumGoesToIndividual(t *testing.T) {
 	kit := newTestKit(t)
 	kit.mustBatchCampaign(t, 1)
-	handler := NewBuildBatchHandler(kit.repo, kit.access, nil)
+	handler := NewBuildBatchHandler(kit.repo, kit.access, riskFor())
 
 	result, err := handler.Handle(context.Background(), buildBatchCommand())
 	if err != nil {
@@ -173,7 +173,7 @@ func TestBuildBatchBelowMinimumGoesToIndividual(t *testing.T) {
 func TestBuildBatchDigestDeterministicAndSensitiveToComposition(t *testing.T) {
 	kit := newTestKit(t)
 	campaign := kit.mustBatchCampaign(t, 3)
-	handler := NewBuildBatchHandler(kit.repo, kit.access, nil)
+	handler := NewBuildBatchHandler(kit.repo, kit.access, riskFor())
 
 	first, err := handler.Handle(context.Background(), buildBatchCommand())
 	if err != nil {
@@ -209,7 +209,7 @@ func TestBuildBatchDeniesWithoutAccess(t *testing.T) {
 	kit := newTestKit(t)
 	kit.mustBatchCampaign(t, 3)
 	kit.access.allowed = false
-	handler := NewBuildBatchHandler(kit.repo, kit.access, nil)
+	handler := NewBuildBatchHandler(kit.repo, kit.access, riskFor())
 
 	if _, err := handler.Handle(context.Background(), buildBatchCommand()); !errors.Is(err, ErrAccessDenied) {
 		t.Fatalf("ожидался отказ доступа, получено %v", err)
@@ -220,13 +220,13 @@ func TestApproveBatchRecordsDecisionsAndEvents(t *testing.T) {
 	kit := newTestKit(t)
 	kit.mustBatchCampaign(t, 3)
 
-	composition, err := NewBuildBatchHandler(kit.repo, kit.access, nil).Handle(context.Background(), buildBatchCommand())
+	composition, err := NewBuildBatchHandler(kit.repo, kit.access, riskFor()).Handle(context.Background(), buildBatchCommand())
 	if err != nil {
 		t.Fatalf("BuildBatch: %v", err)
 	}
 	batch := composition.Batches[0]
 
-	approved, err := NewApproveBatchHandler(kit.access, kit.clock, kit.uow, nil).Handle(context.Background(), ApproveBatch{
+	approved, err := NewApproveBatchHandler(kit.access, kit.clock, kit.uow, riskFor()).Handle(context.Background(), ApproveBatch{
 		CampaignID:  domain.CampaignID("campaign-1"),
 		TenantID:    domain.TenantID("tenant-1"),
 		Actor:       domain.ActorID("operator-1"),
@@ -264,7 +264,7 @@ func TestApproveBatchRejectsDecisionWithoutDigest(t *testing.T) {
 	kit := newTestKit(t)
 	kit.mustBatchCampaign(t, 3)
 
-	_, err := NewApproveBatchHandler(kit.access, kit.clock, kit.uow, nil).Handle(context.Background(), ApproveBatch{
+	_, err := NewApproveBatchHandler(kit.access, kit.clock, kit.uow, riskFor()).Handle(context.Background(), ApproveBatch{
 		CampaignID:  domain.CampaignID("campaign-1"),
 		TenantID:    domain.TenantID("tenant-1"),
 		Actor:       domain.ActorID("operator-1"),
@@ -286,7 +286,7 @@ func TestApproveBatchRejectsUnknownDigest(t *testing.T) {
 	kit := newTestKit(t)
 	kit.mustBatchCampaign(t, 3)
 
-	_, err := NewApproveBatchHandler(kit.access, kit.clock, kit.uow, nil).Handle(context.Background(), ApproveBatch{
+	_, err := NewApproveBatchHandler(kit.access, kit.clock, kit.uow, riskFor()).Handle(context.Background(), ApproveBatch{
 		CampaignID:  domain.CampaignID("campaign-1"),
 		TenantID:    domain.TenantID("tenant-1"),
 		Actor:       domain.ActorID("operator-1"),
@@ -306,7 +306,7 @@ func TestApproveBatchRejectsChangedComposition(t *testing.T) {
 	kit := newTestKit(t)
 	campaign := kit.mustBatchCampaign(t, 3)
 
-	composition, err := NewBuildBatchHandler(kit.repo, kit.access, nil).Handle(context.Background(), buildBatchCommand())
+	composition, err := NewBuildBatchHandler(kit.repo, kit.access, riskFor()).Handle(context.Background(), buildBatchCommand())
 	if err != nil {
 		t.Fatalf("BuildBatch: %v", err)
 	}
@@ -322,7 +322,7 @@ func TestApproveBatchRejectsChangedComposition(t *testing.T) {
 		t.Fatalf("ReviseDraft: %v", err)
 	}
 
-	_, err = NewApproveBatchHandler(kit.access, kit.clock, kit.uow, nil).Handle(context.Background(), ApproveBatch{
+	_, err = NewApproveBatchHandler(kit.access, kit.clock, kit.uow, riskFor()).Handle(context.Background(), ApproveBatch{
 		CampaignID:  domain.CampaignID("campaign-1"),
 		TenantID:    domain.TenantID("tenant-1"),
 		Actor:       domain.ActorID("operator-1"),
@@ -342,12 +342,12 @@ func TestApproveBatchRepeatIsIdempotent(t *testing.T) {
 	kit := newTestKit(t)
 	kit.mustBatchCampaign(t, 3)
 
-	composition, err := NewBuildBatchHandler(kit.repo, kit.access, nil).Handle(context.Background(), buildBatchCommand())
+	composition, err := NewBuildBatchHandler(kit.repo, kit.access, riskFor()).Handle(context.Background(), buildBatchCommand())
 	if err != nil {
 		t.Fatalf("BuildBatch: %v", err)
 	}
 	batch := composition.Batches[0]
-	handler := NewApproveBatchHandler(kit.access, kit.clock, kit.uow, nil)
+	handler := NewApproveBatchHandler(kit.access, kit.clock, kit.uow, riskFor())
 	command := ApproveBatch{
 		CampaignID:  domain.CampaignID("campaign-1"),
 		TenantID:    domain.TenantID("tenant-1"),
@@ -379,14 +379,14 @@ func TestApproveBatchDeniesWithoutAccess(t *testing.T) {
 	kit := newTestKit(t)
 	kit.mustBatchCampaign(t, 3)
 
-	composition, err := NewBuildBatchHandler(kit.repo, kit.access, nil).Handle(context.Background(), buildBatchCommand())
+	composition, err := NewBuildBatchHandler(kit.repo, kit.access, riskFor()).Handle(context.Background(), buildBatchCommand())
 	if err != nil {
 		t.Fatalf("BuildBatch: %v", err)
 	}
 	batch := composition.Batches[0]
 	kit.access.allowed = false
 
-	_, err = NewApproveBatchHandler(kit.access, kit.clock, kit.uow, nil).Handle(context.Background(), ApproveBatch{
+	_, err = NewApproveBatchHandler(kit.access, kit.clock, kit.uow, riskFor()).Handle(context.Background(), ApproveBatch{
 		CampaignID:  domain.CampaignID("campaign-1"),
 		TenantID:    domain.TenantID("tenant-1"),
 		Actor:       domain.ActorID("operator-1"),

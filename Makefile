@@ -2,7 +2,7 @@
 
 # Корневого go.mod больше нет: workspace связан go.work, поэтому цели обходят
 # модули по списку, а не через `go build ./...` из корня.
-MODULES := backend/cmd/lead-gen backend/contexts/analytics backend/contexts/audience backend/contexts/content-production backend/contexts/data-governance backend/contexts/engagement-observation backend/contexts/integration-platform backend/contexts/lead-management backend/contexts/message-delivery backend/contexts/outreach-orchestration backend/contexts/platform-governance backend/contexts/request-fulfillment contracts/audience contracts/content-production contracts/data-governance contracts/engagement-observation contracts/integration-platform contracts/lead-management contracts/message-delivery contracts/outreach-orchestration contracts/request-fulfillment frontend/components frontend/public backend/platform tools/archlint tools/importlint
+MODULES := backend/cmd/lead-gen backend/contexts/agent-orchestration backend/contexts/analytics backend/contexts/audience backend/contexts/content-production backend/contexts/data-governance backend/contexts/engagement-observation backend/contexts/integration-platform backend/contexts/lead-management backend/contexts/message-delivery backend/contexts/outreach-orchestration backend/contexts/platform-governance backend/contexts/request-fulfillment contracts/agent-orchestration contracts/analytics contracts/audience contracts/content-production contracts/data-governance contracts/engagement-observation contracts/integration-platform contracts/lead-management contracts/message-delivery contracts/outreach-orchestration contracts/platform-governance contracts/request-fulfillment frontend/components frontend/public backend/platform tools/archlint tools/importlint
 
 # `go build ./...` для модуля с единственным main-пакетом пишет бинарник в
 # каталог модуля. Цель собирает без вывода (-o /dev/null) и проверяет
@@ -49,7 +49,7 @@ check: build test vet lint arch openspec
 
 # Порт и образ одноразовой базы для контрактных suite PostgreSQL-адаптера.
 PG_TEST_PORT ?= 5433
-PG_TEST_IMAGE ?= postgres:16-alpine
+PG_TEST_IMAGE ?= postgres:17-alpine
 
 # Прогон контрактных suite PostgreSQL-адаптера против одноразовой базы.
 # Требует Docker; база поднимается, дожидается готовности и удаляется после
@@ -65,11 +65,13 @@ test-postgres:
 		sleep 1; \
 	done
 	@DSN='postgres://postgres:postgres@localhost:$(PG_TEST_PORT)/leadgen?sslmode=disable'; \
-	LEADGEN_POSTGRES_TEST_DSN=$$DSN go -C backend/contexts/outreach-orchestration test ./internal/adapters/persistence/postgres/...; \
+	LEADGEN_POSTGRES_TEST_DSN=$$DSN go -C backend/contexts/agent-orchestration test ./internal/adapters/persistence/postgres/...; \
 	status=$$?; \
+	LEADGEN_POSTGRES_TEST_DSN=$$DSN go -C backend/contexts/outreach-orchestration test ./internal/adapters/persistence/postgres/...; \
+	status=$$((status + $$?)); \
 	LEADGEN_POSTGRES_TEST_DSN=$$DSN go -C backend/contexts/lead-management test ./internal/adapters/persistence/postgres/...; \
 	status=$$((status + $$?)); \
-	LEADGEN_POSTGRES_TEST_DSN=$$DSN go -C backend/contexts/request-fulfillment test ./internal/adapters/persistence/postgres/...; \
+	LEADGEN_POSTGRES_TEST_DSN=$$DSN LEADGEN_POSTGRES_TEST_ALLOW_REQUEST_SCHEMA_RESET=1 go -C backend/contexts/request-fulfillment test -count=1 -p=1 ./internal/adapters/persistence/postgres/...; \
 	status=$$((status + $$?)); \
 	LEADGEN_POSTGRES_TEST_DSN=$$DSN go -C backend/contexts/analytics test ./internal/adapters/persistence/postgres/...; \
 	status=$$((status + $$?)); \

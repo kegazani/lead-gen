@@ -1,0 +1,107 @@
+{{- define "process-graph" -}}
+{{- if .Unavailable }}
+<p class="notice" role="status">{{ text "cockpit.process.unavailable" }}</p>
+{{- else if not .HasNodes }}
+<p class="empty">{{ text "cockpit.process.empty" }}</p>
+{{- else }}
+<p class="hint">{{ text "topology.generated_at" }}: {{ formatDateTime .GeneratedAt }}</p>
+<figure class="cockpit-figure">
+  <svg class="cockpit-graph" viewBox="{{ .ViewBox }}" role="img" aria-label="{{ text "cockpit.process.graph.aria" }}" preserveAspectRatio="xMidYMid meet" data-cockpit-graph>
+    <title>{{ text "cockpit.process.graph.aria" }}</title>
+    <g class="cockpit-edges">
+      {{- range .Edges }}
+      <line class="cockpit-edge" x1="{{ .X1 }}" y1="{{ .Y1 }}" x2="{{ .X2 }}" y2="{{ .Y2 }}" data-edge-id="{{ .ID }}"></line>
+      {{- end }}
+    </g>
+    <g class="cockpit-nodes">
+      {{- range .Nodes }}
+      <g class="cockpit-node" data-node-id="{{ .ID }}">
+        <rect class="cockpit-node-box" x="{{ .BoxX }}" y="{{ .BoxY }}" width="210" height="64"></rect>
+        <text class="cockpit-node-label" x="{{ .LabelX }}" y="{{ .LabelY }}">{{ .Label }}</text>
+        <text class="cockpit-node-state" x="{{ .LabelX }}" y="{{ .StateY }}"><tspan aria-hidden="true">{{ .StateIcon }}</tspan> {{ .StateLabel }}</text>
+      </g>
+      {{- end }}
+    </g>
+  </svg>
+</figure>
+
+<h2>{{ text "cockpit.col.workflow" }}</h2>
+<table class="table">
+  <thead>
+    <tr>
+      <th>{{ text "cockpit.col.workflow" }}</th>
+      <th>{{ text "cockpit.col.type" }}</th>
+      <th>{{ text "cockpit.col.state" }}</th>
+      <th>{{ text "cockpit.col.started" }}</th>
+    </tr>
+  </thead>
+  <tbody>
+    {{- range .Executions }}
+    <tr{{ if .Selected }} class="is-active"{{ end }}>
+      <td><a href="{{ .URL }}">{{ .WorkflowID }}</a></td>
+      <td>{{ .Type }}</td>
+      <td><span class="status status-{{ .StatusClass }}"><span aria-hidden="true">{{ .StatusIcon }}</span> {{ .StatusLabel }}</span></td>
+      <td>{{ .StartLabel }}</td>
+    </tr>
+    {{- end }}
+  </tbody>
+</table>
+
+{{- if .HasTimeline }}
+<h2>{{ text "cockpit.process.timeline" }}</h2>
+<figure class="cockpit-figure">
+  <svg class="cockpit-timeline" viewBox="{{ .TimelineBox }}" role="img" aria-label="{{ text "cockpit.process.timeline.aria" }}" preserveAspectRatio="xMidYMid meet">
+    <title>{{ text "cockpit.process.timeline.aria" }}</title>
+    <g class="cockpit-edges">
+      {{- range .TimelineEdges }}
+      <line class="cockpit-edge" x1="{{ .X1 }}" y1="{{ .Y1 }}" x2="{{ .X2 }}" y2="{{ .Y2 }}" data-edge-id="{{ .ID }}"></line>
+      {{- end }}
+    </g>
+    <g class="cockpit-nodes">
+      {{- range .TimelineNodes }}
+      <g class="cockpit-node" data-node-id="{{ .ID }}">
+        <rect class="cockpit-node-box" x="{{ .BoxX }}" y="{{ .BoxY }}" width="210" height="64"></rect>
+        <text class="cockpit-node-label" x="{{ .LabelX }}" y="{{ .LabelY }}">{{ .Label }}</text>
+        <text class="cockpit-node-state" x="{{ .LabelX }}" y="{{ .StateY }}"><tspan aria-hidden="true">{{ .StateIcon }}</tspan> {{ .StateLabel }}</text>
+      </g>
+      {{- end }}
+    </g>
+  </svg>
+</figure>
+<table class="table">
+  <thead>
+    <tr>
+      <th>{{ text "cockpit.col.time" }}</th>
+      <th>{{ text "cockpit.col.kind" }}</th>
+      <th>{{ text "cockpit.col.step" }}</th>
+      <th>{{ text "cockpit.col.outcome" }}</th>
+    </tr>
+  </thead>
+  <tbody>
+    {{- range .Timeline }}
+    <tr>
+      <td>{{ formatDateTime .At }}</td>
+      <td>{{ .KindLabel }}</td>
+      <td>{{ .Name }}</td>
+      <td><span class="status status-{{ .StateClass }}"><span aria-hidden="true">{{ .StateIcon }}</span> {{ .StateLabel }}</span></td>
+    </tr>
+    {{- end }}
+  </tbody>
+</table>
+{{- end }}
+{{- end }}
+{{- end -}}
+
+{{- define "content" -}}
+<section class="cockpit-process">
+  <h1>{{ text "cockpit.title.process" }}</h1>
+  <div id="process-graph"
+       hx-get="{{ .View.FeedURL }}"
+       hx-trigger="every 5s"
+       hx-swap="innerHTML"
+       data-focus-after-swap="#process-graph"
+       data-live-announce="{{ text "cockpit.process.graph.live" }}">
+    {{ template "process-graph" .View }}
+  </div>
+</section>
+{{- end -}}

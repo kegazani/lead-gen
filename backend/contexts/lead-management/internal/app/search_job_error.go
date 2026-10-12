@@ -18,6 +18,8 @@ const (
 	// ErrorCodeInterrupted — задание прервано остановкой процесса (перезапуском)
 	// и исчерпало допустимое число попыток. Отличается от отказа движка.
 	ErrorCodeInterrupted ErrorCode = "lifecycle.interrupted"
+	// ErrorCodeResultSaveFailed — durable-результат задания не удалось сохранить.
+	ErrorCodeResultSaveFailed ErrorCode = "result.save_failed"
 )
 
 // Message возвращает бизнес-формулировку для кода — то, что видит оператор в
@@ -37,6 +39,8 @@ func (c ErrorCode) Message() string {
 		return "Страница не распознана"
 	case ErrorCodeInterrupted:
 		return "Задание прервано перезапуском"
+	case ErrorCodeResultSaveFailed:
+		return "Не удалось сохранить результат поиска"
 	default:
 		return "Ошибка задания"
 	}
@@ -44,7 +48,8 @@ func (c ErrorCode) Message() string {
 
 // SearchJobError — ошибка задания поиска, несущая стабильный код, бизнес-
 // формулировку и техническую деталь. Реализует jobs.CodedError: примитив достаёт
-// код и сообщение, а Error() (техническая деталь) уходит только в лог.
+// код и сообщение, а Error() сохраняет техническую деталь для возврата по цепочке;
+// выводить её в лог можно только после безопасной нормализации.
 type SearchJobError struct {
 	code   ErrorCode
 	detail error
@@ -56,7 +61,8 @@ func newSearchJobError(code ErrorCode, detail error) *SearchJobError {
 	return &SearchJobError{code: code, detail: detail}
 }
 
-// Error возвращает техническую деталь (для лога).
+// Error возвращает исходную техническую деталь для совместимости цепочки ошибки;
+// журналирование должно использовать нормализованное представление.
 func (e *SearchJobError) Error() string {
 	if e.detail != nil {
 		return e.detail.Error()

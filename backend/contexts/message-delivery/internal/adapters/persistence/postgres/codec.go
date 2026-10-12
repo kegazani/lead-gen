@@ -19,6 +19,7 @@ type eventPayload struct {
 	MessageID        string    `json:"message_id"`
 	TenantID         string    `json:"tenant_id"`
 	ApprovedActionID string    `json:"approved_action_id"`
+	CampaignID       string    `json:"campaign_id,omitempty"`
 	RecipientRef     string    `json:"recipient_ref"`
 	SenderDomain     string    `json:"sender_domain"`
 	AttemptNumber    int       `json:"attempt_number"`
@@ -40,6 +41,7 @@ func encodeEvent(event domain.DomainEvent) (string, []byte, error) {
 			MessageID:        e.MessageID.String(),
 			TenantID:         e.TenantID.String(),
 			ApprovedActionID: e.ApprovedActionID.String(),
+			CampaignID:       e.CampaignID,
 			RecipientRef:     e.RecipientRef.String(),
 			SenderDomain:     e.SenderDomain.String(),
 			AttemptNumber:    e.AttemptNumber,
@@ -51,6 +53,7 @@ func encodeEvent(event domain.DomainEvent) (string, []byte, error) {
 			MessageID:        e.MessageID.String(),
 			TenantID:         e.TenantID.String(),
 			ApprovedActionID: e.ApprovedActionID.String(),
+			CampaignID:       e.CampaignID,
 			RecipientRef:     e.RecipientRef.String(),
 			SenderDomain:     e.SenderDomain.String(),
 			AttemptNumber:    e.AttemptNumber,
@@ -85,6 +88,7 @@ func decodeEvent(name string, raw []byte) (domain.DomainEvent, error) {
 			MessageID:        domain.MessageID(payload.MessageID),
 			TenantID:         domain.TenantID(payload.TenantID),
 			ApprovedActionID: domain.ApprovedActionID(payload.ApprovedActionID),
+			CampaignID:       payload.CampaignID,
 			RecipientRef:     domain.RecipientRef(payload.RecipientRef),
 			SenderDomain:     sender,
 			AttemptNumber:    payload.AttemptNumber,
@@ -96,6 +100,7 @@ func decodeEvent(name string, raw []byte) (domain.DomainEvent, error) {
 			MessageID:        domain.MessageID(payload.MessageID),
 			TenantID:         domain.TenantID(payload.TenantID),
 			ApprovedActionID: domain.ApprovedActionID(payload.ApprovedActionID),
+			CampaignID:       payload.CampaignID,
 			RecipientRef:     domain.RecipientRef(payload.RecipientRef),
 			SenderDomain:     sender,
 			AttemptNumber:    payload.AttemptNumber,

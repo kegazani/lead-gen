@@ -1,17 +1,18 @@
 {{- define "content" -}}
 {{- with .View -}}
+{{ template "live" .Live }}
 <header class="page-head">
-  <h1>Ассистент</h1>
-  <p class="hint">Опишите, каких клиентов ищете. Ассистент задаст уточняющие вопросы и соберёт план. Операторские параметры — глубина и время работы в секундах — согласуются в разговоре, а цели, целевое число компаний и лимит поиска можно править прямо в панели плана перед запуском.</p>
+  <h1>{{ text "lead.assistant.title" }}</h1>
+  <p class="hint">{{ text "lead.assistant.hint" }}</p>
 </header>
 
 <section class="panel">
-  <h2>Диалог</h2>
+  <h2>{{ text "lead.assistant.dialogue" }}</h2>
   <ul class="dialogue" data-dialogue aria-live="polite">
   {{- range .Messages }}
     <li class="dialogue-{{.Role}}">{{.Text}}</li>
   {{- else }}
-    <li class="empty">Опишите, каких клиентов ищете, — ассистент задаст уточняющие вопросы.</li>
+    <li class="empty">{{ text "lead.assistant.dialogue_empty" }}</li>
   {{- end }}
   {{- with .Error }}
     <li class="dialogue-error error-text">{{.}}</li>
@@ -29,45 +30,42 @@
     <input type="hidden" name="probeMaxCredits" value="{{.ProbeMaxCredits}}">
 
     <p class="field">
-      <label for="message">Ваш ответ</label>
+      <label for="message">{{ text "lead.assistant.answer" }}</label>
       <textarea id="message" name="message" rows="3">{{.Message}}</textarea>
     </p>
     <p class="actions">
-      <button type="submit" name="action" value="turn">Отправить</button>
-      <button type="submit" name="action" value="launch" class="button-secondary">Запустить краулинг</button>
-      <button type="submit" name="action" value="probe" class="button-secondary">Проверочная сессия</button>
+      <button type="submit" name="action" value="turn">{{ text "lead.assistant.send" }}</button>
+      <button type="submit" name="action" value="launch" class="button-secondary">{{ text "lead.assistant.launch" }}</button>
+      <button type="submit" name="action" value="probe" class="button-secondary">{{ text "lead.assistant.probe" }}</button>
     </p>
     <p class="hint" data-assistant-status role="status"></p>
   </form>
 </section>
 
 <section class="panel" data-interpretation-section>
-  <h2>Как система поняла запрос</h2>
-  {{/* Критерии релевантности — отдельная от технического плана сущность: они
-       отвечают на «почему компания решает задачу». Без данных критерии не
-       выдумываются: показана явная неопределённость или «не определена». */}}
+  <h2>{{ text "lead.assistant.interpret" }}</h2>
   <div data-interpretation-body>
   {{- if .Interpretation.Defined }}
     {{- if .Interpretation.Uncertainty }}
       {{- if .Interpretation.Reason }}
-    <p class="hint" data-interpretation-uncertainty>Не удалось определить критерии: {{.Interpretation.Reason}}</p>
+    <p class="hint" data-interpretation-uncertainty>{{ text "lead.assistant.undetermined" }} {{.Interpretation.Reason}}</p>
       {{- else }}
-    <p class="hint" data-interpretation-uncertainty>Недостаточно данных, чтобы определить признаки потребности. Уточните запрос — критерии не выдумываются.</p>
+    <p class="hint" data-interpretation-uncertainty>{{ text "lead.assistant.uncertain" }}</p>
       {{- end }}
     {{- else }}
     <dl class="interpretation">
-      <dt>Целевой лид</dt><dd data-interpretation="target-lead">{{.Interpretation.TargetLead}}</dd>
-      <dt>Признаки потребности</dt><dd>
+      <dt>{{ text "lead.assistant.target_lead" }}</dt><dd data-interpretation="target-lead">{{.Interpretation.TargetLead}}</dd>
+      <dt>{{ text "lead.assistant.need_signals" }}</dt><dd>
         <ul class="interpretation-list" data-interpretation="need-signals">
         {{- range .Interpretation.NeedSignals }}<li>{{.}}</li>{{ end }}
         </ul>
       </dd>
-      <dt>Исключения</dt><dd>
+      <dt>{{ text "lead.assistant.exclusions" }}</dt><dd>
         <ul class="interpretation-list" data-interpretation="exclusions">
         {{- range .Interpretation.Exclusions }}<li>{{.}}</li>{{ else }}<li class="empty">—</li>{{ end }}
         </ul>
       </dd>
-      <dt>Признаки гипотезы</dt><dd>
+      <dt>{{ text "lead.assistant.hypothesis" }}</dt><dd>
         <ul class="interpretation-list" data-interpretation="hypothesis-signals">
         {{- range .Interpretation.HypothesisSignals }}<li>{{.}}</li>{{ else }}<li class="empty">—</li>{{ end }}
         </ul>
@@ -75,13 +73,13 @@
     </dl>
     {{- end }}
   {{- else }}
-  <p class="hint" data-interpretation-none>Интерпретация не определена.</p>
+  <p class="hint" data-interpretation-none>{{ text "lead.assistant.no_interpretation" }}</p>
   {{- end }}
   </div>
 </section>
 
 <section class="panel" data-plan-section>
-  <h2>Технический план обхода</h2>
+  <h2>{{ text "lead.assistant.plan" }}</h2>
   <ul class="plan-targets" data-plan-targets>
   {{- range .Targets }}
     <li>{{.Kind}}: {{.Value}}</li>
@@ -92,24 +90,21 @@
     <li class="chip"><span class="chip-label">{{.Label}}</span> <span class="chip-value">{{.Value}}</span></li>
   {{- end }}
   </ul>
-  {{/* Панель плана редактируема: оператор правит цели, целевое число компаний и
-       лимит поиска перед подтверждённым запуском. Согласованные в диалоге
-       глубина и время уезжают скрытыми полями и здесь не дублируются. */}}
   <div class="plan-edit" data-plan-edit>
     <p class="field">
-      <label for="targetCompanies">Сколько найти компаний</label>
+      <label for="targetCompanies">{{ text "lead.assistant.companies" }}</label>
       <input id="targetCompanies" name="targetCompanies" type="text" value="{{.TargetCompanies}}">
     </p>
     <p class="field">
-      <label for="maxResults">Результатов на запрос</label>
+      <label for="maxResults">{{ text "lead.assistant.results" }}</label>
       <input id="maxResults" name="maxResults" type="text" value="{{.MaxResults}}">
     </p>
     <p class="field">
-      <label for="manualTargets">Свои цели (по строке — запрос или URL)</label>
+      <label for="manualTargets">{{ text "lead.assistant.targets" }}</label>
       <textarea id="manualTargets" name="manualTargets" rows="3">{{.ManualTargets}}</textarea>
     </p>
   </div>
-  <p class="hint" data-plan-ready{{ if not .Ready }} hidden{{ end }}>Ассистент считает план готовым — можно запускать.</p>
+  <p class="hint" data-plan-ready{{ if not .Ready }} hidden{{ end }}>{{ text "lead.assistant.ready" }}</p>
 </section>
 {{- end -}}
 {{- end -}}

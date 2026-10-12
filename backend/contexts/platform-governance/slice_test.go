@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	"lead-gen/backend/contexts/platform-governance/internal/app/query"
 	"lead-gen/backend/contexts/platform-governance/internal/domain"
 	"lead-gen/backend/contexts/platform-governance/internal/ports"
+	"lead-gen/backend/platform/consoleauth"
 )
 
 // fixedClock — детерминированные часы теста.
@@ -27,6 +29,40 @@ type seqIDs struct{ n int }
 func (s *seqIDs) next(prefix string) string {
 	s.n++
 	return prefix + "-" + strconv.Itoa(s.n)
+}
+
+func TestBuildConsoleAuthRequiresUsernameAndPasswordTogether(t *testing.T) {
+	for _, tc := range []struct {
+		name     string
+		username string
+		password string
+		wantErr  bool
+	}{
+		{name: "username only", username: "operator", wantErr: true},
+		{name: "password only", password: "secret", wantErr: true},
+		{name: "both empty"},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			slice, err := platformgovernance.Build(platformgovernance.Config{
+				ConsoleAuth: consoleauth.Config{Username: tc.username, Password: tc.password},
+			})
+			if tc.wantErr {
+				if err == nil {
+					t.Fatal("неполная console auth конфигурация принята")
+				}
+				if strings.Contains(err.Error(), tc.password) && tc.password != "" {
+					t.Fatalf("ошибка раскрывает секрет: %v", err)
+				}
+				return
+			}
+			if err != nil {
+				t.Fatalf("пустая dev-конфигурация: %v", err)
+			}
+			if slice == nil || slice.Server == nil {
+				t.Fatal("пустая dev-конфигурация не собрала сервис")
+			}
+		})
+	}
 }
 
 func (s *seqIDs) NewTenantID() domain.TenantID { return domain.TenantID(s.next("tenant")) }
@@ -261,8 +297,14 @@ func TestAuditJournal(t *testing.T) {
 func TestRegisterClientPublishes(t *testing.T) {
 	slice := newSlice(t)
 	result, err := slice.RegisterClient.Handle(context.Background(), command.RegisterClient{
-		CompanyName: "ООО Ромашка",
-		Description: "Поставщик промышленного оборудования",
+		CompanyName:  "ООО Ромашка",
+		Description:  "Поставщик промышленного оборудования",
+		Email:        "client@romashka.ru",
+		Password:     "secret",
+		INN:          "7701234567",
+		CompanyEmail: "hello@romashka.ru",
+		Website:      "https://romashka.ru",
+		LegalData:    "ООО «Ромашка», ИНН 7701234567",
 	})
 	if err != nil {
 		t.Fatalf("RegisterClient: %v", err)

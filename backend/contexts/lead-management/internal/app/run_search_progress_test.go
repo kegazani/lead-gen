@@ -82,7 +82,7 @@ func TestProgressCarriesVerdictDistribution(t *testing.T) {
 		t.Fatalf("CreateSearchJob: %v", err)
 	}
 
-	rep := newProgressReporter(store, job.ID, func() time.Time { return testTime }, nil, nil)
+	rep := newProgressReporter(store, job.ID, func() time.Time { return testTime }, nil, nil, nil)
 	rep.crawled(5)
 	rep.found(3)
 	rep.verdicts(ports.VerdictCounts{Fits: 1, Hypothesis: 1, Unsuitable: 1})
@@ -120,7 +120,7 @@ func TestProgressPersistsResultOnFlush(t *testing.T) {
 	}
 
 	var ids []string
-	rep := newProgressReporter(store, job.ID, func() time.Time { return testTime }, nil, nil)
+	rep := newProgressReporter(store, job.ID, func() time.Time { return testTime }, nil, nil, nil)
 	rep.result(func() []string { return ids })
 
 	ids = []string{"a.example"}
@@ -146,5 +146,40 @@ func TestProgressPersistsResultOnFlush(t *testing.T) {
 	}
 	if store.resultWrites != 2 {
 		t.Fatalf("записей результата = %d, ожидалось 2", store.resultWrites)
+	}
+}
+
+func TestRunSearchRecoveryKeepsPriorResultsAndSkipsSatisfiedQuota(t *testing.T) {
+	ctx := context.Background()
+	store := newMemJobs()
+	plan := ports.SearchPlan{Targets: []ports.PlanTarget{{Query: "unused recovery target"}}}
+	job, err := store.CreateSearchJobWithPlan(ctx, "recovery query", plan, 0, 1, 0)
+	if err != nil {
+		t.Fatalf("CreateSearchJobWithPlan: %v", err)
+	}
+	if err := store.RecordResult(ctx, job.ID, []string{"prior.example"}); err != nil {
+		t.Fatalf("RecordResult: %v", err)
+	}
+	searchPort := &fakeSearch{}
+	crawlPort := &fakeCrawl{}
+	run := &RunSearch{
+		Jobs: store, Profiles: newMemProfiles(), Contacts: newMemContacts(),
+		Search: searchPort, Crawl: crawlPort,
+		Clock: fakeClock{t: testTime}, Limits: testCrawlLimits(),
+		Logger: observ.NewLoggerWithWriter(io.Discard), Metrics: observ.NewMetrics(), Tracer: observ.NewTracer("lead-management"),
+	}
+
+	if err := run.Handle(ctx, jobs.Job{ID: job.ID, Payload: store.payload[job.ID]}); err != nil {
+		t.Fatalf("Handle recovered job: %v", err)
+	}
+	if len(searchPort.queries) != 0 || len(crawlPort.requests) != 0 {
+		t.Fatalf("already satisfied recovery triggered search/crawl: %d/%d", len(searchPort.queries), len(crawlPort.requests))
+	}
+	recovered, err := store.GetSearchJob(ctx, job.ID)
+	if err != nil {
+		t.Fatalf("GetSearchJob: %v", err)
+	}
+	if len(recovered.ResultRef) != 1 || recovered.ResultRef[0] != "prior.example" {
+		t.Fatalf("recovery lost previous result refs: %v", recovered.ResultRef)
 	}
 }

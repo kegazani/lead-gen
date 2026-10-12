@@ -94,12 +94,12 @@ func TestBuildBatchCompositionFromWindowMatchesAggregate(t *testing.T) {
 	campaign := kit.mustBatchCampaign(t, 3)
 
 	repository := &windowOnlyRepository{fakeRepository: kit.repo, drafts: campaign.PendingApproval()}
-	viaWindow, err := NewBuildBatchHandler(repository, kit.access, nil).Handle(context.Background(), buildBatchCommand())
+	viaWindow, err := NewBuildBatchHandler(repository, kit.access, riskFor()).Handle(context.Background(), buildBatchCommand())
 	if err != nil {
 		t.Fatalf("Handle: %v", err)
 	}
 
-	viaAggregate, err := campaign.BuildApprovalBatch(batchLimitsForTest(), nil)
+	viaAggregate, err := campaign.BuildApprovalBatch(context.Background(), batchLimitsForTest(), riskFor())
 	if err != nil {
 		t.Fatalf("BuildApprovalBatch: %v", err)
 	}
@@ -145,7 +145,7 @@ func TestBuildBatchReportsWindowContinuation(t *testing.T) {
 		hasMore:        true,
 		next:           next,
 	}
-	handler := NewBuildBatchHandler(repository, kit.access, nil)
+	handler := NewBuildBatchHandler(repository, kit.access, riskFor())
 
 	first, err := handler.Handle(context.Background(), buildBatchCommand())
 	if err != nil {
@@ -193,7 +193,7 @@ func TestBuildBatchRejectsForeignTenant(t *testing.T) {
 	command := buildBatchCommand()
 	command.TenantID = domain.TenantID("tenant-2")
 
-	result, err := NewBuildBatchHandler(kit.repo, kit.access, nil).Handle(context.Background(), command)
+	result, err := NewBuildBatchHandler(kit.repo, kit.access, riskFor()).Handle(context.Background(), command)
 	if !errors.Is(err, ports.ErrCampaignNotFound) {
 		t.Fatalf("чужой тенант: ожидался отказ без раскрытия кампании, получено %v", err)
 	}
@@ -209,7 +209,7 @@ func TestBuildBatchWithoutContinuationIsComplete(t *testing.T) {
 	campaign := kit.mustBatchCampaign(t, 3)
 
 	repository := &windowOnlyRepository{fakeRepository: kit.repo, drafts: campaign.PendingApproval()}
-	result, err := NewBuildBatchHandler(repository, kit.access, nil).Handle(context.Background(), buildBatchCommand())
+	result, err := NewBuildBatchHandler(repository, kit.access, riskFor()).Handle(context.Background(), buildBatchCommand())
 	if err != nil {
 		t.Fatalf("Handle: %v", err)
 	}

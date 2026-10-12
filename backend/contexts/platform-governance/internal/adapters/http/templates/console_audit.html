@@ -1,15 +1,15 @@
 {{- define "content" -}}
 <section class="console-audit">
-  <h1>Журнал аудита</h1>
-  <p class="audit-immutable">Журнал неизменяем: записи нельзя изменить или удалить, корректировка добавляет новую запись.</p>
+  <h1>{{ text "console.audit.title" }}</h1>
+  <p class="audit-immutable">{{ text "console.audit.immutable" }}</p>
   {{- with .View.Notice }}
   <p class="notice" role="status">{{.}}</p>
   {{- end }}
-  <p class="audit-actions"><a href="{{ .View.ExportURL }}">Выгрузить журнал (CSV)</a></p>
+  <p class="audit-actions"><a href="{{ .View.ExportURL }}">{{ text "console.audit.export" }}</a></p>
   {{- if .View.Entries }}
   <table class="table">
     <thead>
-      <tr><th>Время</th><th>Субъект</th><th>Действие</th><th>Объект</th><th>Результат</th><th>Запись</th></tr>
+      <tr><th>{{ text "console.audit.col.at" }}</th><th>{{ text "console.audit.col.actor" }}</th><th>{{ text "console.audit.col.action" }}</th><th>{{ text "console.audit.col.object" }}</th><th>{{ text "console.audit.col.outcome" }}</th><th>{{ text "console.audit.col.record" }}</th></tr>
     </thead>
     <tbody>
       {{- range .View.Entries }}
@@ -19,13 +19,13 @@
         <td>{{ .Action }}</td>
         <td>{{ .Object }}</td>
         <td>{{ .Outcome }}</td>
-        <td>{{ .ID }}{{ if .CorrectionOf }} (корректировка {{ .CorrectionOf }}){{ end }}</td>
+        <td>{{ .ID }}{{ if .CorrectionOf }} ({{ text "console.audit.correction" }} {{ .CorrectionOf }}){{ end }}</td>
       </tr>
       {{- end }}
     </tbody>
   </table>
   {{- else }}
-  <p class="portal-empty">Записей пока нет.</p>
+  <p class="portal-empty">{{ text "console.audit.empty" }}</p>
   {{- end }}
 </section>
 {{- end -}}

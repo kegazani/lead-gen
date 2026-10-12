@@ -7,11 +7,14 @@
 package audience
 
 import (
+	"context"
+
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"lead-gen/backend/contexts/audience/internal/adapters/persistence/postgres"
 	"lead-gen/backend/contexts/audience/internal/ports"
 	platformoutbox "lead-gen/backend/platform/messaging/outbox"
+	"lead-gen/backend/platform/readiness"
 )
 
 // Persistence — набор адаптеров хранилища audience, впрыскиваемых в Config.
@@ -25,6 +28,8 @@ type Persistence struct {
 	UnitOfWork ports.UnitOfWork
 	// Journal — журнал outbox: неопубликованные события переживают рестарт.
 	Journal platformoutbox.Journal
+	// DatabaseProbe проверяет уже собранный пул без бизнес-операций.
+	DatabaseProbe readiness.Probe
 }
 
 // NewPostgresPersistence собирает PostgreSQL-адаптеры хранилища audience поверх
@@ -36,6 +41,12 @@ func NewPostgresPersistence(pool *pgxpool.Pool) Persistence {
 		Snapshots:  postgres.NewSnapshotRepository(pool),
 		UnitOfWork: postgres.NewUnitOfWork(pool),
 		Journal:    postgres.NewJournal(pool),
+		DatabaseProbe: func(ctx context.Context) (readiness.ProbeResult, error) {
+			if err := pool.Ping(ctx); err != nil {
+				return readiness.ProbeResult{}, err
+			}
+			return readiness.ProbeResult{Status: readiness.StatusUp, Reason: readiness.ReasonNone}, nil
+		},
 	}
 }
 

@@ -9,6 +9,10 @@ import "context"
 // сохраняет сообщение и репутацию и добавляет события, не зная, какая транзакция
 // их объединяет. Transaction — узкий фасад над транзакцией, а не тип драйвера БД.
 type Transaction interface {
+	// CampaignCancelled проверяет durable cancellation fence в рамках той же
+	// транзакции, в которой резервируется отправка.
+	CampaignCancelled(ctx context.Context, tenantID, campaignID string) (bool, error)
+
 	// Messages возвращает репозиторий сообщений в этой транзакции.
 	Messages() MessageRepository
 

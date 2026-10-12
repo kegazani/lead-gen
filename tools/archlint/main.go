@@ -440,21 +440,21 @@ func validateDiagrams(root string, catalog Catalog) []string {
 	return problems
 }
 
-func run(root, catalogPath, schemaPath string) (Catalog, []string) {
+func run(root, catalogPath, schemaPath string) (Catalog, InfrastructureConfig, []string) {
 	var rawCatalog any
 	var schema map[string]any
 	if err := loadJSON(catalogPath, &rawCatalog); err != nil {
-		return Catalog{}, []string{err.Error()}
+		return Catalog{}, InfrastructureConfig{}, []string{err.Error()}
 	}
 	if err := loadJSON(schemaPath, &schema); err != nil {
-		return Catalog{}, []string{err.Error()}
+		return Catalog{}, InfrastructureConfig{}, []string{err.Error()}
 	}
 	problems := validateSchema(rawCatalog, schema, schema, "$")
 	var catalog Catalog
 	data, _ := json.Marshal(rawCatalog)
 	if err := json.Unmarshal(data, &catalog); err != nil {
 		problems = append(problems, err.Error())
-		return catalog, problems
+		return catalog, InfrastructureConfig{}, problems
 	}
 	capabilities, err := discoverCapabilities(root)
 	if err != nil {
@@ -467,13 +467,21 @@ func run(root, catalogPath, schemaPath string) (Catalog, []string) {
 	problems = append(problems, validateServiceModules(root, catalog)...)
 	problems = append(problems, validateContextRoles(catalog)...)
 	problems = append(problems, validateRelationshipTransports(catalog)...)
-	deploy, err := loadDeploy(filepath.Join(root, "deploy", "services.yaml"))
-	if err != nil {
+	var deploy DeployConfig
+	if loaded, err := loadDeploy(filepath.Join(root, "deploy", "services.yaml")); err != nil {
 		problems = append(problems, err.Error())
 	} else {
+		deploy = loaded
 		problems = append(problems, validateDeploy(catalog, deploy)...)
 	}
-	return catalog, problems
+	var infrastructure InfrastructureConfig
+	if loaded, err := loadInfrastructure(filepath.Join(root, "deploy", "infrastructure.yaml")); err != nil {
+		problems = append(problems, err.Error())
+	} else {
+		infrastructure = loaded
+		problems = append(problems, validateInfrastructure(catalog, deploy, infrastructure)...)
+	}
+	return catalog, infrastructure, problems
 }
 
 func defaultRoot() string {
@@ -506,7 +514,7 @@ func main() {
 	if schemaPath == "" {
 		schemaPath = filepath.Join(root, "architecture", "domain-catalog.schema.json")
 	}
-	catalog, problems := run(root, catalogPath, schemaPath)
+	catalog, infrastructure, problems := run(root, catalogPath, schemaPath)
 	if len(problems) > 0 {
 		fmt.Fprintf(os.Stderr, "archlint: найдено ошибок: %d\n", len(problems))
 		for _, problem := range problems {
@@ -515,6 +523,6 @@ func main() {
 		os.Exit(1)
 	}
 	capabilities, _ := discoverCapabilities(root)
-	fmt.Printf("archlint: OK — контекстов: %d, агрегатов: %d, сущностей: %d, capability: %d, связей: %d\n",
-		len(catalog.Contexts), len(catalog.Aggregates), len(catalog.Entities), len(capabilities), len(catalog.Relationships))
+	fmt.Printf("archlint: OK — контекстов: %d, агрегатов: %d, сущностей: %d, capability: %d, связей: %d, инфраструктурных узлов: %d\n",
+		len(catalog.Contexts), len(catalog.Aggregates), len(catalog.Entities), len(capabilities), len(catalog.Relationships), len(infrastructure.Nodes))
 }

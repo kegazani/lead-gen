@@ -1,0 +1,15 @@
+{{- define "content" -}}
+<section class="reset auth-shell">
+  <div class="auth-card">
+    <h1>{{ text "portal.reset.title" }}</h1>
+    {{- with .View.Notice }}
+    <p class="notice" role="status">{{.}}</p>
+    {{- end }}
+    <form method="post" action="/reset" class="auth-form auth-form--narrow">
+      <p class="hint">{{ text "portal.reset.hint" }}</p>
+      <button type="submit">{{ text "portal.reset.submit" }}</button>
+    </form>
+    <p class="auth-cta"><a href="/login">{{ text "portal.reset.back_to_login" }}</a></p>
+  </div>
+</section>
+{{- end -}}

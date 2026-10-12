@@ -45,15 +45,17 @@ type requestRenderBody struct {
 
 // produceBody — тело команды производства контента по контракту content-request.
 type produceBody struct {
-	RequestID  string `json:"request_id"`
-	AssetID    string `json:"asset_id"`
-	TenantID   string `json:"tenant_id"`
-	Language   string `json:"language"`
-	Region     string `json:"region,omitempty"`
-	Format     string `json:"format"`
-	TemplateID string `json:"template_id"`
-	Body       string `json:"body,omitempty"`
-	Actor      string `json:"actor"`
+	RequestID  string  `json:"request_id"`
+	AssetID    string  `json:"asset_id"`
+	TenantID   string  `json:"tenant_id"`
+	Language   string  `json:"language"`
+	Region     string  `json:"region,omitempty"`
+	Format     string  `json:"format"`
+	TemplateID string  `json:"template_id"`
+	Body       string  `json:"body,omitempty"`
+	Mode       string  `json:"mode,omitempty"`
+	Subject    *string `json:"subject,omitempty"`
+	Actor      string  `json:"actor"`
 
 	CorrelationID string `json:"correlation_id,omitempty"`
 	CausationID   string `json:"causation_id,omitempty"`
@@ -191,10 +193,18 @@ func (s *Server) handleProduce(w http.ResponseWriter, r *http.Request) {
 		writeErrorMessage(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	format, err := domain.ParseRenderFormat(body.Format)
-	if err != nil {
-		writeDomainError(w, err)
-		return
+	var format domain.RenderFormat
+	if body.Mode != "version-only" {
+		parsed, err := domain.ParseRenderFormat(body.Format)
+		if err != nil {
+			writeDomainError(w, err)
+			return
+		}
+		format = parsed
+	}
+	subject := ""
+	if body.Subject != nil {
+		subject = *body.Subject
 	}
 	result, err := s.deps.ProduceContent.Handle(r.Context(), command.ProduceContent{
 		RequestID:     body.RequestID,
@@ -205,6 +215,8 @@ func (s *Server) handleProduce(w http.ResponseWriter, r *http.Request) {
 		Format:        format,
 		TemplateID:    domain.TemplateID(body.TemplateID),
 		Body:          body.Body,
+		Mode:          body.Mode,
+		Subject:       subject,
 		Actor:         domain.ActorID(body.Actor),
 		CorrelationID: domain.CorrelationID(body.CorrelationID),
 		CausationID:   domain.CausationID(body.CausationID),

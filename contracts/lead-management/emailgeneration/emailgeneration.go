@@ -30,7 +30,9 @@ const ContractName = "email-generation"
 
 // SchemaVersion — текущая версия схемы контракта. Версионирование — semver:
 // MAJOR несовместимо, MINOR добавляет опциональное поле, PATCH уточняет смысл.
-const SchemaVersion = "1.0.0"
+// 1.1.0 — в ответ добавлена непрозрачная ссылка на получателя (`RecipientRef`);
+// 1.2.0 — добавлен необязательный SenderCompany.
+const SchemaVersion = "1.2.0"
 
 // ErrRejected — запрос генерации отклонён по доменной причине владельца
 // (например, пустой оффер или несуществующий лид). Потребитель различает этот
@@ -58,6 +60,24 @@ type Request struct {
 	Language string
 	// Tone — желаемый тон письма. Пусто — тон по умолчанию.
 	Tone string
+	// SenderCompany — необязательный безопасный снимок компании-отправителя.
+	SenderCompany *SenderCompany
+}
+
+// SenderCompany — DTO владельца email-generation, не импортирующий типы
+// request-fulfillment или platform-governance.
+type SenderCompany struct {
+	CompanyName string                  `json:"company_name"`
+	Website     string                  `json:"website"`
+	Description string                  `json:"description"`
+	Services    []SenderServiceSnapshot `json:"services"`
+}
+
+// SenderServiceSnapshot — публичное описание услуги отправителя.
+type SenderServiceSnapshot struct {
+	Name  string `json:"name"`
+	Short string `json:"short"`
+	Full  string `json:"full"`
 }
 
 // Validate проверяет обязательные поля запроса и называет все нарушения разом.
@@ -84,6 +104,10 @@ type Email struct {
 	Body string
 	// Language — язык письма. Может быть пустым.
 	Language string
+	// RecipientRef — непрозрачная ссылка на получателя письма: идентификатор
+	// контакта лида с пригодным адресом, а не сам адрес. Заполнена только при
+	// наличии такого контакта и пуста иначе. Персональных данных не несёт.
+	RecipientRef string
 }
 
 // Port — команда генерации владельцу. Реализация читает лида, строит промпт из

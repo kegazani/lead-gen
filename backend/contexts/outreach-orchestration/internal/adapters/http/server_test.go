@@ -18,10 +18,12 @@ import (
 	outboxinmemory "lead-gen/backend/contexts/outreach-orchestration/internal/adapters/outbox/inmemory"
 	persistence "lead-gen/backend/contexts/outreach-orchestration/internal/adapters/persistence/inmemory"
 	"lead-gen/backend/contexts/outreach-orchestration/internal/app/command"
+	appeditorial "lead-gen/backend/contexts/outreach-orchestration/internal/app/editorialreview"
 	"lead-gen/backend/contexts/outreach-orchestration/internal/app/query"
 	"lead-gen/backend/contexts/outreach-orchestration/internal/domain"
 	"lead-gen/backend/contexts/outreach-orchestration/internal/ports"
 	"lead-gen/backend/platform/consoleauth"
+	"lead-gen/contracts/content-production/contentversion"
 )
 
 const (
@@ -42,12 +44,13 @@ func (c fixedClock) Now() time.Time { return c.now }
 
 // testFixture — собранный срез: HTTP-сервер и наблюдаемые зависимости.
 type testFixture struct {
-	server  *httptest.Server
-	api     *Server
-	repo    *persistence.Repository
-	journal *outboxinmemory.Journal
-	keys    *idempotency.Store
-	access  *access.Decider
+	server    *httptest.Server
+	api       *Server
+	repo      *persistence.Repository
+	journal   *outboxinmemory.Journal
+	keys      *idempotency.Store
+	access    *access.Decider
+	editorial *appeditorial.Service
 }
 
 // newFixture собирает срез на настоящих адаптерах: in-memory репозитории,
@@ -55,7 +58,13 @@ type testFixture struct {
 // хранилище ключей идемпотентности. Тест идёт через реальный HTTP-адаптер.
 func newFixture(t *testing.T) *testFixture {
 	t.Helper()
-	return newFixtureWithRisk(t, nil)
+	return newFixtureWithRisk(t, noRiskFacts)
+}
+
+// noRiskFacts — тестовый двойник внешнего предиката риска: черновики без
+// признаков. Только тест: на продуктовом пути предикат собирает NewRiskFacts.
+func noRiskFacts(context.Context, domain.RiskFactsRequest) ([]domain.RiskReason, error) {
+	return nil, nil
 }
 
 // testBatchLimits — лимиты пакета для интеграционных сценариев HTTP. Минимум
@@ -66,7 +75,8 @@ func testBatchLimits() domain.BatchLimits {
 }
 
 // newFixtureWithRisk собирает тот же срез, но с заданным внешним предикатом
-// риска: nil означает «рисков нет», как и в домене.
+// риска. nil-предикат домен трактует как недоступность фактов, поэтому тест обязан
+// задать его явно (например, noRiskFacts).
 func newFixtureWithRisk(t *testing.T, risk domain.CanBeDecidedInPackage) *testFixture {
 	t.Helper()
 
@@ -79,28 +89,44 @@ func newFixtureWithRisk(t *testing.T, risk domain.CanBeDecidedInPackage) *testFi
 	clock := fixedClock{now: testNow()}
 	keys := idempotency.NewStore()
 
+	editorial := appeditorial.New(persistence.NewEditorialStore(), testContentVersions{}, clock.Now)
 	server := NewServer(Dependencies{
-		CreateCampaign: command.NewCreateCampaignHandler(decider, uow),
-		DraftAction:    command.NewDraftActionHandler(decider, clock, uow),
-		ApproveDraft:   command.NewApproveDraftHandler(decider, clock, uow),
-		RejectDraft:    command.NewRejectDraftHandler(decider, clock, uow),
-		ReviseDraft:    command.NewReviseDraftHandler(decider, clock, uow),
-		PostponeDraft:  command.NewPostponeDraftHandler(decider, uow),
-		ApprovalQueue:  query.NewApprovalQueueHandler(repo, decider),
-		DraftDecision:  query.NewDraftDecisionHandler(repo, decider),
-		BatchQueue:     query.NewBatchQueueHandler(repo, risk, decider),
-		BuildBatch:     command.NewBuildBatchHandler(repo, decider, risk),
-		ApproveBatch:   command.NewApproveBatchHandler(decider, clock, uow, risk),
-		DraftQueue:     query.NewDraftQueueHandler(repo, repo, risk, decider),
-		StalledDrafts:  query.NewStalledDraftsHandler(repo, repo, decider),
-		BatchLimits:    testBatchLimits(),
-		CommandKeys:    keys,
-		Auth:           consoleauth.Config{Username: "operator-1", Password: "secret"},
+		CreateCampaign:   command.NewCreateCampaignHandler(decider, uow),
+		DraftAction:      command.NewDraftActionHandler(decider, clock, uow),
+		ApproveDraft:     command.NewApproveDraftHandler(decider, clock, uow),
+		RejectDraft:      command.NewRejectDraftHandler(decider, clock, uow),
+		ReviseDraft:      command.NewReviseDraftHandler(decider, clock, uow),
+		PostponeDraft:    command.NewPostponeDraftHandler(decider, uow),
+		ApprovalQueue:    query.NewApprovalQueueHandler(repo, decider),
+		DraftDecision:    query.NewDraftDecisionHandler(repo, decider),
+		BatchQueue:       query.NewBatchQueueHandler(repo, risk, decider),
+		BuildBatch:       command.NewBuildBatchHandler(repo, decider, risk),
+		ApproveBatch:     command.NewApproveBatchHandler(decider, clock, uow, risk),
+		DraftQueue:       query.NewDraftQueueHandler(repo, repo, risk, decider),
+		StalledDrafts:    query.NewStalledDraftsHandler(repo, repo, decider),
+		Handoff:          command.NewSubmitHandoffHandler(decider, clock, uow),
+		EditorialHandoff: editorial,
+		EditorialReview:  editorial,
+		CancelRequest:    command.NewCancelRequestHandler(uow),
+		SubmitApproval:   command.NewSubmitForApprovalHandler(clock, uow),
+		ApprovedAction:   query.NewApprovedActionHandler(repo),
+		BatchLimits:      testBatchLimits(),
+		CommandKeys:      keys,
+		Auth:             consoleauth.Config{Username: "operator-1", Password: "secret"},
 	})
 
 	httpServer := httptest.NewServer(server)
 	t.Cleanup(httpServer.Close)
-	return &testFixture{server: httpServer, api: server, repo: repo, journal: uow.Journal(), keys: keys, access: decider}
+	return &testFixture{server: httpServer, api: server, repo: repo, journal: uow.Journal(), keys: keys, access: decider, editorial: editorial}
+}
+
+type testContentVersions struct{ contentversion.Source }
+
+func (testContentVersions) Version(_ context.Context, q contentversion.Query) (contentversion.Version, error) {
+	if q.TenantID != "tenant-1" || q.AssetID != "asset-http" || q.VersionID != "version-http" {
+		return contentversion.Version{}, contentversion.ErrNotFound
+	}
+	return contentversion.Version{AssetID: q.AssetID, VersionID: q.VersionID, Subject: "Точная тема", Body: "Точный текст письма"}, nil
 }
 
 // doJSON выполняет HTTP-запрос с JSON-телом и возвращает ответ и его тело.

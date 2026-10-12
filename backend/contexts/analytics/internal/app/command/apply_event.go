@@ -30,19 +30,29 @@ type ApplyEvent struct {
 	Segment    string
 	CampaignID string
 	ManagerID  string
+
+	// Поля исхода классификации (kind = lead-assessment): задание, вердикт и
+	// категория причины. Необязательны для прочих видов событий; питают проекцию
+	// качества поиска, а не дашборд клиента.
+	JobID   string
+	Verdict string
+	Reason  string
 }
 
 // ApplyEventHandler — use case применения события к read-модели.
 type ApplyEventHandler struct {
-	model *readmodel.ReadModel
-	store ports.ProjectionStore
+	model    *readmodel.ReadModel
+	store    ports.ProjectionStore
+	outcomes *ApplyOutcomeHandler
 }
 
 // NewApplyEventHandler собирает use case поверх проекции. store необязателен:
 // без хранилища проекция остаётся в памяти процесса (dev и тесты); с хранилищем
-// состояние компании записывается на носитель и переживает рестарт.
-func NewApplyEventHandler(model *readmodel.ReadModel, store ports.ProjectionStore) *ApplyEventHandler {
-	return &ApplyEventHandler{model: model, store: store}
+// состояние компании записывается на носитель и переживает рестарт. outcomes
+// необязателен: без него события классификации ведут к честной недоступности
+// проекции качества поиска.
+func NewApplyEventHandler(model *readmodel.ReadModel, store ports.ProjectionStore, outcomes *ApplyOutcomeHandler) *ApplyEventHandler {
+	return &ApplyEventHandler{model: model, store: store, outcomes: outcomes}
 }
 
 // Handle нормализует команду в событие проекции, применяет его и, если задано
@@ -54,6 +64,24 @@ func NewApplyEventHandler(model *readmodel.ReadModel, store ports.ProjectionStor
 // применение (доставка at-least-once) или отклонить. Само применение к проекции
 // идемпотентно по снимку, поэтому повтор не искажает счётчики.
 func (h *ApplyEventHandler) Handle(ctx context.Context, cmd ApplyEvent) error {
+	// Событие классификации питает отдельную проекцию качества поиска: вердикты и
+	// причины не искажают воронку клиентского дашборда и учитываются раздельно.
+	if readmodel.Kind(cmd.Kind) == readmodel.KindLeadAssessment {
+		if h.outcomes == nil {
+			return ErrInsightUnavailable
+		}
+		return h.outcomes.Handle(ctx, ApplyOutcome{
+			TenantID:   cmd.TenantID,
+			JobID:      cmd.JobID,
+			CompanyID:  cmd.CompanyID,
+			Source:     cmd.Source,
+			Industry:   cmd.Industry,
+			Verdict:    cmd.Verdict,
+			Reason:     cmd.Reason,
+			OccurredAt: cmd.OccurredAt,
+		})
+	}
+
 	event := readmodel.Event{
 		TenantID:   cmd.TenantID,
 		Kind:       readmodel.Kind(cmd.Kind),

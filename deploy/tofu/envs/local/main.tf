@@ -39,15 +39,103 @@ locals {
     }
   ]
 
-  # Цели Prometheus: роль api каждого процесса слушает :8080 внутри контейнера.
-  scrape_targets = [for process in local.processes : "${var.name_prefix}-${process.name}:8080"]
+  # Цели Prometheus: процесс-уровневый слушатель /metrics (-metrics-addr) слушает
+  # :8092 внутри контейнера; скрейпится именно он, а не api-роль (:8080).
+  scrape_targets = [for process in local.processes : "${var.name_prefix}-${process.name}:8092"]
+
+  runtime_generation = var.verified_secret_generation != "" ? var.verified_secret_generation : var.active_secret_generation
+  volume_project     = "${var.name_prefix}-${var.environment}-${var.deployment_id}"
+
+  intake_runtime_paths = {
+    request     = "/run/secrets/${local.runtime_generation}/request-runtime-dsn"
+    consoleauth = "/run/secrets/${local.runtime_generation}/consoleauth-runtime-dsn"
+    vector      = "/run/secrets/${local.runtime_generation}/vector-runtime-dsn"
+  }
+  intake_runtime_env = {
+    LEADGEN_DB_POLICY                    = "runtime-only"
+    LEADGEN_REQUEST_RUNTIME_DSN_FILE     = local.intake_runtime_paths.request
+    LEADGEN_CONSOLEAUTH_RUNTIME_DSN_FILE = local.intake_runtime_paths.consoleauth
+    LEADGEN_VECTOR_RUNTIME_DSN_FILE      = local.intake_runtime_paths.vector
+    LEADGEN_CANDIDATE_MANIFEST_FILE      = "/run/leadgen-release/active-candidate.json"
+    LEADGEN_CANDIDATE_PUBLIC_KEY_FILE    = "/run/leadgen-trust/active/trusted-release.pub"
+    LEADGEN_RELEASE_TRUST_KEY_ID         = var.release_trust_key_id
+  }
+  runtime_secret_sources = {
+    (local.intake_runtime_paths.request)     = "${local.secret_dir}/intake-request-runtime-dsn"
+    (local.intake_runtime_paths.consoleauth) = "${local.secret_dir}/intake-consoleauth-runtime-dsn"
+    (local.intake_runtime_paths.vector)      = "${local.secret_dir}/intake-vector-runtime-dsn"
+  }
+  console_runtime_path = "/run/secrets/${local.runtime_generation}/console-password"
+  console_secret_mount = { (local.console_runtime_path) = "${local.secret_dir}/console-password" }
+  console_groups       = ["core", "demand", "intake", "platform"]
+  intake_db_jobs = {
+    request-provision = {
+      operation = "provision"
+      target    = "request-fulfillment"
+      secret_files = {
+        "/run/secrets/bootstrap-dsn"     = "${local.secret_dir}/request-bootstrap-dsn"
+        "/run/secrets/migrator-password" = "${local.secret_dir}/request-migrator-password"
+        "/run/secrets/runtime-password"  = "${local.secret_dir}/request-runtime-password"
+      }
+    }
+    request-migrate = {
+      operation    = "migrate"
+      target       = "request-fulfillment"
+      secret_files = { "/run/secrets/migration-dsn" = "${local.secret_dir}/request-migration-dsn" }
+    }
+    consoleauth-provision = {
+      operation = "provision"
+      target    = "consoleauth"
+      secret_files = {
+        "/run/secrets/bootstrap-dsn"     = "${local.secret_dir}/consoleauth-bootstrap-dsn"
+        "/run/secrets/migrator-password" = "${local.secret_dir}/consoleauth-migrator-password"
+        "/run/secrets/runtime-password"  = "${local.secret_dir}/consoleauth-runtime-password"
+      }
+    }
+    consoleauth-migrate = {
+      operation    = "migrate"
+      target       = "consoleauth"
+      secret_files = { "/run/secrets/migration-dsn" = "${local.secret_dir}/consoleauth-migration-dsn" }
+    }
+    integration-platform-provision = {
+      operation = "provision"
+      target    = "integration-platform"
+      secret_files = {
+        "/run/secrets/bootstrap-dsn"               = "${local.secret_dir}/integration-platform-bootstrap-dsn"
+        "/run/secrets/migrator-password"           = "${local.secret_dir}/integration-platform-migrator-password"
+        "/run/secrets/runtime-password"            = "${local.secret_dir}/integration-platform-runtime-password"
+        "/run/secrets/additional-runtime-password" = "${local.secret_dir}/intake-vector-runtime-password"
+      }
+    }
+    integration-platform-migrate = {
+      operation    = "migrate"
+      target       = "integration-platform"
+      secret_files = { "/run/secrets/migration-dsn" = "${local.secret_dir}/integration-platform-migration-dsn" }
+    }
+  }
+  effective_process_env = merge(
+    var.process_env,
+    { for group in local.console_groups : group => merge(lookup(var.process_env, group, {}), {
+      CONSOLE_USER          = "admin"
+      CONSOLE_PASSWORD_FILE = local.console_runtime_path
+    }) },
+    { intake = merge(lookup(var.process_env, "intake", {}), local.intake_runtime_env, {
+      CONSOLE_USER          = "admin"
+      CONSOLE_PASSWORD_FILE = local.console_runtime_path
+    }) },
+  )
+  effective_process_secret_files = merge(
+    var.process_secret_files,
+    { for group in local.console_groups : group => merge(local.console_secret_mount, lookup(var.process_secret_files, group, {})) },
+    { intake = merge(local.runtime_secret_sources, local.console_secret_mount, lookup(var.process_secret_files, "intake", {})) },
+  )
 }
 
 module "network" {
   source = "../../modules/network"
 
   name   = var.network_name
-  labels = { "lead-gen.environment" = "local" }
+  labels = { "lead-gen.environment" = var.environment }
 }
 
 module "secrets" {
@@ -91,13 +179,35 @@ module "observability" {
 module "app" {
   source = "../../modules/app"
 
-  processes    = local.processes
-  network_name = module.network.name
-  name_prefix  = var.name_prefix
+  processes                   = local.processes
+  secret_source_dir           = local.secret_dir
+  release_state_volume        = var.release_state_volume
+  release_trust_volume        = var.release_trust_volume
+  release_trust_key_id        = var.release_trust_key_id
+  docker_host                 = var.docker_host
+  docker_daemon_id            = var.docker_daemon_id
+  environment                 = var.environment
+  deployment_id               = var.deployment_id
+  active_secret_generation    = var.active_secret_generation
+  active_secret_generations   = var.active_secret_generations
+  candidate_secret_generation = var.candidate_secret_generation
+  verified_secret_generation  = var.verified_secret_generation
+  attestation_path            = var.attestation_path
+  activation_target           = var.activation_target
+  secret_generations          = var.secret_generations
+  external_secret_generations = var.external_secret_generations
+  volume_project              = local.volume_project
+  process_env                 = local.effective_process_env
+  process_secret_files        = local.effective_process_secret_files
+  db_jobs                     = merge(local.intake_db_jobs, var.db_jobs)
+  network_name                = module.network.name
+  network_id                  = module.network.id
+  name_prefix                 = var.name_prefix
 
-  build         = var.build_image
-  build_context = local.build_context
-  image_name    = var.image_name
+  build                 = var.build_image
+  build_context         = local.build_context
+  image_name            = var.image_name
+  prebuilt_image_digest = var.image_digest
 
   # Конфигурация монтируется только на чтение.
   config_source = "${local.deploy_dir}/services.yaml"

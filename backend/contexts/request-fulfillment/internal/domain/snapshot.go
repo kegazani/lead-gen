@@ -23,11 +23,12 @@ type OfferSnapshot struct {
 
 // TransitionSnapshot — сохранённая запись перехода статуса.
 type TransitionSnapshot struct {
-	From   RequestStatus
-	To     RequestStatus
-	Actor  ActorID
-	At     time.Time
-	Reason string
+	From       RequestStatus
+	To         RequestStatus
+	Actor      ActorID
+	At         time.Time
+	Reason     string
+	ReasonCode string
 }
 
 // RequestSnapshot — полное сохранённое состояние aggregate root request.
@@ -44,8 +45,13 @@ type RequestSnapshot struct {
 	CampaignID         CampaignID
 	DealID             DealID
 	CallID             CallID
-	ValidationDecision *ValidationDecisionSnapshot
-	Transitions        []TransitionSnapshot
+	// ExecutionHistoryKnown добавлено как явный маркер современных snapshots.
+	// Отсутствующее значение в legacy JSON остаётся false, а не выводится из статуса.
+	ExecutionHistoryKnown bool                   `json:",omitempty"`
+	ExecutionPurpose      string                 `json:"ExecutionPurpose,omitempty"`
+	SenderCompany         *SenderCompanySnapshot `json:"SenderCompany,omitempty"`
+	ValidationDecision    *ValidationDecisionSnapshot
+	Transitions           []TransitionSnapshot
 }
 
 // Snapshot возвращает состояние агрегата для сохранения.
@@ -57,26 +63,30 @@ func (r *Request) Snapshot() RequestSnapshot {
 	transitions := make([]TransitionSnapshot, 0, len(r.transitions))
 	for _, t := range r.transitions {
 		transitions = append(transitions, TransitionSnapshot{
-			From:   t.from,
-			To:     t.to,
-			Actor:  t.actor,
-			At:     t.at,
-			Reason: t.reason,
+			From:       t.from,
+			To:         t.to,
+			Actor:      t.actor,
+			At:         t.at,
+			Reason:     t.reason,
+			ReasonCode: t.reasonCode,
 		})
 	}
 	return RequestSnapshot{
-		ID:                 r.id,
-		TenantID:           r.tenantID,
-		Status:             r.status,
-		Version:            r.version,
-		Offer:              r.offer.Snapshot(),
-		OfferHistory:       history,
-		AudienceSnapshotID: r.audienceSnapshotID,
-		CampaignID:         r.campaignID,
-		DealID:             r.dealID,
-		CallID:             r.callID,
-		ValidationDecision: decisionSnapshot(r.validationDecision),
-		Transitions:        transitions,
+		ID:                    r.id,
+		TenantID:              r.tenantID,
+		Status:                r.status,
+		Version:               r.version,
+		Offer:                 r.offer.Snapshot(),
+		OfferHistory:          history,
+		AudienceSnapshotID:    r.audienceSnapshotID,
+		CampaignID:            r.campaignID,
+		DealID:                r.dealID,
+		CallID:                r.callID,
+		ExecutionHistoryKnown: r.executionHistoryKnown,
+		ExecutionPurpose:      persistedExecutionPurpose(r.executionPurpose),
+		SenderCompany:         cloneSenderCompany(r.senderCompany),
+		ValidationDecision:    decisionSnapshot(r.validationDecision),
+		Transitions:           transitions,
 	}
 }
 
@@ -103,6 +113,10 @@ func RehydrateRequest(s RequestSnapshot) (*Request, error) {
 	}
 	if !s.Status.isValid() {
 		return nil, fmt.Errorf("%w: %q у заявки %s", ErrUnknownRequestStatus, s.Status, s.ID)
+	}
+	purpose := normalizeExecutionPurpose(s.ExecutionPurpose)
+	if purpose != ExecutionPurposeDelivery && purpose != ExecutionPurposeEditorial {
+		return nil, fmt.Errorf("%w: заявка %s: недопустимый purpose %q", ErrInvalidSnapshot, s.ID, purpose)
 	}
 	if s.Version <= 0 {
 		return nil, fmt.Errorf("%w: заявка %s версии %d", ErrInvalidSnapshot, s.ID, s.Version)
@@ -148,11 +162,12 @@ func RehydrateRequest(s RequestSnapshot) (*Request, error) {
 			return nil, fmt.Errorf("%w: заявка %s: переход без времени", ErrInvalidSnapshot, s.ID)
 		}
 		transitions = append(transitions, Transition{
-			from:   ts.From,
-			to:     ts.To,
-			actor:  ts.Actor,
-			at:     ts.At,
-			reason: ts.Reason,
+			from:       ts.From,
+			to:         ts.To,
+			actor:      ts.Actor,
+			at:         ts.At,
+			reason:     ts.Reason,
+			reasonCode: ts.ReasonCode,
 		})
 		last = ts.To
 	}
@@ -169,19 +184,32 @@ func RehydrateRequest(s RequestSnapshot) (*Request, error) {
 	}
 
 	return &Request{
-		id:                 s.ID,
-		tenantID:           s.TenantID,
-		status:             s.Status,
-		offer:              offer,
-		offerHistory:       history,
-		audienceSnapshotID: s.AudienceSnapshotID,
-		campaignID:         s.CampaignID,
-		dealID:             s.DealID,
-		callID:             s.CallID,
-		validationDecision: decision,
-		transitions:        transitions,
-		version:            s.Version,
+		id:                    s.ID,
+		tenantID:              s.TenantID,
+		status:                s.Status,
+		offer:                 offer,
+		offerHistory:          history,
+		audienceSnapshotID:    s.AudienceSnapshotID,
+		campaignID:            s.CampaignID,
+		dealID:                s.DealID,
+		callID:                s.CallID,
+		executionHistoryKnown: s.ExecutionHistoryKnown,
+		executionPurpose:      purpose,
+		senderCompany:         cloneSenderCompany(s.SenderCompany),
+		validationDecision:    decision,
+		transitions:           transitions,
+		version:               s.Version,
 	}, nil
+}
+
+// Не добавляем синтетическое значение delivery в legacy snapshot: отсутствие
+// поля сохраняет побайтно прежнюю форму JSON и читается как delivery.
+func persistedExecutionPurpose(purpose string) string {
+	purpose = normalizeExecutionPurpose(purpose)
+	if purpose == ExecutionPurposeDelivery {
+		return ""
+	}
+	return purpose
 }
 
 // rehydrateDecision восстанавливает решение валидации и сверяет его со статусом:

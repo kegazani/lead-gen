@@ -1,8 +1,8 @@
 {{- define "cards-group" -}}
 {{- range . }}
   {{- $verdict := .VerdictClass }}
-  <a class="cards-item{{ if .NoEmail }} is-no-email{{ end }}" href="/cards/{{.ID}}" data-group="{{.Group}}"{{ if .NoEmail }} aria-label="{{.Name}} — нет email"{{ end }}>
-    <span class="card-email">{{ if .Email }}{{.Email}}{{ else }}<span class="card-no-email">нет email</span>{{ end }}</span>
+  <a class="cards-item{{ if .NoEmail }} is-no-email{{ end }}" href="/cards/{{.ID}}" data-group="{{.Group}}"{{ if .NoEmail }} aria-label="{{.Name}}{{ text "lead.job.no_email_aria" }}"{{ end }}>
+    <span class="card-email">{{ if .Email }}{{.Email}}{{ else }}<span class="card-no-email">{{ text "lead.company.no_email" }}</span>{{ end }}</span>
     <span class="card-name">{{.Name}}</span>
     {{- with .VerdictLabel }}<span class="card-verdict verdict verdict-{{$verdict}}">{{.}}</span>{{ end }}
     <span class="card-desc">{{.ShortDescription}}</span>
@@ -12,44 +12,53 @@
 
 {{- define "content" -}}
 {{- with .View -}}
+{{ template "live" .Live }}
 <header class="page-head">
-  <h1>Карточки</h1>
+  <h1>{{ text "lead.cards.title" }}</h1>
   {{- if .JobScoped }}
-  <p class="hint">Состав по оценкам задания</h1>: {{.JobQuery}} <span class="job-id">{{.JobID}}</span></p>
+  <p class="hint">{{ text "lead.cards.job_scoped" }}: {{.JobQuery}} <span class="job-id">{{.JobID}}</span></p>
   {{- end }}
 </header>
 
 <section class="panel">
-  {{/* Две независимые оси: состав результатов (по умолчанию «Подходящие»,
-       вторая группа — переключением) и представление «плитки/строки». Обе оси
-       работают на одном контейнере через разные атрибуты, поэтому не влияют друг
-       на друга. Без JavaScript список остаётся читаемым: показаны «Подходящие» в
-       плитках, отрисованных сервером. */}}
+  {{- with .Filter }}
+  <p class="cards-filter" role="status">
+    <span>{{ text "lead.cards.filter.title" }}: {{.Label}}</span>
+    <a class="link" href="{{.Href}}">{{ text "lead.cards.filter.clear" }}</a>
+  </p>
+  {{- end }}
   <div class="cards-toolbar">
-    <div class="composition-switch" role="group" aria-label="Состав результатов">
-      <button type="button" class="view-option is-active" data-composition-set="fits" aria-pressed="true">Подходящие</button>
-      <button type="button" class="view-option" data-composition-set="other" aria-pressed="false">Неподходящие и гипотезы</button>
+    <div class="composition-switch" role="group" aria-label="{{ text "lead.cards.composition_aria" }}">
+      <button type="button" class="view-option{{ if not .Filter }} is-active{{ end }}" data-composition-set="fits" aria-pressed="{{ if not .Filter }}true{{ else }}false{{ end }}">{{ text "lead.verdict.fits" }} <span class="count">{{.Counts.Fits}}</span></button>
+      <button type="button" class="view-option" data-composition-set="hypothesis" aria-pressed="false">{{ text "lead.verdict.hypothesis" }} <span class="count">{{.Counts.Hypothesis}}</span></button>
+      <button type="button" class="view-option" data-composition-set="unsuitable" aria-pressed="false">{{ text "lead.verdict.unsuitable" }} <span class="count">{{.Counts.Unsuitable}}</span></button>
+      <button type="button" class="view-option" data-composition-set="unassessed" aria-pressed="false">{{ text "lead.verdict.unassessed" }} <span class="count">{{.Counts.Unassessed}}</span></button>
     </div>
-    <div class="view-switch" role="group" aria-label="Вид списка карточек">
-      <button type="button" class="view-option is-active" data-view-set="tiles" aria-pressed="true">Плитки</button>
-      <button type="button" class="view-option" data-view-set="rows" aria-pressed="false">Строки</button>
+    <div class="view-switch" role="group" aria-label="{{ text "lead.cards.view_aria" }}">
+      <button type="button" class="view-option is-active" data-view-set="tiles" aria-pressed="true">{{ text "lead.cards.tiles" }}</button>
+      <button type="button" class="view-option" data-view-set="rows" aria-pressed="false">{{ text "lead.cards.rows" }}</button>
     </div>
   </div>
 
-  {{/* Одна модель карточки на оба представления и оба состава: вид переключает
-       атрибут data-cards-view, состав — data-cards-composition. Обе группы
-       остаются в разметке, вторая не удаляется. */}}
-  <div class="cards" data-cards-view="tiles" data-cards-composition="fits">
+  <div class="cards" data-cards-view="tiles" data-cards-composition="{{ if .Filter }}filter{{ else }}fits{{ end }}"{{ if .Filter }} data-cards-filter="true"{{ end }}>
     {{ template "cards-group" .Fits }}
-    {{ template "cards-group" .Other }}
-    {{- if and (not .Fits) (not .Other) }}
-    <p class="empty">Карточек пока нет</p>
+    {{ template "cards-group" .Hypothesis }}
+    {{ template "cards-group" .Unsuitable }}
+    {{ template "cards-group" .Unassessed }}
+    {{- if and (not .Fits) (not .Hypothesis) (not .Unsuitable) (not .Unassessed) }}
+    <p class="empty">{{ text "lead.cards.empty" }}</p>
     {{- else }}
     {{- if not .Fits }}
-    <p class="empty cards-empty" data-group="fits">Подходящих компаний пока нет</p>
+    <p class="empty cards-empty" data-group="fits">{{ text "lead.cards.fits_empty" }}</p>
     {{- end }}
-    {{- if not .Other }}
-    <p class="empty cards-empty" data-group="other">Неподходящих компаний и гипотез пока нет</p>
+    {{- if not .Hypothesis }}
+    <p class="empty cards-empty" data-group="hypothesis">{{ text "lead.cards.hypothesis_empty" }}</p>
+    {{- end }}
+    {{- if not .Unsuitable }}
+    <p class="empty cards-empty" data-group="unsuitable">{{ text "lead.cards.unsuitable_empty" }}</p>
+    {{- end }}
+    {{- if not .Unassessed }}
+    <p class="empty cards-empty" data-group="unassessed">{{ text "lead.cards.unassessed_empty" }}</p>
     {{- end }}
     {{- end }}
   </div>

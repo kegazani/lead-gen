@@ -25,6 +25,12 @@ const (
 	SectionAudit Section = "audit"
 	// SectionTopology — раздел «Топология сервисов» (только администратор).
 	SectionTopology Section = "topology"
+	// SectionOperations — раздел «Операции»: экран операций платформы целиком
+	// (цифры процесса, лента агентов, граф процессов, дашборд).
+	SectionOperations Section = "operations"
+	// SectionRegistrations — раздел «Регистрации»: заявки на регистрацию и
+	// профили компании на согласовании.
+	SectionRegistrations Section = "registrations"
 )
 
 // Action — действие над разделом консоли.
@@ -64,6 +70,13 @@ var sectionActionRights = map[Section]map[Action]domain.Right{
 	},
 	SectionTopology: {
 		ActionView: domain.RightManageTenants,
+	},
+	SectionOperations: {
+		ActionView: domain.RightManageTenants,
+	},
+	SectionRegistrations: {
+		ActionView:   domain.RightManageTenants,
+		ActionManage: domain.RightManageTenants,
 	},
 }
 

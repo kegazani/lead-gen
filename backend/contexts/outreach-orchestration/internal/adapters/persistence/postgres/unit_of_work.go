@@ -59,6 +59,7 @@ func (u *UnitOfWork) WithinTransaction(ctx context.Context, fn func(tx ports.Tra
 	t := &transaction{
 		campaigns: NewTx(tx),
 		outbox:    &transactionOutbox{journal: newTxJournal(tx)},
+		fence:     &requestCancellationFence{db: tx},
 	}
 	if err := fn(t); err != nil {
 		return err
@@ -76,10 +77,12 @@ func (u *UnitOfWork) WithinTransaction(ctx context.Context, fn func(tx ports.Tra
 type transaction struct {
 	campaigns *Repository
 	outbox    *transactionOutbox
+	fence     *requestCancellationFence
 }
 
-func (t *transaction) Campaigns() ports.CampaignRepository { return t.campaigns }
-func (t *transaction) Outbox() ports.Outbox                { return t.outbox }
+func (t *transaction) Campaigns() ports.CampaignRepository                      { return t.campaigns }
+func (t *transaction) Outbox() ports.Outbox                                     { return t.outbox }
+func (t *transaction) RequestCancellationFence() ports.RequestCancellationFence { return t.fence }
 
 // transactionOutbox копит события до flush. Ни один метод не публикует события
 // сам: перенос в журнал делает WithinTransaction до commit.

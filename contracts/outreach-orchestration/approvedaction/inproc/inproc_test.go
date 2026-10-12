@@ -157,7 +157,7 @@ func TestPublishAppliesOnceByIDempotencyKey(t *testing.T) {
 		t.Fatalf("первый Publish: %v", err)
 	}
 
-	// Повторная доставка: другой event_id, тот же ключ (tenant, draft, version).
+	// Повторная доставка: другой event_id, тот же ключ (tenant, campaign, draft, version).
 	repeat := action
 	repeat.EventID = "evt-2"
 	if err := publisher.Publish(context.Background(), repeat); err != nil {
@@ -174,6 +174,33 @@ func TestPublishAppliesOnceByIDempotencyKey(t *testing.T) {
 	next.ApprovedActionID = "draft-1@4"
 	if err := publisher.Publish(context.Background(), next); err != nil {
 		t.Fatalf("Publish новой версии: %v", err)
+	}
+	if impl.callCount() != 2 {
+		t.Fatalf("реализация владельца вызвана %d раз, ожидалось 2", impl.callCount())
+	}
+}
+
+// Действие другой кампании к тому же получателю — другое действие: не считается
+// повтором и применяется отдельно.
+func TestPublishAppliesPerCampaign(t *testing.T) {
+	impl := &recorder{}
+	publisher, err := Bind(impl)
+	if err != nil {
+		t.Fatalf("Bind: %v", err)
+	}
+
+	first := validAction()
+	if err := publisher.Publish(context.Background(), first); err != nil {
+		t.Fatalf("первый Publish: %v", err)
+	}
+
+	second := validAction()
+	second.EventID = "evt-2"
+	second.CampaignID = "camp-2"
+	second.CorrelationID = "camp-2"
+	second.ApprovedActionID = approvedaction.ApprovedActionIdentity("camp-2", "draft-1", 3)
+	if err := publisher.Publish(context.Background(), second); err != nil {
+		t.Fatalf("Publish другой кампании: %v", err)
 	}
 	if impl.callCount() != 2 {
 		t.Fatalf("реализация владельца вызвана %d раз, ожидалось 2", impl.callCount())

@@ -140,6 +140,48 @@ func (c *Client) Plan(ctx context.Context, r llm.PlanRequest) ([]llm.Target, llm
 	return targets, usageFrom(response.Usage), nil
 }
 
+// Probe проверяет доступ к каталогу моделей через OpenAI-compatible GET /models.
+// Запрос не запускает completion и не изменяет состояние провайдера.
+func (c *Client) Probe(ctx context.Context) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	const maxProbeResponseBytes = 64 * 1024
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, c.endpoint("/models"), nil)
+	if err != nil {
+		return fmt.Errorf("openai: probe failed")
+	}
+	if c.apiKey != "" {
+		req.Header.Set("Authorization", "Bearer "+c.apiKey)
+	}
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return fmt.Errorf("openai: probe failed")
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
+		return fmt.Errorf("openai: probe failed")
+	}
+	data, err := io.ReadAll(io.LimitReader(resp.Body, maxProbeResponseBytes+1))
+	if err != nil || len(data) > maxProbeResponseBytes {
+		return fmt.Errorf("openai: probe failed")
+	}
+	var response struct {
+		Data []struct {
+			ID string `json:"id"`
+		} `json:"data"`
+	}
+	if err := json.Unmarshal(data, &response); err != nil {
+		return fmt.Errorf("openai: probe failed")
+	}
+	for _, model := range response.Data {
+		if strings.TrimSpace(model.ID) != "" {
+			return nil
+		}
+	}
+	return fmt.Errorf("openai: каталог моделей пуст или некорректен")
+}
+
 // Suggest подбирает по описанию бизнеса/задачи сектора, ниши и готовые
 // seed-запросы. Модель обязуется вернуть JSON-массив объектов
 // {sector, niche, seed_queries}, который адаптер отображает на []llm.Suggestion.

@@ -45,6 +45,7 @@ func (h *ReviseOfferHandler) Handle(ctx context.Context, cmd ReviseOffer) (Revis
 	in := transitionInput(cmd.Actor, cmd.At, "", h.clock, h.ids, "", "")
 	var revision int
 	result, err := applyChange(ctx, h.uow, commandKey{RequestID: cmd.RequestID, TenantID: cmd.TenantID},
+		nil,
 		func(request *domain.Request) ([]domain.DomainEvent, error) {
 			offer, err := request.ReviseOffer(in, cmd.OfferID, cmd.Content, cmd.Target)
 			if err != nil {

@@ -6,34 +6,47 @@
   <script src="/static/theme.js"></script>
   <title>Пример Компании</title>
   <link rel="stylesheet" href="/static/console.css">
+  <link rel="stylesheet" href="/static/cards.css">
   <script src="/static/htmx.min.js" defer></script>
   <script src="/static/console.js" defer></script>
   <script src="/static/assistant.js" defer></script>
+  <script src="/static/console-a11y.js" defer></script>
 </head>
 <body>
-  <nav class="sidebar">
+  <a class="skip-link" href="#main-content">Перейти к содержимому</a>
+  <nav class="sidebar" aria-label="Основная навигация">
   <ul class="sidebar-list">
-    <li><a href="/validation">Заявки</a></li>
-    <li><a href="/approvals">Исполнение</a></li>
-    <li><a href="/" class="is-active" aria-current="page">Лиды</a></li>
-    <li><a href="/dashboard">Отчёты</a></li>
+    <li><a href="/validation?actor=operator">Заявки</a></li>
+    <li><a href="/approvals?actor=operator">Исполнение</a></li>
+    <li><a href="/?actor=operator" class="is-active" aria-current="page">Лиды</a></li>
+    <li><a href="/dashboard?actor=operator">Отчёты</a></li>
+    <li><a href="/outreach/drafts?actor=operator">Рассылки</a></li>
+    <li><a href="/console/tenant?actor=operator">Тенант</a></li>
+    <li><a href="/console/users?actor=operator">Пользователи</a></li>
+    <li><a href="/console/registrations?actor=operator">Регистрации</a></li>
+    <li><a href="/console/integrations?actor=operator">Интеграции</a></li>
+    <li><a href="/console/audit?actor=operator">Аудит</a></li>
+    <li><a href="/platform/topology?actor=operator">Топология</a></li>
+    <li><a href="/platform/operations?actor=operator">Операции</a></li>
   </ul>
-  <p class="sidebar-group-label">Экраны лидов</p>
-  <ul class="sidebar-list sidebar-list-group">
-    <li><a href="/">Главная</a></li>
-    <li><a href="/cards" class="is-active" aria-current="page">Карточки</a></li>
-    <li><a href="/leads">Лиды</a></li>
-    <li><a href="/funnel">Воронка</a></li>
-    <li><a href="/send">Отправка</a></li>
-    <li><a href="/assistant">Ассистент</a></li>
-    <li><a href="/forum-signals">Форумы</a></li>
-  </ul>
-  <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Тема оформления">
+  <button class="theme-toggle" id="theme-toggle" type="button"
+    aria-label="Тема оформления"
+    data-theme-label-system="Как в системе"
+    data-theme-label-light="Светлая"
+    data-theme-label-dark="Тёмная"
+    data-theme-aria="Тема оформления: %s. Нажмите, чтобы сменить.">
     <span class="theme-toggle-label">Тема</span>
     <b class="theme-toggle-value" data-theme-name>Как в системе</b>
   </button>
 </nav>
-  <main class="page">
+  <main class="page" id="main-content">
+<nav class="tabs">
+  <a class="tab" href="/?actor=operator">Главная</a>
+  <a class="tab is-active" href="/cards?actor=operator" aria-current="page">Карточки</a>
+  <a class="tab" href="/leads?actor=operator">Лиды</a>
+  <a class="tab" href="/funnel?actor=operator">Воронка</a>
+</nav>
+<p class="live-region" id="console-live" role="status" aria-live="polite" aria-atomic="true" aria-label="Объявления" data-live-region></p>
 <header class="page-head">
   <h1>Карточка</h1>
 </header>
@@ -42,8 +55,8 @@
   <header class="card-head">
     <h2>Пример Компании</h2>
     <p class="card-source">
-      <span class="status status-not-warmed">not warmed</span>
-      <span class="provenance"><a href="https://example.com" rel="noopener noreferrer">https://example.com</a> <time datetime="2026-01-02">2026-01-02</time></span>
+      <span class="status status-not-warmed">Не прогрет</span>
+      <span class="provenance"><a href="https://example.com" rel="noopener noreferrer">https://example.com</a> <time datetime="02.01.2026">02.01.2026</time></span>
     </p>
   </header>
   <p class="card-description">Описание компании</p>
@@ -70,7 +83,6 @@
 </ol>
   </section>
 
-  
   <section class="card-section assessment">
     <h3>Почему эта оценка?</h3>
     <p class="assessment-verdict">
@@ -80,8 +92,8 @@
     <ul class="evidence-list">
   <li class="evidence-item">
     <dl class="evidence-facts">
-      <dt>Критерий</dt><dd>агентства автоматизации B2B-продаж</dd><dt>Факт</dt><dd>профиль: B2B-агентство из отраслевого каталога</dd><dt>Источник</dt><dd><a class="link" href="https://example.com/about" rel="noopener noreferrer">https://example.com/about</a></dd><dt>Объяснение связи</dt><dd>профиль совпадает, но заявленной потребности в автоматизации нет</dd>
-      <dt>Тип сигнала</dt><dd>совпадение по профилю</dd><dt>Не хватает</dt><dd>прямое заявление о потребности в автоматизации продаж</dd>
+      <dt>Критерий</dt><dd>агентства автоматизации B2B-продаж</dd><dt>Факт</dt><dd>профиль: B2B-агентство из отраслевого каталога</dd><dt>Объяснение связи</dt><dd>профиль совпадает, но заявленной потребности в автоматизации нет</dd>
+      <dt>Тип сигнала</dt><dd>совпадение по профилю</dd><dt>Не хватает</dt><dd>прямое заявление о потребности в автоматизации продаж</dd><dt>Источник</dt><dd><a class="link" href="https://example.com/about" rel="noopener noreferrer">https://example.com/about</a></dd>
     </dl>
   </li>
 </ul>
@@ -97,7 +109,7 @@
     <h3>Контакты</h3>
     <table class="table">
       <thead>
-        <tr><th>Email</th><th>Телефон</th><th>Роль</th><th>Источник</th></tr>
+        <tr><th>Email</th><th>Телефон</th><th>Роль</th><th>Источник</th><th>Верификация</th></tr>
       </thead>
       <tbody>
         <tr>
@@ -105,7 +117,9 @@
           <td>&#43;7 999 123-45-67</td>
           <td>основатель</td>
           <td>
-            <span class="provenance"><a href="https://example.com" rel="noopener noreferrer">https://example.com</a> <time datetime="2026-01-02">2026-01-02</time></span><span class="method">regex</span>
+            <span class="provenance"><a href="https://example.com" rel="noopener noreferrer">https://example.com</a> <time datetime="02.01.2026">02.01.2026</time></span><span class="method">regex</span>
+          </td>
+          <td><span class="verify verify-unknown" title="неизвестно"><span class="verify-icon" aria-hidden="true">?</span><span class="verify-label">неизвестно</span></span>
           </td>
         </tr>
       </tbody>
@@ -150,7 +164,7 @@
           <button type="submit">Отправить</button>
         </p>
       </form>
-      <div id="email-preview"></div>
+      <div id="email-preview" data-live-announce="Карточка обновлена" data-focus-after-swap="#email-preview"></div>
     </div></div>
   </details>
 
@@ -163,12 +177,12 @@
   </p>
   <p class="actions"><button type="submit">Найти</button></p>
 </form>
-<div id="template-list">
+<div id="template-list" data-live-announce="Список шаблонов обновлён" data-focus-after-swap="#template-list">
 
 <ul class="template-list">
   <li class="template-item">
     <a class="link" href="/cards/example.com?template=intro&amp;job=job-hypothesis">Приветствие</a>
-    <span class="template-meta">Тема для {{company}} · ревизия 1</span>
+    <span class="template-meta">Тема для {{company}} · Редакция: 1</span>
   </li>
 </ul>
 </div>

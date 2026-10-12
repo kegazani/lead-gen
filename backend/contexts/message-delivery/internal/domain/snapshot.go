@@ -17,15 +17,17 @@ type MessageSnapshot struct {
 	ID               MessageID
 	TenantID         TenantID
 	ApprovedActionID ApprovedActionID
-	RecipientRef     RecipientRef
-	Address          DeliveryAddress
-	SenderDomain     SenderDomain
-	Subject          string
-	Body             string
-	IdempotencyKey   string
-	Status           MessageStatus
-	Attempts         []DeliveryAttempt
-	CreatedAt        time.Time
+	// CampaignID — непрозрачная ссылка на кампанию-владельца (может быть пустой).
+	CampaignID     string
+	RecipientRef   RecipientRef
+	Address        DeliveryAddress
+	SenderDomain   SenderDomain
+	Subject        string
+	Body           string
+	IdempotencyKey string
+	Status         MessageStatus
+	Attempts       []DeliveryAttempt
+	CreatedAt      time.Time
 }
 
 // Snapshot возвращает состояние сообщения для сохранения.
@@ -36,6 +38,7 @@ func (m *Message) Snapshot() MessageSnapshot {
 		ID:               m.id,
 		TenantID:         m.tenantID,
 		ApprovedActionID: m.approvedActionID,
+		CampaignID:       m.campaignID,
 		RecipientRef:     m.recipientRef,
 		Address:          m.address,
 		SenderDomain:     m.senderDomain,
@@ -107,6 +110,7 @@ func RehydrateMessage(s MessageSnapshot) (*Message, error) {
 		id:               s.ID,
 		tenantID:         s.TenantID,
 		approvedActionID: s.ApprovedActionID,
+		campaignID:       s.CampaignID,
 		recipientRef:     s.RecipientRef,
 		address:          s.Address,
 		senderDomain:     s.SenderDomain,

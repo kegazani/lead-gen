@@ -4,6 +4,7 @@ import (
 	"os"
 	"testing"
 
+	"lead-gen/backend/platform/composition"
 	"lead-gen/backend/platform/deployment"
 )
 
@@ -68,5 +69,22 @@ processes:
 	}
 	if len(groups) != 2 {
 		t.Errorf("сервис shared выбран из групп %v, ожидалось по одной на процесс p1/p2", groups)
+	}
+}
+
+func TestBuildAPIResolverSupportsLoopbackBinding(t *testing.T) {
+	selected := []selectedService{
+		{ID: "lead-management", Roles: []composition.Role{composition.RoleAPI}},
+		{ID: "request-fulfillment", Roles: []composition.Role{composition.RoleAPI}},
+	}
+	resolve := buildAPIResolver(29200, selected, ":8080", "127.0.0.1")
+	if got := resolve("lead-management"); got != "127.0.0.1:29200" {
+		t.Fatalf("адрес lead-management = %q, ожидался loopback 127.0.0.1:29200", got)
+	}
+	if got := resolve("request-fulfillment"); got != "127.0.0.1:29201" {
+		t.Fatalf("адрес request-fulfillment = %q, ожидался loopback 127.0.0.1:29201", got)
+	}
+	if got := resolve("unknown"); got != ":8080" {
+		t.Fatalf("резервный адрес = %q, ожидался :8080", got)
 	}
 }

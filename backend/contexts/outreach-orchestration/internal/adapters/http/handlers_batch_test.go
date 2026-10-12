@@ -1,6 +1,7 @@
 package httpapi
 
 import (
+	"context"
 	"net/http"
 	"testing"
 	"time"
@@ -19,11 +20,11 @@ func TestBatchApprovalFlowOverHTTP(t *testing.T) {
 
 	// Внешний предикат риска: рисковым объявлен один конкретный черновик.
 	// Домен сам решает исключить его — адаптер признак не пересматривает.
-	risk := func(draftID domain.DraftID, _ int) []domain.RiskReason {
-		if draftID == riskyDraft {
-			return []domain.RiskReason{domain.RiskPersonalDataDetected}
+	risk := func(_ context.Context, req domain.RiskFactsRequest) ([]domain.RiskReason, error) {
+		if req.DraftID == riskyDraft {
+			return []domain.RiskReason{domain.RiskStopRuleTriggered}, nil
 		}
-		return nil
+		return nil, nil
 	}
 
 	fixture := newFixtureWithRisk(t, risk)
@@ -87,7 +88,7 @@ func TestBatchApprovalFlowOverHTTP(t *testing.T) {
 		t.Fatalf("исключённых в проекции: %d/%d", queue.ExcludedCount, len(queue.Excluded))
 	}
 	if excluded := queue.Excluded[0]; excluded.DraftID != riskyDraft.String() ||
-		len(excluded.Reasons) != 1 || excluded.Reasons[0] != string(domain.RiskPersonalDataDetected) {
+		len(excluded.Reasons) != 1 || excluded.Reasons[0] != string(domain.RiskStopRuleTriggered) {
 		t.Fatalf("исключённый в проекции: %+v", excluded)
 	}
 	if len(queue.Individual) != 1 || queue.Individual[0].DraftID != "draft-hetero" {

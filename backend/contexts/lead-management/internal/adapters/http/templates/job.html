@@ -15,30 +15,31 @@
 {{- range . }}
   <li class="evidence-item">
     <dl class="evidence-facts">
-      <dt>Критерий</dt><dd>{{.Criterion}}</dd>
-      {{- with .Fact }}<dt>Факт</dt><dd>{{.}}</dd>{{ end }}
-      {{- with .SourceURL }}<dt>Источник</dt><dd><a class="link" href="{{.}}" rel="noopener noreferrer">{{.}}</a></dd>{{ end }}
-      {{- with .Reasoning }}<dt>Объяснение связи</dt><dd>{{.}}</dd>{{ end }}
-      <dt>Тип сигнала</dt><dd>{{.SignalLabel}}</dd>
-      {{- with .Missing }}<dt>Не хватает</dt><dd>{{.}}</dd>{{ end }}
-      {{- with .Mismatch }}<dt>Несоответствие</dt><dd>{{.}}</dd>{{ end }}
+      <dt>{{ text "lead.evidence.criterion" }}</dt><dd>{{.Criterion}}</dd>
+      {{- with .Fact }}<dt>{{ text "lead.evidence.fact" }}</dt><dd>{{.}}</dd>{{ end }}
+      {{- with .Reasoning }}<dt>{{ text "lead.evidence.reasoning" }}</dt><dd>{{.}}</dd>{{ end }}
+      <dt>{{ text "lead.evidence.signal" }}</dt><dd>{{.SignalLabel}}</dd>
+      {{- with .Missing }}<dt>{{ text "lead.evidence.missing" }}</dt><dd>{{.}}</dd>{{ end }}
+      {{- with .Mismatch }}<dt>{{ text "lead.evidence.mismatch" }}</dt><dd>{{.}}</dd>{{ end }}
+      {{- with .SourceURL }}<dt>{{ text "lead.evidence.source" }}</dt><dd><a class="link" href="{{.}}" rel="noopener noreferrer">{{.}}</a></dd>{{ end }}
     </dl>
   </li>
 {{- else }}
-  <li class="empty">Свидетельств нет</li>
+  <li class="empty">{{ text "lead.evidence.empty" }}</li>
 {{- end }}
 </ul>
 {{- end -}}
 
 {{- define "content" -}}
 {{- with .View -}}
+{{ template "live" .Live }}
 <header class="page-head">
-  <h1>Задание</h1>
+  <h1>{{ text "lead.job.title" }}</h1>
 </header>
 
-<article class="card job-detail"{{ if .AutoRefresh }} hx-get="/jobs/{{.ID}}" hx-trigger="every 2s" hx-swap="outerHTML"{{ end }}>
+<article class="card job-detail"{{ if .AutoRefresh }} hx-get="/jobs/{{.ID}}" hx-trigger="every 2s" hx-swap="outerHTML" data-focus-after-swap="#job-detail" data-live-announce="{{ text "lead.live.journal" }}"{{ end }}{{ if .AutoRefresh }} id="job-detail"{{ end }}>
   <header class="card-head">
-    <h2>Запрос</h2>
+    <h2>{{ text "lead.job.query" }}</h2>
     <p class="job-query">{{.Query}}</p>
     <p class="card-source">
       {{ template "status-badge" .Badge }}
@@ -47,38 +48,113 @@
   </header>
 
   <section class="card-section">
-    <h3>Сводка</h3>
+    <h3>{{ text "lead.job.summary" }}</h3>
     <dl class="job-facts">
-      <dt>Создано</dt><dd>{{- if .Created}} {{.Created}}{{ else }} —{{ end }}</dd>
-      <dt>Обновлено</dt><dd>{{- if .Updated}} {{.Updated}}{{ else }} —{{ end }}</dd>
-      <dt>Найдено компаний</dt><dd> {{.Result}}</dd>
-      <dt>Бюджет</dt><dd>{{- if .Budget}} {{.Budget}}{{ else }} —{{ end }}</dd>
-      <dt>Ход</dt><dd>{{- if .Progress}} {{.Progress}}{{ else }} —{{ end }}</dd>
+      <dt>{{ text "lead.job.created" }}</dt><dd>{{- if .Created}} {{.Created}}{{ else }} —{{ end }}</dd>
+      <dt>{{ text "lead.job.updated" }}</dt><dd>{{- if .Updated}} {{.Updated}}{{ else }} —{{ end }}</dd>
+      <dt>{{ text "lead.job.found_companies" }}</dt><dd> {{.Result}}</dd>
+      <dt>{{ text "lead.job.budget" }}</dt><dd>{{- if .Budget}} {{.Budget}}{{ else }} —{{ end }}</dd>
+      <dt>{{ text "lead.job.progress" }}</dt><dd>{{- if .Progress}} {{.Progress}}{{ else }} —{{ end }}</dd>
     </dl>
     {{- with .Error }}
     <p class="error-text">{{.}}</p>
     {{- end }}
   </section>
 
-  {{/* Распределение оценок в контексте этого задания. Число компаний выше —
-       мониторинг; здесь — состав по вердиктам самого задания. */}}
   <section class="card-section">
-    <h3>Распределение оценок</h3>
-    <dl class="verdict-distribution">
-      <dt>Подходит</dt><dd data-verdict="fits">{{.Distribution.Fits}}</dd>
-      <dt>Гипотеза</dt><dd data-verdict="hypothesis">{{.Distribution.Hypothesis}}</dd>
-      <dt>Не подходит</dt><dd data-verdict="unsuitable">{{.Distribution.Unsuitable}}</dd>
+    <h3>{{ text "lead.job.selection.title" }}</h3>
+    <dl class="job-facts">
+      <dt>{{ text "lead.job.selection.target" }}</dt><dd>{{ if .Selection.TargetSet }}{{.Selection.Target}}{{ else }}—{{ end }}</dd>
+      <dt>{{ text "lead.job.selection.found" }}</dt><dd>{{.Selection.Found}}</dd>
+      {{- if and .Selection.TargetSet (not .Selection.Reached) }}
+      <dt>{{ text "lead.job.selection.shortfall" }}</dt><dd data-shortfall>{{.Selection.Shortfall}}</dd>
+      {{- end }}
     </dl>
-    {{- if eq .Distribution.Total 0 }}
-    <p class="empty">Оценок пока нет</p>
+    {{- if and .Selection.TargetSet .Selection.Reached }}
+    <p class="hint">{{ text "lead.job.selection.reached" }}</p>
     {{- end }}
-    <p class="hint"><a class="link" href="/cards?job={{.ID}}">Открыть список результатов по оценкам</a></p>
+
+    <h4>{{ text "lead.job.coverage.title" }}</h4>
+    {{- if .Selection.ProgressKnown }}
+    <dl class="job-facts">
+      <dt>{{ text "lead.job.coverage.pages" }}</dt><dd>{{.Selection.Pages}}</dd>
+      <dt>{{ text "lead.job.coverage.companies" }}</dt><dd>{{.Selection.Found}}</dd>
+      {{- if .Selection.PlannedTargets }}<dt>{{ text "lead.job.coverage.planned_targets" }}</dt><dd>{{.Selection.PlannedTargets}}</dd>{{ end }}
+      {{- if .Selection.PlannedURLs }}<dt>{{ text "lead.job.coverage.planned_urls" }}</dt><dd>{{.Selection.PlannedURLs}}</dd>{{ end }}
+      <dt>{{ text "lead.job.coverage.parse_errors" }}</dt><dd>{{.Selection.ParseErrors}}</dd>
+      <dt>{{ text "lead.job.coverage.assessment_errors" }}</dt><dd>{{.Selection.AssessmentErrors}}</dd>
+      {{- if .Selection.CreditsKnown }}<dt>{{ text "lead.job.coverage.credits" }}</dt><dd>{{.Selection.CreditsSpent}} / {{.Selection.CreditsAvailable}}</dd>{{ end }}
+      {{- if .Selection.TokensSpent }}<dt>{{ text "lead.job.coverage.tokens" }}</dt><dd>{{.Selection.TokensSpent}}</dd>{{ end }}
+      {{- if .Selection.StopReason }}<dt>{{ text "lead.job.coverage.stop_reason" }}</dt><dd>{{.Selection.StopReason}}</dd>{{ end }}
+    </dl>
+    {{- else }}
+    <p class="empty">{{ text "lead.job.coverage.unavailable" }}</p>
+    {{- end }}
+
+    <h4>{{ text "lead.job.funnel.title" }}</h4>
+    <ol class="selection-funnel">
+    {{- range .Selection.Funnel }}
+      <li class="funnel-point{{ if .Known }} is-known{{ else }} is-unavailable{{ end }}">
+        <span class="funnel-label">{{.Label}}</span>
+        <span class="funnel-count">{{ if .Known }}{{.Count}}{{ else }}{{ text "lead.job.funnel.unavailable" }}{{ end }}</span>
+      </li>
+    {{- end }}
+    </ol>
+
+    {{- if .Diagnosis.Showed }}
+    <div class="job-diagnosis">
+      <h4>{{ text "lead.job.diagnosis.title" }}</h4>
+      {{- if .Diagnosis.Reason }}
+      <p>{{.Diagnosis.Reason}}</p>
+      {{- else }}
+      <p>{{ text "lead.job.diagnosis.no_reason" }}</p>
+      {{- end }}
+      <p class="hint">{{ text "lead.job.diagnosis.remainder" }}: {{.Diagnosis.Remainder}}</p>
+    </div>
+    {{- end }}
   </section>
 
-  {{/* Основания и источники подходящих результатов: для «Подходит» видны
-       свидетельства, подтверждающие приведённые факты. */}}
   <section class="card-section">
-    <h3>Подходящие: основания и источники</h3>
+    <h3>{{ text "lead.job.distribution" }}</h3>
+    <dl class="verdict-distribution">
+      <dt>{{ text "lead.verdict.fits" }}</dt><dd data-verdict="fits">{{.Distribution.Fits}}</dd>
+      <dt>{{ text "lead.verdict.hypothesis" }}</dt><dd data-verdict="hypothesis">{{.Distribution.Hypothesis}}</dd>
+      <dt>{{ text "lead.verdict.unsuitable" }}</dt><dd data-verdict="unsuitable">{{.Distribution.Unsuitable}}</dd>
+    </dl>
+    {{- if eq .Distribution.Total 0 }}
+    <p class="empty">{{ text "lead.job.no_scores" }}</p>
+    {{- end }}
+    <p class="hint"><a class="link" href="/cards?job={{.ID}}">{{ text "lead.job.open_results" }}</a></p>
+  </section>
+
+  <section class="card-section">
+    <h3>{{ text "lead.job.groups.title" }}</h3>
+    {{- if .Categories }}
+    <ul class="rejection-categories">
+    {{- range .Categories }}
+      <li class="rejection-category">
+        <p class="rejection-head">
+          <a class="link" href="{{.Href}}">{{.Label}}</a>
+          <span class="count">{{.Count}}</span>
+          <a class="link" href="{{.Href}}">{{ text "lead.job.groups.to_list" }}</a>
+        </p>
+        {{- with .Groups }}
+        <ul class="rejection-groups">
+        {{- range . }}
+          <li><a class="link" href="{{.Href}}">{{.Label}}</a> <span class="count">{{.Count}}</span></li>
+        {{- end }}
+        </ul>
+        {{- end }}
+      </li>
+    {{- end }}
+    </ul>
+    {{- else }}
+    <p class="empty">{{ text "lead.job.groups.empty" }}</p>
+    {{- end }}
+  </section>
+
+  <section class="card-section">
+    <h3>{{ text "lead.job.evidence_title" }}</h3>
     {{- if .Fits }}
     <ul class="fit-list">
     {{- range .Fits }}
@@ -93,43 +169,43 @@
     {{- end }}
     </ul>
     {{- else }}
-    <p class="empty">Подходящих компаний нет</p>
+    <p class="empty">{{ text "lead.job.no_fits" }}</p>
     {{- end }}
   </section>
 
   <section class="card-section">
-    <h3>Найденные компании</h3>
+    <h3>{{ text "lead.job.companies_title" }}</h3>
     {{- if .Companies }}
     <ul class="socials">
     {{- range .Companies }}
       {{- $verdict := .VerdictClass }}
-      <li class="job-company{{ if .NoEmail }} is-no-email{{ end }}"{{ if .NoEmail }} aria-label="{{.ID}} — нет email"{{ else if .EmailUnavailable }} aria-label="{{.ID}} — email недоступен"{{ end }}>
+      <li class="job-company{{ if .NoEmail }} is-no-email{{ end }}"{{ if .NoEmail }} aria-label="{{.ID}}{{ text "lead.job.no_email_aria" }}"{{ else if .EmailUnavailable }} aria-label="{{.ID}}{{ text "lead.job.email_aria" }}"{{ end }}>
         <a class="link" href="{{.Href}}">{{.ID}}</a>
-        <span class="card-email">{{ if .Email }}{{.Email}}{{ else if .EmailUnavailable }}email недоступен{{ else }}<span class="card-no-email">нет email</span>{{ end }}</span>
+        <span class="card-email">{{ if .Email }}{{.Email}}{{ else if .EmailUnavailable }}{{ text "lead.company.email_unavailable" }}{{ else }}<span class="card-no-email">{{ text "lead.company.no_email" }}</span>{{ end }}</span>
         {{- with .VerdictLabel }} <span class="verdict verdict-{{$verdict}}">{{.}}</span>{{ end }}
       </li>
     {{- end }}
     </ul>
     {{- else }}
-    <p class="empty">Компании не найдены</p>
+    <p class="empty">{{ text "lead.job.no_companies" }}</p>
     {{- end }}
   </section>
 
   <section class="card-section">
-    <h3>Ход выполнения</h3>
+    <h3>{{ text "lead.job.timeline_title" }}</h3>
     {{- if .Points }}
     {{ template "timeline" .Points }}
     {{- else }}
-    <p class="empty">Ход выполнения не записан</p>
+    <p class="empty">{{ text "lead.job.timeline_empty" }}</p>
     {{- end }}
   </section>
 
   <footer class="card-actions">
-    <a class="link" href="/">← К журналу</a>
+    <a class="link" href="/">{{ text "lead.job.back" }}</a>
     {{- if .CanReassess }}
     <form method="post" action="/jobs/{{.ID}}/reassess">
       <input type="hidden" name="csrf" value="{{.CSRF}}">
-      <button class="button-secondary" type="submit">Переоценить компании</button>
+      <button class="button-secondary" type="submit">{{ text "lead.job.reassess" }}</button>
     </form>
     {{- end }}
   </footer>

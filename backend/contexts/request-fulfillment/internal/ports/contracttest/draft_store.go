@@ -80,4 +80,35 @@ func RunEmailDraftStoreContract(t *testing.T, newStore EmailDraftStoreFactory) {
 			t.Fatalf("черновики = %+v, ожидался только лид своего тенанта", got)
 		}
 	})
+
+	t.Run("ссылка на получателя сохраняется и заменяется", func(t *testing.T) {
+		store := newStore(t)
+		if err := store.SaveDrafts(ctx, []ports.EmailDraft{
+			{RequestID: "req-1", TenantID: "tenant-1", LeadID: "lead-a", RecipientRef: "contact-1"},
+			{RequestID: "req-1", TenantID: "tenant-1", LeadID: "lead-b"},
+		}); err != nil {
+			t.Fatalf("SaveDrafts: %v", err)
+		}
+
+		got, err := store.ListByRequest(ctx, "req-1", "tenant-1")
+		if err != nil {
+			t.Fatalf("ListByRequest: %v", err)
+		}
+		if len(got) != 2 || got[0].RecipientRef != "contact-1" || got[1].RecipientRef != "" {
+			t.Fatalf("черновики = %+v, ожидались получатель у lead-a и пусто у lead-b", got)
+		}
+
+		if err := store.SaveDrafts(ctx, []ports.EmailDraft{
+			{RequestID: "req-1", TenantID: "tenant-1", LeadID: "lead-a", RecipientRef: "contact-2"},
+		}); err != nil {
+			t.Fatalf("повторный SaveDrafts: %v", err)
+		}
+		got, err = store.ListByRequest(ctx, "req-1", "tenant-1")
+		if err != nil {
+			t.Fatalf("ListByRequest: %v", err)
+		}
+		if len(got) != 2 || got[0].RecipientRef != "contact-2" {
+			t.Fatalf("черновики = %+v, ожидалась замена ссылки на получателя", got)
+		}
+	})
 }

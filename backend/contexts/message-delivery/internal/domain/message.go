@@ -11,13 +11,15 @@ type MessageParams struct {
 	ID               MessageID
 	TenantID         TenantID
 	ApprovedActionID ApprovedActionID
-	RecipientRef     RecipientRef
-	Address          DeliveryAddress
-	SenderDomain     SenderDomain
-	Subject          string
-	Body             string
-	IdempotencyKey   string
-	CreatedAt        time.Time
+	// CampaignID — непрозрачная ссылка на кампанию-владельца. Может быть пустой.
+	CampaignID     string
+	RecipientRef   RecipientRef
+	Address        DeliveryAddress
+	SenderDomain   SenderDomain
+	Subject        string
+	Body           string
+	IdempotencyKey string
+	CreatedAt      time.Time
 }
 
 // Message — aggregate root: одно исходящее почтовое сообщение, созданное по
@@ -33,16 +35,19 @@ type Message struct {
 	id               MessageID
 	tenantID         TenantID
 	approvedActionID ApprovedActionID
-	recipientRef     RecipientRef
-	address          DeliveryAddress
-	senderDomain     SenderDomain
-	subject          string
-	body             string
-	idempotencyKey   string
-	status           MessageStatus
-	attempts         []DeliveryAttempt
-	createdAt        time.Time
-	events           bufferEvents
+	// campaignID — непрозрачная ссылка на кампанию-владельца (переносится в
+	// событие доставки). Может быть пустой.
+	campaignID     string
+	recipientRef   RecipientRef
+	address        DeliveryAddress
+	senderDomain   SenderDomain
+	subject        string
+	body           string
+	idempotencyKey string
+	status         MessageStatus
+	attempts       []DeliveryAttempt
+	createdAt      time.Time
+	events         bufferEvents
 }
 
 // NewMessage создаёт сообщение в состоянии pending. Допустимость самой отправки
@@ -77,6 +82,7 @@ func NewMessage(params MessageParams) (*Message, error) {
 		id:               params.ID,
 		tenantID:         params.TenantID,
 		approvedActionID: params.ApprovedActionID,
+		campaignID:       params.CampaignID,
 		recipientRef:     params.RecipientRef,
 		address:          params.Address,
 		senderDomain:     params.SenderDomain,
@@ -96,6 +102,10 @@ func (m *Message) TenantID() TenantID { return m.tenantID }
 
 // ApprovedActionID возвращает утверждённое действие, санкционировавшее отправку.
 func (m *Message) ApprovedActionID() ApprovedActionID { return m.approvedActionID }
+
+// CampaignID возвращает непрозрачную ссылку на кампанию-владельца (может быть
+// пустой). Переносится в событие доставки для сопоставления с кампанией.
+func (m *Message) CampaignID() string { return m.campaignID }
 
 // RecipientRef возвращает непрозрачную ссылку на получателя.
 func (m *Message) RecipientRef() RecipientRef { return m.recipientRef }
@@ -172,6 +182,7 @@ func (m *Message) RecordDelivery(outcome AttemptOutcome, providerCode string, at
 			MessageID:        m.id,
 			TenantID:         m.tenantID,
 			ApprovedActionID: m.approvedActionID,
+			CampaignID:       m.campaignID,
 			RecipientRef:     m.recipientRef,
 			SenderDomain:     m.senderDomain,
 			AttemptNumber:    attempt.Number,
@@ -180,12 +191,17 @@ func (m *Message) RecordDelivery(outcome AttemptOutcome, providerCode string, at
 		})
 		return nil
 	}
+	if outcome == OutcomeUnknown {
+		m.status = MessageStatusUnknown
+		return nil
+	}
 
 	m.status = MessageStatusFailed
 	m.events.append(MessageDeliveryFailed{
 		MessageID:        m.id,
 		TenantID:         m.tenantID,
 		ApprovedActionID: m.approvedActionID,
+		CampaignID:       m.campaignID,
 		RecipientRef:     m.recipientRef,
 		SenderDomain:     m.senderDomain,
 		AttemptNumber:    attempt.Number,

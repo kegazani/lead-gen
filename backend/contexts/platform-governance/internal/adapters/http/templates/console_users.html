@@ -1,14 +1,14 @@
 {{- define "content" -}}
 <section class="console-users">
-  <h1>Пользователи и роли</h1>
+  <h1>{{ text "console.users.title" }}</h1>
   {{- with .View.Notice }}
   <p class="notice" role="status">{{.}}</p>
   {{- end }}
-  <p class="tenant-label">Тенант: {{ .View.TenantID }}</p>
+  <p class="tenant-label">{{ text "console.tenant.label" }}: {{ .View.TenantID }}</p>
   {{- if .View.Users }}
   <table class="table">
     <thead>
-      <tr><th>Пользователь</th><th>Логин</th><th>Роли</th><th>Действие</th></tr>
+      <tr><th>{{ text "console.users.col.user" }}</th><th>{{ text "console.users.col.login" }}</th><th>{{ text "console.users.col.roles" }}</th><th>{{ text "console.users.col.action" }}</th></tr>
     </thead>
     <tbody>
       {{- range .View.Users }}
@@ -23,12 +23,13 @@
         <td>
           {{- range .Revoke }}
           <form method="post" action="/console/users/roles/revoke" class="inline-form">
+            <input type="hidden" name="csrf" value="{{ $.View.CSRF }}">
             <input type="hidden" name="tenant_id" value="{{ $.View.TenantID }}">
             <input type="hidden" name="actor" value="{{ $.View.Actor }}">
             <input type="hidden" name="user_id" value="{{ .UserID }}">
             <input type="hidden" name="role" value="{{ .Role }}">
             <input type="hidden" name="command_id" value="{{ .CommandID }}">
-            <button type="submit">Отозвать «{{ .Role }}»</button>
+            <button type="submit">{{ text "console.users.revoke" }} «{{ .Role }}»</button>
           </form>
           {{- end }}
         </td>
@@ -37,24 +38,25 @@
     </tbody>
   </table>
   {{- else }}
-  <p class="portal-empty">Пользователей пока нет.</p>
+  <p class="portal-empty">{{ text "console.users.empty" }}</p>
   {{- end }}
   <section class="assign-role">
-    <h2>Назначить роль</h2>
+    <h2>{{ text "console.users.assign.heading" }}</h2>
     <form method="post" action="/console/users/roles/assign">
+      <input type="hidden" name="csrf" value="{{ .View.CSRF }}">
       <input type="hidden" name="tenant_id" value="{{ .View.TenantID }}">
       <input type="hidden" name="actor" value="{{ .View.Actor }}">
       <input type="hidden" name="command_id" value="{{ .View.AssignCommandID }}">
       {{ template "field" .View.UserField }}
       <p class="field">
-        <label for="assign-role">Роль</label>
+        <label for="assign-role">{{ text "console.users.role.label" }}</label>
         <select id="assign-role" name="role">
           {{- range .View.RoleOptions }}
           <option value="{{ .Value }}">{{ .Label }}</option>
           {{- end }}
         </select>
       </p>
-      <button type="submit">Назначить</button>
+      <button type="submit">{{ text "console.users.assign" }}</button>
     </form>
   </section>
 </section>

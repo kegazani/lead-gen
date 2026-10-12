@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	call "lead-gen/backend/contexts/request-fulfillment/internal/adapters/call"
@@ -14,20 +15,26 @@ import (
 	"lead-gen/backend/contexts/request-fulfillment/internal/adapters/idgen"
 	"lead-gen/backend/contexts/request-fulfillment/internal/adapters/outbox/inmemory"
 	persistence "lead-gen/backend/contexts/request-fulfillment/internal/adapters/persistence/inmemory"
+	transport "lead-gen/backend/contexts/request-fulfillment/internal/adapters/transport"
+	"lead-gen/backend/contexts/request-fulfillment/internal/adapters/watch"
 	workflowadapter "lead-gen/backend/contexts/request-fulfillment/internal/adapters/workflow"
 	"lead-gen/backend/contexts/request-fulfillment/internal/app/command"
 	"lead-gen/backend/contexts/request-fulfillment/internal/app/query"
 	"lead-gen/backend/contexts/request-fulfillment/internal/ports"
 	composition "lead-gen/backend/platform/composition"
 	"lead-gen/backend/platform/consoleauth"
+	"lead-gen/backend/platform/messaging/inbox"
 	platformoutbox "lead-gen/backend/platform/messaging/outbox"
 	"lead-gen/backend/platform/observability/observ"
+	"lead-gen/backend/platform/readiness"
 	"lead-gen/backend/platform/transport/amqp"
 	platformworkflow "lead-gen/backend/platform/workflow"
+	"lead-gen/contracts/content-production/contentrequest"
 	"lead-gen/contracts/integration-platform/vector"
 	"lead-gen/contracts/lead-management/emailgeneration"
 	"lead-gen/contracts/lead-management/leadsearch"
 	"lead-gen/contracts/outreach-orchestration/callintent"
+	"lead-gen/contracts/outreach-orchestration/outreachhandoff"
 	"lead-gen/frontend/components"
 )
 
@@ -47,6 +54,17 @@ func (SystemClock) Now() time.Time { return time.Now() }
 
 // Config — параметры сборки сервиса, задаваемые точкой входа cmd/lead-gen.
 type Config struct {
+	readinessWorkerActive *atomic.Bool
+	// ExecutionProtocol выбирает путь команд исполнения. Нулевое значение
+	// fail-closed и означает v1; production composition не переключается на v2.
+	ExecutionProtocol ExecutionProtocol
+	// ExecutionConsumer удостоверяет, что у v2 есть зарегистрированный активный
+	// потребитель durable intent. Без него Build отклоняет v2 до HTTP admission.
+	ExecutionConsumer ExecutionIntentConsumer
+	// ExecutionManifestActive выставляется composition только по активному
+	// подписанному manifest. Прямое локальное включение v2 без release gate запрещено.
+	ExecutionManifestActive bool
+
 	// APIAddr — адрес внутреннего HTTP-сервера роли api.
 	APIAddr string
 
@@ -171,6 +189,32 @@ type Config struct {
 	// генерации черновиков штатно пропускается и логируется, а заявка идёт дальше.
 	EmailGeneration emailgeneration.Port
 
+	// ContentRequest — порт опубликованного контракта content-request (владелец —
+	// content-production): производит материал письма перед передачей. nil или
+	// незаданный Handoff означает, что шаг передачи не может быть выполнен: он
+	// штатно пропускается и логируется, а не подменяется выдуманным материалом.
+	ContentRequest contentrequest.Port
+
+	// Handoff — порт опубликованного контракта outreach-handoff (потребитель —
+	// outreach-orchestration): передаёт письма заявки в очередь утверждения. nil
+	// означает, что передача не подключена: шаг штатно пропускается и логируется,
+	// а не выдаётся за успешную передачу.
+	Handoff outreachhandoff.Port
+
+	// DeliveryEvents — источник событий доставки (подписка брокера). nil означает,
+	// что завершение по доставке не собирается: заявка ждёт прежним способом
+	// (сигнал/таймер), а не завершается выдуманно. Проводка — точка входа
+	// cmd/lead-gen.
+	DeliveryEvents amqp.Consumer
+
+	// DeliveryEventsDeduper — журнал дедупликации входящих событий доставки
+	// (доставка at-least-once). nil при заданном DeliveryEvents — честная ошибка
+	// сборки подписки, а не тихое дублирование эффекта.
+	DeliveryEventsDeduper inbox.Deduper
+
+	// DeliveryEventsQueue — имя очереди подписки. Пусто — очередь по умолчанию.
+	DeliveryEventsQueue string
+
 	// ConsoleUser / ConsolePassword — учётные данные оператора консоли заявок.
 	// Пустые значения означают вход с пустым логином и паролем (только для
 	// локального dev-прогона без внешнего доступа).
@@ -185,6 +229,14 @@ type Config struct {
 	// Console — базовые адреса сервисов консоли для общей навигации по разделам
 	// (Заявки, Исполнение, Лиды, Отчёты). Пустые адреса дают относительные пути.
 	Console components.ConsoleBases
+
+	// BasePath — внешний префикс пути консоли под единым origin (admin-proxy).
+	// Пусто — корень origin.
+	BasePath string
+
+	// ExternalPrefixes — префиксы других консолей единого origin: ссылки на них
+	// в навигации не переписываются под собственный префикс.
+	ExternalPrefixes []string
 
 	// ConsoleIdleTimeout — период неактивности сессии оператора, после которого
 	// она истекает. Ноль означает период по умолчанию пакета consoleauth; на
@@ -221,16 +273,27 @@ type Slice struct {
 	FulfillRequest         *command.FulfillRequestHandler
 	RejectRequest          *command.RejectRequestHandler
 	CancelRequest          *command.CancelRequestHandler
+	FailRequest            *command.FailRequestHandler
+	RerunRequest           *command.RerunRequestHandler
+	AdmitExecution         *command.AdmitExecutionHandler
+	ReturnForRevision      *command.ReturnForRevisionHandler
+	ResubmitRequest        *command.ResubmitRequestHandler
 	ReviseOffer            *command.ReviseOfferHandler
 	RecordAudienceSnapshot *command.RecordAudienceSnapshotHandler
 	RecordCampaign         *command.RecordCampaignHandler
 	RecordDeal             *command.RecordDealHandler
 	GetRequest             *query.GetRequestHandler
+	ListRequests           *query.ListRequestsHandler
 	FulfillmentStatus      *query.FulfillmentStatusHandler
+	ExecutionState         *query.ExecutionStateHandler
 
 	WorkflowStarter  ports.WorkflowStarter
 	WorkflowStatus   ports.WorkflowStatusReader
 	WorkflowSignaler ports.WorkflowSignaler
+
+	// RequestWatcher — подписка на изменения заявок тенанта (SSE-поток экрана
+	// заявок компании). Единый источник уведомлений для сервера и unit-of-work.
+	RequestWatcher ports.RequestWatcher
 
 	// DraftStore — хранилище черновиков писем оператора.
 	DraftStore ports.EmailDraftStore
@@ -240,19 +303,33 @@ type Slice struct {
 	RecordCall      *command.RecordCallHandler
 	EmbedOffer      *command.EmbedOfferHandler
 	EmailDrafts     *query.EmailDraftsHandler
+
+	// ConcludeDelivery — обработчик события доставки (завершение заявки по
+	// доставке, capability request-delivery-conclusion).
+	ConcludeDelivery *command.ConcludeDeliveryHandler
 }
 
 // Build собирает контекст среза из адаптеров и переданных зависимостей.
 // Бизнес-правил здесь нет — соединение адаптеров, портов и use cases только
 // своего контекста.
 func Build(cfg Config) (*Slice, error) {
+	protocol, err := normalizeExecutionProtocol(cfg.ExecutionProtocol)
+	if err != nil {
+		return nil, err
+	}
+	if protocol == ExecutionProtocolV2 && (cfg.ExecutionConsumer == nil || !cfg.ExecutionConsumer.Active()) {
+		return nil, ErrExecutionConsumerUnavailable
+	}
+	if protocol == ExecutionProtocolV2 && !cfg.ExecutionManifestActive {
+		return nil, ErrExecutionManifestRequired
+	}
 	repository := cfg.Repository
 	if repository == nil {
 		repository = persistence.New()
 	}
 	journal := cfg.Journal
 	if journal == nil {
-		journal = platformoutbox.NewMemoryJournal()
+		journal = inmemory.NewTransactionalJournal()
 	}
 	clock := cfg.Clock
 	if clock == nil {
@@ -272,22 +349,46 @@ func Build(cfg Config) (*Slice, error) {
 		if !ok {
 			return nil, errors.New("request-fulfillment: unit-of-work обязателен для не in-memory репозитория")
 		}
+		if _, ok := journal.(*inmemory.TransactionalJournal); !ok {
+			return nil, errors.New("request-fulfillment: memory unit-of-work требует transactional outbox того же контекста")
+		}
 		unitOfWork = inmemory.NewUnitOfWorkWith(memoryRepo, journal)
 	}
+	var executionState *query.ExecutionStateHandler
+	if protocol == ExecutionProtocolV2 {
+		attempts, ok := repository.(ports.ExecutionAttemptRepository)
+		if !ok {
+			return nil, errors.New("request-fulfillment: ExecutionProtocol v2 требует durable owner attempt repository")
+		}
+		executionState = query.NewExecutionStateHandler(attempts)
+	}
 
-	submit := command.NewSubmitRequestHandler(unitOfWork, clock, ids)
+	// Подписка на изменения заявок тенанта (SSE-поток админки): уведомление
+	// рассылается после успешного коммита транзакции, а не на каждый Save, чтобы
+	// подписчик никогда не читал не зафиксированное состояние. Обёртка общая для
+	// in-memory и PostgreSQL — она работает с портом транзакции.
+	notifier := watch.NewNotifier()
+	unitOfWork = watch.NewUnitOfWork(unitOfWork, notifier)
+
+	submit := command.NewSubmitRequestHandlerWithExecutionHistoryKnown(unitOfWork, clock, ids, protocol == ExecutionProtocolV2)
 	startValidation := command.NewStartValidationHandler(unitOfWork, clock, ids)
 	validate := command.NewValidateRequestHandler(unitOfWork, clock, ids)
 	startProcessing := command.NewStartProcessingHandler(unitOfWork, clock, ids)
 	fulfill := command.NewFulfillRequestHandler(unitOfWork, clock, ids)
 	reject := command.NewRejectRequestHandler(unitOfWork, clock, ids)
 	cancel := command.NewCancelRequestHandler(unitOfWork, clock, ids)
+	failRequest := command.NewFailRequestHandler(unitOfWork, clock, ids)
+	rerunRequest := command.NewRerunRequestHandler(unitOfWork, clock, ids)
+	admitExecution := command.NewAdmitExecutionHandler(unitOfWork, clock, ids)
+	returnForRevision := command.NewReturnForRevisionHandler(unitOfWork, clock, ids)
+	resubmit := command.NewResubmitRequestHandler(unitOfWork, clock, ids)
 	reviseOffer := command.NewReviseOfferHandler(unitOfWork, clock, ids)
 	recordAudience := command.NewRecordAudienceSnapshotHandler(unitOfWork)
 	recordCampaign := command.NewRecordCampaignHandler(unitOfWork)
 	recordDeal := command.NewRecordDealHandler(unitOfWork)
 
 	getRequest := query.NewGetRequestHandler(repository)
+	listRequests := query.NewListRequestsHandler(repository)
 	fulfillmentStatus := query.NewFulfillmentStatusHandler(repository, queryPort(cfg.Query))
 	validationQueue := query.NewValidationQueueHandler(repository)
 
@@ -327,6 +428,7 @@ func Build(cfg Config) (*Slice, error) {
 	workflowStarter := cfg.WorkflowStarter
 	workflowStatus := cfg.WorkflowStatus
 	workflowSignaler := cfg.WorkflowSignaler
+	var workflowCanceller ports.WorkflowCanceller
 	if cfg.WorkflowClient != nil {
 		policy := workflowadapter.ExecutionPolicy{
 			ApprovalTTL:            cfg.ApprovalTTL,
@@ -347,7 +449,13 @@ func Build(cfg Config) (*Slice, error) {
 		if workflowSignaler == nil {
 			workflowSignaler = adapter
 		}
+		workflowCanceller = adapter
 	}
+
+	// Обработчик события доставки: сопоставляет событие с заявкой по кампании и
+	// маршрутизирует исход бегущему исполнению. Без подключённого рантайма порт
+	// сигнала остаётся nil — обработчик честно сообщает недоступность.
+	concludeDelivery := command.NewConcludeDeliveryHandler(repository, workflowSignaler, cfg.Logger)
 
 	server := httpapi.NewServer(httpapi.Dependencies{
 		SubmitRequest:          submit,
@@ -357,23 +465,39 @@ func Build(cfg Config) (*Slice, error) {
 		FulfillRequest:         fulfill,
 		RejectRequest:          reject,
 		CancelRequest:          cancel,
+		FailRequest:            failRequest,
+		RerunRequest:           rerunRequest,
+		ReturnForRevision:      returnForRevision,
+		Resubmit:               resubmit,
 		ReviseOffer:            reviseOffer,
 		RecordAudienceSnapshot: recordAudience,
 		RecordCampaign:         recordCampaign,
 		RecordDeal:             recordDeal,
 		GetRequest:             getRequest,
+		ListRequests:           listRequests,
 		FulfillmentStatus:      fulfillmentStatus,
+		ExecutionState:         executionState,
 		WorkflowStatus:         workflowStatus,
 		WorkflowStarter:        workflowStarter,
+		ExecutionProtocol:      protocol,
+		ExecutionConsumer:      cfg.ExecutionConsumer,
+		AdmitExecution:         admitExecution,
 		WorkflowSignaler:       workflowSignaler,
+		WorkflowCanceller:      workflowCanceller,
+		OutreachCancellation:   cfg.Handoff,
 		ValidationQueue:        validationQueue,
 		ApprovalQueue:          query.NewApprovalQueueHandler(repository, workflowStatus),
 		InitiateCall:           initiateCall,
 		RecordCall:             recordCall,
 		EmbedOffer:             embedOffer,
 		EmailDrafts:            emailDrafts,
+		RequestWatcher:         notifier,
 		Runtime:                cfg.Runtime,
+		Readiness:              readinessProfile(repository, cfg.Runtime, cfg.WorkflowClient, cfg.readinessWorkerActive, protocol, cfg.CallContract != nil),
+		ReadinessEvaluator:     readiness.New(readiness.Config{Timeout: 750 * time.Millisecond, TTL: 2 * time.Second}),
 		Console:                cfg.Console,
+		BasePath:               cfg.BasePath,
+		ExternalPrefixes:       cfg.ExternalPrefixes,
 		Auth: consoleauth.Config{
 			Username:    cfg.ConsoleUser,
 			Password:    cfg.ConsolePassword,
@@ -385,7 +509,9 @@ func Build(cfg Config) (*Slice, error) {
 
 	var relay *platformoutbox.Relay
 	if cfg.Publisher != nil {
-		relay = platformoutbox.NewRelay(journal, cfg.Publisher, cfg.Interval)
+		relay = platformoutbox.NewRelay(journal, cfg.Publisher, cfg.Interval).
+			WithLogger(cfg.Logger).
+			WithMetrics(cfg.Metrics)
 	}
 
 	return &Slice{
@@ -402,16 +528,25 @@ func Build(cfg Config) (*Slice, error) {
 		FulfillRequest:         fulfill,
 		RejectRequest:          reject,
 		CancelRequest:          cancel,
+		FailRequest:            failRequest,
+		RerunRequest:           rerunRequest,
+		AdmitExecution:         admitExecution,
+		ReturnForRevision:      returnForRevision,
+		ResubmitRequest:        resubmit,
 		ReviseOffer:            reviseOffer,
 		RecordAudienceSnapshot: recordAudience,
 		RecordCampaign:         recordCampaign,
 		RecordDeal:             recordDeal,
 		GetRequest:             getRequest,
+		ListRequests:           listRequests,
 		FulfillmentStatus:      fulfillmentStatus,
+		ExecutionState:         executionState,
 
 		WorkflowStarter:  workflowStarter,
 		WorkflowStatus:   workflowStatus,
 		WorkflowSignaler: workflowSignaler,
+
+		RequestWatcher: notifier,
 
 		DraftStore: draftStore,
 
@@ -420,6 +555,8 @@ func Build(cfg Config) (*Slice, error) {
 		RecordCall:      recordCall,
 		EmbedOffer:      embedOffer,
 		EmailDrafts:     emailDrafts,
+
+		ConcludeDelivery: concludeDelivery,
 	}, nil
 }
 
@@ -438,6 +575,11 @@ type Service struct {
 	// availabilityMonitor следит за доступностью рантайма и переключает признак
 	// готовности /readyz. nil, если рантайм или признак не подключены.
 	availabilityMonitor *platformworkflow.AvailabilityMonitor
+
+	// deliverySubscriber подписан на события доставки и маршрутизирует их к
+	// исполнениям заявок. nil, если подписка не собрана (источник не задан).
+	deliverySubscriber    *transport.Subscriber
+	readinessWorkerActive *atomic.Bool
 }
 
 // New собирает сервис из адаптеров и переданных зависимостей.
@@ -455,9 +597,18 @@ func New(cfg Config) (*Service, error) {
 		cfg.Interval = defaultPublishInterval
 	}
 
+	workerActive := &atomic.Bool{}
+	cfg.readinessWorkerActive = workerActive
 	slice, err := Build(cfg)
 	if err != nil {
 		return nil, err
+	}
+
+	// Подписка на события доставки собирается только при заданном источнике:
+	// без него заявка ждёт прежним способом, а не завершается выдуманно.
+	var deliverySubscriber *transport.Subscriber
+	if cfg.DeliveryEvents != nil {
+		deliverySubscriber = transport.NewSubscriber(cfg.DeliveryEvents, cfg.DeliveryEventsDeduper, cfg.DeliveryEventsQueue, slice.ConcludeDelivery)
 	}
 
 	var workflowWorker *platformworkflow.Worker
@@ -477,12 +628,14 @@ func New(cfg Config) (*Service, error) {
 	}
 
 	service := &Service{
-		slice:          slice,
-		apiAddr:        cfg.APIAddr,
-		logger:         cfg.Logger,
-		metrics:        cfg.Metrics,
-		tracer:         cfg.Tracer,
-		workflowWorker: workflowWorker,
+		slice:                 slice,
+		apiAddr:               cfg.APIAddr,
+		logger:                cfg.Logger,
+		metrics:               cfg.Metrics,
+		tracer:                cfg.Tracer,
+		workflowWorker:        workflowWorker,
+		deliverySubscriber:    deliverySubscriber,
+		readinessWorkerActive: workerActive,
 	}
 	// Монитор доступности живёт вместе с ролью, владеющей клиентом: она же
 	// запускает воркер. Без подключённого рантайма и без пробы готовности монитор
@@ -520,12 +673,28 @@ func newActivities(slice *Slice, cfg Config) *workflowadapter.Activities {
 			Logger:   cfg.Logger,
 		}
 	}
+
+	// Шаг передачи собирается только при подключённом контракте передачи. Если не
+	// подключён материал, адаптер сам честно пропустит шаг с логом: заявка идёт
+	// дальше, а передача не выдаётся за успех.
+	var handoff workflowadapter.HandoffSender
+	if cfg.Handoff != nil {
+		handoff = workflowadapter.ContractHandoff{
+			Drafts:   slice.DraftStore,
+			Content:  cfg.ContentRequest,
+			Outreach: cfg.Handoff,
+			Logger:   cfg.Logger,
+		}
+	}
 	return &workflowadapter.Activities{
 		StartProcessing:   slice.StartProcessing,
 		Fulfill:           slice.FulfillRequest,
 		Cancel:            slice.CancelRequest,
+		Fail:              slice.FailRequest,
+		RecordCampaign:    slice.RecordCampaign,
 		Search:            search,
 		Drafts:            drafts,
+		Handoff:           handoff,
 		Clock:             cfg.Clock,
 		IDs:               cfg.IDs,
 		HeartbeatInterval: cfg.LongActivityHeartbeat,
@@ -583,11 +752,12 @@ func (s *Service) runAPI(ctx context.Context) error {
 //
 // Транспортный relay публикует подтверждённые записи outbox в брокер. Событие,
 // не прошедшее подтверждение, остаётся в журнале и будет опубликовано повторно:
-// доставка at-least-once, а потребитель дедуплицирует по event_id. Потребителей
-// очередей брокера в срезе нет — это не скрывается, а логируется.
+// доставка at-least-once, а потребитель дедуплицирует по event_id. Подписка на
+// события доставки собирается при заданном источнике; без неё это честно
+// логируется, а не скрывается.
 func (s *Service) runWorker(ctx context.Context) error {
-	if s.slice.Relay == nil && s.workflowWorker == nil && s.availabilityMonitor == nil {
-		return fmt.Errorf("worker: ни публикация событий заявки, ни воркер workflow не собраны")
+	if s.slice.Relay == nil && s.workflowWorker == nil && s.availabilityMonitor == nil && s.deliverySubscriber == nil {
+		return fmt.Errorf("worker: ни публикация событий заявки, ни воркер workflow, ни подписка на доставку не собраны")
 	}
 	if s.slice.Relay != nil {
 		s.logger.Info("worker: публикация событий заявки запущена", observ.Fields{}, "service", ServiceID)
@@ -595,14 +765,18 @@ func (s *Service) runWorker(ctx context.Context) error {
 	if s.workflowWorker == nil {
 		s.logger.Warn("worker: воркер workflow не собран (Temporal не подключён)", observ.Fields{}, "service", ServiceID)
 	}
-	s.logger.Warn("worker: обработчики очередей брокера не зарегистрированы", observ.Fields{}, "service", ServiceID)
+	if s.deliverySubscriber != nil {
+		s.logger.Info("worker: подписка на события доставки запущена", observ.Fields{}, "service", ServiceID)
+	} else {
+		s.logger.Warn("worker: подписка на события доставки не собрана (источник не задан)", observ.Fields{}, "service", ServiceID)
+	}
 
 	// Контекст контуров отменяется при падении любого из них: роль не должна
 	// зависать на долгоживущем контуре (например, relay), пока сбойный уже упал.
 	workerCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	errCh := make(chan error, 3)
+	errCh := make(chan error, 4)
 	var wg sync.WaitGroup
 	run := func(name string, fn func(context.Context) error) {
 		wg.Add(1)
@@ -617,7 +791,10 @@ func (s *Service) runWorker(ctx context.Context) error {
 		run("relay", s.slice.Relay.Run)
 	}
 	if s.workflowWorker != nil {
-		run("workflow", s.workflowWorker.Run)
+		run("workflow", s.runWorkflowWorker)
+	}
+	if s.deliverySubscriber != nil {
+		run("delivery-events", s.deliverySubscriber.Run)
 	}
 	if s.availabilityMonitor != nil {
 		run("runtime-monitor", s.availabilityMonitor.Run)
@@ -643,6 +820,15 @@ func (s *Service) runWorker(ctx context.Context) error {
 	default:
 	}
 	return firstErr
+}
+
+func (s *Service) runWorkflowWorker(ctx context.Context) error {
+	if s.workflowWorker == nil || s.readinessWorkerActive == nil {
+		return fmt.Errorf("worker: воркер workflow не собран")
+	}
+	s.readinessWorkerActive.Store(true)
+	defer s.readinessWorkerActive.Store(false)
+	return s.workflowWorker.Run(ctx)
 }
 
 // queryPort возвращает переданный query-контракт либо запрос, честно отвечающий

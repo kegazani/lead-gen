@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"time"
@@ -43,9 +44,13 @@ type BatchApprovalParams struct {
 // action-approved на каждый впервые утверждённый черновик; отдельного события
 // «пакет утверждён» нет.
 func (c *Campaign) ApproveBatch(
+	ctx context.Context,
 	params BatchApprovalParams,
 	canBeDecidedInPackage CanBeDecidedInPackage,
 ) ([]OperatorDecision, []DomainEvent, error) {
+	if c.Purpose() == CampaignPurposeEditorial {
+		return nil, nil, ErrEditorialDeliveryForbidden
+	}
 	if c.state == CampaignStateCompleted {
 		return nil, nil, fmt.Errorf("%w: кампания %s", ErrCampaignCompleted, c.id)
 	}
@@ -87,7 +92,16 @@ func (c *Campaign) ApproveBatch(
 				ErrBatchCompositionChanged, item.DraftID, draft.State(),
 			)
 		}
-		if reasons := riskReasons(canBeDecidedInPackage, draft.ID(), draft.Version()); len(reasons) > 0 {
+		reasons, err := riskReasons(ctx, canBeDecidedInPackage, RiskFactsRequest{
+			TenantID:  c.tenantID,
+			DraftID:   draft.ID(),
+			Version:   draft.Version(),
+			Recipient: draft.Spec().Recipient,
+		})
+		if err != nil {
+			return nil, nil, err
+		}
+		if len(reasons) > 0 {
 			return nil, nil, fmt.Errorf(
 				"%w: черновик %s (%s)",
 				ErrBatchDraftNotEligible, item.DraftID, strings.Join(riskReasonNames(reasons), ", "),

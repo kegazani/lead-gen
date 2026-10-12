@@ -121,6 +121,29 @@ func TestStatusSuccess(t *testing.T) {
 	}
 }
 
+// TestStatusDecodesFailureFields проверяет аддитивные поля MINOR 1.1.0: ответ с
+// фазой и причиной сбоя декодируется в StatusResult, а старый ответ без них
+// остаётся читаемым (поля пусты).
+func TestStatusDecodesFailureFields(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{"RequestID":"req-f","Status":"failed","Phase":"failed","ErrorReason":"search_failed","ErrorMessage":"поиск упал"}`)
+	}))
+	defer server.Close()
+
+	result, err := newClient(t, server).Status(context.Background(), requestintent.StatusQuery{RequestID: "req-f", TenantID: "t"})
+	if err != nil {
+		t.Fatalf("Status: %v", err)
+	}
+	want := requestintent.StatusResult{
+		RequestID: "req-f", Status: "failed", Phase: "failed",
+		ErrorReason: "search_failed", ErrorMessage: "поиск упал",
+	}
+	if result != want {
+		t.Fatalf("результат = %+v, ожидалось %+v", result, want)
+	}
+}
+
 // TestStatusEscapesRequestID проверяет, что идентификатор заявки попадает в путь
 // безопасно, а не ломает маршрут.
 func TestStatusEscapesRequestID(t *testing.T) {
@@ -136,6 +159,34 @@ func TestStatusEscapesRequestID(t *testing.T) {
 	}
 	if gotPath != "/requests/a%2Fb" {
 		t.Fatalf("путь = %q", gotPath)
+	}
+}
+
+// TestListSuccess проверяет успешное чтение списка: путь, обязательный тенант в
+// query и перевод ответа владельца в []ListEntry.
+func TestListSuccess(t *testing.T) {
+	var gotPath, gotTenant string
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		gotPath = r.URL.Path
+		gotTenant = r.URL.Query().Get("tenant_id")
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `[{"RequestID":"req-a","Status":"submitted"},{"RequestID":"req-b","Status":"needs-revision"}]`)
+	}))
+	defer server.Close()
+
+	entries, err := newClient(t, server).List(context.Background(), requestintent.ListQuery{TenantID: "tenant-1"})
+	if err != nil {
+		t.Fatalf("List: %v", err)
+	}
+	if gotPath != "/requests" || gotTenant != "tenant-1" {
+		t.Fatalf("запрос %s?tenant_id=%s", gotPath, gotTenant)
+	}
+	want := []requestintent.ListEntry{
+		{RequestID: "req-a", Status: "submitted"},
+		{RequestID: "req-b", Status: "needs-revision"},
+	}
+	if len(entries) != len(want) || entries[0] != want[0] || entries[1] != want[1] {
+		t.Fatalf("результат = %+v, ожидалось %+v", entries, want)
 	}
 }
 

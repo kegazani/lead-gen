@@ -37,6 +37,8 @@ var baseTemplates = []string{
 	"templates/status-badge.html",
 	"templates/provenance.html",
 	"templates/nav.html",
+	"templates/live.html",
+	"templates/verify-badge.html",
 }
 
 // LangRu — язык разметки по умолчанию: содержимое компонентов на русском.
@@ -52,6 +54,13 @@ var ConsoleStylesheets = []string{"/static/console.css"}
 // обслуживает переключатель темы из общего nav, поэтому должен выполниться
 // раньше разметки.
 var ConsoleBootstrapScripts = []string{"/static/theme.js"}
+
+// ConsoleScripts — общие отложенные скрипты экранов консоли. console-a11y.js
+// возвращает фокус при подмене фрагмента HTMX и объявляет изменения через
+// область aria-live, поэтому подключается к каждому экрану, который использует
+// гипермедиа-фрагменты. Имя не пересекается со скриптами экранов (у консоли
+// lead-management есть свой console.js с другой ответственностью).
+var ConsoleScripts = []string{"/static/console-a11y.js"}
 
 // StaticFS отдаёт встроенное общее оформление. Корень — каталог static, поэтому
 // монтируется на "GET /static/" со StripPrefix("/static/").
@@ -78,12 +87,18 @@ type Layout struct {
 	BootstrapScripts []string
 }
 
-// Page — данные страницы: каркас, необязательная вертикальная навигация и модель
-// экрана. Заголовок вынесен отдельно, потому что его видит и каркас, а модель —
-// только шаблон самого экрана.
+// Page — данные страницы: каркас, необязательная вертикальная навигация, модель
+// экрана и необязательная внутриэкранная панель переходов раздела. Заголовок
+// вынесен отдельно, потому что его видит и каркас, а модель — только шаблон самого
+// экрана.
+//
+// Subnav — панель вторичных переходов (экраны одного раздела), выводимая в
+// области содержимого, а не в общем сайдбаре: общий каркас остаётся одинаковым на
+// всех консолях и не меняет высоту при переходах. nil — панели нет.
 type Page struct {
 	Layout  Layout
 	Sidebar Nav
+	Subnav  *Tabs
 	View    any
 }
 
@@ -103,17 +118,20 @@ type NavItem struct {
 	Active bool
 }
 
-// Nav — вертикальная навигация (sidebar) каркаса: основные пункты (разделы
-// консоли) и необязательные вторичные группы. Пустой список Items означает
-// «страница без sidebar».
+// Nav — вертикальная навигация (sidebar) каркаса: пункты разделов консоли.
+// Пустой список Items означает «страница без sidebar».
+//
+// Groups не выводится каркасом: вторичные переходы раздела живут во внутриэкранной
+// панели (`Page.Subnav`), а не в общем сайдбаре — иначе сайдбар меняет состав и
+// высоту при переходах между консолями. Поле сохранено для совместимости сборки
+// потребителей и не влияет на разметку.
 type Nav struct {
 	Items  []NavItem
 	Groups []NavGroup
 }
 
-// NavGroup — вторичная группа пунктов навигации: подпись и список. Нужна, когда
-// раздел консоли несёт подпункты экранов своего сервиса: общие разделы остаются
-// в Nav.Items, а подпункты не смешиваются с ними.
+// NavGroup — вторичная группа пунктов навигации. Не выводится каркасом (см. Nav).
+// Вторичные переходы раздела — `Page.Subnav`.
 type NavGroup struct {
 	Label string
 	Items []NavItem
@@ -144,16 +162,23 @@ type Field struct {
 // каждой страницы. Страницы разбираются по отдельности: несколько файлов
 // объявляют "content", и в общем наборе они перекрыли бы друг друга.
 type Set struct {
-	pages map[string]*template.Template
+	pages    map[string]*template.Template
+	messages *Messages
 }
 
-// New разбирает страницы из fs: для каждого имени файла страницы собирается
-// отдельный набор «каркас + фрагменты + страница». Ошибка возвращается сразу —
-// при сборке процесса, а не при первом запросе.
+// New разбирает страницы из fs каталогом сообщений по умолчанию (ru).
 func New(pages fs.FS, names ...string) (*Set, error) {
-	set := &Set{pages: make(map[string]*template.Template, len(names))}
+	return NewWithMessages(DefaultMessages(), pages, names...)
+}
+
+// NewWithMessages разбирает страницы из fs с заданным каталогом сообщений: для
+// каждого имени файла страницы собирается отдельный набор «каркас + фрагменты +
+// страница». Ошибка возвращается сразу — при сборке процесса, а не при первом
+// запросе.
+func NewWithMessages(messages *Messages, pages fs.FS, names ...string) (*Set, error) {
+	set := &Set{pages: make(map[string]*template.Template, len(names)), messages: messages}
 	for _, name := range names {
-		parsed, err := template.New("layout").ParseFS(baseFS, baseTemplates...)
+		parsed, err := template.New("layout").Funcs(templateFuncs(messages)).ParseFS(baseFS, baseTemplates...)
 		if err != nil {
 			return nil, fmt.Errorf("components: разбор каркаса: %w", err)
 		}
@@ -198,4 +223,31 @@ func FieldError(errors map[string]string, name string) string {
 		return ""
 	}
 	return strings.TrimSpace(errors[name])
+}
+
+// templateFuncs собирает функции шаблонов общего слоя: доступ к каталогу
+// сообщений (`text`, `label`) и локализованные форматы (`formatDate`, `formatDateTime`,
+// `formatNumber`, `formatCurrency`, `formatTimeZone`). Благодаря этому шаблоны не
+// содержат пользовательских строк и не форматируют значения сами.
+func templateFuncs(messages *Messages) template.FuncMap {
+	if messages == nil {
+		messages = DefaultMessages()
+	}
+	formatter := NewFormatter(messages.Locale())
+	return template.FuncMap{
+		"text": func(key string) string {
+			return messages.Text(MessageKey(key))
+		},
+		// label — читаемая подпись машинного кода по каталогу (см. Messages.Label).
+		// Код принимается любого строкового типа (доменные статусы — именованные
+		// строки), поэтому приводится через fmt.Sprint.
+		"label": func(prefix string, code any) string {
+			return messages.Label(prefix, fmt.Sprint(code))
+		},
+		"formatDate":     formatter.Date,
+		"formatDateTime": formatter.DateTime,
+		"formatNumber":   formatter.Number,
+		"formatCurrency": formatter.Currency,
+		"formatTimeZone": formatter.DateTimeInZone,
+	}
 }

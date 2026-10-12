@@ -14,6 +14,7 @@ import (
 type ContentVersion struct {
 	id        ContentVersionID
 	revision  int
+	subject   string
 	body      string
 	locale    ContentLocale
 	createdAt time.Time
@@ -29,6 +30,9 @@ func (v ContentVersion) Revision() int { return v.revision }
 // Body возвращает текст версии.
 func (v ContentVersion) Body() string { return v.body }
 
+// Subject возвращает точную тему версии; пустая тема допустима.
+func (v ContentVersion) Subject() string { return v.subject }
+
 // Locale возвращает локаль версии.
 func (v ContentVersion) Locale() ContentLocale { return v.locale }
 
@@ -43,6 +47,7 @@ func (v ContentVersion) Snapshot() ContentVersionSnapshot {
 	return ContentVersionSnapshot{
 		ID:        v.id,
 		Revision:  v.revision,
+		Subject:   v.subject,
 		Body:      v.body,
 		Locale:    v.locale,
 		CreatedAt: v.createdAt,
@@ -86,6 +91,8 @@ type NewContentPackageParams struct {
 	Locale    ContentLocale
 	VersionID ContentVersionID
 	Body      string
+	Subject   string
+	ExactText bool
 	Actor     ActorID
 	At        time.Time
 	EventID   EventID
@@ -109,7 +116,7 @@ func NewContentPackage(params NewContentPackageParams) (*ContentPackage, error) 
 	if params.Locale.IsZero() {
 		return nil, fmt.Errorf("%w: локаль пакета не задана", ErrInvalidLocale)
 	}
-	body, err := normalizeBody(params.Body)
+	body, err := normalizeVersionBody(params.Body, params.ExactText)
 	if err != nil {
 		return nil, err
 	}
@@ -130,6 +137,7 @@ func NewContentPackage(params NewContentPackageParams) (*ContentPackage, error) 
 	pkg.versions = append(pkg.versions, ContentVersion{
 		id:        params.VersionID,
 		revision:  1,
+		subject:   params.Subject,
 		body:      body,
 		locale:    params.Locale,
 		createdAt: header.OccurredAt,
@@ -149,6 +157,8 @@ func NewContentPackage(params NewContentPackageParams) (*ContentPackage, error) 
 type PublishVersionInput struct {
 	VersionID ContentVersionID
 	Body      string
+	Subject   string
+	ExactText bool
 	Actor     ActorID
 	At        time.Time
 	EventID   EventID
@@ -166,7 +176,7 @@ func (p *ContentPackage) PublishVersion(input PublishVersionInput) (ContentVersi
 	if err := input.Actor.validate(); err != nil {
 		return ContentVersion{}, err
 	}
-	body, err := normalizeBody(input.Body)
+	body, err := normalizeVersionBody(input.Body, input.ExactText)
 	if err != nil {
 		return ContentVersion{}, err
 	}
@@ -179,6 +189,7 @@ func (p *ContentPackage) PublishVersion(input PublishVersionInput) (ContentVersi
 	version := ContentVersion{
 		id:        input.VersionID,
 		revision:  revision,
+		subject:   input.Subject,
 		body:      body,
 		locale:    p.locale,
 		createdAt: header.OccurredAt,
@@ -296,4 +307,16 @@ func normalizeBody(body string) (string, error) {
 		return "", ErrEmptyContent
 	}
 	return trimmed, nil
+}
+
+// normalizeVersionBody сохраняет legacy-нормализацию и поддерживает точный текст
+// version-only: обязательность проверяется без изменения исходных байтов.
+func normalizeVersionBody(body string, exact bool) (string, error) {
+	if !exact {
+		return normalizeBody(body)
+	}
+	if strings.TrimSpace(body) == "" {
+		return "", ErrEmptyContent
+	}
+	return body, nil
 }

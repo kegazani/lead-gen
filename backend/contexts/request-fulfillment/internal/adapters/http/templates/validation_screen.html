@@ -1,78 +1,106 @@
 {{- define "content" -}}
 <section class="validation-screen" hx-boost="true">
-  <h1>Валидация заявки {{.View.Request.RequestID}}</h1>
-  <p>Статус: <span class="status status-{{.View.Request.Status}}">{{.View.Request.Status}}</span></p>
+  {{ template "live" .View.Live }}
+  <h1>{{ text "request.validation.title" }}</h1>
+  <p class="hint">
+    <span class="status status-{{.View.Request.Status}}">{{ label "request.status" .View.Request.Status }}</span>
+    <span class="request-id">{{ text "request.number" }} {{.View.Request.RequestID}}</span>
+  </p>
   {{- with .View.Notice }}
   <p class="notice" role="status">{{.}}</p>
   {{- end }}
 
-  <section id="offer" hx-target="this" hx-swap="outerHTML">
-    {{ template "offer-fragment" .View }}
-  </section>
+  <div class="split">
+    <div>
+      <section id="offer" hx-target="this" hx-swap="innerHTML" data-focus-after-swap="#offer" data-live-announce="{{ text "request.live.offer" }}">
+        {{ template "offer-fragment" .View }}
+      </section>
 
-  {{- if .View.CanEditOffer }}
-  <form method="post" action="/requests/{{.View.Request.RequestID}}/validation/offer">
-    <input type="hidden" name="tenant_id" value="{{.View.TenantID}}">
-    <input type="hidden" name="csrf" value="{{.View.CSRF}}">
-    {{ template "field" .View.OfferField }}
-    {{ template "field" .View.TargetField }}
-    <button type="submit">Сохранить правку</button>
-  </form>
-  {{- end }}
+      {{- if .View.CanEditOffer }}
+      <form class="fact-panel" method="post" action="/requests/{{.View.Request.RequestID}}/validation/offer">
+        <h2>{{ text "request.validation.edit.title" }}</h2>
+        <input type="hidden" name="tenant_id" value="{{.View.TenantID}}">
+        <input type="hidden" name="csrf" value="{{.View.CSRF}}">
+        {{ template "field" .View.OfferField }}
+        {{ template "field" .View.TargetField }}
+        <button type="submit" class="button-secondary">{{ text "request.validation.save_offer" }}</button>
+      </form>
+      {{- end }}
+    </div>
 
-  {{- if .View.CanTake }}
-  <form method="post" action="/requests/{{.View.Request.RequestID}}/validation/take">
-    <input type="hidden" name="tenant_id" value="{{.View.TenantID}}">
-    <input type="hidden" name="csrf" value="{{.View.CSRF}}">
-    <button type="submit">Взять в работу</button>
-  </form>
-  {{- end }}
+    <div>
+      {{- if .View.CanTake }}
+      <form class="fact-panel" method="post" action="/requests/{{.View.Request.RequestID}}/validation/take">
+        <h2>{{ text "request.validation.decide.title" }}</h2>
+        <p class="hint">{{ text "request.validation.take.hint" }}</p>
+        <input type="hidden" name="tenant_id" value="{{.View.TenantID}}">
+        <input type="hidden" name="csrf" value="{{.View.CSRF}}">
+        <button type="submit">{{ text "request.validation.take" }}</button>
+      </form>
+      {{- end }}
 
-  {{- if .View.CanDecide }}
-  <form method="post" action="/requests/{{.View.Request.RequestID}}/validation/call">
-    <input type="hidden" name="tenant_id" value="{{.View.TenantID}}">
-    <input type="hidden" name="csrf" value="{{.View.CSRF}}">
-    <input type="hidden" name="correlation_id" value="{{.View.Request.RequestID}}">
-    <button type="submit">Инициировать звонок-уточнение</button>
-  </form>
+      {{- if .View.CanDecide }}
+      <div class="fact-panel">
+        <h2>{{ text "request.validation.decide.title" }}</h2>
+        <form method="post" action="/requests/{{.View.Request.RequestID}}/validation/approve">
+          <input type="hidden" name="tenant_id" value="{{.View.TenantID}}">
+          <input type="hidden" name="csrf" value="{{.View.CSRF}}">
+          {{- if .View.ExecutionProtocolV2 }}<input type="hidden" name="command_id" value="{{.View.CommandID}}">{{- end }}
+          {{- if .View.ExecutionProtocolV2 }}<input type="hidden" name="request_version" value="{{.View.Request.Version}}"><input type="hidden" name="offer_revision" value="{{.View.Request.Offer.Revision}}">{{- end }}
+          <p class="field">
+            <label for="{{.View.LeadTargetField.ID}}">{{.View.LeadTargetField.Label}}</label>
+            <input id="{{.View.LeadTargetField.ID}}" name="{{.View.LeadTargetField.Name}}" type="number" min="0" step="1" value="{{.View.LeadTargetField.Value}}">
+            <span class="field-hint">{{ text "request.validation.lead_target_hint" }}</span>
+          </p>
+          <button type="submit">{{ text "request.validation.approve" }}</button>
+        </form>
 
-  <form method="post" action="/requests/{{.View.Request.RequestID}}/validation/approve">
-    <input type="hidden" name="tenant_id" value="{{.View.TenantID}}">
-    <input type="hidden" name="csrf" value="{{.View.CSRF}}">
-    <button type="submit">Одобрить</button>
-  </form>
+        <form class="card-section" method="post" action="/requests/{{.View.Request.RequestID}}/validation/call">
+          <input type="hidden" name="tenant_id" value="{{.View.TenantID}}">
+          <input type="hidden" name="csrf" value="{{.View.CSRF}}">
+          <input type="hidden" name="correlation_id" value="{{.View.Request.RequestID}}">
+          <p class="hint">{{ text "request.validation.call.hint" }}</p>
+          <button type="submit" class="button-secondary">{{ text "request.validation.call" }}</button>
+        </form>
 
-  <form method="post" action="/requests/{{.View.Request.RequestID}}/validation/reject">
-    <input type="hidden" name="tenant_id" value="{{.View.TenantID}}">
-    <input type="hidden" name="csrf" value="{{.View.CSRF}}">
-    {{ template "field" .View.ReasonField }}
-    <button type="submit">Отклонить</button>
-  </form>
-  {{- end }}
+        <form class="card-section" method="post" action="/requests/{{.View.Request.RequestID}}/validation/reject">
+          <input type="hidden" name="tenant_id" value="{{.View.TenantID}}">
+          <input type="hidden" name="csrf" value="{{.View.CSRF}}">
+          {{ template "field" .View.ReasonField }}
+          <button type="submit" class="button-danger">{{ text "request.validation.reject" }}</button>
+        </form>
+      </div>
+      {{- end }}
 
-  {{- with .View.Request.ValidationDecision }}
-  <section class="validation-decision">
-    <h2>Решение валидации</h2>
-    <p>Исход: {{.Outcome}}</p>
-    <p>Актор: {{.Actor}}</p>
-    <p>Время: {{.At}}</p>
-    {{- with .Reason }}<p>Причина: {{.}}</p>{{- end }}
-  </section>
-  {{- end }}
+      {{- with .View.Request.ValidationDecision }}
+      <section class="validation-decision fact-panel">
+        <h2>{{ text "request.validation.decision.title" }}</h2>
+        <dl class="facts">
+          <div><dt>{{ text "request.validation.decision.outcome" }}</dt><dd>{{ label "request.decision" .Outcome }}</dd></div>
+          <div><dt>{{ text "request.validation.decision.actor" }}</dt><dd>{{.Actor}}</dd></div>
+          <div><dt>{{ text "request.validation.decision.at" }}</dt><dd>{{.At}}</dd></div>
+          {{- with .Reason }}<div><dt>{{ text "request.validation.decision.reason" }}</dt><dd>{{.}}</dd></div>{{- end }}
+        </dl>
+      </section>
+      {{- end }}
 
-  {{- with .View.Request.CallID }}
-  <p class="call-ref">Звонок: {{.}}</p>
-  {{- end }}
+      {{- with .View.Request.CallID }}
+      <p class="call-ref hint">{{ text "request.validation.call_ref" }} {{.}}</p>
+      {{- end }}
+    </div>
+  </div>
 </section>
 {{- end -}}
 
 {{- define "offer-fragment" -}}
 <article class="offer">
-  <h2>Оффер</h2>
+  <h2>{{ text "request.offer.title" }}</h2>
   <p class="offer-content">{{.Request.Offer.Content}}</p>
-  {{- with .Request.Offer.Target }}
-  <p class="offer-target">Цель: {{.}}</p>
-  {{- end }}
-  <p class="offer-revision">Версия оффера: {{.Request.Offer.Revision}}</p>
+  <dl class="facts">
+    {{- with .Request.Offer.Target }}
+    <div><dt>{{ text "request.offer.target" }}</dt><dd class="offer-target">{{.}}</dd></div>
+    {{- end }}
+    <div><dt>{{ text "request.offer.revision" }}</dt><dd class="offer-revision">{{.Request.Offer.Revision}}</dd></div>
+  </dl>
 </article>
 {{- end -}}

@@ -83,9 +83,24 @@ func TestCommand_ContentOptional(t *testing.T) {
 }
 
 func TestSchemaVersion_MinorAddition(t *testing.T) {
-	// Добавление темы и тела — MINOR: MAJOR остаётся 1.
-	if SchemaVersion != "1.1.0" {
-		t.Fatalf("ожидалась версия схемы 1.1.0, got %q", SchemaVersion)
+	// Добавление темы/тела и ссылки на кампанию — MINOR: MAJOR остаётся 1.
+	if SchemaVersion != "1.2.0" {
+		t.Fatalf("ожидалась версия схемы 1.2.0, got %q", SchemaVersion)
+	}
+}
+
+func TestCommand_CampaignOptional(t *testing.T) {
+	// Ссылка на кампанию (версия 1.2.0) необязательна: команда без неё валидна.
+	if err := validCommand().Validate(); err != nil {
+		t.Fatalf("команда без кампании должна быть допустима: %v", err)
+	}
+	withCampaign := validCommand()
+	withCampaign.CampaignID = "handoff-req-1"
+	if err := withCampaign.Validate(); err != nil {
+		t.Fatalf("команда со ссылкой на кампанию отвергнута: %v", err)
+	}
+	if withCampaign.CampaignID != "handoff-req-1" {
+		t.Fatalf("ссылка на кампанию не сохранена: %+v", withCampaign)
 	}
 }
 

@@ -1,10 +1,13 @@
 package observ
 
 import (
+	"math"
 	"net/url"
 	"sort"
 	"strings"
 	"sync"
+
+	"lead-gen/backend/platform/observability/metriccatalog"
 )
 
 // Metrics — приёмник технических метрик сервиса. Метрики RED (rate, errors,
@@ -34,27 +37,42 @@ type observation struct {
 // приёмником, поэтому подмена реализации не меняет вызовы.
 type MemoryMetrics struct {
 	mu           sync.Mutex
+	catalog      metriccatalog.Catalog
 	counters     map[sampleKey]int64
 	observations map[sampleKey]observation
 }
 
 // NewMetrics возвращает пустой потокобезопасный приёмник метрик.
 func NewMetrics() Metrics {
+	return NewMetricsWithCatalog(metriccatalog.Default())
+}
+
+// NewMetricsWithCatalog создаёт приёмник, применяющий переданный закрытый каталог
+// схем, label values и tuple policy.
+func NewMetricsWithCatalog(catalog metriccatalog.Catalog) *MemoryMetrics {
 	return &MemoryMetrics{
+		catalog:      catalog,
 		counters:     make(map[sampleKey]int64),
 		observations: make(map[sampleKey]observation),
 	}
 }
 
-// Incr реализует Metrics.
+// Incr реализует Metrics. Образец с недопустимой меткой не учитывается: он не
+// создаёт временную серию (design.md, Решение 6).
 func (m *MemoryMetrics) Incr(name string, labels map[string]string) {
+	if !m.catalog.Validate(name, metriccatalog.Counter, labels) {
+		return
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	m.counters[newSampleKey(name, labels)]++
 }
 
-// Observe реализует Metrics.
+// Observe реализует Metrics. Образец с недопустимой меткой не учитывается.
 func (m *MemoryMetrics) Observe(name string, v float64, labels map[string]string) {
+	if math.IsNaN(v) || math.IsInf(v, 0) || !m.catalog.Validate(name, metriccatalog.Histogram, labels) {
+		return
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	k := newSampleKey(name, labels)

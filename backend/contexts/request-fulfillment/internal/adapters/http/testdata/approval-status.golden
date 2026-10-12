@@ -1,6 +1,8 @@
 <article class="approval-status">
   <h2>Исполнение</h2>
-  <p class="phase">Фаза: <span class="status status-awaiting-approval">awaiting-approval</span></p>
-  <p class="execution">Состояние: RUNNING</p>
-  <p class="found">Найдено лидов: 4</p>
+  <dl class="facts">
+    <div><dt>Этап:</dt><dd class="phase"><span class="status status-awaiting-approval">Ждёт решения</span></dd></div>
+    <div><dt>Состояние исполнения:</dt><dd class="execution">Выполняется</dd></div>
+    <div><dt>Найдено лидов:</dt><dd class="found num">4</dd></div>
+  </dl>
 </article>

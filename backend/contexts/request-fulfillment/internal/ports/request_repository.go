@@ -38,4 +38,24 @@ type RequestRepository interface {
 	// валидации — submitted). Порядок — по идентификатору, чтобы выдача была
 	// воспроизводимой. Метод обслуживает чтение экрана, а не доменное правило.
 	ListByStatus(ctx context.Context, status domain.RequestStatus) ([]*domain.Request, error)
+
+	// ListByTenant возвращает все заявки тенанта в порядке по идентификатору.
+	// Обслуживает историю заявок клиента (портал) и список заявок компании
+	// (админка).
+	ListByTenant(ctx context.Context, tenantID domain.TenantID) ([]*domain.Request, error)
+
+	// FindByCampaign загружает заявку по идентификатору кампании в границах
+	// тенанта (capability request-delivery-conclusion): событие доставки
+	// сопоставляется с заявкой по её кампании. Если заявки нет, возвращается
+	// ошибка, для которой истинно errors.Is(err, ErrRequestNotFound).
+	FindByCampaign(ctx context.Context, tenantID domain.TenantID, campaignID domain.CampaignID) (*domain.Request, error)
+
+	// CountByTenant возвращает число заявок тенанта в нетерминальных статусах
+	// (submitted, validating, validated, processing, needs-revision). Обслуживает
+	// лимит одновременных заявок клиента.
+	CountByTenant(ctx context.Context, tenantID domain.TenantID) (int, error)
+
+	// CountInWork возвращает число заявок тенанта в статусе processing.
+	// Обслуживает лимит «не более одной заявки в работе».
+	CountInWork(ctx context.Context, tenantID domain.TenantID) (int, error)
 }

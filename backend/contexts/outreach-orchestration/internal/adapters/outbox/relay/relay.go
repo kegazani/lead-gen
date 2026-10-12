@@ -6,7 +6,8 @@
 // знает о брокере и базе: он читает ожидающие сообщения из Source и отдаёт
 // готовый контракт в Sink. Повторная доставка не создаёт второго внешнего
 // эффекта, потому что получатель идемпотентен по ключу
-// (tenant_id, draft_id, draft_version) — contracts.ApprovedAction.IdempotencyKey.
+// (tenant_id, campaign_id, draft_id, draft_version) —
+// contracts.ApprovedAction.IdempotencyKey.
 //
 // Интерфейсы Source и Sink объявлены здесь намеренно: назначение публикации
 // задаётся в рамках среза, без подключения реальной очереди или внешней
@@ -125,33 +126,13 @@ func (r *Relay) PublishPending(ctx context.Context) (int, error) {
 // MapActionApproved отображает domain.ActionApproved в contracts.ApprovedAction,
 // а прочие события помечает как неподлежащие публикации.
 //
-// EventID намеренно не заполняется: его проставляет relay идентификатором
-// записи outbox. CorrelationID — кампания как сквозной бизнес-процесс,
-// CausationID — решение оператора, санкционировавшее действие.
-//
-// Допущение среза: у domain.ActionApproved нет ссылки на получателя, поэтому
-// RecipientRef заполняется ссылкой на черновик — единственным доступным
-// непрозрачным идентификатором. Получатель разрешает её на своей стороне; при
-// появлении отдельной ссылки в событии менять нужно только это отображение.
+// Отображение задано один раз — contracts.FromActionApproved — и используется как
+// публикацией, так и чтением решения по черновику. EventID намеренно не заполняется:
+// его проставляет relay идентификатором записи outbox.
 func MapActionApproved(event domain.DomainEvent) (contracts.ApprovedAction, bool, error) {
 	approved, ok := event.(domain.ActionApproved)
 	if !ok {
 		return contracts.ApprovedAction{}, false, nil
 	}
-
-	action := contracts.NewApprovedAction(contracts.Envelope{
-		OccurredAt:    approved.At,
-		TenantID:      approved.TenantID.String(),
-		CorrelationID: approved.CampaignID.String(),
-		CausationID:   approved.DecisionID.String(),
-	})
-	action.ApprovedActionID = fmt.Sprintf("%s@%d", approved.DraftID, approved.DraftVersion)
-	action.CampaignID = approved.CampaignID.String()
-	action.DraftID = approved.DraftID.String()
-	action.DraftVersion = int64(approved.DraftVersion)
-	action.DecisionID = approved.DecisionID.String()
-	action.Channel = approved.Channel.String()
-	action.RecipientRef = approved.DraftID.String()
-	action.DecidedAt = approved.At
-	return action, true, nil
+	return contracts.FromActionApproved(approved), true, nil
 }

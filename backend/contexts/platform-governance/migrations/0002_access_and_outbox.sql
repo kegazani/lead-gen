@@ -10,12 +10,25 @@ ALTER TABLE "platform-governance".tenant
     ADD COLUMN IF NOT EXISTS version bigint NOT NULL DEFAULT 0;
 
 -- Набор ролей пользователя неизменяем: хранится массивом. Старая одиночная
--- колонка role переносится в массив и удаляется.
+-- колонка role переносится в массив и удаляется. Перенос защищён проверкой
+-- наличия колонки role: повторное применение миграции (в том числе на базе,
+-- мигрированной до появления учёта версий) не должно ссылаться на удалённую
+-- колонку.
 ALTER TABLE "platform-governance".tenant_user
     ADD COLUMN IF NOT EXISTS roles text[] NOT NULL DEFAULT '{}';
-UPDATE "platform-governance".tenant_user
-    SET roles = ARRAY[role]
-    WHERE roles = '{}' AND role IS NOT NULL AND role <> '';
+DO $$
+BEGIN
+    IF EXISTS (
+        SELECT 1 FROM information_schema.columns
+        WHERE table_schema = 'platform-governance'
+          AND table_name = 'tenant_user'
+          AND column_name = 'role'
+    ) THEN
+        UPDATE "platform-governance".tenant_user
+            SET roles = ARRAY[role]
+            WHERE roles = '{}' AND role IS NOT NULL AND role <> '';
+    END IF;
+END $$;
 ALTER TABLE "platform-governance".tenant_user
     DROP COLUMN IF EXISTS role;
 

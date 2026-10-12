@@ -17,6 +17,7 @@ import (
 type ContentVersionSnapshot struct {
 	ID        ContentVersionID
 	Revision  int
+	Subject   string
 	Body      string
 	Locale    ContentLocale
 	CreatedAt time.Time
@@ -233,6 +234,7 @@ func RehydrateContentPackage(snapshot ContentPackageSnapshot) (*ContentPackage, 
 		versions = append(versions, ContentVersion{
 			id:        version.ID,
 			revision:  version.Revision,
+			subject:   version.Subject,
 			body:      version.Body,
 			locale:    version.Locale,
 			createdAt: version.CreatedAt,

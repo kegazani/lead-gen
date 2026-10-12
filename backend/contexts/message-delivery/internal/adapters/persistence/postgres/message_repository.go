@@ -206,6 +206,7 @@ type messageRecord struct {
 	ID               string          `json:"id"`
 	TenantID         string          `json:"tenant_id"`
 	ApprovedActionID string          `json:"approved_action_id"`
+	CampaignID       string          `json:"campaign_id,omitempty"`
 	RecipientRef     string          `json:"recipient_ref"`
 	Address          string          `json:"address"`
 	SenderDomain     string          `json:"sender_domain"`
@@ -230,6 +231,7 @@ func marshalMessage(snapshot domain.MessageSnapshot) ([]byte, error) {
 		ID:               snapshot.ID.String(),
 		TenantID:         snapshot.TenantID.String(),
 		ApprovedActionID: snapshot.ApprovedActionID.String(),
+		CampaignID:       snapshot.CampaignID,
 		RecipientRef:     snapshot.RecipientRef.String(),
 		Address:          snapshot.Address.String(),
 		SenderDomain:     snapshot.SenderDomain.String(),
@@ -283,6 +285,7 @@ func unmarshalMessage(raw []byte) (domain.MessageSnapshot, error) {
 		ID:               domain.MessageID(record.ID),
 		TenantID:         domain.TenantID(record.TenantID),
 		ApprovedActionID: domain.ApprovedActionID(record.ApprovedActionID),
+		CampaignID:       record.CampaignID,
 		RecipientRef:     domain.RecipientRef(record.RecipientRef),
 		Address:          address,
 		SenderDomain:     sender,

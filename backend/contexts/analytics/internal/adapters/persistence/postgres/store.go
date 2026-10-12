@@ -42,6 +42,15 @@ type ProjectionStore struct {
 	db execer
 }
 
+// Readiness выполняет только безопасную проверку соединения без доступа к данным.
+func (s *ProjectionStore) Readiness(ctx context.Context) error {
+	probe, ok := s.db.(interface{ Ping(context.Context) error })
+	if !ok {
+		return fmt.Errorf("postgres: проверка соединения не поддерживается")
+	}
+	return probe.Ping(ctx)
+}
+
 // Проверка соответствия порту на этапе компиляции.
 var _ ports.ProjectionStore = (*ProjectionStore)(nil)
 

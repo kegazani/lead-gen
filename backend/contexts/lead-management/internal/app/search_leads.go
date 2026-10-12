@@ -2,10 +2,13 @@ package app
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"time"
 	"unicode"
 	"unicode/utf8"
@@ -13,6 +16,7 @@ import (
 	"lead-gen/backend/contexts/lead-management/internal/domain"
 	"lead-gen/backend/contexts/lead-management/internal/ports"
 	"lead-gen/backend/platform/observability/observ"
+	"lead-gen/contracts/integration-platform/budget"
 	"lead-gen/contracts/integration-platform/crawl"
 	"lead-gen/contracts/integration-platform/search"
 )
@@ -35,6 +39,9 @@ const (
 	DefaultSearchLeadsMaxPages = 5
 	// DefaultSearchLeadsSiteTimeSeconds — предельное время обхода одного сайта.
 	DefaultSearchLeadsSiteTimeSeconds = 15
+	// searchLeadsDrainBudget — предельное время сохранения уже добытых страниц
+	// после остановки обхода (таймаут/отмена): домечивание не должно зависать.
+	searchLeadsDrainBudget = 10 * time.Second
 	// poolScanLimit — верхняя граница карточек пула, читаемых для подбора. Пул
 	// клиента в срезе лёгкий: отдельного индексного поиска по критерию в портах
 	// нет, поэтому подбор идёт по вычитке витрины (как воронка).
@@ -124,7 +131,21 @@ type SearchLeadsResult struct {
 	FromPool int
 	Crawled  int
 	Leads    []SearchLeadRef
+	// PartialReason — безопасный стабильный код причины, если дозабор завершён
+	// не полностью. Пустое значение означает отсутствие известной неполноты.
+	PartialReason string
 }
+
+const (
+	searchPartialSearchUnavailable  = "search_unavailable"
+	searchPartialCrawlUnavailable   = "crawl_unavailable"
+	searchPartialExtractCostUnknown = "extract_cost_unknown"
+	searchPartialCancelled          = "cancelled"
+	searchPartialDeadline           = "deadline_exceeded"
+	searchPartialBudgetCapacity     = "budget_capacity"
+)
+
+var searchLeadsTaskSequence atomic.Uint64
 
 // SearchLeadsForRequest — use case поиска лидов под заявку: сначала берёт
 // кандидатов из существующего пула (карточки компаний), а при нехватке добирает
@@ -140,11 +161,12 @@ type SearchLeadsForRequest struct {
 	// Contacts — репозиторий контактов; нужен, чтобы сохранять контакты найденных
 	// краулингом компаний.
 	Contacts ports.ContactRepository
-	// Search — порт поиска (Firecrawl /search). nil — дозабор краулингом
-	// недоступен, поиск отвечает по пулу.
-	Search search.Port
-	// Crawl — порт обхода. nil — дозабор краулингом недоступен.
-	Crawl crawl.Port
+	// Budget — общий Firecrawl Guard factory. При наличии создаёт отдельный
+	// process-local бюджет задачи и передаёт его wrappers для всех операций.
+	// Raw Firecrawl порты намеренно не передаются сюда: обход Guard невозможен.
+	Budget budget.Factory
+	// MaxCredits — настроенный FirecrawlMaxCredits; 0 снимает только per-task cap.
+	MaxCredits int
 	// Clock — часы; nil — системное время.
 	Clock ports.Clock
 	// Limits — пределы обхода одного сайта.
@@ -179,6 +201,9 @@ func (u *SearchLeadsForRequest) Run(ctx context.Context, in SearchLeadsInput) (S
 	}
 	limit := u.limit(in.Limit)
 
+	// Пул лидов принадлежит тенанту-владельцу заявки: область хранения идёт из входа
+	// до адаптеров (порт читает её из контекста).
+	ctx = ports.WithTenant(ctx, in.TenantID)
 	ctx, finish := u.startSpan(ctx, "lead-search")
 
 	companies, err := u.Profiles.ListVisible(ctx, poolScanLimit)
@@ -200,37 +225,83 @@ func (u *SearchLeadsForRequest) Run(ctx context.Context, in SearchLeadsInput) (S
 	fromPool := len(leads)
 	if fromPool >= limit {
 		finish(nil)
-		return newSearchLeadsResult(leads, fromPool, 0), nil
+		return newSearchLeadsResult(leads, fromPool, 0, ""), nil
 	}
 
-	crawled := u.crawlDeficit(ctx, criteria, limit-fromPool, seen, &leads)
+	partialReason := ""
+	if u.Budget == nil {
+		// Без Guard нельзя безопасно продолжить дозабор. В частности, raw-порты
+		// не являются резервным путём: возвращаем найденное в пуле как частичный
+		// результат и не выполняем сетевых вызовов.
+		setSearchPartialReason(&partialReason, searchPartialSearchUnavailable)
+		finish(nil)
+		return newSearchLeadsResult(leads, fromPool, 0, partialReason), nil
+	}
+	taskID := searchLeadsTaskScope(in.TenantID, in.RequestID)
+	task, err := u.Budget.Begin(taskID, u.MaxCredits)
+	if err != nil {
+		finish(err)
+		if errors.Is(err, budget.ErrRegistryCapacity) {
+			setSearchPartialReason(&partialReason, searchPartialBudgetCapacity)
+			return newSearchLeadsResult(leads, fromPool, 0, partialReason), nil
+		}
+		return SearchLeadsResult{}, fmt.Errorf("app: бюджет синхронного поиска: %w", err)
+	}
+	defer func() {
+		finishCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 20*time.Second)
+		defer cancel()
+		if err := u.Budget.Finish(finishCtx, taskID); err != nil {
+			u.warn("поиск под заявку: завершение budget scope не подтверждено", "reason", "budget_finish_failed")
+		}
+	}()
+	crawled, err := u.crawlDeficit(ctx, task, task, criteria, limit-fromPool, seen, &leads, &partialReason)
+	if err != nil {
+		finish(err)
+		return SearchLeadsResult{}, fmt.Errorf("app: сохранение результата поиска заявки %s: %w", in.RequestID, err)
+	}
 	finish(nil)
-	return newSearchLeadsResult(leads, fromPool, crawled), nil
+	return newSearchLeadsResult(leads, fromPool, crawled, partialReason), nil
+}
+
+// searchLeadsTaskScope задаёт стабильный scope бюджета из tenant и RequestID.
+// Хэш не раскрывает пользовательский идентификатор в ключе реестра Guard.
+func searchLeadsTaskScope(tenantID, requestID string) string {
+	requestID = strings.TrimSpace(requestID)
+	if requestID == "" {
+		requestID = fmt.Sprintf("generated-%d", searchLeadsTaskSequence.Add(1))
+	}
+	scope := sha256.Sum256([]byte(strings.TrimSpace(tenantID) + "\x00" + requestID))
+	return "lead-search/" + hex.EncodeToString(scope[:])
 }
 
 // newSearchLeadsResult собирает результат из накопленных ссылок.
-func newSearchLeadsResult(leads []SearchLeadRef, fromPool, crawled int) SearchLeadsResult {
+func newSearchLeadsResult(leads []SearchLeadRef, fromPool, crawled int, partialReason string) SearchLeadsResult {
 	return SearchLeadsResult{
-		Found:    len(leads),
-		FromPool: fromPool,
-		Crawled:  crawled,
-		Leads:    leads,
+		Found:         len(leads),
+		FromPool:      fromPool,
+		Crawled:       crawled,
+		Leads:         leads,
+		PartialReason: partialReason,
 	}
 }
 
 // crawlDeficit добирает недостающих лидов ограниченным краулингом Firecrawl.
 // Возвращает число добавленных краулингом лидов. Дозабор не запускается, если
 // порты поиска/обхода не подключены, и не роняет результат при сбое движка.
-func (u *SearchLeadsForRequest) crawlDeficit(ctx context.Context, criteria string, need int, seen map[string]struct{}, leads *[]SearchLeadRef) int {
-	if u.Search == nil || u.Crawl == nil || need <= 0 {
-		return 0
+func (u *SearchLeadsForRequest) crawlDeficit(ctx context.Context, searchPort search.Port, crawlPort crawl.Port, criteria string, need int, seen map[string]struct{}, leads *[]SearchLeadRef, partialReason *string) (int, error) {
+	if need <= 0 {
+		return 0, nil
+	}
+	if searchPort == nil || crawlPort == nil {
+		setSearchPartialReason(partialReason, searchPartialSearchUnavailable)
+		return 0, nil
 	}
 	top := u.maxResults()
 	if top > need {
 		top = need
 	}
 	if top <= 0 {
-		return 0
+		return 0, nil
 	}
 
 	crawlCtx := ctx
@@ -240,83 +311,135 @@ func (u *SearchLeadsForRequest) crawlDeficit(ctx context.Context, criteria strin
 		defer cancel()
 	}
 
-	results, err := u.Search.Search(crawlCtx, search.Query{Text: criteria, MaxResults: top})
+	results, err := searchPort.Search(crawlCtx, search.Query{Text: criteria, MaxResults: top})
 	if err != nil {
 		// Сбой поиска — не выдуманный «пусто»: результат остаётся пуловым, причина
 		// видна в логе и в счётчике Crawled.
 		u.warn("поиск под заявку: поисковый запрос не удался", "query", criteria, "error", err.Error())
-		return 0
+		if errors.Is(crawlCtx.Err(), context.Canceled) {
+			setSearchPartialReason(partialReason, searchPartialCancelled)
+		} else if errors.Is(crawlCtx.Err(), context.DeadlineExceeded) {
+			setSearchPartialReason(partialReason, searchPartialDeadline)
+		} else {
+			setSearchPartialReason(partialReason, searchPartialSearchUnavailable)
+		}
+		return 0, nil
 	}
 
 	added := 0
 	for _, res := range results {
 		if added >= need || crawlCtx.Err() != nil {
+			if crawlCtx.Err() != nil {
+				setSearchPartialReason(partialReason, partialReasonForContext(crawlCtx.Err()))
+			}
 			break
 		}
 		if strings.TrimSpace(res.URL) == "" {
 			continue
 		}
-		added += u.crawlSite(crawlCtx, res.URL, need-added, seen, leads)
+		siteAdded, siteErr := u.crawlSite(crawlCtx, crawlPort, res.URL, need-added, seen, leads, partialReason)
+		added += siteAdded
+		if siteErr != nil {
+			return added, siteErr
+		}
 	}
-	return added
+	return added, nil
 }
 
-// crawlSite обходит один сайт и сохраняет новые компании страниц. Отмена или
-// исчерпание времени не считаются сбоем: уже собранные страницы сохраняются.
-func (u *SearchLeadsForRequest) crawlSite(ctx context.Context, startURL string, need int, seen map[string]struct{}, leads *[]SearchLeadRef) int {
-	outcome, err := u.Crawl.Crawl(ctx, u.crawlRequest(startURL))
-	if err != nil && !errors.Is(err, crawl.ErrCancelled) {
+// crawlSite обходит один сайт и сохраняет новые компании страниц. Таймаут обхода
+// (crawl.ErrTimeout) или отмена (crawl.ErrCancelled) не считаются сбоем: уже
+// собранные страницы сохраняются за ограниченное время, чтобы шаг поиска завершался
+// в разумный срок и не терял добытое.
+func (u *SearchLeadsForRequest) crawlSite(ctx context.Context, crawlPort crawl.Port, startURL string, need int, seen map[string]struct{}, leads *[]SearchLeadRef, partialReason *string) (int, error) {
+	outcome, err := crawlPort.Crawl(ctx, u.crawlRequest(startURL))
+	bounded := errors.Is(err, crawl.ErrCancelled) || errors.Is(err, crawl.ErrTimeout)
+	if err != nil && !bounded {
 		u.warn("поиск под заявку: обход сайта не удался", "url", startURL, "error", err.Error())
-		return 0
+		setSearchPartialReason(partialReason, searchPartialCrawlUnavailable)
+		return 0, nil
+	}
+	if bounded {
+		setSearchPartialReason(partialReason, partialReasonForContext(err))
+	}
+
+	// При ограниченной остановке дедлайн уже истёк: чтобы сохранить добытые
+	// страницы, домечиваем их под кратко-ограниченным отсоединённым контекстом.
+	pageCtx := ctx
+	if bounded {
+		var cancel context.CancelFunc
+		pageCtx, cancel = context.WithTimeout(context.WithoutCancel(ctx), searchLeadsDrainBudget)
+		defer cancel()
 	}
 
 	added := 0
 	for _, page := range outcome.Pages {
-		if added >= need || ctx.Err() != nil {
+		if added >= need || pageCtx.Err() != nil {
 			break
 		}
-		id, ok := u.savePage(ctx, page, seen)
+		id, ok, saveErr := u.savePage(pageCtx, crawlPort, page, seen, !bounded && ctx.Err() == nil, partialReason)
+		if saveErr != nil {
+			return added, saveErr
+		}
 		if !ok {
 			continue
 		}
 		*leads = append(*leads, SearchLeadRef{CompanyID: id, Origin: LeadOriginCrawl})
 		added++
 	}
-	return added
+	return added, nil
 }
 
 // savePage разбирает одну страницу в карточку компании и сохраняет её.
 // Возвращает идентификатор сохранённой компании и признак успеха. Домен, уже
 // попавший в результат (в том числе из пула), не добавляется повторно.
-func (u *SearchLeadsForRequest) savePage(ctx context.Context, page crawl.Page, seen map[string]struct{}) (string, bool) {
+func (u *SearchLeadsForRequest) savePage(ctx context.Context, crawlPort crawl.Port, page crawl.Page, seen map[string]struct{}, allowExtract bool, partialReason *string) (string, bool, error) {
 	at := u.now()
 	name, description, socials := extractCard(page, at)
 	contacts := extractContacts(page, at)
 
 	// Эскалация на структурированную экстракцию — как в плановом обходе: при
 	// неполной карточке пробуем extract, ошибка не фатальна.
-	if !isFullCard(name, description, contacts) {
-		candidates, err := u.Crawl.Extract(ctx, crawl.ExtractRequest{URL: page.URL})
+	if !isFullCard(name, description, contacts) && allowExtract {
+		candidates, err := crawlPort.Extract(ctx, crawl.ExtractRequest{URL: page.URL})
 		if err == nil {
 			contacts = mergeContacts(contacts, contactCandidatesFromExtract(candidates, page.URL, at))
 		} else {
 			u.warn("поиск под заявку: эскалация на extract не удалась", "url", page.URL, "error", err.Error())
+			setSearchPartialReason(partialReason, searchPartialExtractCostUnknown)
 		}
+	} else if !isFullCard(name, description, contacts) {
+		setSearchPartialReason(partialReason, searchPartialCancelled)
 	}
 
 	identity := NormalizeDomain(page.URL)
 	if name.Value == "" || identity == "" {
-		return "", false
+		return "", false, nil
 	}
 	if _, ok := seen[identity]; ok {
-		return "", false
+		return "", false, nil
 	}
 	if err := persistCompany(ctx, u.Profiles, u.Contacts, identity, name, description, socials, contacts, at); err != nil {
 		u.error("поиск под заявку: сохранение компании", err, "url", page.URL)
-		return "", false
+		return "", false, fmt.Errorf("сохранение компании %s: %w", identity, err)
 	}
 	seen[identity] = struct{}{}
-	return identity, true
+	return identity, true, nil
+}
+
+func setSearchPartialReason(dst *string, reason string) {
+	if dst != nil && *dst == "" {
+		*dst = reason
+	}
+}
+
+func partialReasonForContext(err error) string {
+	if errors.Is(err, context.DeadlineExceeded) || errors.Is(err, crawl.ErrTimeout) {
+		return searchPartialDeadline
+	}
+	if errors.Is(err, context.Canceled) || errors.Is(err, crawl.ErrCancelled) {
+		return searchPartialCancelled
+	}
+	return searchPartialCrawlUnavailable
 }
 
 // crawlRequest собирает параметры обхода одного сайта с предохранителями по

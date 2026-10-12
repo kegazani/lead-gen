@@ -16,10 +16,14 @@
   {{- end }}
 </head>
 <body>
+  <a class="skip-link" href="#main-content">{{ text "layout.skip_to_content" }}</a>
 {{- if .Sidebar.Items }}
   {{ template "nav" .Sidebar }}
 {{- end }}
-  <main class="page">
+  <main class="page" id="main-content">
+{{- with .Subnav }}
+{{ template "tabs" . }}
+{{- end }}
 {{ template "content" . }}
   </main>
 </body>

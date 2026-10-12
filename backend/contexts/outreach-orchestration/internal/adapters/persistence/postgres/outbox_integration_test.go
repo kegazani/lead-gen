@@ -70,6 +70,7 @@ func mustApprovedEvent(t *testing.T, campaign domain.CampaignID) domain.ActionAp
 		DecisionID:   "decision-1",
 		Actor:        "operator-1",
 		Channel:      channel,
+		Material:     "asset-1@ver-1",
 		At:           atomicityNow,
 	}
 }
@@ -118,7 +119,7 @@ func TestUnitOfWorkCommitsCampaignAndEventAtomically(t *testing.T) {
 		t.Fatalf("событие восстановлено как %T, ожидался domain.ActionApproved", pending[0].Event)
 	}
 	if got.Channel != event.Channel || got.DraftVersion != event.DraftVersion ||
-		got.DecisionID != event.DecisionID || !got.At.Equal(event.At) {
+		got.DecisionID != event.DecisionID || got.Material != event.Material || !got.At.Equal(event.At) {
 		t.Fatalf("событие не пережило круговой обход: %+v", got)
 	}
 

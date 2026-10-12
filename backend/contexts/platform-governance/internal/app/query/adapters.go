@@ -24,39 +24,44 @@ func NewAdapterCatalogHandler(catalog ports.AdapterCatalog) *AdapterCatalogHandl
 }
 
 // Handle возвращает нормализованное состояние адаптеров. Неизвестное состояние
-// приводится к AdapterUnknown (консоль не подставляет «в норме»). Ошибка порта и
-// отсутствие владельца дают app.ErrUnavailable.
-func (h *AdapterCatalogHandler) Handle(ctx context.Context) ([]ports.AdapterState, error) {
+// приводится к AdapterStateUnknown (консоль не подставляет «в норме»).
+// Неизвестная причина сводится к пустой: свободный текст владельца (в том числе
+// с секретом) наружу не проходит. Ошибка порта и отсутствие владельца дают
+// app.ErrUnavailable.
+func (h *AdapterCatalogHandler) Handle(ctx context.Context) ([]ports.AdapterStatus, error) {
 	if h.catalog == nil {
 		return nil, app.ErrUnavailable
 	}
 	states, err := h.catalog.States(ctx)
 	if err != nil {
+		// Текст ошибки владельца наружу не переносится: он может нести
+		// технические детали (адреса, токены). Наружу — только честный исход
+		// «недоступно».
 		return nil, app.ErrUnavailable
 	}
-	normalized := make([]ports.AdapterState, 0, len(states))
+	normalized := make([]ports.AdapterStatus, 0, len(states))
 	for _, state := range states {
-		state.Health = normalizeHealth(state.Health)
+		state.State = normalizeState(state.State)
 		state.Reason = normalizeReason(state.Reason)
 		normalized = append(normalized, state)
 	}
 	return normalized, nil
 }
 
-// normalizeHealth сводит состояние к объявленному набору; неизвестное значение
-// становится AdapterUnknown.
-func normalizeHealth(health ports.AdapterHealth) ports.AdapterHealth {
-	switch health {
-	case ports.AdapterHealthy, ports.AdapterDegraded, ports.AdapterDown:
-		return health
+// normalizeState сводит состояние к объявленному набору; неизвестное значение
+// (включая пустое у неподключённого адаптера) становится AdapterStateUnknown.
+func normalizeState(state string) string {
+	switch state {
+	case ports.AdapterStateUp, ports.AdapterStateDegraded, ports.AdapterStateDown:
+		return state
 	default:
-		return ports.AdapterUnknown
+		return ports.AdapterStateUnknown
 	}
 }
 
 // normalizeReason сводит причину к объявленному набору; неизвестное значение
 // (в том числе произвольный текст с секретом) становится пустым.
-func normalizeReason(reason ports.AdapterReason) ports.AdapterReason {
+func normalizeReason(reason string) string {
 	switch reason {
 	case ports.AdapterReasonUnreachable, ports.AdapterReasonAuthFailed,
 		ports.AdapterReasonRateLimited, ports.AdapterReasonDegraded,

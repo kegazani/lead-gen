@@ -129,3 +129,18 @@ func TestSend_TransportFailureIsUnavailable(t *testing.T) {
 		})
 	}
 }
+
+func TestSend_UnknownPostDataOutcomeIsNotRetryableUnavailable(t *testing.T) {
+	port := &fakePort{err: mail.ErrOutcomeUnknown}
+	mailer, err := New(Config{Port: port, From: "sender@example.com"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	response, err := mailer.Send(context.Background(), testMessage(t))
+	if err != nil {
+		t.Fatalf("неизвестный исход должен быть передан домену для durable фиксации: %v", err)
+	}
+	if response.Outcome != domain.OutcomeUnknown {
+		t.Fatalf("ожидался доменный неизвестный исход, получено %+v", response)
+	}
+}

@@ -19,6 +19,7 @@ type DraftInput struct {
 	RequestID string
 	TenantID  string
 	LeadIDs   []string
+	Editorial bool
 }
 
 // DraftResult — результат шага генерации черновиков: сколько писем сохранено,
@@ -77,47 +78,80 @@ func (d ContractDrafts) Draft(ctx context.Context, in DraftInput) (DraftResult, 
 		return DraftResult{}, fmt.Errorf("чтение заявки %s: %w", in.RequestID, err)
 	}
 	criteria := criteriaFromOffer(request.Offer())
+	editorial := request.ExecutionPurpose() == domain.ExecutionPurposeEditorial
+	if editorial && d.Drafts == nil {
+		return DraftResult{}, errors.New("редакторская генерация: хранилище черновиков не собрано")
+	}
 
 	result := DraftResult{}
-	drafts := make([]ports.EmailDraft, 0, len(in.LeadIDs))
 	seen := make(map[string]bool, len(in.LeadIDs))
 	for _, leadID := range in.LeadIDs {
+		if err := ctx.Err(); err != nil {
+			return result, err
+		}
 		if strings.TrimSpace(leadID) == "" || seen[leadID] {
 			continue
 		}
 		seen[leadID] = true
 		email, err := d.Contract.Generate(ctx, emailgeneration.Request{
-			RequestID: in.RequestID,
-			TenantID:  in.TenantID,
-			LeadID:    leadID,
-			Criteria:  criteria,
+			RequestID:     in.RequestID,
+			TenantID:      in.TenantID,
+			LeadID:        leadID,
+			Criteria:      criteria,
+			SenderCompany: senderCompanyDTO(request.SenderCompanySnapshot()),
 		})
 		if err != nil {
+			if errors.Is(err, context.Canceled) || errors.Is(err, context.DeadlineExceeded) {
+				return result, err
+			}
+			if ctxErr := ctx.Err(); ctxErr != nil {
+				return result, ctxErr
+			}
 			result.Failed++
+			if editorial {
+				// Остальные найденные лиды всё равно обрабатываются; по завершении
+				// возвращаем ошибку, не выдавая неполный набор за полный.
+			}
 			if d.Logger != nil {
 				d.Logger.Warn("генерация письма по лиду пропущена", observ.Fields{},
 					"request_id", in.RequestID, "lead_id", leadID, "error", err.Error())
 			}
 			continue
 		}
-		drafts = append(drafts, ports.EmailDraft{
-			RequestID: in.RequestID,
-			TenantID:  in.TenantID,
-			LeadID:    leadID,
-			Subject:   email.Subject,
-			Body:      email.Body,
-			Language:  email.Language,
-		})
+		if d.Drafts == nil {
+			return result, errors.New("генерация писем: хранилище черновиков не собрано")
+		}
+		draft := ports.EmailDraft{
+			RequestID:    in.RequestID,
+			TenantID:     in.TenantID,
+			LeadID:       leadID,
+			Subject:      email.Subject,
+			Body:         email.Body,
+			Language:     email.Language,
+			RecipientRef: email.RecipientRef,
+		}
+		if err := d.Drafts.SaveDrafts(ctx, []ports.EmailDraft{draft}); err != nil {
+			return result, fmt.Errorf("сохранение черновика для лида %s: %w", leadID, err)
+		}
 		result.Drafted++
 		result.LeadIDs = append(result.LeadIDs, leadID)
 	}
-	if len(drafts) > 0 {
-		if d.Drafts == nil {
-			return DraftResult{}, errors.New("генерация писем: хранилище черновиков не собрано")
-		}
-		if err := d.Drafts.SaveDrafts(ctx, drafts); err != nil {
-			return DraftResult{}, fmt.Errorf("сохранение черновиков писем: %w", err)
-		}
+	if editorial && (result.Failed > 0 || result.Drafted == 0) {
+		return result, fmt.Errorf("редакторская генерация неполная: создано %d черновиков, ошибок %d", result.Drafted, result.Failed)
 	}
 	return result, nil
+}
+
+func senderCompanyDTO(snapshot *domain.SenderCompanySnapshot) *emailgeneration.SenderCompany {
+	if snapshot == nil {
+		return nil
+	}
+	result := &emailgeneration.SenderCompany{
+		CompanyName: snapshot.CompanyName, Website: snapshot.Website,
+		Description: snapshot.Description, Services: make([]emailgeneration.SenderServiceSnapshot, len(snapshot.Services)),
+	}
+	for i, service := range snapshot.Services {
+		result.Services[i] = emailgeneration.SenderServiceSnapshot{Name: service.Name, Short: service.Short, Full: service.Full}
+	}
+	return result
 }

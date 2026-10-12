@@ -1,0 +1,452 @@
+<!DOCTYPE html>
+<html lang="ru" data-theme="light" data-variant="medium" data-accent="blue">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Консоль — варианты оформления</title>
+<style>
+:root{
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI", system-ui, sans-serif;
+  --font-display: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", system-ui, sans-serif;
+  --r-xl: 26px; --r-lg: 20px; --r-md: 14px; --r-sm: 10px;
+  --ease: cubic-bezier(.32,.72,0,1);
+
+  /* светлая тема — системная палитра */
+  --bg: #f2f2f7;
+  --ink: #1c1c1e; --ink-2: #3c3c43cc; --ink-3: #3c3c4399;
+  --sep: rgba(60,60,67,.14);
+  --fill: rgba(120,120,128,.12); --fill-2: rgba(120,120,128,.08);
+  --surface: #ffffff;
+  --glass: rgba(255,255,255,.62);
+  --glass-strong: rgba(255,255,255,.82);
+  --glass-edge: rgba(255,255,255,.85);
+  --glass-hi: rgba(255,255,255,.95);
+  --glass-lo: rgba(0,0,0,.05);
+  --shadow: 0 1px 1px rgba(0,0,0,.03), 0 8px 28px rgba(0,0,0,.07);
+  --shadow-float: 0 2px 4px rgba(0,0,0,.04), 0 18px 50px rgba(0,0,0,.12);
+
+  --blue:#007aff; --green:#34c759; --orange:#ff9500; --red:#ff3b30; --cyan:#32ade6; --gray:#8e8e93;
+  /* текст статусов — затемнённые варианты для контраста AA на мягкой подложке */
+  --t-blue:#0060d1; --t-green:#1a7f3c; --t-orange:#a35c00; --t-red:#c4271d; --t-cyan:#0a6f99; --t-gray:#5b5b61;
+  --accent: var(--blue); --accent-ink:#fff;
+}
+html[data-accent="graphite"]{ --accent:#1c1c1e; }
+html[data-theme="dark"]{
+  --bg:#000000;
+  --ink:#f5f5f7; --ink-2:#ebebf5cc; --ink-3:#ebebf599;
+  --sep: rgba(84,84,88,.55);
+  --fill: rgba(120,120,128,.24); --fill-2: rgba(120,120,128,.16);
+  --surface:#1c1c1e;
+  --glass: rgba(44,44,46,.55);
+  --glass-strong: rgba(58,58,60,.72);
+  --glass-edge: rgba(255,255,255,.14);
+  --glass-hi: rgba(255,255,255,.22);
+  --glass-lo: rgba(0,0,0,.4);
+  --shadow: 0 1px 1px rgba(0,0,0,.4), 0 8px 28px rgba(0,0,0,.45);
+  --shadow-float: 0 2px 4px rgba(0,0,0,.4), 0 18px 50px rgba(0,0,0,.6);
+  --blue:#0a84ff; --green:#30d158; --orange:#ff9f0a; --red:#ff453a; --cyan:#64d2ff; --gray:#98989d;
+  --t-blue:#4da3ff; --t-green:#30d158; --t-orange:#ffb340; --t-red:#ff6961; --t-cyan:#64d2ff; --t-gray:#aeaeb2;
+  --accent: var(--blue);
+}
+html[data-theme="dark"][data-accent="graphite"]{ --accent:#f5f5f7; --accent-ink:#000; }
+
+*{box-sizing:border-box}
+html,body{margin:0}
+body{font-family:var(--font); color:var(--ink); background:var(--wall-base); -webkit-font-smoothing:antialiased; font-size:14px; line-height:1.45; min-height:100vh; transition:background .3s var(--ease)}
+
+/* Подложка: за стеклом всегда есть «обои», иначе прозрачность не видна.
+   Спокойные цвета без фиолетового: небо, бирюза, тёплый песок. */
+.backdrop{position:fixed; inset:0; z-index:0; pointer-events:none; background:var(--wall-base); overflow:hidden}
+.backdrop i{position:absolute; border-radius:50%; filter:blur(60px)}
+.backdrop i:nth-child(1){width:60vw;height:60vw;left:-14vw;top:-22vw;background:var(--w1)}
+.backdrop i:nth-child(2){width:42vw;height:42vw;right:-10vw;top:8vh;background:var(--w2)}
+.backdrop i:nth-child(3){width:50vw;height:50vw;left:22vw;bottom:-26vw;background:var(--w3)}
+.backdrop i:nth-child(4){width:24vw;height:24vw;left:38vw;top:22vh;background:var(--w4)}
+.backdrop b{position:absolute; inset:-10%; background:
+  repeating-radial-gradient(circle at 70% 120%, transparent 0 46px, var(--wave) 46px 47px); opacity:.55}
+:root{
+  --wall-base:#e9eff7; --w1:#7fb2ff; --w2:#ffc98a; --w3:#6fd6c4; --w4:#b9d7ff; --wave:rgba(255,255,255,.55);
+  --glass: rgba(255,255,255,.34); --glass-strong: rgba(255,255,255,.62);
+  --glass-blur: 14px; --surface-glass: rgba(255,255,255,.46);
+}
+html[data-theme="dark"]{
+  --wall-base:#07101f; --w1:#1d4ea8; --w2:#7a4a14; --w3:#0e6b5f; --w4:#183a6e; --wave:rgba(255,255,255,.05);
+  --glass: rgba(30,32,38,.30); --glass-strong: rgba(80,82,90,.55);
+  --surface-glass: rgba(28,30,36,.42);
+}
+html[data-variant="clear"]{ --glass: rgba(255,255,255,.18); --surface-glass: rgba(255,255,255,.30); --glass-blur: 8px }
+html[data-theme="dark"][data-variant="clear"]{ --glass: rgba(30,32,38,.16); --surface-glass: rgba(28,30,36,.28) }
+
+/* ---------- Материал «жидкое стекло» ----------
+   Прозрачная заливка + лёгкое размытие + яркий кант по краю (блик сверху-слева,
+   отражение снизу-справа) + внутреннее свечение. Так стекло читается как объём. */
+.glass, .surface{
+  position:relative;
+  background:var(--glass);
+  -webkit-backdrop-filter: blur(var(--glass-blur)) saturate(180%);
+  backdrop-filter: blur(var(--glass-blur)) saturate(180%);
+  border:0;
+  box-shadow:
+    inset 1.5px 1.5px 0 -0.5px rgba(255,255,255,.95),
+    inset -1px -1px 0 -0.5px rgba(255,255,255,.55),
+    inset 0 0 0 1px rgba(255,255,255,.22),
+    inset 0 0 22px rgba(255,255,255,.18),
+    0 10px 36px rgba(10,30,60,.14);
+}
+html[data-theme="dark"] .glass, html[data-theme="dark"] .surface{
+  box-shadow:
+    inset 1.5px 1.5px 0 -0.5px rgba(255,255,255,.38),
+    inset -1px -1px 0 -0.5px rgba(255,255,255,.14),
+    inset 0 0 0 1px rgba(255,255,255,.07),
+    inset 0 0 22px rgba(255,255,255,.04),
+    0 12px 40px rgba(0,0,0,.5);
+}
+.glass::after, .surface::after{ /* блик-линза в верхнем левом углу */
+  content:""; position:absolute; inset:0; border-radius:inherit; pointer-events:none;
+  background: radial-gradient(120% 60% at 0% 0%, rgba(255,255,255,.28), rgba(255,255,255,0) 55%);
+}
+html[data-theme="dark"] .glass::after, html[data-theme="dark"] .surface::after{
+  background: radial-gradient(120% 60% at 0% 0%, rgba(255,255,255,.08), rgba(255,255,255,0) 55%);
+}
+.surface{background:var(--surface-glass); border-radius:var(--r-lg)}
+/* Плавающие элементы над прокручиваемым содержимым размываются сильнее, чтобы текст под ними не мешал */
+.toolbar.glass, .picker.glass{-webkit-backdrop-filter:blur(26px) saturate(190%); backdrop-filter:blur(26px) saturate(190%); background:color-mix(in srgb, var(--glass) 100%, transparent)}
+.surface > *, .glass > *{position:relative; z-index:1}
+
+/* ---------- Каркас ---------- */
+.app{position:relative; z-index:1; display:grid; grid-template-columns: 248px 1fr; gap:0; min-height:100vh}
+.sidebar{position:sticky; top:12px; margin:12px 0 12px 12px; height:calc(100vh - 24px); border-radius:var(--r-xl); padding:18px 12px; display:flex; flex-direction:column; gap:4px}
+.brand{display:flex; align-items:center; gap:10px; padding:4px 10px 16px; font-weight:600; font-size:15px; letter-spacing:-.01em}
+.brand-mark{width:28px;height:28px;border-radius:8px;background:var(--accent);display:grid;place-items:center;color:var(--accent-ink)}
+.nav a{display:flex; align-items:center; gap:10px; padding:9px 12px; border-radius:12px; color:var(--ink); text-decoration:none; font-size:14px; font-weight:500; transition:background .2s var(--ease)}
+.nav a svg{width:18px;height:18px;color:var(--ink-3); flex:none}
+.nav a:hover{background:var(--fill-2)}
+.nav a.is-active{background:var(--glass-strong); box-shadow: inset 0 1px 0 var(--glass-hi), 0 1px 3px rgba(0,0,0,.08), 0 4px 14px rgba(0,0,0,.06)}
+.nav a.is-active svg{color:var(--accent)}
+.nav .count{margin-left:auto; font-size:12px; font-weight:600; color:var(--ink-3); font-variant-numeric:tabular-nums}
+.nav a.is-active .count{color:var(--accent)}
+.side-foot{margin-top:auto; display:flex; flex-direction:column; gap:10px; padding:0 4px}
+.who{display:flex; align-items:center; gap:10px; padding:8px; border-radius:14px}
+.avatar{width:30px;height:30px;border-radius:50%;background:var(--fill);display:grid;place-items:center;font-size:12px;font-weight:600}
+.who small{display:block;color:var(--ink-3);font-size:12px}
+
+/* ---------- Сегментированный переключатель (капсула с «линзой») ---------- */
+.seg{display:inline-flex; padding:3px; border-radius:999px; background:rgba(120,120,128,.14); position:relative; gap:2px}
+.seg button{all:unset; cursor:pointer; padding:6px 14px; border-radius:999px; font-size:13px; font-weight:500; color:var(--ink-2); white-space:nowrap; transition:all .25s var(--ease)}
+.seg button[aria-pressed="true"]{background:rgba(255,255,255,.85); color:var(--ink); box-shadow:0 1px 2px rgba(0,0,0,.08), 0 3px 10px rgba(0,0,0,.08)}
+html[data-theme="dark"] .seg button[aria-pressed="true"]{background:rgba(255,255,255,.18); box-shadow:inset 1px 1px 0 rgba(255,255,255,.25)}
+.seg.small button{padding:5px 10px; font-size:12px}
+.seg.full{display:flex} .seg.full button{flex:1; text-align:center}
+
+/* ---------- Основная область ---------- */
+main{padding:12px 28px 110px 24px; min-width:0}
+.toolbar{position:sticky; top:12px; z-index:5; display:flex; align-items:center; gap:12px; padding:8px 8px 8px 18px; border-radius:999px; margin-bottom:22px}
+.crumbs{font-size:13px; color:var(--ink-3)} .crumbs b{color:var(--ink); font-weight:600}
+.search{margin-left:auto; display:flex; align-items:center; gap:8px; padding:7px 14px; border-radius:999px; background:var(--fill); min-width:260px; color:var(--ink-3); font-size:13px}
+.search svg{width:15px;height:15px}
+.tenant{display:flex;align-items:center;gap:8px;padding:7px 12px;border-radius:999px;background:var(--fill);font-size:13px;font-weight:500}
+.tenant i{width:8px;height:8px;border-radius:50%;background:var(--green)}
+
+.head{display:flex; align-items:flex-end; gap:16px; margin:6px 4px 18px}
+h1{font-family:var(--font-display); font-size:34px; line-height:1.1; font-weight:700; letter-spacing:-.022em; margin:0}
+.sub{color:var(--ink-2); margin:6px 0 0; font-size:15px}
+.head .actions{margin-left:auto; display:flex; gap:8px}
+
+/* Кнопки */
+.btn{all:unset; cursor:pointer; display:inline-flex; align-items:center; gap:7px; padding:9px 18px; border-radius:999px; font-size:14px; font-weight:600; letter-spacing:-.005em; transition:transform .15s var(--ease), filter .2s, background .2s}
+.btn:active{transform:scale(.97)}
+.btn svg{width:16px;height:16px}
+.btn-primary{background:var(--accent); color:var(--accent-ink); box-shadow:inset 0 1px 0 rgba(255,255,255,.25), 0 4px 14px color-mix(in srgb, var(--accent) 35%, transparent)}
+.btn-primary:hover{filter:brightness(1.08)}
+.btn-glass{background:var(--glass-strong); color:var(--ink); border:1px solid var(--glass-edge); box-shadow:inset 0 1px 0 var(--glass-hi), 0 2px 8px rgba(0,0,0,.06); -webkit-backdrop-filter:blur(20px); backdrop-filter:blur(20px)}
+.btn-plain{background:var(--fill); color:var(--ink)}
+.btn-danger{background:color-mix(in srgb, var(--red) 12%, transparent); color:var(--t-red)}
+.btn-sm{padding:6px 12px; font-size:13px}
+
+/* Плитки сводки */
+.stats{display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin-bottom:22px}
+.stat{padding:16px 18px}
+.stat-label{font-size:13px; color:var(--ink-2); display:flex; align-items:center; gap:6px}
+.stat-value{font-family:var(--font-display); font-size:30px; font-weight:700; letter-spacing:-.02em; margin-top:4px; font-variant-numeric:tabular-nums}
+.stat-note{font-size:12px; color:var(--ink-3)}
+.stat-note.up{color:var(--t-green)}
+
+/* Секции и таблица */
+.section-head{display:flex; align-items:center; gap:12px; margin:0 4px 10px}
+.section-head h2{font-size:20px; font-weight:700; letter-spacing:-.015em; margin:0}
+.section-head .seg{margin-left:auto}
+.table{width:100%; border-collapse:separate; border-spacing:0}
+.table th{font-size:12px; font-weight:500; color:var(--ink-3); text-align:left; padding:12px 16px; border-bottom:1px solid var(--sep)}
+.table td{padding:13px 16px; border-bottom:1px solid var(--sep); vertical-align:middle}
+.table tr:last-child td{border-bottom:none}
+.table tbody tr{transition:background .15s}
+.table tbody tr:hover{background:var(--fill-2)}
+.offer{font-weight:600} .offer small{display:block; font-weight:400; color:var(--ink-3); font-size:12px; margin-top:1px}
+.num{font-variant-numeric:tabular-nums}
+.progress{display:flex; align-items:center; gap:10px; min-width:150px}
+.bar{flex:1; height:6px; border-radius:99px; background:var(--fill); overflow:hidden}
+.bar i{display:block; height:100%; border-radius:99px; background:var(--accent)}
+.bar.short i{background:var(--orange)}
+.muted{color:var(--ink-3)}
+
+/* ---------- Статусы: цвет + форма маркера + подпись ---------- */
+.badge{display:inline-flex; align-items:center; gap:6px; padding:3px 10px 3px 8px; border-radius:999px; font-size:12px; font-weight:600; white-space:nowrap}
+.badge::before{content:""; width:8px; height:8px; flex:none}
+.b-blue{background:color-mix(in srgb,var(--blue) 13%,transparent); color:var(--t-blue)}
+.b-green{background:color-mix(in srgb,var(--green) 15%,transparent); color:var(--t-green)}
+.b-orange{background:color-mix(in srgb,var(--orange) 16%,transparent); color:var(--t-orange)}
+.b-red{background:color-mix(in srgb,var(--red) 13%,transparent); color:var(--t-red)}
+.b-cyan{background:color-mix(in srgb,var(--cyan) 16%,transparent); color:var(--t-cyan)}
+.b-gray{background:var(--fill); color:var(--t-gray)}
+/* формы маркеров */
+.m-dot::before{border-radius:50%; background:currentColor}
+.m-ring::before{border-radius:50%; border:1.6px solid currentColor; width:7px; height:7px}
+.m-tri::before{width:0;height:0;border-left:4.5px solid transparent;border-right:4.5px solid transparent;border-bottom:8px solid currentColor}
+.m-dia::before{width:7px;height:7px;background:currentColor;transform:rotate(45deg);border-radius:1px}
+.m-sq::before{border-radius:2px; background:currentColor}
+.m-pulse::before{border-radius:50%; background:currentColor; box-shadow:0 0 0 3px color-mix(in srgb, currentColor 25%, transparent); animation:pulse 1.6s infinite}
+.m-check::before{width:9px;height:5px;border-left:2px solid currentColor;border-bottom:2px solid currentColor;transform:rotate(-45deg) translate(1px,-1px);border-radius:1px}
+.m-x::before{width:9px;height:9px;background:
+  linear-gradient(45deg,transparent 42%,currentColor 42%,currentColor 58%,transparent 58%),
+  linear-gradient(-45deg,transparent 42%,currentColor 42%,currentColor 58%,transparent 58%)}
+@keyframes pulse{50%{box-shadow:0 0 0 5px color-mix(in srgb, currentColor 0%, transparent)}}
+@media (prefers-reduced-motion: reduce){*{animation:none!important; transition:none!important}}
+
+/* ---------- Нижний ряд: карточка заявки и лида ---------- */
+.grid2{display:grid; grid-template-columns: 1.15fr 1fr; gap:16px; margin-top:22px}
+.pad{padding:20px 22px}
+.card-title{display:flex; align-items:center; gap:10px; margin-bottom:4px}
+.card-title h3{margin:0; font-size:17px; font-weight:700; letter-spacing:-.01em}
+.kv{display:grid; grid-template-columns: 150px 1fr; gap:10px 16px; margin:16px 0 0; font-size:14px}
+.kv dt{color:var(--ink-3)} .kv dd{margin:0}
+.steps{display:flex; align-items:flex-start; margin:20px 0 6px}
+.step{flex:1; display:flex; flex-direction:column; align-items:center; gap:7px; position:relative; font-size:12px; color:var(--ink-3); text-align:center}
+.step::after{content:""; position:absolute; top:9px; left:calc(50% + 14px); right:calc(-50% + 14px); height:2px; background:var(--fill); border-radius:2px}
+.step:last-child::after{display:none}
+.step .dot{width:20px;height:20px;border-radius:50%;border:2px solid var(--sep);background:var(--surface);display:grid;place-items:center}
+.step.done{color:var(--ink-2)} .step.done .dot{background:var(--accent);border-color:var(--accent)}
+.step.done .dot::after{content:"";width:7px;height:4px;border-left:2px solid var(--accent-ink);border-bottom:2px solid var(--accent-ink);transform:rotate(-45deg) translate(1px,-1px)}
+.step.done::after{background:var(--accent)}
+.step.now{color:var(--ink); font-weight:600} .step.now .dot{border-color:var(--orange); box-shadow:0 0 0 4px color-mix(in srgb,var(--orange) 20%,transparent)}
+.step.now .dot::after{content:"";width:8px;height:8px;border-radius:50%;background:var(--orange)}
+.decide{display:flex; gap:10px; margin-top:18px; padding-top:16px; border-top:1px solid var(--sep); align-items:center}
+.decide .note{font-size:12px; color:var(--ink-3); margin-right:auto; max-width:260px}
+
+.field{display:flex; flex-direction:column; gap:6px; margin-top:16px}
+.field label{font-size:13px; font-weight:500; color:var(--ink-2)}
+.input{all:unset; padding:10px 14px; border-radius:12px; background:var(--fill-2); border:1px solid var(--sep); font-size:14px; color:var(--ink)}
+.input:focus{border-color:var(--accent); box-shadow:0 0 0 4px color-mix(in srgb,var(--accent) 18%,transparent)}
+.field .help{font-size:12px; color:var(--ink-3)}
+
+.lead-head{display:flex; gap:14px; align-items:center}
+.logo{width:44px;height:44px;border-radius:12px;background:var(--fill);display:grid;place-items:center;font-weight:700;font-size:16px;color:var(--ink-2)}
+.lead-head h3{margin:0;font-size:17px} .lead-head a{color:var(--accent);text-decoration:none;font-size:13px}
+.chips{display:flex; flex-wrap:wrap; gap:6px; margin-top:14px}
+.legend{margin-top:18px; padding-top:14px; border-top:1px solid var(--sep)}
+.legend h4{margin:0 0 10px; font-size:12px; font-weight:600; color:var(--ink-3); text-transform:none}
+.legend .row{display:flex; flex-wrap:wrap; gap:6px; margin-bottom:8px}
+
+/* ---------- Панель выбора варианта (только для макета) ---------- */
+.picker{position:fixed; left:50%; bottom:18px; transform:translateX(-50%); z-index:50; display:flex; gap:12px; align-items:center; padding:8px 10px 8px 16px; border-radius:999px; font-size:12px}
+.picker span{color:var(--ink-3); font-weight:600}
+@media (max-width: 1100px){ .stats{grid-template-columns:repeat(2,1fr)} .grid2{grid-template-columns:1fr} }
+@media (max-width: 760px){ .app{grid-template-columns:1fr} .sidebar{display:none} main{padding:12px 16px 90px} .search{display:none} .picker{flex-wrap:wrap; border-radius:22px; width:calc(100% - 24px); justify-content:center} .table .hide-sm{display:none} }
+</style>
+</head>
+<body>
+<div class="backdrop" aria-hidden="true"><b></b><i></i><i></i><i></i><i></i></div>
+
+<div class="app">
+  <nav class="sidebar glass" aria-label="Разделы">
+    <div class="brand"><span class="brand-mark"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M4 12h6l2-6 4 12 2-6h2"/></svg></span>Лидоген</div>
+    <div class="nav">
+      <a href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="4" y="3" width="16" height="18" rx="3"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>Заявки<span class="count">7</span></a>
+      <a href="#" class="is-active" aria-current="page"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg>Исполнение<span class="count">4</span></a>
+      <a href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="9" cy="8" r="3.5"/><path d="M3 20c0-3.3 2.7-6 6-6s6 2.7 6 6"/><path d="M16 4.5a3.5 3.5 0 0 1 0 7M21 20c0-2.6-1.6-4.8-4-5.6"/></svg>Лиды</a>
+      <a href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>Отчёты</a>
+      <a href="#"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><rect x="3" y="5" width="18" height="14" rx="3"/><path d="m4 7 8 6 8-6"/></svg>Рассылки<span class="count">12</span></a>
+    </div>
+    <div class="side-foot">
+      <div class="seg small full" role="group" aria-label="Тема" data-ctl="theme">
+        <button data-v="system" aria-pressed="false">Система</button>
+        <button data-v="light" aria-pressed="true">Светлая</button>
+        <button data-v="dark" aria-pressed="false">Тёмная</button>
+      </div>
+      <div class="who"><span class="avatar">ДК</span><div>Даниил К.<small>Оператор</small></div></div>
+    </div>
+  </nav>
+
+  <main>
+    <div class="toolbar glass">
+      <div class="crumbs">Исполнение / <b>Ожидают решения</b></div>
+      <div class="search"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>Поиск по заявкам и компаниям</div>
+      <div class="tenant"><i></i>ООО «Северный ветер»</div>
+    </div>
+
+    <div class="head">
+      <div>
+        <h1>Исполнение</h1>
+        <p class="sub">Заявки, где поиск завершён и нужен ваш ответ: утвердить результат или отклонить.</p>
+      </div>
+      <div class="actions">
+        <button class="btn btn-glass btn-sm"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 12a8 8 0 0 1 14-5.3M20 12a8 8 0 0 1-14 5.3"/><path d="M18 3v4h-4M6 21v-4h4"/></svg>Обновить</button>
+      </div>
+    </div>
+
+    <div class="stats">
+      <div class="stat surface"><div class="stat-label">Ждут решения</div><div class="stat-value">4</div><div class="stat-note">старейшая — 2 ч назад</div></div>
+      <div class="stat surface"><div class="stat-label">Найдено лидов</div><div class="stat-value">312</div><div class="stat-note up">+48 за сутки</div></div>
+      <div class="stat surface"><div class="stat-label">С недобором</div><div class="stat-value">2</div><div class="stat-note">найдено меньше цели</div></div>
+      <div class="stat surface"><div class="stat-label">Исполнитель заявок</div><div class="stat-value" style="font-size:20px;margin-top:10px"><span class="badge b-green m-dot">Работает</span></div><div class="stat-note" style="margin-top:6px">проверено минуту назад</div></div>
+    </div>
+
+    <div class="section-head">
+      <h2>Очередь</h2>
+      <div class="seg" role="group" aria-label="Экраны раздела" data-ctl="demo">
+        <button aria-pressed="true">Ждут решения</button>
+        <button aria-pressed="false">Все заявки</button>
+        <button aria-pressed="false">Журнал</button>
+      </div>
+    </div>
+
+    <div class="surface" style="overflow:hidden">
+      <table class="table">
+        <thead><tr><th>Заявка</th><th>Этап</th><th>Найдено / цель</th><th class="hide-sm">Обновлено</th><th></th></tr></thead>
+        <tbody>
+          <tr>
+            <td class="offer">Логистические компании Москвы, ищущие подрядчика по лидогенерации<small>№ 4821 · версия 2</small></td>
+            <td><span class="badge b-orange m-tri">Ждёт решения</span></td>
+            <td><div class="progress"><div class="bar"><i style="width:100%"></i></div><span class="num">120 / 120</span></div></td>
+            <td class="muted hide-sm">2 ч назад</td>
+            <td><button class="btn btn-plain btn-sm">Открыть</button></td>
+          </tr>
+          <tr>
+            <td class="offer">Производители упаковки, Поволжье<small>№ 4817 · версия 1</small></td>
+            <td><span class="badge b-orange m-tri">Ждёт решения</span></td>
+            <td><div class="progress"><div class="bar short"><i style="width:62%"></i></div><span class="num">31 / 50</span></div></td>
+            <td class="muted hide-sm">5 ч назад</td>
+            <td><button class="btn btn-plain btn-sm">Открыть</button></td>
+          </tr>
+          <tr>
+            <td class="offer">Клиники эстетической медицины, Санкт-Петербург<small>№ 4809 · версия 3</small></td>
+            <td><span class="badge b-blue m-pulse">Поиск</span></td>
+            <td><div class="progress"><div class="bar"><i style="width:38%"></i></div><span class="num">76 / 200</span></div></td>
+            <td class="muted hide-sm">только что</td>
+            <td><button class="btn btn-plain btn-sm">Открыть</button></td>
+          </tr>
+          <tr>
+            <td class="offer">Интернет-магазины электроники с оборотом от 100 млн ₽<small>№ 4790 · версия 1</small></td>
+            <td><span class="badge b-green m-check">Выполнена</span></td>
+            <td><div class="progress"><div class="bar"><i style="width:100%"></i></div><span class="num">85 / 80</span></div></td>
+            <td class="muted hide-sm">вчера</td>
+            <td><button class="btn btn-plain btn-sm">Открыть</button></td>
+          </tr>
+          <tr>
+            <td class="offer">Застройщики коммерческой недвижимости<small>№ 4788 · версия 1</small></td>
+            <td><span class="badge b-gray m-x">Отменена</span></td>
+            <td><div class="progress"><div class="bar"><i style="width:0"></i></div><span class="num muted">—</span></div></td>
+            <td class="muted hide-sm">вчера</td>
+            <td><button class="btn btn-plain btn-sm">Открыть</button></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="grid2">
+      <section class="surface pad">
+        <div class="card-title"><h3>Заявка № 4817</h3><span class="badge b-orange m-tri">Ждёт решения</span></div>
+        <div class="muted" style="font-size:13px">Производители упаковки, Поволжье</div>
+        <div class="steps">
+          <div class="step done"><span class="dot"></span>Запуск</div>
+          <div class="step done"><span class="dot"></span>Поиск</div>
+          <div class="step now"><span class="dot"></span>Ваше решение</div>
+          <div class="step"><span class="dot"></span>Исполнение</div>
+          <div class="step"><span class="dot"></span>Готово</div>
+        </div>
+        <dl class="kv">
+          <dt>Клиент</dt><dd>ООО «Северный ветер»</dd>
+          <dt>Найдено</dt><dd class="num">31 из 50</dd>
+          <dt>Недобор</dt><dd><span class="badge b-orange m-tri">19 лидов</span></dd>
+          <dt>Причина</dt><dd>В регионе мало компаний с открытым адресом почты; 12 отброшены проверкой риска.</dd>
+        </dl>
+        <div class="field">
+          <label for="c">Комментарий к решению</label>
+          <input class="input" id="c" placeholder="Необязательно — попадёт в журнал">
+          <span class="help">Решение нельзя отменить: после утверждения начнётся рассылка.</span>
+        </div>
+        <div class="decide">
+          <button class="btn btn-danger">Отклонить</button>
+          <button class="btn btn-primary"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m5 12 5 5L20 7"/></svg>Утвердить результат</button>
+        </div>
+      </section>
+
+      <section class="surface pad">
+        <div class="lead-head">
+          <div class="logo">NW</div>
+          <div><h3>Nordwind GmbH</h3><a href="#">nordwind.de ↗</a></div>
+          <span class="badge b-green m-check" style="margin-left:auto">Подходит</span>
+        </div>
+        <dl class="kv">
+          <dt>Почта</dt><dd>info@nordwind.de &nbsp;<span class="badge b-green m-dot">Доставляемый</span></dd>
+          <dt>Стадия</dt><dd><span class="badge b-orange m-tri">Прогрев</span></dd>
+          <dt>Источник</dt><dd>Сайт компании, раздел «Контакты»</dd>
+        </dl>
+        <div class="legend">
+          <h4>Стадии воронки — по «температуре» лида</h4>
+          <div class="row">
+            <span class="badge b-gray m-ring">Не прогрет</span>
+            <span class="badge b-blue m-dot">Письмо отправлено</span>
+            <span class="badge b-orange m-tri">Прогрев</span>
+            <span class="badge b-cyan m-dia">Холодный</span>
+          </div>
+          <h4>Проверка адреса</h4>
+          <div class="row">
+            <span class="badge b-green m-dot">Доставляемый</span>
+            <span class="badge b-orange m-tri">Рискованный</span>
+            <span class="badge b-gray m-ring">Неизвестно</span>
+            <span class="badge b-red m-x">Недействительный</span>
+          </div>
+          <h4>Вердикт оценки</h4>
+          <div class="row">
+            <span class="badge b-green m-check">Подходит</span>
+            <span class="badge b-orange m-tri">Гипотеза</span>
+            <span class="badge b-red m-x">Не подходит</span>
+          </div>
+        </div>
+      </section>
+    </div>
+  </main>
+</div>
+
+<div class="picker glass" role="toolbar" aria-label="Выбор варианта макета">
+  <span>Стекло</span>
+  <div class="seg small" data-ctl="variant">
+    <button data-v="medium" aria-pressed="true">Матовое</button>
+    <button data-v="clear" aria-pressed="false">Прозрачное</button>
+  </div>
+  <span>Акцент</span>
+  <div class="seg small" data-ctl="accent">
+    <button data-v="blue" aria-pressed="true">Синий</button>
+    <button data-v="graphite" aria-pressed="false">Графит</button>
+  </div>
+</div>
+
+<script>
+(function(){
+  var root=document.documentElement, mq=matchMedia('(prefers-color-scheme: dark)');
+  function applyTheme(v){ root.dataset.theme = v==='system' ? (mq.matches?'dark':'light') : v; root.dataset.themeMode=v; }
+  document.querySelectorAll('.seg').forEach(function(seg){
+    seg.addEventListener('click',function(e){
+      var b=e.target.closest('button'); if(!b) return;
+      seg.querySelectorAll('button').forEach(function(x){x.setAttribute('aria-pressed', x===b?'true':'false')});
+      var ctl=seg.dataset.ctl, v=b.dataset.v;
+      if(ctl==='theme') applyTheme(v);
+      else if(ctl==='variant') root.dataset.variant=v;
+      else if(ctl==='accent') root.dataset.accent=v;
+    });
+  });
+  mq.addEventListener('change',function(){ if(root.dataset.themeMode==='system') applyTheme('system'); });
+})();
+</script>
+</body>
+</html>

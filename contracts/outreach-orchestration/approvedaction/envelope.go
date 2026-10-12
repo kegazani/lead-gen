@@ -12,7 +12,7 @@
 // (contexts/outreach-orchestration/internal/ports/contracts/approved_action.go):
 // `type ApprovedAction = approvedaction.ApprovedAction` и те же константы. Тот же
 // конверт Envelope, та же версия схемы и тот же ключ идемпотентности
-// (tenant_id, draft_id, draft_version). Смысл полей не изменён.
+// (tenant_id, campaign_id, draft_id, draft_version). Смысл полей не изменён.
 package approvedaction
 
 import (

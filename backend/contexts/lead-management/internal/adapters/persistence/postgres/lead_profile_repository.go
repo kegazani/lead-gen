@@ -11,11 +11,13 @@ import (
 
 	"lead-gen/backend/contexts/lead-management/internal/domain"
 	"lead-gen/backend/contexts/lead-management/internal/ports"
+	"lead-gen/backend/platform/readiness"
 )
 
 // LeadProfileRepository — PostgreSQL-реализация ports.LeadProfileRepository.
 type LeadProfileRepository struct {
-	db execer
+	db   execer
+	pool *pgxpool.Pool
 }
 
 // LeadProfileRepository реализует порт репозитория карточек.
@@ -26,11 +28,22 @@ func NewLeadProfileRepository(pool *pgxpool.Pool) *LeadProfileRepository {
 	if pool == nil {
 		panic("postgres: NewLeadProfileRepository с nil-пулом")
 	}
-	return &LeadProfileRepository{db: pool}
+	return &LeadProfileRepository{db: pool, pool: pool}
 }
 
-// Save сохраняет карточку целиком как снимок в JSONB. Повторный вызов для той же
-// компании заменяет прежний снимок (upsert по идентификатору).
+// ReadinessProbe returns a bounded, non-mutating check for the exact pool used
+// by this repository. It performs no query against business data.
+func (r *LeadProfileRepository) ReadinessProbe() readiness.Probe {
+	return func(ctx context.Context) (readiness.ProbeResult, error) {
+		if err := r.pool.Ping(ctx); err != nil {
+			return readiness.ProbeResult{}, err
+		}
+		return readiness.ProbeResult{Status: readiness.StatusUp, Reason: readiness.ReasonNone}, nil
+	}
+}
+
+// Save сохраняет карточку целиком как снимок в JSONB в активном тенанте. Повторный
+// вызов для той же компании заменяет прежний снимок (upsert по идентификатору).
 func (r *LeadProfileRepository) Save(ctx context.Context, company *domain.Company) error {
 	if company == nil {
 		return errors.New("postgres: сохранение nil-карточки")
@@ -42,6 +55,7 @@ func (r *LeadProfileRepository) Save(ctx context.Context, company *domain.Compan
 	}
 	if _, err := r.db.Exec(ctx, upsertLeadProfile,
 		snapshot.ID.String(),
+		ports.TenantFrom(ctx),
 		snapshot.Hidden,
 		string(raw),
 		snapshot.CreatedAt,
@@ -52,11 +66,11 @@ func (r *LeadProfileRepository) Save(ctx context.Context, company *domain.Compan
 	return nil
 }
 
-// FindByID загружает карточку по идентификатору через domain.RehydrateCompany.
-// Отсутствие карточки даёт ошибку, для которой истинно
-// errors.Is(err, ports.ErrProfileNotFound).
+// FindByID загружает карточку по идентификатору в активном тенанте через
+// domain.RehydrateCompany. Карточка чужого тенанта недостижима: для неё ошибка
+// удовлетворяет errors.Is(err, ports.ErrProfileNotFound).
 func (r *LeadProfileRepository) FindByID(ctx context.Context, id domain.CompanyID) (*domain.Company, error) {
-	snapshot, err := r.loadSnapshot(ctx, id)
+	snapshot, err := r.loadSnapshot(ctx, id, ports.TenantFrom(ctx))
 	if err != nil {
 		return nil, err
 	}
@@ -67,14 +81,14 @@ func (r *LeadProfileRepository) FindByID(ctx context.Context, id domain.CompanyI
 	return company, nil
 }
 
-// ListVisible возвращает не скрытые карточки, новые первыми, не более limit
-// штук. Фильтрация по флагу hidden выполняется в запросе, поэтому скрытые
-// карточки не читаются и не рехидратируются.
+// ListVisible возвращает не скрытые карточки активного тенанта, новые первыми, не
+// более limit штук. Фильтрация по тенанту и флагу hidden выполняется в запросе,
+// поэтому чужие и скрытые карточки не читаются и не рехидратируются.
 func (r *LeadProfileRepository) ListVisible(ctx context.Context, limit int) ([]*domain.Company, error) {
 	if limit <= 0 {
 		return []*domain.Company{}, nil
 	}
-	rows, err := r.db.Query(ctx, selectVisibleLeadProfiles, limit)
+	rows, err := r.db.Query(ctx, selectVisibleLeadProfiles, ports.TenantFrom(ctx), limit)
 	if err != nil {
 		return nil, fmt.Errorf("postgres: чтение витрины карточек: %w", err)
 	}
@@ -102,11 +116,11 @@ func (r *LeadProfileRepository) ListVisible(ctx context.Context, limit int) ([]*
 	return companies, nil
 }
 
-// ListSnoozed возвращает отложенных лидов (snooze_until != nil), новые первыми.
-// Фильтрация по snooze выполняется в Go после чтения снимков: поле лежит в
-// JSONB-снимке, а не в отдельной колонке.
+// ListSnoozed возвращает отложенных лидов активного тенанта (snooze_until != nil),
+// новые первыми. Фильтрация по тенанту выполняется в запросе, по snooze — в Go
+// после чтения снимков: поле лежит в JSONB-снимке, а не в отдельной колонке.
 func (r *LeadProfileRepository) ListSnoozed(ctx context.Context) ([]*domain.Company, error) {
-	rows, err := r.db.Query(ctx, selectAllVisibleLeadProfiles)
+	rows, err := r.db.Query(ctx, selectAllVisibleLeadProfiles, ports.TenantFrom(ctx))
 	if err != nil {
 		return nil, fmt.Errorf("postgres: чтение отложенных карточек: %w", err)
 	}
@@ -137,20 +151,21 @@ func (r *LeadProfileRepository) ListSnoozed(ctx context.Context) ([]*domain.Comp
 	return companies, nil
 }
 
-// Delete удаляет карточку безвозвратно. Удаление отсутствующей карточки — не
-// ошибка (операция идемпотентна).
+// Delete удаляет карточку безвозвратно в активном тенанте. Удаление отсутствующей
+// карточки или карточки чужого тенанта — не ошибка (операция идемпотентна и не
+// пересекает границу тенанта).
 func (r *LeadProfileRepository) Delete(ctx context.Context, id domain.CompanyID) error {
-	if _, err := r.db.Exec(ctx, deleteLeadProfile, id.String()); err != nil {
+	if _, err := r.db.Exec(ctx, deleteLeadProfile, id.String(), ports.TenantFrom(ctx)); err != nil {
 		return fmt.Errorf("postgres: удаление карточки %s: %w", id, err)
 	}
 	return nil
 }
 
-// loadSnapshot читает снимок карточки. Отсутствие карточки даёт
-// ports.ErrProfileNotFound.
-func (r *LeadProfileRepository) loadSnapshot(ctx context.Context, id domain.CompanyID) (domain.CompanySnapshot, error) {
+// loadSnapshot читает снимок карточки в активном тенанте. Отсутствие карточки или
+// принадлежность чужому тенанту даёт ports.ErrProfileNotFound.
+func (r *LeadProfileRepository) loadSnapshot(ctx context.Context, id domain.CompanyID, tenant string) (domain.CompanySnapshot, error) {
 	var raw string
-	err := r.db.QueryRow(ctx, selectLeadProfile, id.String()).Scan(&raw)
+	err := r.db.QueryRow(ctx, selectLeadProfile, id.String(), tenant).Scan(&raw)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return domain.CompanySnapshot{}, fmt.Errorf("%w: %s", ports.ErrProfileNotFound, id)
 	}
@@ -174,12 +189,14 @@ func unmarshalCompanySnapshot(raw []byte) (domain.CompanySnapshot, error) {
 }
 
 // SQL-запросы адаптера карточек. Схема указана литералом: адаптер работает
-// только в схеме сервиса (Schema) и не параметризует её извне.
+// только в схеме сервиса (Schema) и не параметризует её извне. Активный тенант —
+// область хранения: он есть в каждой выборке и в записи.
 const (
 	upsertLeadProfile = `
-INSERT INTO "lead-management".lead_profile (id, hidden, snapshot, created_at, updated_at)
-VALUES ($1, $2, $3::jsonb, $4, $5)
+INSERT INTO "lead-management".lead_profile (id, tenant_id, hidden, snapshot, created_at, updated_at)
+VALUES ($1, $2, $3, $4::jsonb, $5, $6)
 ON CONFLICT (id) DO UPDATE SET
+    tenant_id  = EXCLUDED.tenant_id,
     hidden     = EXCLUDED.hidden,
     snapshot   = EXCLUDED.snapshot,
     created_at = EXCLUDED.created_at,
@@ -188,22 +205,22 @@ ON CONFLICT (id) DO UPDATE SET
 	selectLeadProfile = `
 SELECT snapshot::text
 FROM "lead-management".lead_profile
-WHERE id = $1`
+WHERE id = $1 AND tenant_id = $2`
 
 	selectVisibleLeadProfiles = `
 SELECT snapshot::text
 FROM "lead-management".lead_profile
-WHERE hidden = FALSE
+WHERE hidden = FALSE AND tenant_id = $1
 ORDER BY created_at DESC, id DESC
-LIMIT $1`
+LIMIT $2`
 
 	selectAllVisibleLeadProfiles = `
 SELECT snapshot::text
 FROM "lead-management".lead_profile
-WHERE hidden = FALSE
+WHERE hidden = FALSE AND tenant_id = $1
 ORDER BY created_at DESC, id DESC`
 
 	deleteLeadProfile = `
 DELETE FROM "lead-management".lead_profile
-WHERE id = $1`
+WHERE id = $1 AND tenant_id = $2`
 )

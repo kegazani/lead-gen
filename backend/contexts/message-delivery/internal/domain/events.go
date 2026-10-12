@@ -29,11 +29,13 @@ type MessageDelivered struct {
 	MessageID        MessageID
 	TenantID         TenantID
 	ApprovedActionID ApprovedActionID
-	RecipientRef     RecipientRef
-	SenderDomain     SenderDomain
-	AttemptNumber    int
-	ProviderCode     string
-	At               time.Time
+	// CampaignID — непрозрачная ссылка на кампанию-владельца (может быть пустой).
+	CampaignID    string
+	RecipientRef  RecipientRef
+	SenderDomain  SenderDomain
+	AttemptNumber int
+	ProviderCode  string
+	At            time.Time
 }
 
 // Name реализует DomainEvent.
@@ -47,12 +49,14 @@ type MessageDeliveryFailed struct {
 	MessageID        MessageID
 	TenantID         TenantID
 	ApprovedActionID ApprovedActionID
-	RecipientRef     RecipientRef
-	SenderDomain     SenderDomain
-	AttemptNumber    int
-	Outcome          AttemptOutcome
-	ProviderCode     string
-	At               time.Time
+	// CampaignID — непрозрачная ссылка на кампанию-владельца (может быть пустой).
+	CampaignID    string
+	RecipientRef  RecipientRef
+	SenderDomain  SenderDomain
+	AttemptNumber int
+	Outcome       AttemptOutcome
+	ProviderCode  string
+	At            time.Time
 }
 
 // Name реализует DomainEvent.

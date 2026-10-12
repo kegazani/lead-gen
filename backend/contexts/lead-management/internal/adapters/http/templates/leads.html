@@ -1,11 +1,12 @@
 {{- define "content" -}}
 {{- with .View -}}
+{{ template "live" .Live }}
 <header class="page-head">
-  <h1>Лиды с email</h1>
-  <p class="hint">Все лиды, у которых найден адрес электронной почты: ссылка на сайт, название и адрес.</p>
+  <h1>{{ text "lead.leads.title" }}</h1>
+  <p class="hint">{{ text "lead.leads.hint" }}</p>
   <p>
-    <a class="button-secondary" href="/leads/export" download>Скачать HTML-файл</a>
-    <a class="button-secondary" href="/leads/export.csv" download>Скачать CSV</a>
+    <a class="button-secondary" href="/leads/export" download>{{ text "lead.leads.download_html" }}</a>
+    <a class="button-secondary" href="/leads/export.csv" download>{{ text "lead.leads.download_csv" }}</a>
   </p>
 </header>
 
@@ -14,9 +15,9 @@
   <table class="table">
     <thead>
       <tr>
-        <th scope="col">Сайт</th>
-        <th scope="col">Название</th>
-        <th scope="col">Email</th>
+        <th scope="col">{{ text "lead.leads.header_site" }}</th>
+        <th scope="col">{{ text "lead.leads.header_name" }}</th>
+        <th scope="col">{{ text "lead.header.email" }}</th>
       </tr>
     </thead>
     <tbody>
@@ -30,7 +31,7 @@
     </tbody>
   </table>
   {{- else }}
-  <p class="empty">Лидов с email пока нет</p>
+  <p class="empty">{{ text "lead.leads.empty" }}</p>
   {{- end }}
 </section>
 {{- end -}}

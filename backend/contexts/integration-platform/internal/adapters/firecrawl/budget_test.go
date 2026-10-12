@@ -1,9 +1,14 @@
 package firecrawl
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"sync"
 	"testing"
+	"time"
+
+	"lead-gen/contracts/integration-platform/budget"
 )
 
 func TestTaskBudgetReserveAndSettle(t *testing.T) {
@@ -155,7 +160,10 @@ func TestTaskBudgetInvalid(t *testing.T) {
 }
 
 func TestRegistryGetOrCreate(t *testing.T) {
-	r := NewRegistry()
+	r, err := NewRegistry(RegistryConfig{MaxEntries: 10, FinishedTTL: time.Minute})
+	if err != nil {
+		t.Fatalf("NewRegistry: %v", err)
+	}
 	b1, err := r.GetOrCreate("task-1", 10)
 	if err != nil {
 		t.Fatalf("GetOrCreate: %v", err)
@@ -172,6 +180,187 @@ func TestRegistryGetOrCreate(t *testing.T) {
 	}
 	if _, ok := r.Get("task-missing"); ok {
 		t.Fatal("Get неизвестной задачи должен вернуть ok=false")
+	}
+}
+
+func TestRegistryDefaultsAreFiniteAndInvalidLimitsRejected(t *testing.T) {
+	registry, err := NewRegistry(RegistryConfig{})
+	if err != nil {
+		t.Fatalf("NewRegistry defaults: %v", err)
+	}
+	if registry.maxEntries <= 0 || registry.finishedTTL <= 0 {
+		t.Fatalf("registry defaults must be finite and positive: capacity=%d ttl=%s", registry.maxEntries, registry.finishedTTL)
+	}
+	if _, err := NewRegistry(RegistryConfig{MaxEntries: -1}); err == nil {
+		t.Fatal("negative capacity must fail configuration validation")
+	}
+	if _, err := NewRegistry(RegistryConfig{FinishedTTL: -time.Second}); err == nil {
+		t.Fatal("negative retention must fail configuration validation")
+	}
+}
+
+func TestRegistryFinishReplayCapacityAndTTL(t *testing.T) {
+	clock := newFakeClock()
+	registry, err := NewRegistry(RegistryConfig{MaxEntries: 1, FinishedTTL: time.Minute, Clock: clock})
+	if err != nil {
+		t.Fatal(err)
+	}
+	first, err := registry.GetOrCreate("same-id", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := first.Reserve(3); err != nil {
+		t.Fatal(err)
+	}
+	if err := first.Settle(3, 2); err != nil {
+		t.Fatal(err)
+	}
+	if err := registry.Finish(context.Background(), "same-id"); err != nil {
+		t.Fatalf("Finish settled scope: %v", err)
+	}
+	replay, err := registry.GetOrCreate("same-id", 99)
+	if err != nil || replay != first {
+		t.Fatalf("same task ID должен replay-ить удерживаемый scope: task=%p original=%p err=%v", replay, first, err)
+	}
+	if _, err := registry.GetOrCreate("other-id", 10); !errors.Is(err, budget.ErrRegistryCapacity) {
+		t.Fatalf("ёмкость должна отказать до eviction неистёкшего terminal scope: %v", err)
+	}
+	clock.Advance(time.Minute)
+	second, err := registry.GetOrCreate("other-id", 10)
+	if err != nil || second == nil {
+		t.Fatalf("после TTL истёкший settled scope должен evict-иться: task=%v err=%v", second, err)
+	}
+	status := registry.Status()
+	if status.Entries != 1 || status.Capacity != 1 || status.CapacityRejections != 1 {
+		t.Fatalf("registry pressure status = %+v", status)
+	}
+}
+
+func TestRegistryUnknownReservationPinsCapacityUntilExactOperationEvidence(t *testing.T) {
+	clock := newFakeClock()
+	registry, err := NewRegistry(RegistryConfig{MaxEntries: 1, FinishedTTL: time.Second, Clock: clock})
+	if err != nil {
+		t.Fatal(err)
+	}
+	task, err := registry.GetOrCreate("unknown", 10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := task.Reserve(4); err != nil {
+		t.Fatal(err)
+	}
+	if err := task.MarkUnknown(4); err != nil {
+		t.Fatal(err)
+	}
+	clock.Advance(time.Hour) // unknown outcome не освобождается TTL.
+	if err := registry.Finish(context.Background(), "unknown"); !errors.Is(err, budget.ErrUnknownOutcomeUnreconciled) {
+		t.Fatalf("unknown без exact operation evidence остаётся pinned: %v", err)
+	}
+	if _, err := registry.GetOrCreate("new", 1); !errors.Is(err, budget.ErrRegistryCapacity) {
+		t.Fatalf("unknown scope не должен вытесняться по TTL/capacity: %v", err)
+	}
+	status := registry.Status()
+	if status.UnknownReservations != 1 || status.ActiveScopes != 1 || status.CapacityRejections != 1 {
+		t.Fatalf("pinned unknown status = %+v", status)
+	}
+
+	if err := registry.Finish(context.Background(), "unknown"); !errors.Is(err, budget.ErrUnknownOutcomeUnreconciled) {
+		t.Fatalf("повторный Finish без operation evidence должен оставить unknown: %v", err)
+	}
+	if snapshot := task.Snapshot(); snapshot.ReservedCredits != 4 || snapshot.UnknownCredits != 4 || snapshot.ConfirmedSpentCredits != 0 {
+		t.Fatalf("aggregate balance не должен освобождать unknown reserve: %+v", snapshot)
+	}
+	if status := registry.Status(); status.FinishedScopes != 0 || status.UnknownReservations != 1 {
+		t.Fatalf("unknown scope ошибочно стал terminal: %+v", status)
+	}
+}
+
+func TestRegistryUnknownEntriesFillCapacityAndAggregateBalanceCannotReleaseReservations(t *testing.T) {
+	clock := newFakeClock()
+	registry, err := NewRegistry(RegistryConfig{MaxEntries: 2, FinishedTTL: time.Second, Clock: clock})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"unknown-a", "unknown-b"} {
+		task, err := registry.GetOrCreate(id, 5)
+		if err != nil {
+			t.Fatalf("GetOrCreate(%s): %v", id, err)
+		}
+		if err := task.Reserve(2); err != nil {
+			t.Fatal(err)
+		}
+		if err := task.MarkUnknown(2); err != nil {
+			t.Fatal(err)
+		}
+	}
+	clock.Advance(24 * time.Hour)
+	for _, id := range []string{"unknown-a", "unknown-b"} {
+		if err := registry.Finish(context.Background(), id); !errors.Is(err, budget.ErrUnknownOutcomeUnreconciled) {
+			t.Errorf("Finish(%s) without operation evidence = %v, want ErrUnknownOutcomeUnreconciled", id, err)
+		}
+	}
+	for _, id := range []string{"paid-request-1", "paid-request-2"} {
+		if _, err := registry.GetOrCreate(id, 1); !errors.Is(err, budget.ErrRegistryCapacity) {
+			t.Errorf("GetOrCreate(%s) at full unknown capacity = %v, want ErrRegistryCapacity", id, err)
+		}
+	}
+	if status := registry.Status(); status.Entries != 2 || status.UnknownReservations != 2 || status.CapacityRejections != 2 {
+		t.Fatalf("unknown capacity pressure = %+v", status)
+	}
+
+	// Даже aggregate decrease не несёт attribution к конкретной операции и потому
+	// не разрешает ни один unknown reservation.
+	clock.Advance(time.Second)
+	for _, id := range []string{"unknown-a", "unknown-b"} {
+		if err := registry.Finish(context.Background(), id); !errors.Is(err, budget.ErrUnknownOutcomeUnreconciled) {
+			t.Errorf("Finish(%s) должен сохранить unknown без exact evidence: %v", id, err)
+		}
+	}
+	if _, err := registry.GetOrCreate("still-blocked", 1); !errors.Is(err, budget.ErrRegistryCapacity) {
+		t.Fatalf("unknown записи должны продолжать занимать capacity: %v", err)
+	}
+}
+
+func TestRegistryFinishWaitsForInflightAndPreventsFurtherReserve(t *testing.T) {
+	clock := newFakeClock()
+	registry, err := NewRegistry(RegistryConfig{MaxEntries: 1, FinishedTTL: time.Minute, Clock: clock})
+	if err != nil {
+		t.Fatal(err)
+	}
+	task, err := registry.GetOrCreate("inflight", 5)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := task.Reserve(2); err != nil {
+		t.Fatal(err)
+	}
+	finished := make(chan error, 1)
+	go func() { finished <- registry.Finish(context.Background(), "inflight") }()
+	deadline := time.Now().Add(time.Second)
+	for task.CanStart() && time.Now().Before(deadline) {
+		time.Sleep(time.Millisecond)
+	}
+	if task.CanStart() {
+		t.Fatal("Finish должен блокировать новые затратные действия сразу")
+	}
+	select {
+	case err := <-finished:
+		t.Fatalf("Finish завершился до settlement: %v", err)
+	default:
+	}
+	if err := task.Settle(2, 1); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case err := <-finished:
+		if err != nil {
+			t.Fatalf("Finish после settlement: %v", err)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("Finish не проснулся после settlement")
+	}
+	if _, err := registry.GetOrCreate("inflight", 100); err != nil {
+		t.Fatalf("replay того же terminal ID должен вернуть существующий scope: %v", err)
 	}
 }
 

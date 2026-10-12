@@ -29,7 +29,7 @@ const ContractName = "request-intent"
 
 // SchemaVersion — текущая версия схемы контракта. Версионирование — semver:
 // MAJOR несовместимо, MINOR добавляет опциональное поле, PATCH уточняет смысл.
-const SchemaVersion = "1.0.0"
+const SchemaVersion = "1.2.0"
 
 // ErrRejected — заявка не создана по доменной причине владельца (например,
 // пустой оффер). Потребитель различает этот отказ от сбоя транспорта.
@@ -58,11 +58,33 @@ type SubmitIntent struct {
 	Content string
 	// Target — кому адресован оффер; может быть пустым.
 	Target string
+	// ExecutionPurpose различает editorial-подготовку и legacy delivery.
+	// Пустое значение совместимо со старыми клиентами и означает delivery.
+	ExecutionPurpose string `json:"execution_purpose,omitempty"`
+	// SenderCompany содержит только публичные данные компании для editorial
+	// generation; портал формирует его из active Tenant/Profile.
+	SenderCompany *SenderCompanySnapshot `json:"sender_company,omitempty"`
 	// Actor — клиент, подавший заявку.
 	Actor string
 	// CorrelationID — сквозной сценарий подачи; пусто — владелец берёт
 	// идентификатор заявки.
 	CorrelationID string
+}
+
+// SenderCompanySnapshot — безопасный межконтекстный снимок отправителя.
+// Он не содержит учётных данных, контактов или юридических идентификаторов.
+type SenderCompanySnapshot struct {
+	CompanyName string                  `json:"company_name"`
+	Website     string                  `json:"website"`
+	Description string                  `json:"description"`
+	Services    []SenderServiceSnapshot `json:"services"`
+}
+
+// SenderServiceSnapshot — публичное описание услуги отправителя.
+type SenderServiceSnapshot struct {
+	Name  string `json:"name"`
+	Short string `json:"short"`
+	Full  string `json:"full"`
 }
 
 // SubmitResult — результат команды: идентификатор созданной заявки и её статус.
@@ -80,20 +102,41 @@ type StatusQuery struct {
 
 // StatusResult — состояние заявки для клиента. Поля оффера — собственные данные
 // клиента; сырых лидов и контактов здесь нет по определению контракта.
+//
+// Phase, ErrorReason и ErrorMessage — аддитивные опциональные поля (MINOR 1.1.0):
+// старый потребитель их игнорирует. Phase — фаза исполнения, ErrorReason —
+// нормализованный машинный код причины сбоя, ErrorMessage — текст сообщения
+// оператору. Пусты для заявок без сбоя исполнения.
 type StatusResult struct {
 	RequestID     string
 	Status        string
 	OfferContent  string
 	OfferTarget   string
 	OfferRevision int
+	Phase         string
+	ErrorReason   string
+	ErrorMessage  string
 }
 
-// Port — команда и запрос состояния владельцу заявки. Реализация создаёт заявку
-// и отвечает её состоянием; ErrRejected и ErrNotFound — доменные исходы,
+// ListQuery — запрос списка заявок клиента. TenantID обязателен: чтение заявок
+// другого тенанта не выполняется.
+type ListQuery struct {
+	TenantID string
+}
+
+// ListEntry — строка списка заявок клиента: идентификатор и текущий статус.
+type ListEntry struct {
+	RequestID string
+	Status    string
+}
+
+// Port — команда и запросы владельцу заявки. Реализация создаёт заявку и
+// отвечает её состоянием; ErrRejected и ErrNotFound — доменные исходы,
 // ErrUnavailable — сбой транспорта или отсутствие контракта.
 type Port interface {
 	Submit(ctx context.Context, in SubmitIntent) (SubmitResult, error)
 	Status(ctx context.Context, q StatusQuery) (StatusResult, error)
+	List(ctx context.Context, q ListQuery) ([]ListEntry, error)
 }
 
 // InProcHandler — функции прямого вызова владельца для co-location и тестов.
@@ -103,6 +146,8 @@ type InProcHandler struct {
 	SubmitFunc func(ctx context.Context, in SubmitIntent) (SubmitResult, error)
 	// StatusFunc реализует запрос состояния заявки.
 	StatusFunc func(ctx context.Context, q StatusQuery) (StatusResult, error)
+	// ListFunc реализует запрос списка заявок клиента.
+	ListFunc func(ctx context.Context, q ListQuery) ([]ListEntry, error)
 }
 
 // Submit реализует Port. Незаданная функция честно сообщает о недоступности
@@ -121,6 +166,15 @@ func (h InProcHandler) Status(ctx context.Context, q StatusQuery) (StatusResult,
 		return StatusResult{}, ErrUnavailable
 	}
 	return h.StatusFunc(ctx, q)
+}
+
+// List реализует Port. Незаданная функция честно сообщает о недоступности
+// владельца, а не выдумывает список.
+func (h InProcHandler) List(ctx context.Context, q ListQuery) ([]ListEntry, error) {
+	if h.ListFunc == nil {
+		return nil, ErrUnavailable
+	}
+	return h.ListFunc(ctx, q)
 }
 
 // InProc заворачивает обработчики в Port для прямого вызова в одном процессе.

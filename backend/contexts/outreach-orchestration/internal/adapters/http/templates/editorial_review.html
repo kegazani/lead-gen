@@ -1,0 +1,21 @@
+{{- define "content" -}}
+<section class="editorial-review">
+  <h1>{{text "outreach.editorial.title"}}</h1>
+  <p><strong>{{text "outreach.editorial.warning"}}</strong></p>
+  <dl><dt>{{text "outreach.editorial.campaign"}}</dt><dd>{{.View.CampaignID}}</dd><dt>{{text "outreach.editorial.lead"}}</dt><dd>{{.View.LeadID}}</dd><dt>{{text "outreach.editorial.material"}}</dt><dd>{{.View.MaterialRef}}</dd><dt>{{text "outreach.editorial.version"}}</dt><dd>{{.View.VersionID}}</dd></dl>
+  <h2>{{text "outreach.editorial.subject"}}</h2><pre>{{.View.Subject}}</pre>
+  <h2>{{text "outreach.editorial.body"}}</h2><pre>{{.View.Body}}</pre>
+  {{if .View.Decision}}
+    <p role="status">{{text "outreach.editorial.recorded"}}: {{.View.Decision.Outcome}} · {{.View.Decision.Actor}} · {{.View.Decision.DecidedAt}}</p>
+    {{if .View.Decision.Reason}}<p>{{text "outreach.editorial.reason_recorded"}}: {{.View.Decision.Reason}}</p>{{end}}
+  {{else}}
+    <form method="post" action="/outreach/editorial/{{.View.CampaignID}}/{{.View.LeadID}}/decision">
+      <input type="hidden" name="csrf" value="{{.View.CSRF}}"><input type="hidden" name="tenant_id" value="{{.View.TenantID}}">
+      <input type="hidden" name="material_ref" value="{{.View.MaterialRef}}"><input type="hidden" name="version_id" value="{{.View.VersionID}}">
+      <label>{{text "outreach.editorial.reason"}} <input name="reason" type="text"></label>
+      <button name="outcome" value="approved" type="submit">{{text "outreach.editorial.approve"}}</button>
+      <button name="outcome" value="rejected" type="submit">{{text "outreach.editorial.reject"}}</button>
+    </form>
+  {{end}}
+</section>
+{{- end -}}

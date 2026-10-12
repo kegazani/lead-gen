@@ -3,6 +3,7 @@ package observ
 import (
 	"bytes"
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -25,11 +26,11 @@ func (f *flushRecorder) Flush() {
 // кадра.
 func TestMiddlewareForwardsFlush(t *testing.T) {
 	var buf bytes.Buffer
-	logger := newLogger(&buf)
+	logger := newLogger(&buf, slog.LevelInfo)
 	metrics := NewMetrics().(*MemoryMetrics)
-	tracer := NewTracer("test-service")
+	tracer := NewTracer("analytics")
 
-	h := Middleware(logger, metrics, tracer, "test-service")(
+	h := Middleware(logger, metrics, tracer, "analytics")(
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			rc := http.NewResponseController(w)
 			for i := 0; i < 2; i++ {
@@ -51,15 +52,15 @@ func TestMiddlewareForwardsFlush(t *testing.T) {
 
 func TestMiddlewareRequestWithoutHeader(t *testing.T) {
 	var buf bytes.Buffer
-	logger := newLogger(&buf)
+	logger := newLogger(&buf, slog.LevelInfo)
 	metrics := NewMetrics().(*MemoryMetrics)
-	tracer := NewTracer("test-service")
+	tracer := NewTracer("analytics")
 
 	var gotCorrelation string
 	var gotSpan Span
 	var gotSpanOK bool
 
-	h := Middleware(logger, metrics, tracer, "test-service")(
+	h := Middleware(logger, metrics, tracer, "analytics")(
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			f, _ := FieldsFromContext(r.Context())
 			gotCorrelation = f.CorrelationID
@@ -73,13 +74,13 @@ func TestMiddlewareRequestWithoutHeader(t *testing.T) {
 	if gotCorrelation == "" {
 		t.Fatal("correlation_id не передан в контекст")
 	}
-	if !gotSpanOK || gotSpan.Name != "http.request" || gotSpan.ServiceName != "test-service" {
+	if !gotSpanOK || gotSpan.Name != "http.request" || gotSpan.ServiceName != "analytics" {
 		t.Fatalf("спан = %+v ok=%v", gotSpan, gotSpanOK)
 	}
-	if got := metrics.Counter("http_requests_total", map[string]string{"service": "test-service", "code": "201"}); got != 1 {
+	if got := metrics.Counter("http_requests_total", map[string]string{"service": "analytics", "code": "201"}); got != 1 {
 		t.Fatalf("счётчик запросов = %d, ожидался 1", got)
 	}
-	if _, count := metrics.Observation("http_duration_seconds", map[string]string{"service": "test-service"}); count != 1 {
+	if _, count := metrics.Observation("http_duration_seconds", map[string]string{"service": "analytics"}); count != 1 {
 		t.Fatalf("наблюдений длительности = %d, ожидалось 1", count)
 	}
 	if !strings.Contains(buf.String(), gotCorrelation) {
@@ -92,13 +93,13 @@ func TestMiddlewareRequestWithoutHeader(t *testing.T) {
 
 func TestMiddlewareRequestWithHeader(t *testing.T) {
 	var buf bytes.Buffer
-	logger := newLogger(&buf)
+	logger := newLogger(&buf, slog.LevelInfo)
 	metrics := NewMetrics().(*MemoryMetrics)
-	tracer := NewTracer("test-service")
+	tracer := NewTracer("analytics")
 
 	var gotCorrelation string
 
-	h := Middleware(logger, metrics, tracer, "test-service")(
+	h := Middleware(logger, metrics, tracer, "analytics")(
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			f, _ := FieldsFromContext(r.Context())
 			gotCorrelation = f.CorrelationID

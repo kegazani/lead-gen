@@ -3,7 +3,9 @@ package httpapi
 import (
 	"fmt"
 	"html/template"
+	"net/http"
 	"net/url"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -18,41 +20,58 @@ import (
 	"lead-gen/frontend/components"
 )
 
-// Ключи разделов боковой навигации консоли.
+// Ключи экранов раздела «Лиды» для внутриэкранной панели переходов.
 const (
-	sidebarHome      = "home"
-	sidebarCards     = "cards"
-	sidebarLeads     = "leads"
-	sidebarFunnel    = "funnel"
-	sidebarSend      = "send"
-	sidebarAssistant = "assistant"
-	sidebarForum     = "forum"
+	sidebarHome   = "home"
+	sidebarCards  = "cards"
+	sidebarLeads  = "leads"
+	sidebarFunnel = "funnel"
 )
 
-// dateFormat — дата извлечения в разметке. Совпадает с форматом компонента
-// provenance (frontend/components): источник и дата — одна единица разметки.
-const dateFormat = "2006-01-02"
+// consoleSidebar собирает ОБЩУЮ навигацию консоли: канонические разделы
+// (Заявки, Исполнение, Лиды, Отчёты, Рассылки) с активным разделом «Лиды». Вторых
+// групп экранов сервиса здесь нет: вторичные переходы раздела живут во
+// внутриэкранной панели (consoleSubnav). Поэтому состав и порядок сайдбара
+// одинаковы на всех экранах консоли лидов и не меняются при переходах.
+// Активный тенант и текущий оператор переносятся в ссылки, чтобы при переходе в
+// консоль другого сервиса выбранный тенант не терялся.
+func (s *Server) consoleSidebar(tenant, actor string) components.Nav {
+	ctx := components.ConsoleContext{TenantID: tenant, Actor: actor}
+	return components.ConsoleNavWithContext(s.console, components.ConsoleSectionLeads, ctx)
+}
 
-// consoleSidebar собирает общую навигацию консоли: канонические разделы
-// (Заявки, Исполнение, Лиды, Отчёты) и вторичный список экранов lead-management
-// под разделом «Лиды». Активный общий раздел — «Лиды»; конкретный подпункт
-// подсвечивается по ключу экрана. Подписи и адреса — данные представления, не
-// доменные термины.
-func (s *Server) consoleSidebar(active string) components.Nav {
-	nav := components.ConsoleNav(s.console, components.ConsoleSectionLeads)
-	nav.Groups = []components.NavGroup{{
-		Label: "Экраны лидов",
-		Items: []components.NavItem{
-			{Label: "Главная", Href: "/", Active: active == sidebarHome},
-			{Label: "Карточки", Href: "/cards", Active: active == sidebarCards},
-			{Label: "Лиды", Href: "/leads", Active: active == sidebarLeads},
-			{Label: "Воронка", Href: "/funnel", Active: active == sidebarFunnel},
-			{Label: "Отправка", Href: "/send", Active: active == sidebarSend},
-			{Label: "Ассистент", Href: "/assistant", Active: active == sidebarAssistant},
-			{Label: "Форумы", Href: "/forum-signals", Active: active == sidebarForum},
+// consoleSubnav собирает внутриэкранную панель переходов по экранам раздела
+// «Лиды» (Главная, Карточки, Лиды, Воронка). Активный экран подсвечивается;
+// ссылки несут активные tenant_id и actor, чтобы контекст тенанта и оператора не
+// терялся при переходах между экранами раздела. Панель не входит в общий сайдбар
+// и не меняет его состав.
+func (s *Server) consoleSubnav(active, tenant, actor string) *components.Tabs {
+	ctx := components.ConsoleContext{TenantID: tenant, Actor: actor}
+	return &components.Tabs{
+		Items: []components.Tab{
+			{Key: sidebarHome, Label: "Главная", Href: components.ConsoleHrefWithContext("/", ctx)},
+			{Key: sidebarCards, Label: "Карточки", Href: components.ConsoleHrefWithContext("/cards", ctx)},
+			{Key: sidebarLeads, Label: "Лиды", Href: components.ConsoleHrefWithContext("/leads", ctx)},
+			{Key: sidebarFunnel, Label: "Воронка", Href: components.ConsoleHrefWithContext("/funnel", ctx)},
 		},
-	}}
-	return nav
+		Active: active,
+	}
+}
+
+// pageSection собирает страницу экрана раздела «Лиды»: общая навигация консоли
+// без вторичных групп и внутриэкранная панель переходов по экранам раздела с
+// подсвеченным активным экраном active.
+func (s *Server) pageSection(r *http.Request, title, active string, view any) components.Page {
+	tenant, actor := s.activeTenant(r), consoleActor(r)
+	return pageViewSidebar(title, s.consoleSidebar(tenant, actor), s.consoleSubnav(active, tenant, actor), view)
+}
+
+// pageConsole собирает страницу экрана консоли лидов без внутриэкранной панели:
+// общая навигация та же, панель не показывается на экранах, не входящих в раздел
+// «Лиды» (отправка, библиотека шаблонов, ассистент, форумы).
+func (s *Server) pageConsole(r *http.Request, title string, view any) components.Page {
+	tenant, actor := s.activeTenant(r), consoleActor(r)
+	return pageViewSidebar(title, s.consoleSidebar(tenant, actor), nil, view)
 }
 
 // pageView собирает страницу без боковой навигации (вход, уведомление).
@@ -68,8 +87,10 @@ func pageView(title string, view any) components.Page {
 	}
 }
 
-// pageViewSidebar собирает страницу с боковой навигацией и моделью экрана.
-func pageViewSidebar(title string, nav components.Nav, view any) components.Page {
+// pageViewSidebar собирает страницу с боковой навигацией, необязательной
+// внутриэкранной панелью переходов раздела и моделью экрана. nil-панель означает
+// экран без вторичной навигации.
+func pageViewSidebar(title string, nav components.Nav, subnav *components.Tabs, view any) components.Page {
 	return components.Page{
 		Layout: components.Layout{
 			Title:            title,
@@ -78,18 +99,21 @@ func pageViewSidebar(title string, nav components.Nav, view any) components.Page
 			BootstrapScripts: consoleBootstrapScripts,
 		},
 		Sidebar: nav,
+		Subnav:  subnav,
 		View:    view,
 	}
 }
 
 // loginView — модель страницы входа.
 type loginView struct {
+	Live  components.Live
 	Error string
 }
 
 // dashboardView — модель главной страницы: форма поиска, журнал запусков и
 // последние добавленные лиды.
 type dashboardView struct {
+	Live       components.Live
 	QueryField components.Field
 	// TargetCompaniesField — «Сколько найти»: целевое число компаний.
 	TargetCompaniesField components.Field
@@ -106,6 +130,7 @@ type dashboardView struct {
 
 // sendView — модель экрана отправки по сегменту.
 type sendView struct {
+	Live    components.Live
 	CSRF    string
 	Sent    int
 	Skipped int
@@ -161,6 +186,7 @@ type templateFormView struct {
 
 // templatesView — модель страницы библиотеки шаблонов.
 type templatesView struct {
+	Live  components.Live
 	CSRF  string
 	Error string
 	Form  templateFormView
@@ -214,6 +240,7 @@ type jobCompanyRow struct {
 // распределение оценок, основания подходящих результатов, найденные компании и ход
 // выполнения, собранный по событиям жизненного цикла.
 type jobView struct {
+	Live     components.Live
 	ID       string
 	Query    string
 	Badge    statusBadge
@@ -226,11 +253,17 @@ type jobView struct {
 	// AutoRefresh — задание не терминально: экран опрашивается через htmx, пока
 	// результат ещё пополняется.
 	AutoRefresh bool
-	Companies   []jobCompanyRow
-	// Distribution, Fits — оценки в контексте этого задания.
+	// Companies, Distribution, Fits — оценки в контексте этого задания.
+	Companies    []jobCompanyRow
 	Distribution verdictDistribution
 	Fits         []jobFitRow
 	Points       []timelinePoint
+	// Selection — сводка отбора: цель/найдено/недобор, охват поиска и воронка.
+	Selection selectionSummary
+	// Categories — причины отсева, сгруппированные по свидетельствам задания.
+	Categories []rejectionCategory
+	// Diagnosis — диагноз недостигнутой цели.
+	Diagnosis targetDiagnosis
 	// CSRF — токен формы переоценки. Пусто, если форма не показывается.
 	CSRF string
 	// CanReassess — задание терминально и у него есть оценки: доступна переоценка
@@ -250,6 +283,78 @@ type verdictDistribution struct {
 
 // Total возвращает число оценённых компаний задания.
 func (d verdictDistribution) Total() int { return d.Fits + d.Hypothesis + d.Unsuitable }
+
+// selectionSummary — проекция «Сводка отбора» экрана задания: цель по лидам,
+// найдено и недобор, охват поиска и воронка отбора. Значения берутся только из
+// уже наблюдаемых данных задания; недоступное значение не подменяется нулём
+// (design.md, Решения 1–2).
+type selectionSummary struct {
+	// ProgressKnown — прогресс задания наблюдался; без него охват недоступен.
+	ProgressKnown bool
+	// TargetSet — цель по числу компаний задана (TargetCompanies > 0).
+	TargetSet bool
+	Target    int
+	Found     int
+	// Shortfall — недобор (цель − найдено) при заданной и недостигнутой цели;
+	// при незаданной или достигнутой цели не рассчитывается (0, но TargetSet
+	// показывает, задана ли цель, поэтому ноль не выдаётся за недобор).
+	Shortfall int
+	// Reached — цель достигнута (при заданной цели).
+	Reached          bool
+	Pages            int
+	PlannedTargets   int
+	PlannedURLs      int
+	ParseErrors      int
+	AssessmentErrors int
+	TokensSpent      int
+	CreditsSpent     int
+	CreditsAvailable int
+	// CreditsKnown — расход/остаток кредитов наблюдался (иначе не показывается).
+	CreditsKnown bool
+	StopReason   string
+	Funnel       []funnelPoint
+}
+
+// funnelPoint — точка воронки отбора: подпись, число компаний и признак
+// доступности. Недоступный этап показывается как недоступный, а не выдуманным
+// нулём (design.md, Решение 2; AGENTS.md §3).
+type funnelPoint struct {
+	Label string
+	Count int
+	Known bool
+}
+
+// rejectionCategory — категория причин отсева задания: подпись, число компаний,
+// переход к списку карточек категории и подгруппы по формулировке причины
+// (установленное несоответствие — по Mismatch; недостающее свидетельство — по
+// Missing).
+type rejectionCategory struct {
+	Label  string
+	Count  int
+	Href   string
+	Groups []rejectionGroup
+}
+
+// rejectionGroup — подгруппа причин отсева по конкретной формулировке: подпись,
+// число компаний и переход к списку карточек этой формулировки. Пустая
+// формулировка группу не создаёт.
+type rejectionGroup struct {
+	Label string
+	Count int
+	Href  string
+}
+
+// targetDiagnosis — диагноз недостигнутой цели задания, собранный из наблюдаемых
+// полей прогресса. Пустая причина означает, что однозначную причину выделить
+// нельзя: экран покажет остаток и счётчики без домысла.
+type targetDiagnosis struct {
+	// Showed — цель задана и не достигнута: есть что объяснять.
+	Showed bool
+	// Reason — наблюдаемая причина недобора (пусто — причина не определена).
+	Reason string
+	// Remainder — наблюдаемый остаток (цель − найдено), не отрицательный.
+	Remainder int
+}
 
 // jobFitRow — подходящий результат задания с основаниями и источниками,
 // подтверждающими приведённые факты.
@@ -281,29 +386,70 @@ type timelinePoint struct {
 	Detail string
 }
 
-// cardsView — модель таблицы карточек с переключателем состава результатов:
-// группа «Подходящие» (Fits) показывается по умолчанию, вторая группа Other —
-// «Неподходящие и гипотезы» — по переключению. JobScoped отмечает, что список
-// открыт в контексте задания, поэтому несёт его оценки.
+// cardsView — модель списка карточек: четыре группы состава результатов
+// («Подходит»/«Гипотеза»/«Не подходит»/«Не оценено») со счётчиками, признак
+// контекста задания и активный фильтр по причине отсева. Группа выбирается на
+// клиенте (переключатель состава), но счётчики считает сервер — список остаётся
+// работоспособным без JavaScript. JobScoped отмечает, что список открыт в
+// контексте задания, поэтому несёт его оценки.
 type cardsView struct {
-	Fits      []cardRow
-	Other     []cardRow
-	JobID     string
-	JobQuery  string
-	JobScoped bool
+	Live       components.Live
+	Fits       []cardRow
+	Hypothesis []cardRow
+	Unsuitable []cardRow
+	Unassessed []cardRow
+	Counts     cardsCounts
+	JobID      string
+	JobQuery   string
+	JobScoped  bool
+	// Filter — активный фильтр по причине отсева; nil — фильтр не задан.
+	Filter *cardsFilter
 }
+
+// cardsCounts — число карточек в каждой группе состава. Равно числу карточек,
+// показанных при открытии группы (и при активном фильтре — числу отобранных).
+type cardsCounts struct {
+	Fits       int
+	Hypothesis int
+	Unsuitable int
+	Unassessed int
+}
+
+// cardsFilter — активный фильтр списка карточек по причине отсева: значение
+// параметра (категория), необязательная точная формулировка причины и подпись с
+// ссылкой снятия фильтра. Снятие фильтра возвращает полный список.
+type cardsFilter struct {
+	// Reason — категория причины (mismatch/missing/no-email/unassessed).
+	Reason string
+	// Detail — точная формулировка причины для mismatch/missing (пусто — любая).
+	Detail string
+	// Label — подпись фильтра для экрана (данные представления, не шаблон).
+	Label string
+	// Href — ссылка снятия фильтра на полный список (с сохранением контекста).
+	Href string
+}
+
+// Категории фильтра по причине отсева.
+const (
+	filterReasonMismatch   = "mismatch"
+	filterReasonMissing    = "missing"
+	filterReasonNoEmail    = "no-email"
+	filterReasonUnassessed = "unassessed"
+)
 
 // Группы состава результатов списка карточек.
 const (
-	cardGroupFits  = "fits"
-	cardGroupOther = "other"
+	cardGroupFits       = "fits"
+	cardGroupHypothesis = "hypothesis"
+	cardGroupUnsuitable = "unsuitable"
+	cardGroupUnassessed = "unassessed"
 )
 
 // cardRow — карточка списка: общая модель обоих представлений (плитки и строки).
 // Description остаётся полным описанием для главной страницы, ShortDescription —
 // краткое описание для витрины карточек, Email и NoEmail описывают наличие адреса.
-// Group задаёт состав (группу) карточки, VerdictLabel — подпись оценки в контексте
-// задания («Гипотеза»/«Не подходит»); без контекста задания подпись пуста.
+// Group задаёт состав (группу) карточки: «Подходит»/«Гипотеза»/«Не подходит»/
+// «Не оценено». VerdictLabel — подпись вердикта; без оценки — «Не оценено».
 type cardRow struct {
 	ID               string
 	Name             string
@@ -314,10 +460,16 @@ type cardRow struct {
 	Group            string
 	VerdictLabel     string
 	VerdictClass     string
+	// Mismatches/Missings — формулировки несоответствий и недостающих
+	// свидетельств оценки этой карточки в контексте (задания или последней).
+	// Служат фильтру по причине: причина, которой нет у карточки, её не выбирает.
+	Mismatches []string
+	Missings   []string
 }
 
 // leadsView — модель страницы лидов с email.
 type leadsView struct {
+	Live components.Live
 	Rows []leadRow
 }
 
@@ -360,6 +512,7 @@ type assessmentExplanation struct {
 // cardView — модель карточки лида: данные, история переписки, CSRF-токен и ключ
 // идемпотентности формы отправки.
 type cardView struct {
+	Live    components.Live
 	Card    cardDetail
 	CSRF    string
 	SendKey string
@@ -406,13 +559,15 @@ type historyRow struct {
 	Points    []timelinePoint
 }
 
-// contactRow — контакт компании с происхождением и способом извлечения.
+// contactRow — контакт компании с происхождением, способом извлечения и бейджем
+// верификации адреса (7.2).
 type contactRow struct {
-	Email  string
-	Phone  string
-	Role   string
-	Source provenanceView
-	Method string
+	Email        string
+	Phone        string
+	Role         string
+	Source       provenanceView
+	Method       string
+	Verification template.HTML
 }
 
 // provenanceView — модель происхождения для шаблона provenance: источник и уже
@@ -424,6 +579,7 @@ type provenanceView struct {
 
 // funnelView — модель канбан-воронки: колонки по стадиям и CSRF-токен.
 type funnelView struct {
+	Live   components.Live
 	Stages []funnelStageRow
 	CSRF   string
 }
@@ -453,7 +609,7 @@ func jobRows(list []ports.SearchJob) []jobRow {
 			ID:         j.ID,
 			Query:      j.Query,
 			ShortQuery: shortQuery(j.Query),
-			Badge:      statusBadge{Label: string(j.Status), Class: components.StatusClass(string(j.Status)), Title: statusTitle(j)},
+			Badge:      statusBadge{Label: jobStatusLabel(j.Status), Class: components.StatusClass(string(j.Status)), Title: statusTitle(j)},
 			Progress:   progressOrQueue(j),
 			Created:    formatDate(j.CreatedAt),
 			Error:      errorText(j),
@@ -476,8 +632,11 @@ func shortQuery(query string) string {
 // jobFrom собирает модель экрана подробностей задания по заданию, его событиям и
 // оценкам в контексте этого задания. Оценки приходят уже отфильтрованными по
 // заданию: распределение, подписи и основания строятся только по ним, оценка
-// чужого задания в эту модель не попадает.
-func jobFrom(detail app.JobDetail, assessments []*domain.LeadAssessment, emails map[string]app.CompanyEmail) jobView {
+// чужого задания в эту модель не попадает. assessmentsKnown отмечает
+// доступность хранилища оценок: недоступный этап воронки показывается как
+// недоступный, а не нулём. links переносит контекст тенанта/оператора в переходы
+// к отфильтрованным спискам.
+func jobFrom(detail app.JobDetail, assessments []*domain.LeadAssessment, assessmentsKnown bool, emails map[string]app.CompanyEmail, links components.ConsoleContext) jobView {
 	j := detail.Job
 	byCompany := assessmentsByCompany(assessments)
 
@@ -522,10 +681,12 @@ func jobFrom(detail app.JobDetail, assessments []*domain.LeadAssessment, emails 
 		}
 	}
 
+	selection := selectionSummaryFrom(j, distribution, emails != nil, emailsWithAddress(j.ResultRef, emails), assessmentsKnown)
 	return jobView{
+		Live:         consoleLive,
 		ID:           j.ID,
 		Query:        j.Query,
-		Badge:        statusBadge{Label: string(j.Status), Class: components.StatusClass(string(j.Status)), Title: statusTitle(j)},
+		Badge:        statusBadge{Label: jobStatusLabel(j.Status), Class: components.StatusClass(string(j.Status)), Title: statusTitle(j)},
 		Created:      formatDateTime(j.CreatedAt),
 		Updated:      formatDateTime(j.UpdatedAt),
 		Result:       resultCount(j.ResultRef),
@@ -537,7 +698,252 @@ func jobFrom(detail app.JobDetail, assessments []*domain.LeadAssessment, emails 
 		Distribution: distribution,
 		Fits:         fits,
 		Points:       jobEventPoints(detail.Events),
+		Selection:    selection,
+		Categories:   rejectionCategories(j, byCompany, emails, selection.AssessmentErrors, links),
+		Diagnosis:    targetDiagnosisFrom(j.Progress, distribution),
 	}
+}
+
+// selectionSummaryFrom собирает сводку отбора задания из наблюдаемых данных:
+// цель/найдено/недобор, охват поиска и воронку. Найдено — число компаний
+// результата; недобор рассчитывается только при заданной и недостигнутой цели и
+// не подменяется нулём при незаданной (design.md, Решение 5).
+func selectionSummaryFrom(j ports.SearchJob, distribution verdictDistribution, emailsKnown bool, emailCount int, assessmentsKnown bool) selectionSummary {
+	found := len(j.ResultRef)
+	s := selectionSummary{Found: found}
+	if p := j.Progress; p != nil {
+		s.ProgressKnown = true
+		s.Pages = p.PagesCrawled
+		s.PlannedTargets = p.PlannedTargets
+		s.PlannedURLs = p.PlannedURLs
+		s.ParseErrors = p.ParseErrors
+		s.AssessmentErrors = p.AssessmentErrors
+		s.TokensSpent = p.TokensSpent
+		s.CreditsSpent = p.CreditsSpent
+		s.CreditsAvailable = p.CreditsAvailable
+		s.CreditsKnown = p.CreditsSpent != 0 || p.CreditsAvailable != 0
+		s.StopReason = strings.TrimSpace(p.StopReason)
+		s.TargetSet = p.TargetCompanies > 0
+		s.Target = p.TargetCompanies
+		s.Reached = p.TargetReached
+		if s.TargetSet && !p.TargetReached {
+			s.Shortfall = p.TargetCompanies - found
+			if s.Shortfall < 0 {
+				s.Shortfall = 0
+			}
+		}
+	}
+	s.Funnel = funnelPoints(found, emailsKnown, emailCount, distribution, assessmentsKnown)
+	return s
+}
+
+// emailsWithAddress считает компании результата с непустым адресом. При
+// недоступной карте контактов (nil) возвращает 0: значение используется только
+// вместе с признаком доступности.
+func emailsWithAddress(ids []string, emails map[string]app.CompanyEmail) int {
+	if emails == nil {
+		return 0
+	}
+	n := 0
+	for _, id := range ids {
+		if contact, ok := emails[id]; ok && contact.Email != "" {
+			n++
+		}
+	}
+	return n
+}
+
+// funnelPoints строит воронку отбора: найдено → проверено email → оценено →
+// вердикты → писем → отправлено → ответили. Этап без доступных на уровне
+// задания данных помечается недоступным, а не выдуманным нулём: стадии «писем»,
+// «отправлено» и «ответили» принадлежат другим поверхностям и на уровне задания
+// недоступны.
+func funnelPoints(found int, emailsKnown bool, emailCount int, distribution verdictDistribution, assessmentsKnown bool) []funnelPoint {
+	points := []funnelPoint{{Label: "Найдено", Count: found, Known: true}}
+	points = append(points, funnelPoint{Label: "Email проверен", Count: emailCount, Known: emailsKnown})
+	if assessmentsKnown {
+		points = append(points,
+			funnelPoint{Label: "Оценено", Count: distribution.Total(), Known: true},
+			funnelPoint{Label: "Подходит", Count: distribution.Fits, Known: true},
+			funnelPoint{Label: "Гипотеза", Count: distribution.Hypothesis, Known: true},
+			funnelPoint{Label: "Не подходит", Count: distribution.Unsuitable, Known: true},
+		)
+	} else {
+		points = append(points,
+			funnelPoint{Label: "Оценено"},
+			funnelPoint{Label: "Подходит"},
+			funnelPoint{Label: "Гипотеза"},
+			funnelPoint{Label: "Не подходит"},
+		)
+	}
+	points = append(points,
+		funnelPoint{Label: "Писем"},
+		funnelPoint{Label: "Отправлено"},
+		funnelPoint{Label: "Ответили"},
+	)
+	return points
+}
+
+// targetDiagnosisFrom собирает диагноз недостигнутой цели по приоритету
+// наблюдаемых причин: причина остановки → счётчики ошибок разбора/оценки →
+// распределение вердиктов («всё отсеялось оценкой»). Однозначная причина не
+// выдумывается: если ни один признак её не даёт, Reason остаётся пустой, а экран
+// показывает остаток и счётчики (design.md, Решение 5).
+func targetDiagnosisFrom(p *ports.SearchJobProgress, distribution verdictDistribution) targetDiagnosis {
+	if p == nil || p.TargetCompanies <= 0 || p.TargetReached {
+		return targetDiagnosis{}
+	}
+	remainder := p.TargetCompanies - p.CompaniesFound
+	if remainder < 0 {
+		remainder = 0
+	}
+	d := targetDiagnosis{Showed: true, Remainder: remainder}
+	switch {
+	case strings.TrimSpace(p.StopReason) != "":
+		d.Reason = strings.TrimSpace(p.StopReason)
+	case p.ParseErrors > 0 || p.AssessmentErrors > 0:
+		parts := make([]string, 0, 2)
+		if p.ParseErrors > 0 {
+			parts = append(parts, fmt.Sprintf("ошибок разбора %d", p.ParseErrors))
+		}
+		if p.AssessmentErrors > 0 {
+			parts = append(parts, fmt.Sprintf("ошибок оценки %d", p.AssessmentErrors))
+		}
+		d.Reason = "часть страниц не разобрана или не оценена: " + strings.Join(parts, ", ")
+	case distribution.Total() > 0 && distribution.Fits == 0:
+		d.Reason = "найденные компании отсеяны оценкой: подходящих нет"
+	}
+	return d
+}
+
+// rejectionCategories группирует причины отсева компаний задания по сохранённым
+// свидетельствам: «Не подходит» — по установленному несоответствию (Mismatch),
+// «Гипотеза» — по недостающему свидетельству (Missing), «нет email / email
+// недоступен» — по контактам, «ошибки оценки» — по счётчику прогресса. Компании
+// без свидетельства причина не назначается; каждой категории и подгруппе дан
+// переход к списку карточек с параметром причины (design.md, Решение 3).
+func rejectionCategories(j ports.SearchJob, byCompany map[string]*domain.LeadAssessment, emails map[string]app.CompanyEmail, assessmentErrors int, links components.ConsoleContext) []rejectionCategory {
+	unsuitable, hypothesis, noEmail := 0, 0, 0
+	mismatchCounts := map[string]int{}
+	missingCounts := map[string]int{}
+	for _, id := range j.ResultRef {
+		if a := byCompany[id]; a != nil {
+			switch a.Verdict() {
+			case domain.VerdictUnsuitable:
+				unsuitable++
+				for _, m := range distinctReasons(a.Evidence(), func(e domain.Evidence) string { return e.Mismatch }) {
+					mismatchCounts[m]++
+				}
+			case domain.VerdictHypothesis:
+				hypothesis++
+				for _, m := range distinctReasons(a.Evidence(), func(e domain.Evidence) string { return e.Missing }) {
+					missingCounts[m]++
+				}
+			}
+		}
+		if emails != nil {
+			if contact, ok := emails[id]; ok && (contact.NoEmail || contact.Email == "") {
+				noEmail++
+			}
+		}
+	}
+
+	categories := make([]rejectionCategory, 0, 4)
+	if unsuitable > 0 || len(mismatchCounts) > 0 {
+		categories = append(categories, rejectionCategory{
+			Label:  "Не подходит",
+			Count:  unsuitable,
+			Href:   cardsFilterHref(j.ID, filterReasonMismatch, "", links),
+			Groups: reasonGroups(mismatchCounts, filterReasonMismatch, j.ID, links),
+		})
+	}
+	if hypothesis > 0 || len(missingCounts) > 0 {
+		categories = append(categories, rejectionCategory{
+			Label:  "Гипотеза",
+			Count:  hypothesis,
+			Href:   cardsFilterHref(j.ID, filterReasonMissing, "", links),
+			Groups: reasonGroups(missingCounts, filterReasonMissing, j.ID, links),
+		})
+	}
+	if noEmail > 0 {
+		categories = append(categories, rejectionCategory{
+			Label: "нет email / email недоступен",
+			Count: noEmail,
+			Href:  cardsFilterHref(j.ID, filterReasonNoEmail, "", links),
+		})
+	}
+	if assessmentErrors > 0 {
+		// Счётчик неудачных оценок — наблюдаемое число; переход ведёт к списку
+		// компаний без оценки (это след ошибки оценки), поэтому число группы и
+		// размер списка могут расходиться — одно не выдаётся за другое.
+		categories = append(categories, rejectionCategory{
+			Label: "ошибки оценки",
+			Count: assessmentErrors,
+			Href:  cardsFilterHref(j.ID, filterReasonUnassessed, "", links),
+		})
+	}
+	return categories
+}
+
+// distinctReasons возвращает различные непустые формулировки причины из
+// свидетельств (Mismatch или Missing), без повторов: одна компания добавляет в
+// подгруппу каждую свою причину по одному разу.
+func distinctReasons(evidence []domain.Evidence, pick func(domain.Evidence) string) []string {
+	seen := map[string]struct{}{}
+	out := make([]string, 0, len(evidence))
+	for _, e := range evidence {
+		value := strings.TrimSpace(pick(e))
+		if value == "" {
+			continue
+		}
+		if _, ok := seen[value]; ok {
+			continue
+		}
+		seen[value] = struct{}{}
+		out = append(out, value)
+	}
+	return out
+}
+
+// reasonGroups сортирует подгруппы по числу компаний (по убыванию) и подписи,
+// чтобы вывод был детерминирован.
+func reasonGroups(counts map[string]int, reason, jobID string, links components.ConsoleContext) []rejectionGroup {
+	if len(counts) == 0 {
+		return nil
+	}
+	labels := make([]string, 0, len(counts))
+	for label := range counts {
+		labels = append(labels, label)
+	}
+	sort.Slice(labels, func(i, j int) bool {
+		if counts[labels[i]] != counts[labels[j]] {
+			return counts[labels[i]] > counts[labels[j]]
+		}
+		return labels[i] < labels[j]
+	})
+	groups := make([]rejectionGroup, 0, len(labels))
+	for _, label := range labels {
+		groups = append(groups, rejectionGroup{
+			Label: label,
+			Count: counts[label],
+			Href:  cardsFilterHref(jobID, reason, label, links),
+		})
+	}
+	return groups
+}
+
+// cardsFilterHref строит адрес списка карточек с параметром причины отсева,
+// сохраняя контекст задания и выбранного тенанта/оператора.
+func cardsFilterHref(jobID, reason, detail string, links components.ConsoleContext) string {
+	values := url.Values{}
+	if jobID != "" {
+		values.Set("job", jobID)
+	}
+	values.Set("reason", reason)
+	if detail != "" {
+		values.Set("detail", detail)
+	}
+	return components.ConsoleHrefWithContext("/cards?"+values.Encode(), links)
 }
 
 // cardHref строит адрес карточки в контексте задания: оценка открывается в том
@@ -901,63 +1307,205 @@ func siteDomain(id string) string {
 	return domain
 }
 
-// cardRowsWithAssessments накладывает на строки списка оценки задания. Карточка с
-// вердиктом «Подходит» остаётся в группе по умолчанию, «Гипотеза» и «Не подходит»
-// уходят во вторую группу с подписью. Оценки берутся только из переданного
-// задания: оценка чужого задания сюда не попадает (lead-relevance, запрет
-// переноса). Компания результата без оценки не выдаётся за «Подходит»: она
-// остаётся во второй группе с явной пометкой «Не оценено».
+// cardRowsWithAssessments накладывает на строки списка оценки задания. Группа и
+// подпись карточки берутся из вердикта последней оценки в этом задании: «Подходит»,
+// «Гипотеза», «Не подходит»; компания результата без оценки не выдаётся за
+// «Подходит» — она попадает в группу «Не оценено». Оценки берутся только из
+// переданного задания: оценка чужого задания сюда не попадает (lead-relevance,
+// запрет переноса).
 func cardRowsWithAssessments(cards []app.Card, byCompany map[string]*domain.LeadAssessment) []cardRow {
 	return applyAssessmentGroups(cardRows(cards), byCompany)
 }
 
 // cardRowsWithLatestAssessments накладывает на строки общей витрины последнюю по
-// времени оценку каждой компании по всем заданиям. «Подходит» остаётся в группе по
-// умолчанию; «Гипотеза» и «Не подходит» уходят во вторую группу; компания без
-// оценок — во вторую группу с пометкой «Не оценено». Последняя оценка — проекция
+// времени оценку каждой компании по всем заданиям. Состав — по последней оценке;
+// компания без оценок — в группе «Не оценено». Последняя оценка — проекция
 // чтения: она не переносится в компанию как постоянное свойство и не выдаёт
 // оценку одного задания за оценку другого.
 func cardRowsWithLatestAssessments(cards []app.Card, latest map[string]*domain.LeadAssessment) []cardRow {
 	return applyAssessmentGroups(cardRows(cards), latest)
 }
 
-// applyAssessmentGroups раскладывает готовые строки по группам состава: вердикт
-// «Подходит» остаётся в группе по умолчанию, «Гипотеза» и «Не подходит» уходят во
-// вторую группу, отсутствие оценки — во вторую группу с пометкой «Не оценено».
-// Подпись и класс берутся из вердикта, чтобы оба пути (задание и общая витрина)
-// давали одинаковый результат.
+// applyAssessmentGroups раскладывает готовые строки по четырём группам состава по
+// вердикту оценки: «Подходит», «Гипотеза», «Не подходит», отсутствие оценки —
+// «Не оценено». Подпись и класс берутся из вердикта, чтобы оба пути (задание и
+// общая витрина) давали одинаковый результат. Из свидетельств собираются
+// формулировки причин отсева для фильтра.
 func applyAssessmentGroups(rows []cardRow, byCompany map[string]*domain.LeadAssessment) []cardRow {
 	for i := range rows {
 		a := byCompany[rows[i].ID]
 		if a == nil {
-			rows[i].Group = cardGroupOther
+			rows[i].Group = cardGroupUnassessed
 			rows[i].VerdictLabel = "Не оценено"
 			rows[i].VerdictClass = "unknown"
 			continue
 		}
 		rows[i].VerdictLabel = verdictLabel(a.Verdict())
 		rows[i].VerdictClass = verdictClass(a.Verdict())
-		if a.Verdict() != domain.VerdictFits {
-			rows[i].Group = cardGroupOther
-		}
+		rows[i].Group = cardGroupForVerdict(a.Verdict())
+		rows[i].Mismatches = distinctReasons(a.Evidence(), func(e domain.Evidence) string { return e.Mismatch })
+		rows[i].Missings = distinctReasons(a.Evidence(), func(e domain.Evidence) string { return e.Missing })
 	}
 	return rows
 }
 
-// splitCardRows делит строки на группу «Подходящие» и вторую группу, сохраняя
-// порядок карточек. Результаты второй группы не удаляются: они остаются
-// доступными при переключении состава.
-func splitCardRows(rows []cardRow) (fits, other []cardRow) {
-	fits = make([]cardRow, 0, len(rows))
-	other = make([]cardRow, 0)
-	for _, row := range rows {
-		if row.Group == cardGroupOther {
-			other = append(other, row)
-			continue
-		}
-		fits = append(fits, row)
+// cardGroupForVerdict сопоставляет вердикт группе состава.
+func cardGroupForVerdict(v domain.AssessmentVerdict) string {
+	switch v {
+	case domain.VerdictFits:
+		return cardGroupFits
+	case domain.VerdictHypothesis:
+		return cardGroupHypothesis
+	case domain.VerdictUnsuitable:
+		return cardGroupUnsuitable
+	default:
+		return cardGroupUnassessed
 	}
-	return fits, other
+}
+
+// groupCardRows делит строки на четыре группы состава, сохраняя порядок карточек.
+// Результаты всех групп остаются в модели и не удаляются: переключение состава
+// лишь меняет видимую группу.
+func groupCardRows(rows []cardRow) (fits, hypothesis, unsuitable, unassessed []cardRow) {
+	for _, row := range rows {
+		switch row.Group {
+		case cardGroupHypothesis:
+			hypothesis = append(hypothesis, row)
+		case cardGroupUnsuitable:
+			unsuitable = append(unsuitable, row)
+		case cardGroupUnassessed:
+			unassessed = append(unassessed, row)
+		default:
+			fits = append(fits, row)
+		}
+	}
+	return fits, hypothesis, unsuitable, unassessed
+}
+
+// filterCardRows сужает строки списка до выбранной причины отсева. Причина,
+// которой у карточки нет, её не выбирает; пустой фильтр возвращает строки без
+// изменений (снятие фильтра даёт полный список).
+func filterCardRows(rows []cardRow, reason, detail string) []cardRow {
+	if reason == "" {
+		return rows
+	}
+	filtered := make([]cardRow, 0, len(rows))
+	for _, row := range rows {
+		if rowMatchesReason(row, reason, detail) {
+			filtered = append(filtered, row)
+		}
+	}
+	return filtered
+}
+
+// rowMatchesReason сообщает, соответствует ли карточка выбранной причине.
+func rowMatchesReason(row cardRow, reason, detail string) bool {
+	switch reason {
+	case filterReasonMismatch:
+		return containsReason(row.Mismatches, detail)
+	case filterReasonMissing:
+		return containsReason(row.Missings, detail)
+	case filterReasonNoEmail:
+		return row.NoEmail
+	case filterReasonUnassessed:
+		return row.Group == cardGroupUnassessed
+	default:
+		return true
+	}
+}
+
+// containsReason сообщает, есть ли у карточки причина с указанной формулировкой;
+// пустая формулировка означает любую причину этой категории.
+func containsReason(values []string, detail string) bool {
+	if len(values) == 0 {
+		return false
+	}
+	detail = strings.TrimSpace(detail)
+	if detail == "" {
+		return true
+	}
+	for _, value := range values {
+		if value == detail {
+			return true
+		}
+	}
+	return false
+}
+
+// cardsCountsFrom считает число карточек в каждой группе состава.
+func cardsCountsFrom(fits, hypothesis, unsuitable, unassessed []cardRow) cardsCounts {
+	return cardsCounts{
+		Fits:       len(fits),
+		Hypothesis: len(hypothesis),
+		Unsuitable: len(unsuitable),
+		Unassessed: len(unassessed),
+	}
+}
+
+// cardsFilterFrom разбирает фильтр по причине отсева из запроса. Неизвестное
+// значение причины фильтром не становится (фильтр не выдумывается). Href —
+// ссылка снятия фильтра на полный список с сохранением контекста задания,
+// тенанта и оператора.
+func (s *Server) cardsFilterFrom(r *http.Request, jobID string) *cardsFilter {
+	reason := strings.TrimSpace(r.URL.Query().Get("reason"))
+	if !validFilterReason(reason) {
+		return nil
+	}
+	detail := strings.TrimSpace(r.URL.Query().Get("detail"))
+	values := url.Values{}
+	if jobID != "" {
+		values.Set("job", jobID)
+	}
+	href := "/cards"
+	if encoded := values.Encode(); encoded != "" {
+		href += "?" + encoded
+	}
+	ctx := components.ConsoleContext{TenantID: s.activeTenant(r), Actor: consoleActor(r)}
+	return &cardsFilter{
+		Reason: reason,
+		Detail: detail,
+		Label:  filterLabel(reason, detail),
+		Href:   components.ConsoleHrefWithContext(href, ctx),
+	}
+}
+
+// validFilterReason сообщает, известна ли категория фильтра.
+func validFilterReason(reason string) bool {
+	switch reason {
+	case filterReasonMismatch, filterReasonMissing, filterReasonNoEmail, filterReasonUnassessed:
+		return true
+	default:
+		return false
+	}
+}
+
+// filterReason возвращает категорию и формулировку активного фильтра; nil-фильтр
+// даёт пустые значения (строки не сужаются).
+func filterReason(filter *cardsFilter) (reason, detail string) {
+	if filter == nil {
+		return "", ""
+	}
+	return filter.Reason, filter.Detail
+}
+
+// filterLabel собирает подпись фильтра для экрана: категория и, если задана,
+// точная формулировка причины.
+func filterLabel(reason, detail string) string {
+	base := ""
+	switch reason {
+	case filterReasonMismatch:
+		base = "Не подходит"
+	case filterReasonMissing:
+		base = "Гипотеза"
+	case filterReasonNoEmail:
+		base = "нет email / email недоступен"
+	case filterReasonUnassessed:
+		base = "ошибки оценки"
+	}
+	if detail != "" {
+		return base + ": " + detail
+	}
+	return base
 }
 
 // shortDescription сокращает длинное описание до краткого представления с
@@ -976,11 +1524,12 @@ func cardDetailFrom(card app.Card, history []app.CardMessage) cardDetail {
 	contacts := make([]contactRow, 0, len(card.Contacts))
 	for _, c := range card.Contacts {
 		contacts = append(contacts, contactRow{
-			Email:  c.Email,
-			Phone:  c.Phone,
-			Role:   c.Role,
-			Source: provenanceView{Source: c.SourceURL, Date: formatDate(c.ExtractedAt)},
-			Method: c.Method,
+			Email:        c.Email,
+			Phone:        c.Phone,
+			Role:         c.Role,
+			Source:       provenanceView{Source: c.SourceURL, Date: formatDate(c.ExtractedAt)},
+			Method:       c.Method,
+			Verification: unverifiedBadge(),
 		})
 	}
 
@@ -991,7 +1540,7 @@ func cardDetailFrom(card app.Card, history []app.CardMessage) cardDetail {
 		Description: card.Description,
 		Socials:     card.Socials,
 		Source:      provenanceView{Source: card.SourceURL, Date: formatDate(card.ExtractedAt)},
-		StageBadge:  statusBadge{Label: stage, Class: components.StatusClass(stage)},
+		StageBadge:  statusBadge{Label: stageLabel(card.Stage), Class: components.StatusClass(stage)},
 		Stage:       stage,
 		StagePoints: stageTimeline(stage),
 		Contacts:    contacts,
@@ -1005,7 +1554,7 @@ func cardDetailFrom(card app.Card, history []app.CardMessage) cardDetail {
 		rows = append(rows, historyRow{
 			Recipient: m.Recipient,
 			Template:  m.Template,
-			Status:    statusBadge{Label: m.Status, Class: components.StatusClass(m.Status)},
+			Status:    statusBadge{Label: messageStatusLabel(m.Status), Class: components.StatusClass(m.Status)},
 			Reason:    m.Reason,
 			Created:   formatDate(m.CreatedAt),
 			Points:    messageTimeline(m.Status, m.Reason),
@@ -1043,6 +1592,47 @@ func funnelLeadIDs(stages []app.FunnelStage) []string {
 		}
 	}
 	return ids
+}
+
+// jobStatusLabel — читаемая подпись состояния задания поиска для бейджа. Код
+// остаётся в классе бейджа (оформление), а оператор видит слово, а не код.
+// Неизвестное состояние показывается как есть, чтобы новое значение не пропало.
+func jobStatusLabel(status jobs.Status) string {
+	switch status {
+	case jobs.StatusQueued:
+		return "В очереди"
+	case jobs.StatusRunning:
+		return "Выполняется"
+	case jobs.StatusDone:
+		return "Готово"
+	case jobs.StatusFailed:
+		return "Ошибка"
+	case jobs.StatusCancelled:
+		return "Отменено"
+	default:
+		return string(status)
+	}
+}
+
+// messageStatusLabel — читаемая подпись состояния исходящего письма в истории
+// переписки карточки.
+func messageStatusLabel(status string) string {
+	switch domain.MessageStatus(status) {
+	case domain.MessageStatusQueued:
+		return "В очереди"
+	case domain.MessageStatusSent:
+		return "Отправлено"
+	case domain.MessageStatusFailed:
+		return "Не отправлено"
+	case domain.MessageStatusBounced:
+		return "Возврат"
+	case domain.MessageStatusUnsubscribed:
+		return "Отписка"
+	case domain.MessageStatusRejected:
+		return "Отклонено"
+	default:
+		return status
+	}
 }
 
 // stageLabel — читаемая подпись стадии воронки для колонки.
@@ -1140,12 +1730,13 @@ func resultCount(ref []string) string {
 	return strconv.Itoa(len(ref))
 }
 
-// formatDate форматирует дату извлечения; нулевая дата — пустая строка.
+// formatDate форматирует дату извлечения; нулевая дата — пустая строка. Формат
+// локализован общим слоём (web-frontend-architecture, срез 7, 7.1).
 func formatDate(t time.Time) string {
 	if t.IsZero() {
 		return ""
 	}
-	return t.Format(dateFormat)
+	return components.DefaultFormatter().Date(t)
 }
 
 // firecrawlStatus — модель остатка аккаунта Firecrawl для главной страницы.
@@ -1178,11 +1769,12 @@ func firecrawlStatusFrom(a budget.AccountReader) firecrawlStatus {
 }
 
 // formatDateTime форматирует момент времени с часами; нулевое время — пустая строка.
+// Формат локализован общим слоем (web-frontend-architecture, срез 7, 7.1).
 func formatDateTime(t time.Time) string {
 	if t.IsZero() {
 		return ""
 	}
-	return t.Format("2006-01-02 15:04:05")
+	return components.DefaultFormatter().DateTime(t)
 }
 
 // budgetText отображает бюджет задачи: расход, резерв и доступно. nil — пустая
@@ -1200,6 +1792,7 @@ func budgetText(b *budget.Snapshot) string {
 // поэтому сервер остаётся stateless. Лимиты согласуются в самом диалоге, а не в
 // отдельной форме-панели (design.md, Решение 6).
 type assistantView struct {
+	Live     components.Live
 	CSRF     string
 	History  string
 	PlanJSON string
@@ -1308,6 +1901,7 @@ type dialogueTargetRow struct {
 // forumSignalsView — модель экрана форумных сигналов: форма запроса и, после
 // поиска, список обезличенных сигналов.
 type forumSignalsView struct {
+	Live       components.Live
 	QueryField components.Field
 	Query      string
 	Signals    []forumSignalRow

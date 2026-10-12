@@ -5,12 +5,12 @@
 {{- range .Items }}
   <li class="template-item{{if .Selected}} is-selected{{end}}">
     <a class="link" href="{{.Href}}">{{.Name}}</a>
-    <span class="template-meta">{{.Subject}} · ревизия {{.Revision}}</span>
+    <span class="template-meta">{{.Subject}} · {{ text "lead.template.revision" }} {{.Revision}}</span>
   </li>
 {{- end }}
 </ul>
 {{- else }}
-<p class="empty">Шаблонов не найдено. Измените запрос или создайте новый шаблон.</p>
+<p class="empty">{{ text "lead.template.not_found" }}</p>
 {{- end }}
 {{- end -}}
 {{- end -}}
@@ -18,19 +18,19 @@
 {{- define "template-picker" -}}
 <form class="search-form" method="get" action="{{.Action}}" hx-get="{{.Action}}" hx-target="#template-list" hx-swap="innerHTML">
   <p class="field">
-    <label for="template-query">Поиск шаблона</label>
+    <label for="template-query">{{ text "lead.template.search" }}</label>
     <input id="template-query" name="q" type="text" value="{{.Query}}">
   </p>
-  <p class="actions"><button type="submit">Найти</button></p>
+  <p class="actions"><button type="submit">{{ text "lead.template.find" }}</button></p>
 </form>
-<div id="template-list">
+<div id="template-list" data-live-announce="{{ text "lead.live.send" }}" data-focus-after-swap="#template-list">
 {{ template "template-list" . }}
 </div>
 {{- end -}}
 
 {{- define "variable-values" -}}
 <fieldset class="variables">
-  <legend>Значения переменных</legend>
+  <legend>{{ text "lead.template.values" }}</legend>
   {{- range . }}
   <p class="field">
     <label for="value-{{.Key}}">{{.Label}}</label>
@@ -42,7 +42,7 @@
 
 {{- define "variable-form-options" -}}
 <fieldset class="variables">
-  <legend>Переменные шаблона</legend>
+  <legend>{{ text "lead.template.variables" }}</legend>
   <ul class="variable-list">
   {{- range . }}
     <li class="variable-row">
@@ -50,8 +50,8 @@
         <input type="checkbox" name="var_{{.Key}}" value="yes"{{if .Declared}} checked{{end}}> {{.Label}}
       </label>
       <span class="hint">{{.Source}}</span>
-      <input type="text" name="fallback_{{.Key}}" value="{{.Fallback}}" placeholder="fallback">
-      <button type="button" class="button-secondary" data-insert-placeholder="{{.Key}}">Вставить в текст</button>
+      <input type="text" name="fallback_{{.Key}}" value="{{.Fallback}}" placeholder="{{ text "lead.template.fallback" }}">
+      <button type="button" class="button-secondary" data-insert-placeholder="{{.Key}}">{{ text "lead.template.insert" }}</button>
     </li>
   {{- end }}
   </ul>
@@ -61,24 +61,25 @@
 {{- define "email-preview" -}}
 {{- with . -}}
 {{- if .Reference }}
-<h3>Предпросмотр</h3>
-<p class="hint">Ссылка на шаблон: {{.Reference}}</p>
+<h3>{{ text "lead.template.preview" }}</h3>
+<p class="hint">{{ text "lead.template.ref" }} {{.Reference}}</p>
 <dl class="preview">
-  <dt>Тема</dt>
+  <dt>{{ text "lead.template.subject" }}</dt>
   <dd class="preview-subject">{{.Subject}}</dd>
-  <dt>Текст</dt>
+  <dt>{{ text "lead.template.body" }}</dt>
   <dd class="preview-body">{{.Body}}</dd>
 </dl>
 {{- else }}
-<p class="empty">Выберите шаблон, чтобы увидеть предпросмотр собранного письма.</p>
+<p class="empty">{{ text "lead.template.preview_hint" }}</p>
 {{- end }}
 {{- end -}}
 {{- end -}}
 
 {{- define "content" -}}
 {{- with .View -}}
+{{ template "live" .Live }}
 <header class="page-head">
-  <h1>Библиотека шаблонов</h1>
+  <h1>{{ text "lead.template.library" }}</h1>
 </header>
 
 {{- with .Error }}
@@ -86,35 +87,35 @@
 {{- end }}
 
 <section class="panel">
-  <h2>{{if eq .Form.Mode "edit"}}Правка шаблона{{else}}Новый шаблон{{end}}</h2>
-  {{- with .Form.Reference }}<p class="hint">Редакция: {{.}}</p>{{- end }}
+  <h2>{{if eq .Form.Mode "edit"}}{{ text "lead.template.edit" }}{{else}}{{ text "lead.template.new" }}{{end}}</h2>
+  {{- with .Form.Reference }}<p class="hint">{{ text "lead.template.revision" }} {{.}}</p>{{- end }}
   <form method="post" action="{{.Form.Action}}">
     <input type="hidden" name="csrf" value="{{.CSRF}}">
     <p class="field">
-      <label for="tpl-name">Имя</label>
+      <label for="tpl-name">{{ text "lead.template.name" }}</label>
       <input id="tpl-name" name="name" type="text" value="{{.Form.Name}}">
     </p>
     <p class="field">
-      <label for="subject">Тема</label>
+      <label for="subject">{{ text "lead.template.subject" }}</label>
       <input id="subject" name="subject" type="text" value="{{.Form.Subject}}" data-placeholder-field>
     </p>
     <p class="field">
-      <label for="body">Текст письма</label>
+      <label for="body">{{ text "lead.template.body_label" }}</label>
       <textarea id="body" name="body" rows="6" data-placeholder-field data-placeholder-default>{{.Form.Body}}</textarea>
     </p>
     {{ template "variable-form-options" .Form.Options }}
-    <p class="actions"><button type="submit">{{if eq .Form.Mode "edit"}}Сохранить{{else}}Создать{{end}}</button></p>
+    <p class="actions"><button type="submit">{{if eq .Form.Mode "edit"}}{{ text "lead.template.save" }}{{else}}{{ text "lead.template.create" }}{{end}}</button></p>
   </form>
   {{- if eq .Form.Mode "edit" }}
   <form method="post" action="{{.Form.DeleteAction}}">
     <input type="hidden" name="csrf" value="{{.CSRF}}">
-    <p class="actions"><button class="button-danger" type="submit">Удалить</button></p>
+    <p class="actions"><button class="button-danger" type="submit">{{ text "lead.template.delete" }}</button></p>
   </form>
   {{- end }}
 </section>
 
 <section class="panel">
-  <h2>Список шаблонов</h2>
+  <h2>{{ text "lead.template.list" }}</h2>
   {{ template "template-picker" .List }}
 </section>
 {{- end -}}

@@ -36,7 +36,9 @@ import (
 	composition "lead-gen/backend/platform/composition"
 	platformoutbox "lead-gen/backend/platform/messaging/outbox"
 	"lead-gen/backend/platform/observability/observ"
+	"lead-gen/backend/platform/readiness"
 	"lead-gen/contracts/integration-platform/crawl"
+	"lead-gen/contracts/integration-platform/documentparse"
 	"lead-gen/contracts/integration-platform/llm"
 )
 
@@ -115,6 +117,11 @@ type Config struct {
 	// предоставленных вручную материалах.
 	SiteCollector crawl.Port
 
+	// DocumentParser — порт разбора предоставленных документов (коммерческого
+	// предложения) владельца integration-platform. nil — разбор честно недоступен:
+	// работа продолжается на предоставленных вручную материалах.
+	DocumentParser documentparse.Port
+
 	// PlagiarismSource — порт сравнения со сторонними источниками проверки на
 	// заимствование. nil — сравнение со сторонними источниками честно недоступно.
 	PlagiarismSource ports.PlagiarismSource
@@ -157,7 +164,8 @@ type Slice struct {
 	Relay *platformoutbox.Relay
 
 	// Server — HTTP-обработчики роли api. Реализует http.Handler.
-	Server *httpapi.Server
+	Server    *httpapi.Server
+	Readiness RoleReadinessReporter
 
 	CreateContentPackage  *command.CreateContentPackageHandler
 	PublishContentVersion *command.PublishContentVersionHandler
@@ -175,6 +183,7 @@ type Slice struct {
 
 	GenerateLandingTexts *command.GenerateLandingTextsHandler
 	CollectSite          *command.CollectSiteHandler
+	ParseDocuments       *command.ParseDocumentsHandler
 	CheckLandingTexts    *command.CheckLandingTextsHandler
 }
 
@@ -285,9 +294,18 @@ func Build(cfg Config) (*Slice, error) {
 	linguisticsGenerator := linguistics.New(cfg.LLM)
 	generateLandingTexts := command.NewGenerateLandingTextsHandler(linguisticsGenerator)
 	collectSite := command.NewCollectSiteHandler(cfg.SiteCollector)
+	parseDocuments := command.NewParseDocumentsHandler(cfg.DocumentParser)
 	checkLandingTexts := command.NewCheckLandingTextsHandler(linguisticsGenerator, cfg.PlagiarismSource)
 
+	var persistenceState Persistence
+	if persist != nil {
+		persistenceState = *persist
+	}
+	readinessState := newReadinessReporter(persistenceState, renderer, cfg.Publisher != nil)
 	server := httpapi.NewServer(httpapi.Dependencies{
+		Readiness: func(ctx context.Context) readiness.Snapshot {
+			return readinessState.RoleReadiness(ctx, composition.RoleAPI)
+		},
 		CreateContentPackage:    createPackage,
 		PublishContentVersion:   publishVersion,
 		RequestRender:           requestRender,
@@ -299,12 +317,15 @@ func Build(cfg Config) (*Slice, error) {
 		ProposeLandingStructure: proposeLandingStructure,
 		GenerateLandingTexts:    generateLandingTexts,
 		CollectSite:             collectSite,
+		ParseDocuments:          parseDocuments,
 		CheckLandingTexts:       checkLandingTexts,
 	})
 
 	var relay *platformoutbox.Relay
 	if cfg.Publisher != nil {
-		relay = platformoutbox.NewRelay(journal, cfg.Publisher, cfg.Interval)
+		relay = platformoutbox.NewRelay(journal, cfg.Publisher, cfg.Interval).
+			WithLogger(cfg.Logger).
+			WithMetrics(cfg.Metrics)
 	}
 
 	return &Slice{
@@ -316,6 +337,7 @@ func Build(cfg Config) (*Slice, error) {
 		Renderer:   renderer,
 		Relay:      relay,
 		Server:     server,
+		Readiness:  readinessState,
 		pool:       pool,
 
 		rendererCloser: rendererCloser,
@@ -336,6 +358,7 @@ func Build(cfg Config) (*Slice, error) {
 
 		GenerateLandingTexts: generateLandingTexts,
 		CollectSite:          collectSite,
+		ParseDocuments:       parseDocuments,
 		CheckLandingTexts:    checkLandingTexts,
 	}, nil
 }
@@ -349,6 +372,14 @@ type Service struct {
 	logger   observ.Logger
 	metrics  observ.Metrics
 	tracer   observ.Tracer
+}
+
+// RoleReadiness сообщает владельческую готовность роли без запуска её раннера.
+func (s *Service) RoleReadiness(ctx context.Context, role composition.Role) readiness.Snapshot {
+	if s == nil || s.slice == nil || s.slice.Readiness == nil {
+		return readiness.Snapshot{Capability: string(role), Status: readiness.StatusUnknown, Ready: false}
+	}
+	return s.slice.Readiness.RoleReadiness(ctx, role)
 }
 
 // New собирает сервис из адаптеров и переданных зависимостей.

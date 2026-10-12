@@ -120,7 +120,7 @@ func RunCrawlPortContract(t *testing.T, factory CrawlPortFactory) {
 func RunMailPortContract(t *testing.T, factory MailPortFactory) {
 	t.Helper()
 
-	message := mail.Message{From: "a@example.com", To: "b@example.com", Subject: "тема", Body: "тело"}
+	message := mail.Message{MessageID: "mail-contract-test", From: "a@example.com", To: "b@example.com", Subject: "тема", Body: "тело"}
 
 	t.Run("контекст отменён", func(t *testing.T) {
 		port := factory(t)

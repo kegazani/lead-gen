@@ -24,7 +24,7 @@ const contractQueue = "analytics.analytics-event"
 func TestSubscriberAppliesEventsToProjection(t *testing.T) {
 	broker := amqptransport.NewInMemoryBroker(3)
 	model := readmodel.New()
-	handler := command.NewApplyEventHandler(model, nil)
+	handler := command.NewApplyEventHandler(model, nil, nil)
 
 	startSubscriber(t, broker, inbox.NewMemoryDeduper(), func(_ context.Context, event command.ApplyEvent) error {
 		return handler.Handle(context.Background(), event)

@@ -29,31 +29,41 @@ type commandKey struct {
 // загружает агрегат, сверяет тенант, фиксирует ожидаемую версию, применяет
 // изменение, сохраняет агрегат с оптимистичной блокировкой и пишет события в
 // outbox. Ошибка изменения откатывает транзакцию — состояние не меняется.
+//
+// guard — необязательная проверка, выполняемая в той же транзакции после
+// загрузки агрегата (например, лимит заявок в работе). При ошибке guard
+// транзакция откатывается, и изменение не применяется.
 func applyChange(
 	ctx context.Context,
 	uow ports.UnitOfWork,
 	key commandKey,
+	guard func(txCtx context.Context, tx ports.Transaction, request *domain.Request) error,
 	change func(request *domain.Request) ([]domain.DomainEvent, error),
 ) (TransitionResult, error) {
 	var result TransitionResult
-	err := uow.WithinTransaction(ctx, func(tx ports.Transaction) error {
-		request, err := tx.Requests().FindByID(ctx, key.RequestID)
+	err := uow.WithinTransaction(ctx, func(txCtx context.Context, tx ports.Transaction) error {
+		request, err := tx.Requests().FindByID(txCtx, key.RequestID)
 		if err != nil {
 			return err
 		}
 		if request.TenantID() != key.TenantID {
 			return fmt.Errorf("%w: заявка %s", ErrTenantMismatch, key.RequestID)
 		}
+		if guard != nil {
+			if err := guard(txCtx, tx, request); err != nil {
+				return err
+			}
+		}
 		expected := request.Version()
 		events, err := change(request)
 		if err != nil {
 			return err
 		}
-		if err := tx.Requests().Save(ctx, request, expected); err != nil {
+		if err := tx.Requests().Save(txCtx, request, expected); err != nil {
 			return err
 		}
 		if len(events) > 0 {
-			if err := tx.Outbox().Append(ctx, events...); err != nil {
+			if err := tx.Outbox().Append(txCtx, events...); err != nil {
 				return err
 			}
 		}

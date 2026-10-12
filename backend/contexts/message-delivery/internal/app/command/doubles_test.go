@@ -121,16 +121,21 @@ type fakeTx struct {
 	messages    *fakeMessages
 	reputations *fakeReputations
 	outbox      *fakeOutbox
+	cancelled   bool
 }
 
 func (t *fakeTx) Messages() ports.MessageRepository             { return t.messages }
 func (t *fakeTx) Reputations() ports.SenderReputationRepository { return t.reputations }
 func (t *fakeTx) Outbox() ports.Outbox                          { return t.outbox }
+func (t *fakeTx) CampaignCancelled(context.Context, string, string) (bool, error) {
+	return t.cancelled, nil
+}
 
 type fakeUoW struct {
 	messages    *fakeMessages
 	reputations *fakeReputations
 	outbox      *fakeOutbox
+	cancelled   bool
 }
 
 func newFakeUoW() *fakeUoW {
@@ -142,7 +147,7 @@ func newFakeUoW() *fakeUoW {
 }
 
 func (u *fakeUoW) WithinTransaction(ctx context.Context, fn func(tx ports.Transaction) error) error {
-	return fn(&fakeTx{messages: u.messages, reputations: u.reputations, outbox: u.outbox})
+	return fn(&fakeTx{messages: u.messages, reputations: u.reputations, outbox: u.outbox, cancelled: u.cancelled})
 }
 
 type fakeMailer struct {

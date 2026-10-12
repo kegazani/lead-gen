@@ -1,0 +1,43 @@
+{{- define "content" -}}
+<section class="jobs-dlq">
+  {{ template "live" .View.Live }}
+  <h1>{{ text "analytics.jobs.title" }}</h1>
+  <p class="jobs-note">{{ text "analytics.jobs.note" }}</p>
+  {{- with .View.Retried }}
+  <p class="notice" role="status">{{ text "analytics.jobs.retried" }} {{ . }}</p>
+  {{- end }}
+  {{- if .View.Empty }}
+  <p class="jobs-empty" role="status">{{ text "analytics.jobs.empty" }}</p>
+  {{- else }}
+  <table class="table">
+    <caption>{{ text "analytics.jobs.caption" }}</caption>
+    <thead>
+      <tr>
+        <th>{{ text "analytics.jobs.header.id" }}</th>
+        <th>{{ text "analytics.jobs.header.attempts" }}</th>
+        <th>{{ text "analytics.jobs.header.reason" }}</th>
+        <th>{{ text "analytics.jobs.header.updated" }}</th>
+        <th>{{ text "analytics.jobs.header.action" }}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{- range .View.Rows }}
+      <tr>
+        <td class="jobs-id">{{ .ID }}</td>
+        <td class="jobs-attempts">{{ .Attempts }}</td>
+        <td class="jobs-reason">{{ .Reason }}</td>
+        <td class="jobs-updated">{{ .UpdatedLabel }}</td>
+        <td class="jobs-action">
+          <form method="post" action="/reports/exports/{{ .ID }}/retry">
+            <button type="submit">{{ text "analytics.jobs.retry" }}</button>
+          </form>
+        </td>
+      </tr>
+      {{- else }}
+      <tr><td colspan="5">{{ text "analytics.jobs.empty" }}</td></tr>
+      {{- end }}
+    </tbody>
+  </table>
+  {{- end }}
+</section>
+{{- end -}}

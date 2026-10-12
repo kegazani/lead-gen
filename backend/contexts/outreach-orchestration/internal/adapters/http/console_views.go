@@ -5,11 +5,15 @@ import (
 
 	"lead-gen/backend/contexts/outreach-orchestration/internal/app/query"
 	"lead-gen/backend/contexts/outreach-orchestration/internal/domain"
+	"lead-gen/frontend/components"
 )
 
-// machineTimeFormat — формат показа момента в разметке: однозначен независимо
-// от языка интерфейса.
-const machineTimeFormat = "2006-01-02 15:04"
+// consoleLive — область живых объявлений консоли рассылок: общий скрипт
+// console-a11y.js объявляет в ней изменения после подмены фрагмента
+// (web-frontend-architecture, срез 7, 7.3).
+var consoleLive = components.Live{ID: "console-live"}
+
+// machineTimeFormat больше не нужен: моменты форматирует общий форматтер.
 
 // draftQueueRow — строка очереди черновиков: черновик, его состояние ожидания и
 // результат автоматических проверок (признаки риска).
@@ -32,6 +36,7 @@ func (r draftQueueRow) Risky() bool { return len(r.RiskReasons) > 0 }
 
 // draftQueueView — модель очереди черновиков с фильтрами.
 type draftQueueView struct {
+	Live           components.Live
 	TenantID       string
 	Actor          string
 	CSRF           string
@@ -86,6 +91,7 @@ type batchExcludedRow struct {
 // batchScreenView — экран состава пакетов: всё, что оператор обязан увидеть до
 // пакетного решения.
 type batchScreenView struct {
+	Live          components.Live
 	TenantID      string
 	Actor         string
 	CSRF          string
@@ -116,6 +122,7 @@ type draftEditView struct {
 
 // draftScreenView — модель экрана одного черновика с индивидуальными решениями.
 type draftScreenView struct {
+	Live         components.Live
 	TenantID     string
 	Actor        string
 	CSRF         string
@@ -147,6 +154,7 @@ type stalledRow struct {
 
 // stalledView — модель среза зависших черновиков.
 type stalledView struct {
+	Live        components.Live
 	TenantID    string
 	Actor       string
 	Unavailable bool
@@ -157,10 +165,8 @@ type stalledView struct {
 // riskReasonLabels — русские подписи объявленных доменом признаков риска.
 // Неизвестный признак показывается как есть: молча скрывать его нельзя.
 var riskReasonLabels = map[domain.RiskReason]string{
-	domain.RiskPersonalDataDetected: "персональные данные",
-	domain.RiskAddressUnverified:    "адрес не подтверждён",
-	domain.RiskRequiredFactsMissing: "нет обязательных сведений",
-	domain.RiskStopRuleTriggered:    "сработало правило остановки",
+	domain.RiskAddressUnverified: "адрес не подтверждён",
+	domain.RiskStopRuleTriggered: "сработало правило остановки",
 }
 
 // riskReasonLabel переводит признак риска в подпись для оператора.
@@ -201,9 +207,10 @@ func queueRows(items []query.DraftQueueItem) []draftQueueRow {
 }
 
 // formatMoment форматирует необязательный момент: нулевой даёт пустую строку.
+// Формат локализован общим слоем (web-frontend-architecture, срез 7, 7.1).
 func formatMoment(moment time.Time) string {
 	if moment.IsZero() {
 		return ""
 	}
-	return moment.UTC().Format(machineTimeFormat)
+	return components.DefaultFormatter().DateTime(moment.UTC())
 }

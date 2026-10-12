@@ -3,8 +3,13 @@ package httpapi
 import (
 	"bytes"
 	"embed"
+	"encoding/json"
+	"errors"
+	"math"
 	"net/http"
 	"net/url"
+	"strconv"
+	"strings"
 
 	"lead-gen/backend/contexts/request-fulfillment/internal/app/command"
 	"lead-gen/backend/contexts/request-fulfillment/internal/app/query"
@@ -27,6 +32,7 @@ const (
 	pageValidationScreen = "templates/validation_screen.html"
 	pageApprovalQueue    = "templates/approval_queue.html"
 	pageApprovalScreen   = "templates/approval_screen.html"
+	pageCompanyRequests  = "templates/company_requests.html"
 	fragmentOffer        = "offer-fragment"
 	fragmentApproval     = "approval-status"
 )
@@ -34,11 +40,12 @@ const (
 // newPages собирает набор шаблонов экрана валидации: каркас и общие фрагменты из
 // frontend/components плюс страницы экрана. Разбор идёт при сборке сервиса.
 func newPages() (*components.Set, error) {
-	return components.New(templateFS, pageLogin, pageValidationQueue, pageValidationScreen, pageApprovalQueue, pageApprovalScreen)
+	return components.NewWithMessages(consoleMessages(), templateFS, pageLogin, pageValidationQueue, pageValidationScreen, pageApprovalQueue, pageApprovalScreen, pageCompanyRequests)
 }
 
 // queueView — модель очереди валидации: заявки submitted текущего тенанта.
 type queueView struct {
+	Live     components.Live
 	TenantID string
 	Actor    string
 	Items    []query.ValidationItem
@@ -47,22 +54,28 @@ type queueView struct {
 // screenView — модель экрана валидации одной заявки. Поля форм собираются здесь, а
 // не в шаблоне: правила показа решает владелец экрана.
 type screenView struct {
-	TenantID     string
-	Actor        string
-	Request      query.RequestView
-	Notice       string
-	CSRF         string
-	CanTake      bool
-	CanEditOffer bool
-	CanDecide    bool
-	OfferField   components.Field
-	TargetField  components.Field
-	ReasonField  components.Field
+	Live                components.Live
+	TenantID            string
+	Actor               string
+	Request             query.RequestView
+	Notice              string
+	CSRF                string
+	CommandID           string
+	ExecutionProtocolV2 bool
+	CanTake             bool
+	CanEditOffer        bool
+	CanDecide           bool
+	OfferField          components.Field
+	TargetField         components.Field
+	ReasonField         components.Field
+	// LeadTargetField — необязательная числовая цель по числу лидов, задаваемая
+	// при одобрении и пробрасываемая в запуск исполнения заявки.
+	LeadTargetField components.Field
 }
 
 // handleValidationQueue обслуживает GET /validation: очередь заявок на валидацию.
 func (s *Server) handleValidationQueue(w http.ResponseWriter, r *http.Request) {
-	tenant := r.URL.Query().Get("tenant_id")
+	tenant := activeTenant(r)
 	actor := actorOf(r)
 	items, err := s.deps.ValidationQueue.Handle(r.Context(), query.ValidationQueue{TenantID: domain.TenantID(tenant)})
 	if err != nil {
@@ -70,16 +83,16 @@ func (s *Server) handleValidationQueue(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.render(w, http.StatusOK, pageValidationQueue, components.Page{
-		Layout:  components.Layout{Title: "Очередь валидации"},
-		Sidebar: s.consoleNav(components.ConsoleSectionRequests),
-		View:    queueView{TenantID: tenant, Actor: actor, Items: items},
+		Layout:  components.Layout{Title: consoleMessages().Text(msgReqValidationQueueTitle)},
+		Sidebar: s.consoleNav(components.ConsoleSectionRequests, tenant, actor),
+		View:    queueView{Live: consoleLive, TenantID: tenant, Actor: actor, Items: items},
 	})
 }
 
 // handleValidationScreen обслуживает GET /requests/{requestID}/validation: экран
 // валидации одной заявки.
 func (s *Server) handleValidationScreen(w http.ResponseWriter, r *http.Request) {
-	s.renderScreen(w, r, http.StatusOK, r.URL.Query().Get("tenant_id"), actorOf(r), "")
+	s.renderScreen(w, r, http.StatusOK, activeTenant(r), actorOf(r), "")
 }
 
 // handleValidationTake обслуживает POST .../validation/take: submitted → validating.
@@ -115,6 +128,36 @@ func (s *Server) handleValidationOffer(w http.ResponseWriter, r *http.Request) {
 // workflow — честная деградация (см. startFulfillment).
 func (s *Server) handleValidationApprove(w http.ResponseWriter, r *http.Request) {
 	s.validationAction(w, r, func(req *http.Request) error {
+		// Цель разбирается до применения одобрения: некорректное значение не
+		// должно оставить заявку validated без запущенного исполнения.
+		leadTarget, err := parseLeadTarget(req.FormValue("lead_target"))
+		if err != nil {
+			return err
+		}
+		if s.deps.ExecutionProtocol == ports.ExecutionProtocolV2 {
+			if !s.executionAdmissionReady() {
+				return ports.ErrWorkflowUnavailable
+			}
+			commandID := req.FormValue("command_id")
+			if strings.TrimSpace(commandID) == "" {
+				return domain.ErrEmptyID
+			}
+			var target *int
+			if strings.TrimSpace(req.FormValue("lead_target")) != "" {
+				target = &leadTarget
+			}
+			confidence, err := parseConfidence(req.FormValue("confidence"))
+			if err != nil {
+				return err
+			}
+			_, err = s.deps.AdmitExecution.Handle(req.Context(), command.AdmitExecution{
+				LifecycleFields: lifecycleFromForm(req),
+				CommandID:       domain.CommandID(commandID), Kind: command.AdmissionApprove, LeadTarget: target,
+				Reason: req.FormValue("reason"), RequestVersion: formInt(req, "request_version"), OfferRevision: formInt(req, "offer_revision"),
+				Confidence: confidence, FormParameters: json.RawMessage(req.FormValue("form_parameters")),
+			})
+			return err
+		}
 		if _, err := s.deps.ValidateRequest.Handle(req.Context(), command.ValidateRequest{
 			LifecycleFields: lifecycleFromForm(req),
 		}); err != nil {
@@ -128,26 +171,62 @@ func (s *Server) handleValidationApprove(w http.ResponseWriter, r *http.Request)
 				return err
 			}
 		}
-		s.startFulfillment(req)
-		return nil
+		return s.startFulfillment(req, leadTarget)
 	})
+}
+
+// errInvalidLeadTarget — цель по числу лидов задана некорректно (отрицательное
+// или нецелое значение). Отображается пользователю как 400, а не 500.
+var errInvalidLeadTarget = errors.New("цель по числу лидов должна быть целым неотрицательным числом")
+
+// parseLeadTarget разбирает необязательную цель по числу лидов из формы. Пустое
+// значение означает «цель не задана» (0) — прежнее поведение. Отрицательное или
+// нецелое значение отвергается: исполнение не должно получить выдуманную цель.
+func parseLeadTarget(raw string) (int, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return 0, nil
+	}
+	target, err := strconv.Atoi(raw)
+	if err != nil || target < 0 {
+		return 0, errInvalidLeadTarget
+	}
+	return target, nil
+}
+
+// validateLeadTarget проверяет цель запуска, пришедшую из API: отрицательное
+// значение отвергается так же, как на экране одобрения, и не доходит до workflow.
+func validateLeadTarget(target int) error {
+	if target < 0 {
+		return errInvalidLeadTarget
+	}
+	return nil
 }
 
 // startFulfillment запускает durable-исполнение заявки после одобрения. Старт —
 // деградация: заявка уже validated, и ручные переходы продолжают работать, даже
 // если рантайм workflow недоступен (nil-порт или ErrWorkflowUnavailable), поэтому
-// ошибка старта не срывает одобрение.
-func (s *Server) startFulfillment(req *http.Request) {
+// ошибка старта не срывает одобрение. Числовая цель — параметр запуска: 0 означает
+// «цель не задана» и сохраняет прежнее поведение (недобор не рассчитывается).
+func (s *Server) startFulfillment(req *http.Request, leadTarget int) error {
 	if s.deps.WorkflowStarter == nil {
-		return
+		return ports.ErrWorkflowUnavailable
 	}
 	lifecycle := lifecycleFromForm(req)
-	_, _ = s.deps.WorkflowStarter.StartFulfillment(req.Context(), ports.StartFulfillment{
-		RequestID:     string(lifecycle.RequestID),
-		TenantID:      string(lifecycle.TenantID),
-		CorrelationID: string(lifecycle.CorrelationID),
-		LeadTarget:    0,
+	requestView, err := s.deps.GetRequest.Handle(req.Context(), query.GetRequest{
+		RequestID: lifecycle.RequestID, TenantID: lifecycle.TenantID,
 	})
+	if err != nil {
+		return err
+	}
+	_, err = s.deps.WorkflowStarter.StartFulfillment(req.Context(), ports.StartFulfillment{
+		RequestID:        string(lifecycle.RequestID),
+		TenantID:         string(lifecycle.TenantID),
+		CorrelationID:    string(lifecycle.CorrelationID),
+		LeadTarget:       leadTarget,
+		ExecutionPurpose: requestView.ExecutionPurpose,
+	})
+	return err
 }
 
 // handleValidationReject обслуживает POST .../validation/reject: validating → rejected.
@@ -207,8 +286,8 @@ func (s *Server) renderScreen(w http.ResponseWriter, r *http.Request, status int
 		return
 	}
 	s.render(w, status, pageValidationScreen, components.Page{
-		Layout:  components.Layout{Title: "Валидация заявки " + model.Request.RequestID},
-		Sidebar: s.consoleNav(components.ConsoleSectionRequests),
+		Layout:  components.Layout{Title: consoleMessages().Text(msgReqValidationTitlePrefix) + " " + model.Request.RequestID},
+		Sidebar: s.consoleNav(components.ConsoleSectionRequests, tenant, actor),
 		View:    model,
 	})
 }
@@ -226,13 +305,36 @@ func (s *Server) loadScreen(r *http.Request, tenant, actor, notice string) (scre
 	// CSRF-токен живёт в сессии: подставляем его в формы экрана, чтобы браузер
 	// отправлял его на изменяющих запросах.
 	model.CSRF = consoleauth.CSRF(r)
+	model.CommandID = strings.TrimSpace(r.FormValue("command_id"))
+	if model.CommandID == "" {
+		model.CommandID = newHTTPCommandID()
+	}
+	model.ExecutionProtocolV2 = s.deps.ExecutionProtocol == ports.ExecutionProtocolV2
 	return model, nil
+}
+
+func formInt(r *http.Request, key string) int {
+	value, _ := strconv.Atoi(strings.TrimSpace(r.FormValue(key)))
+	return value
+}
+
+func parseConfidence(raw string) (*float64, error) {
+	raw = strings.TrimSpace(raw)
+	if raw == "" {
+		return nil, nil
+	}
+	value, err := strconv.ParseFloat(raw, 64)
+	if err != nil || math.IsNaN(value) || math.IsInf(value, 0) || value < 0 || value > 1 {
+		return nil, errors.New("confidence должен быть числом от 0 до 1")
+	}
+	return &value, nil
 }
 
 // screenModel собирает модель экрана: какие действия доступны и какие поля показать.
 func screenModel(tenant, actor, notice string, view query.RequestView) screenView {
 	editable := view.Status == domain.StatusSubmitted || view.Status == domain.StatusValidating
 	return screenView{
+		Live:         consoleLive,
 		TenantID:     tenant,
 		Actor:        actor,
 		Request:      view,
@@ -246,6 +348,9 @@ func screenModel(tenant, actor, notice string, view query.RequestView) screenVie
 		},
 		TargetField: components.Field{
 			ID: "offer-target", Name: "target", Label: "Цель заявки", Value: view.Offer.Target,
+		},
+		LeadTargetField: components.Field{
+			ID: "lead-target", Name: "lead_target", Label: "Цель по числу лидов",
 		},
 		ReasonField: components.Field{
 			ID: "reject-reason", Name: "reason", Label: "Причина отклонения", Required: true,
@@ -267,6 +372,11 @@ func (s *Server) render(w http.ResponseWriter, status int, page string, model co
 	}
 	if len(model.Layout.BootstrapScripts) == 0 {
 		model.Layout.BootstrapScripts = components.ConsoleBootstrapScripts
+	}
+	// Общие скрипты консоли возвращают фокус при подмене фрагмента и объявляют
+	// изменения через область aria-live (7.3).
+	if len(model.Layout.Scripts) == 0 {
+		model.Layout.Scripts = components.ConsoleScripts
 	}
 	var buf bytes.Buffer
 	if err := s.pages.Render(&buf, page, model); err != nil {

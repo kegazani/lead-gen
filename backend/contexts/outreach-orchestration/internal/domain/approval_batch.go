@@ -1,6 +1,7 @@
 package domain
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
@@ -16,32 +17,49 @@ import (
 // Домен не вычисляет признаки сам: они приходят снаружи, от upstream-политик
 // data-governance и lead-management, через предикат CanBeDecidedInPackage.
 // Значение лишь называет причину, чтобы исключённый черновик не был отброшен
-// молча.
+// молча. Перечень ограничен признаками, у которых есть владелец факта (см.
+// design.md, Решение 1): стоп-лист и верификация адреса. Признаки без владельца
+// не объявляются, чтобы список соответствовал реально получаемым сигналам.
 type RiskReason string
 
 const (
-	// RiskPersonalDataDetected — в черновике обнаружены персональные данные,
-	// требующие индивидуального решения.
-	RiskPersonalDataDetected RiskReason = "personal-data-detected"
-
-	// RiskAddressUnverified — адрес назначения не проверен.
+	// RiskAddressUnverified — адрес назначения не подтверждён владельцем
+	// верификации (lead-management).
 	RiskAddressUnverified RiskReason = "address-unverified"
 
-	// RiskRequiredFactsMissing — отсутствуют обязательные сведения.
-	RiskRequiredFactsMissing RiskReason = "required-facts-missing"
-
-	// RiskStopRuleTriggered — сработало правило остановки.
+	// RiskStopRuleTriggered — сработало правило остановки: у получателя есть
+	// активная запись стоп-листа (data-governance).
 	RiskStopRuleTriggered RiskReason = "stop-rule-triggered"
 )
 
-// CanBeDecidedInPackage — чистый предикат внешних политик: сообщает признаки
-// риска черновика. Пустой результат означает, что черновик можно рассматривать
-// в пакете.
+// RiskFactsRequest — запрос фактов риска по черновику: тенант, черновик, его
+// точная версия и получатель (непрозрачная ссылка, а не адрес — PII в домене
+// нет). Тенант входит в запрос, потому что факты принадлежат владельцам и
+// ограничены контуром тенанта.
+type RiskFactsRequest struct {
+	// TenantID — тенант-владелец фактов; владельцы отвечают только в его контуре.
+	TenantID TenantID
+	// DraftID — черновик, по которому запрашиваются признаки риска.
+	DraftID DraftID
+	// Version — точная версия черновика (инвариант I2): факты относятся к ней.
+	Version int
+	// Recipient — получатель черновика (непрозрачная ссылка); по ней владельцы
+	// разрешают адрес и факты. Прямого адреса домен не несёт.
+	Recipient RecipientID
+}
+
+// CanBeDecidedInPackage — внешний поставщик признаков риска черновика.
 //
-// Предикат не читает состояние домена, не имеет побочных эффектов и не
-// обращается к хранилищу: факты о риске готовятся вне агрегата и передаются
-// параметром. nil-предикат трактуется как «рисков нет».
-type CanBeDecidedInPackage func(draftID DraftID, draftVersion int) []RiskReason
+// Предикат не читает состояние домена: факты готовятся вне агрегата (у
+// владельцев) и передаются домену. Возврат ошибки означает недоступность фактов,
+// а не «рисков нет»: домен не признаёт черновик свободным от риска при ошибке и
+// не исключает его самовольно. Пустой результат без ошибки означает, что признаков
+// риска нет.
+//
+// nil-предикат недопустим: это означало бы молчаливое «рисков нет». Сборка обязана
+// задать предикат явно (реальный или честно недоступный), иначе домен возвращает
+// ErrRiskFactsUnavailable.
+type CanBeDecidedInPackage func(ctx context.Context, req RiskFactsRequest) ([]RiskReason, error)
 
 // BatchLimits — лимиты пакетного утверждения, переданные вызывающим.
 //
@@ -165,6 +183,7 @@ func (r BatchBuildResult) Individual() []BatchEntry {
 // BuildApprovalBatchFromDrafts, поэтому состав, который видит оператор через
 // окно репозитория, и состав, посчитанный по загруженному агрегату, совпадают.
 func (c *Campaign) BuildApprovalBatch(
+	ctx context.Context,
 	limits BatchLimits,
 	canBeDecidedInPackage CanBeDecidedInPackage,
 ) (BatchBuildResult, error) {
@@ -175,7 +194,7 @@ func (c *Campaign) BuildApprovalBatch(
 	for _, id := range c.order {
 		drafts = append(drafts, c.drafts[id])
 	}
-	return BuildApprovalBatchFromDrafts(drafts, c.id, limits, canBeDecidedInPackage)
+	return BuildApprovalBatchFromDrafts(ctx, drafts, c.id, c.tenantID, limits, canBeDecidedInPackage)
 }
 
 // BuildApprovalBatchFromDrafts формирует составы пакетов из набора черновиков
@@ -196,12 +215,17 @@ func (c *Campaign) BuildApprovalBatch(
 //
 // Признаки риска приходят снаружи через предикат canBeDecidedInPackage:
 // черновики с непустыми признаками исключаются из состава и возвращаются с
-// причиной по каждому. Функция не читает конфигурацию и не обращается к другим
-// контекстам. Черновик, не принадлежащий campaignID, отвергается: состав
-// собирается только из черновиков адресуемой кампании.
+// причиной по каждому. Предикат получает запрос фактов (тенант, черновик, его
+// версия и получатель): недоступность фактов возвращается ошибкой и не
+// трактуется как «рисков нет» — при ошибке состав не выдаётся. Функция не читает
+// конфигурацию и не обращается к другим контекстам. Черновик, не принадлежащий
+// campaignID, отвергается: состав собирается только из черновиков адресуемой
+// кампании.
 func BuildApprovalBatchFromDrafts(
+	ctx context.Context,
 	drafts []*ActionDraft,
 	campaignID CampaignID,
+	tenantID TenantID,
 	limits BatchLimits,
 	canBeDecidedInPackage CanBeDecidedInPackage,
 ) (BatchBuildResult, error) {
@@ -226,7 +250,15 @@ func BuildApprovalBatchFromDrafts(
 		if draft.State() != DraftStatePendingApproval {
 			continue
 		}
-		reasons := riskReasons(canBeDecidedInPackage, draft.ID(), draft.Version())
+		reasons, err := riskReasons(ctx, canBeDecidedInPackage, RiskFactsRequest{
+			TenantID:  tenantID,
+			DraftID:   draft.ID(),
+			Version:   draft.Version(),
+			Recipient: draft.Spec().Recipient,
+		})
+		if err != nil {
+			return BatchBuildResult{}, err
+		}
 		if len(reasons) > 0 {
 			result.excluded = append(result.excluded, ExcludedDraft{
 				DraftID: draft.ID(),
@@ -298,12 +330,14 @@ func shardBatch(
 	return batches
 }
 
-// riskReasons применяет внешний предикат, допуская nil как «рисков нет».
-func riskReasons(can CanBeDecidedInPackage, id DraftID, version int) []RiskReason {
+// riskReasons применяет внешний предикат. Незаданный предикат — недоступность
+// фактов (ErrRiskFactsUnavailable), а не «рисков нет»: молчаливое отсутствие
+// проверки недопустимо.
+func riskReasons(ctx context.Context, can CanBeDecidedInPackage, req RiskFactsRequest) ([]RiskReason, error) {
 	if can == nil {
-		return nil
+		return nil, fmt.Errorf("%w: предикат признаков риска не задан", ErrRiskFactsUnavailable)
 	}
-	return can(id, version)
+	return can(ctx, req)
 }
 
 // batchCompositionDigest детерминированно хеширует основание однородности и

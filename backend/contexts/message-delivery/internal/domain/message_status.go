@@ -2,8 +2,8 @@ package domain
 
 // MessageStatus — состояние доставки сообщения.
 //
-// Переходы: создано (pending) → отправляется (sending) → доставлено (delivered)
-// либо отказ (failed). Любой другой переход запрещён. delivered и failed —
+// Переходы: создано (pending) → отправляется (sending) → delivered, failed
+// либо unknown. Любой другой переход запрещён. delivered, failed и unknown —
 // терминальные состояния. Исключение — failed после временного исхода
 // (недоступность провайдера): такое сообщение может быть возвращено в sending
 // повторной попыткой (Message.ReopenForRetry), но не считается доставленным.
@@ -21,12 +21,16 @@ const (
 
 	// MessageStatusFailed — доставка не состоялась.
 	MessageStatusFailed MessageStatus = "failed"
+
+	// MessageStatusUnknown — SMTP мог принять письмо, но acknowledgement потерян.
+	// Автоматическая повторная отправка запрещена до ручной сверки.
+	MessageStatusUnknown MessageStatus = "unknown"
 )
 
 // IsTerminal сообщает, что сообщение вышло из жизненного цикла доставки.
 func (s MessageStatus) IsTerminal() bool {
 	switch s {
-	case MessageStatusDelivered, MessageStatusFailed:
+	case MessageStatusDelivered, MessageStatusFailed, MessageStatusUnknown:
 		return true
 	default:
 		return false
@@ -36,7 +40,7 @@ func (s MessageStatus) IsTerminal() bool {
 // isValid сообщает, что состояние объявлено доменом.
 func (s MessageStatus) isValid() bool {
 	switch s {
-	case MessageStatusPending, MessageStatusSending, MessageStatusDelivered, MessageStatusFailed:
+	case MessageStatusPending, MessageStatusSending, MessageStatusDelivered, MessageStatusFailed, MessageStatusUnknown:
 		return true
 	default:
 		return false

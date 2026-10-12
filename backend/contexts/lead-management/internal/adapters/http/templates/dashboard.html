@@ -1,22 +1,22 @@
 {{- define "journal" -}}
-<section class="panel"{{ if .AutoRefresh }} hx-get="/jobs" hx-trigger="every 2s" hx-swap="outerHTML"{{ end }}>
-  <h2>Журнал заданий</h2>
+<section class="panel" id="journal"{{ if .AutoRefresh }} hx-get="/jobs" hx-trigger="every 2s" hx-swap="outerHTML" data-focus-after-swap="#journal" data-live-announce="{{ text "lead.live.journal" }}"{{ end }}>
+  <h2>{{ text "lead.journal.title" }}</h2>
   <form method="post" action="/jobs/cancel" class="journal-form">
     <input type="hidden" name="csrf" value="{{.CSRF}}">
     <div class="journal-toolbar">
       <label class="journal-select-all">
-        <input type="checkbox" data-select-all aria-label="Выбрать все задания">
-        <span>Все</span>
+        <input type="checkbox" data-select-all aria-label="{{ text "lead.journal.select_all" }}">
+        <span>{{ text "lead.journal.all" }}</span>
       </label>
-      <button type="submit" data-cancel-selected>Отменить выбранные</button>
-      <span class="hint" data-selected-count>выбрано: 0</span>
+      <button type="submit" data-cancel-selected>{{ text "lead.journal.cancel" }}</button>
+      <span class="hint" data-selected-count>{{ text "lead.journal.selected" }}</span>
     </div>
     <div class="journal-scroll">
     <ul class="journal-list">
     {{- range .Jobs }}
       <li class="journal-row">
         <span class="cell-select">
-          <input type="checkbox" name="ids" value="{{.ID}}" aria-label="Выбрать задание" data-select-job{{ if not .Cancelable }} disabled{{ end }}>
+          <input type="checkbox" name="ids" value="{{.ID}}" aria-label="{{ text "lead.journal.select_one" }}" data-select-job{{ if not .Cancelable }} disabled{{ end }}>
         </span>
         <details class="journal-item" data-job-detail data-job-id="{{.ID}}">
           <summary class="journal-summary">
@@ -25,17 +25,17 @@
             <span class="journal-query">{{.ShortQuery}}</span>
           </summary>
           <div class="journal-more">
-            <p class="journal-fact"><span class="journal-label">Запрос</span> {{.Query}}</p>
-            <p class="journal-fact"><span class="journal-label">Ход</span> {{- if .Progress}} {{.Progress}}{{ else }} —{{ end }}</p>
+            <p class="journal-fact"><span class="journal-label">{{ text "lead.journal.query" }}</span> {{.Query}}</p>
+            <p class="journal-fact"><span class="journal-label">{{ text "lead.journal.progress" }}</span> {{- if .Progress}} {{.Progress}}{{ else }} —{{ end }}</p>
             {{- with .Error }}
             <p class="error-text">{{.}}</p>
             {{- end }}
-            <p class="actions"><a class="link" href="/jobs/{{.ID}}">Открыть полностью</a></p>
+            <p class="actions"><a class="link" href="/jobs/{{.ID}}">{{ text "lead.journal.open" }}</a></p>
           </div>
         </details>
       </li>
     {{- else }}
-      <li class="empty">Заданий пока нет</li>
+      <li class="empty">{{ text "lead.journal.empty" }}</li>
     {{- end }}
     </ul>
     </div>
@@ -45,29 +45,30 @@
 
 {{- define "content" -}}
 {{- with .View -}}
+{{ template "live" .Live }}
 <header class="page-head">
-  <h1>Главная</h1>
+  <h1>{{ text "lead.home.title" }}</h1>
 </header>
 
 {{- if .Firecrawl.Configured }}
 <section class="panel">
-  <h2>Firecrawl</h2>
+  <h2>{{ text "lead.home.firecrawl.title" }}</h2>
   <p class="hint">
-    Остаток кредитов Firecrawl:
+    {{ text "lead.home.firecrawl.credits" }}
     {{- if .Firecrawl.CreditsAvailable }}
-      <strong>{{.Firecrawl.Credits}}</strong>{{ if .Firecrawl.CreditsUpdated }} (обновлено {{.Firecrawl.CreditsUpdated}}){{ end }}
+      <strong>{{.Firecrawl.Credits}}</strong>{{ if .Firecrawl.CreditsUpdated }} {{ text "lead.home.firecrawl.updated" }} {{.Firecrawl.CreditsUpdated}}){{ end }}
     {{- else }}
-      <em>Недоступен</em>
+      <em>{{ text "lead.home.firecrawl.unavailable" }}</em>
     {{- end }}.
     {{- if .Firecrawl.TokensAvailable }}
-      Токены Firecrawl: <strong>{{.Firecrawl.Tokens}}</strong>.
+      {{ text "lead.home.firecrawl.tokens" }} <strong>{{.Firecrawl.Tokens}}</strong>.
     {{- end }}
   </p>
 </section>
 {{- end }}
 
 <section class="panel">
-  <h2>Новый поиск</h2>
+  <h2>{{ text "lead.home.new_search.title" }}</h2>
   <form class="search-form" method="post" action="/search">
     {{ template "field" .QueryField }}
     {{ template "field" .TargetCompaniesField }}
@@ -75,18 +76,18 @@
     {{ template "field" .TargetsField }}
     {{ template "field" .BudgetField }}
     <input type="hidden" name="csrf" value="{{.CSRF}}">
-    <p class="actions"><button type="submit">Запустить поиск</button></p>
+    <p class="actions"><button type="submit">{{ text "lead.home.new_search.submit" }}</button></p>
   </form>
-  <p class="hint">Поиск находит сайты по запросу, обходит их и собирает контакты в карточки. «Сколько найти» останавливает задание по достижении N уникальных компаний (пусто — прежнее поведение); «Результатов на запрос» ограничивает выдачу поиска; «Свои цели» задают цели обхода вручную, по строке. Бюджет кредитов Firecrawl ограничивает стоимость запроса.</p>
+  <p class="hint">{{ text "lead.home.new_search.hint" }}</p>
 </section>
 
 {{ template "journal" .Journal }}
 
 <section class="panel">
-  <h2>Последние лиды</h2>
+  <h2>{{ text "lead.home.recent.title" }}</h2>
   <table class="table">
     <thead>
-      <tr><th>Компания</th><th>Описание</th></tr>
+      <tr><th>{{ text "lead.header.company" }}</th><th>{{ text "lead.header.description" }}</th></tr>
     </thead>
     <tbody>
     {{- range .Leads }}
@@ -95,7 +96,7 @@
         <td>{{.Description}}</td>
       </tr>
     {{- else }}
-      <tr><td colspan="2" class="empty">Лидов пока нет</td></tr>
+      <tr><td colspan="2" class="empty">{{ text "lead.home.recent.empty" }}</td></tr>
     {{- end }}
     </tbody>
   </table>

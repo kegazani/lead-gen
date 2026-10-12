@@ -21,21 +21,27 @@ import (
 // Транзакции сериализуются мьютексом: вложенные WithinTransaction не
 // поддерживаются и привели бы к взаимной блокировке.
 type UnitOfWork struct {
-	mu      sync.Mutex
-	msgs    *persistence.Messages
-	reps    *persistence.Reputations
-	journal *Journal
+	mu          sync.Mutex
+	msgs        *persistence.Messages
+	reps        *persistence.Reputations
+	journal     *Journal
+	cancelled   map[string]struct{}
+	fenceReader ports.CampaignFenceReader
 }
 
 // UnitOfWork реализует порт транзакции.
-var _ ports.UnitOfWork = (*UnitOfWork)(nil)
+var (
+	_ ports.UnitOfWork        = (*UnitOfWork)(nil)
+	_ ports.CampaignCanceller = (*UnitOfWork)(nil)
+)
 
 // NewUnitOfWork создаёт unit-of-work с собственными репозиториями и журналом.
 func NewUnitOfWork() *UnitOfWork {
 	return &UnitOfWork{
-		msgs:    persistence.NewMessages(),
-		reps:    persistence.NewReputations(),
-		journal: NewJournal(),
+		msgs:      persistence.NewMessages(),
+		reps:      persistence.NewReputations(),
+		journal:   NewJournal(),
+		cancelled: make(map[string]struct{}),
 	}
 }
 
@@ -51,8 +57,28 @@ func NewUnitOfWorkWith(msgs *persistence.Messages, reps *persistence.Reputations
 	if journal == nil {
 		journal = NewJournal()
 	}
-	return &UnitOfWork{msgs: msgs, reps: reps, journal: journal}
+	return &UnitOfWork{msgs: msgs, reps: reps, journal: journal, cancelled: make(map[string]struct{})}
 }
+
+// CancelCampaign устанавливает необратимый in-memory fence; mutex сериализует
+// его с транзакцией reservation.
+func (u *UnitOfWork) CancelCampaign(ctx context.Context, tenantID, campaignID string) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	u.cancelled[campaignFenceKey(tenantID, campaignID)] = struct{}{}
+	return nil
+}
+
+func (u *UnitOfWork) BindCampaignFence(reader ports.CampaignFenceReader) {
+	u.mu.Lock()
+	defer u.mu.Unlock()
+	u.fenceReader = reader
+}
+
+func campaignFenceKey(tenantID, campaignID string) string { return tenantID + "\x00" + campaignID }
 
 // Messages возвращает репозиторий сообщений, состояние которого меняется
 // коммитами транзакций. Чтение вне транзакции видит последнее закоммиченное
@@ -72,13 +98,16 @@ func (u *UnitOfWork) Journal() *Journal { return u.journal }
 // между этими шагами сохранит агрегат без события. Для реального хранилища оба
 // шага обязаны выполняться в одной транзакции БД — иначе transactional outbox
 // теряет гарантию атомарности записи агрегата и события.
-func (u *UnitOfWork) WithinTransaction(_ context.Context, fn func(tx ports.Transaction) error) error {
+func (u *UnitOfWork) WithinTransaction(ctx context.Context, fn func(tx ports.Transaction) error) error {
 	if fn == nil {
 		return errors.New("inmemory: WithinTransaction без функции транзакции")
 	}
 
 	u.mu.Lock()
 	defer u.mu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 
 	workingMessages := u.msgs.Clone()
 	workingReputations := u.reps.Clone()
@@ -87,6 +116,8 @@ func (u *UnitOfWork) WithinTransaction(_ context.Context, fn func(tx ports.Trans
 		messages:    workingMessages,
 		reputations: workingReputations,
 		outbox:      outbox,
+		cancelled:   u.cancelled,
+		fenceReader: u.fenceReader,
 	}
 	if err := fn(tx); err != nil {
 		return err
@@ -103,6 +134,19 @@ type transaction struct {
 	messages    *persistence.Messages
 	reputations *persistence.Reputations
 	outbox      *transactionOutbox
+	cancelled   map[string]struct{}
+	fenceReader ports.CampaignFenceReader
+}
+
+func (t *transaction) CampaignCancelled(ctx context.Context, tenantID, campaignID string) (bool, error) {
+	if err := ctx.Err(); err != nil {
+		return false, err
+	}
+	_, ok := t.cancelled[campaignFenceKey(tenantID, campaignID)]
+	if !ok && t.fenceReader != nil {
+		return t.fenceReader.CampaignCancelled(ctx, tenantID, campaignID)
+	}
+	return ok, nil
 }
 
 func (t *transaction) Messages() ports.MessageRepository { return t.messages }

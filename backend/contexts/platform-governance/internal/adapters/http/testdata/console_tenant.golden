@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script src="/static/theme.js"></script>
+  <title>Выбор тенанта</title>
+  <link rel="stylesheet" href="/static/console.css">
+  <script src="/static/console-a11y.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main-content">Перейти к содержимому</a>
+  <nav class="sidebar" aria-label="Основная навигация">
+  <ul class="sidebar-list">
+    <li><a href="/validation?actor=user-1&amp;tenant_id=tenant-1">Заявки</a></li>
+    <li><a href="/approvals?actor=user-1&amp;tenant_id=tenant-1">Исполнение</a></li>
+    <li><a href="/?actor=user-1&amp;tenant_id=tenant-1" class="is-active" aria-current="page">Лиды</a></li>
+    <li><a href="/dashboard?actor=user-1&amp;tenant_id=tenant-1">Отчёты</a></li>
+    <li><a href="/outreach/drafts?actor=user-1&amp;tenant_id=tenant-1">Рассылки</a></li>
+    <li><a href="/console/tenant?actor=user-1&amp;tenant_id=tenant-1" class="is-active" aria-current="page">Тенант</a></li>
+    <li><a href="/console/users?actor=user-1&amp;tenant_id=tenant-1">Пользователи</a></li>
+    <li><a href="/console/registrations?actor=user-1&amp;tenant_id=tenant-1">Регистрации</a></li>
+    <li><a href="/console/integrations?actor=user-1&amp;tenant_id=tenant-1">Интеграции</a></li>
+    <li><a href="/console/audit?actor=user-1&amp;tenant_id=tenant-1">Аудит</a></li>
+    <li><a href="/platform/topology?actor=user-1&amp;tenant_id=tenant-1">Топология</a></li>
+    <li><a href="/platform/operations?actor=user-1&amp;tenant_id=tenant-1">Операции</a></li>
+  </ul>
+  <button class="theme-toggle" id="theme-toggle" type="button"
+    aria-label="Тема оформления"
+    data-theme-label-system="Как в системе"
+    data-theme-label-light="Светлая"
+    data-theme-label-dark="Тёмная"
+    data-theme-aria="Тема оформления: %s. Нажмите, чтобы сменить.">
+    <span class="theme-toggle-label">Тема</span>
+    <b class="theme-toggle-value" data-theme-name>Как в системе</b>
+  </button>
+</nav>
+  <main class="page" id="main-content">
+<section class="console-tenant">
+  <h1>Выбор тенанта</h1>
+  <p class="tenant-label">Активный тенант: tenant-1</p>
+  <table class="table">
+    <thead>
+      <tr><th>Идентификатор</th><th>Компания</th><th>Состояние</th><th>Действие</th></tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>tenant-2</td>
+        <td>ООО Василёк</td>
+        <td><span class="status status-active">активен</span></td>
+        <td>
+          <form method="post" action="/console/tenant/switch" class="inline-form">
+            <input type="hidden" name="csrf" value="">
+            <input type="hidden" name="tenant_id" value="tenant-2">
+            <input type="hidden" name="actor" value="user-1">
+            <button type="submit">Выбрать</button>
+          </form>
+        </td>
+      </tr>
+      <tr>
+        <td>tenant-1</td>
+        <td>ООО Ромашка</td>
+        <td><span class="status status-active">активен</span></td>
+        <td>
+          <span class="status status-active">Текущий</span>
+        </td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+  </main>
+</body>
+</html>

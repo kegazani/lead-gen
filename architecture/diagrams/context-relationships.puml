@@ -15,6 +15,7 @@ rectangle "engagement-observation" as Engagement
 rectangle "analytics" as Analytics
 rectangle "integration-platform" as Integration
 rectangle "request-fulfillment" as Requests
+rectangle "agent-orchestration" as Agents
 
 Governance --> Leads : PL / policy\nasync · amqp\ndata-zone-policy
 Governance --> Outreach : PL / policy\nasync · amqp\nprocessing-authority
@@ -23,6 +24,7 @@ Governance --> Audience : PL / policy\nasync · amqp\ndata-zone-policy
 Leads --> Audience : C/S / query\nsync · http-json\nlead-profile
 Audience --> Outreach : C/S / query\nsync · http-json\naudience-snapshot
 Content --> Outreach : C/S / query\nsync · http-json\ncontent-version
+Leads --> Outreach : C/S / query\nsync · http-json\naddress-verification
 Outreach --> Delivery : PL / command\nsync · http-json\napproved-action
 Delivery --> Engagement : PL / event\nasync · amqp\ndelivery-event
 Delivery --> Leads : PL / event\nasync · amqp\ndelivery-event
@@ -32,20 +34,39 @@ Outreach --> Analytics : PL / event\nasync · amqp\nanalytics-event
 Delivery --> Analytics : PL / event\nasync · amqp\ndelivery-event
 Engagement --> Analytics : PL / event\nasync · amqp\nengagement-event
 Platform --> Outreach : PL / policy\nasync · amqp\naccess-decision
+Platform --> Governance : PL / policy\nasync · amqp\naccess-decision
+Platform --> Outreach : C/S / query\nsync · http-json\naccess-decision
+Platform --> Governance : C/S / query\nsync · http-json\naccess-decision
 
 Integration ..> Leads : ACL / command\nsync · http-json\nprovider-port
 Integration ..> Leads : ACL / command\nsync · http-json\nvector
 Integration ..> Content : ACL / command\nsync · http-json\nprovider-port
 Integration ..> Delivery : ACL / command\nsync · http-json\nprovider-port
 Integration ..> Outreach : ACL / command\nsync · http-json\nprovider-port
+Integration --> Platform : C/S / query\nsync · http-json\nadapter-status
 
 Platform --> Requests : PL / policy\nasync · amqp\ntenant-context
 Leads --> Requests : C/S / query\nsync · http-json\nlead-profile
 Audience --> Requests : C/S / query\nsync · http-json\naudience-snapshot
 Outreach --> Requests : PL / query\nsync · http-json\ncampaign-state
 Outreach --> Requests : PL / command\nsync · http-json\ncall-intent
+Outreach --> Requests : PL / command\nsync · http-json\noutreach-handoff
+Content --> Requests : C/S / command\nsync · http-json\ncontent-request
+Delivery --> Requests : PL / event\nasync · amqp\ndelivery-event
 Requests --> Platform : PL / command\nsync · http-json\nrequest-intent
 Integration ..> Requests : ACL / command\nsync · http-json\nvector
+
+Leads --> Agents : C/S / query\nsync · http-json\nlead-search
+Leads --> Agents : C/S / query\nsync · http-json\nlead-relevance
+Leads --> Agents : C/S / query\nsync · http-json\nemail-generation
+Outreach --> Agents : PL / command\nsync · http-json\ncampaign-command
+Delivery --> Agents : PL / event\nasync · amqp\ndelivery-event
+Engagement --> Agents : PL / event\nasync · amqp\nengagement-event
+Agents --> Analytics : PL / event\nasync · amqp\nagent-event
+Platform --> Agents : PL / policy\nasync · amqp\naccess-decision
+Platform --> Agents : PL / policy\nasync · amqp\ntenant-context
+Analytics --> Platform : C/S / query\nsync · http-json\ncampaign-report
+Analytics --> Leads : C/S / command\nsync · http-json\nrecommendation-apply
 
 legend bottom
   PL = Published Language
@@ -66,4 +87,5 @@ endlegend
 ' CTX:analytics
 ' CTX:integration-platform
 ' CTX:request-fulfillment
+' CTX:agent-orchestration
 @enduml

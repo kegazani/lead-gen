@@ -5,7 +5,10 @@ import "fmt"
 // RequestStatus — статус заявки (VO request-status).
 //
 // Статусная модель: submitted → validating → validated → processing → fulfilled.
-// Терминальные статусы — rejected, cancelled; из них переходов нет.
+// Терминальные статусы — fulfilled, rejected, cancelled, failed; из них переходов
+// нет. failed означает необратимо сломанное исполнение и терминален для
+// автоматических переходов; явный повторный запуск (re-run) идёт отдельной
+// командой вне обычной таблицы переходов (Request.Rerun).
 type RequestStatus string
 
 const (
@@ -21,6 +24,10 @@ const (
 	// StatusProcessing — исполнение заявки запущено (агенты работают).
 	StatusProcessing RequestStatus = "processing"
 
+	// StatusNeedsRevision — заявка возвращена клиенту на доработку оффера
+	// (нетерминальный статус).
+	StatusNeedsRevision RequestStatus = "needs-revision"
+
 	// StatusFulfilled — заявка исполнена (терминальный статус).
 	StatusFulfilled RequestStatus = "fulfilled"
 
@@ -29,13 +36,19 @@ const (
 
 	// StatusCancelled — заявка отменена (терминальный статус).
 	StatusCancelled RequestStatus = "cancelled"
+
+	// StatusFailed — исполнение заявки необратимо сломалось (терминальный статус
+	// с причиной). Отличим от needs-revision: там действует клиент (доработка
+	// оффера), здесь — оператор (повторный запуск либо разбор сбоя).
+	StatusFailed RequestStatus = "failed"
 )
 
 // RequestStatuses возвращает согласованный набор статусов заявки.
 func RequestStatuses() []RequestStatus {
 	return []RequestStatus{
 		StatusSubmitted, StatusValidating, StatusValidated,
-		StatusProcessing, StatusFulfilled, StatusRejected, StatusCancelled,
+		StatusProcessing, StatusNeedsRevision, StatusFulfilled, StatusRejected, StatusCancelled,
+		StatusFailed,
 	}
 }
 
@@ -43,7 +56,8 @@ func RequestStatuses() []RequestStatus {
 func (s RequestStatus) isValid() bool {
 	switch s {
 	case StatusSubmitted, StatusValidating, StatusValidated,
-		StatusProcessing, StatusFulfilled, StatusRejected, StatusCancelled:
+		StatusProcessing, StatusNeedsRevision, StatusFulfilled, StatusRejected, StatusCancelled,
+		StatusFailed:
 		return true
 	default:
 		return false
@@ -58,10 +72,13 @@ func (s RequestStatus) validate() error {
 	return nil
 }
 
-// IsTerminal сообщает, что статус терминален: из него нет переходов.
+// IsTerminal сообщает, что статус терминален: из него нет переходов. failed
+// терминален для автоматического исполнения; единственный явный выход — отдельная
+// операция повторного запуска (Request.Rerun), которая не проходит через
+// canTransitionTo.
 func (s RequestStatus) IsTerminal() bool {
 	switch s {
-	case StatusFulfilled, StatusRejected, StatusCancelled:
+	case StatusFulfilled, StatusRejected, StatusCancelled, StatusFailed:
 		return true
 	default:
 		return false
@@ -73,18 +90,21 @@ func (s RequestStatus) IsTerminal() bool {
 // версию оффера. После validated действует обратное правило — правка создаёт
 // новую версию (инвариант I4).
 func (s RequestStatus) OfferEditableInPlace() bool {
-	return s == StatusSubmitted || s == StatusValidating
+	return s == StatusSubmitted || s == StatusValidating || s == StatusNeedsRevision
 }
 
 // canTransitionTo проверяет допустимость перехода по статусной модели:
 //
-//	submitted  → validating | cancelled
-//	validating → validated | rejected | cancelled
-//	validated  → processing | cancelled
-//	processing → fulfilled | cancelled
+//	submitted      → validating | cancelled
+//	validating     → validated | rejected | needs-revision | cancelled
+//	validated      → processing | cancelled
+//	processing     → fulfilled | needs-revision | cancelled | failed
+//	needs-revision → submitted | cancelled
 //
 // Из терминальных статусов переходов нет. Запуск исполнения (`processing`)
-// возможен только из `validated`.
+// возможен только из `validated`. Повторный запуск упавшей заявки
+// (`failed → validated`) — отдельная явная операция Request.Rerun, а не ветка
+// этой таблицы: `failed` остаётся терминальным для автоматического исполнения.
 func (s RequestStatus) canTransitionTo(to RequestStatus) bool {
 	if s.IsTerminal() {
 		return false
@@ -93,11 +113,13 @@ func (s RequestStatus) canTransitionTo(to RequestStatus) bool {
 	case StatusSubmitted:
 		return to == StatusValidating || to == StatusCancelled
 	case StatusValidating:
-		return to == StatusValidated || to == StatusRejected || to == StatusCancelled
+		return to == StatusValidated || to == StatusRejected || to == StatusNeedsRevision || to == StatusCancelled
 	case StatusValidated:
 		return to == StatusProcessing || to == StatusCancelled
 	case StatusProcessing:
-		return to == StatusFulfilled || to == StatusCancelled
+		return to == StatusFulfilled || to == StatusNeedsRevision || to == StatusCancelled || to == StatusFailed
+	case StatusNeedsRevision:
+		return to == StatusSubmitted || to == StatusCancelled
 	default:
 		return false
 	}

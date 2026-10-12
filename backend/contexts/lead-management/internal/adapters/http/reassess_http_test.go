@@ -8,6 +8,7 @@ import (
 	"testing"
 
 	"lead-gen/backend/contexts/lead-management/internal/domain"
+	"lead-gen/backend/contexts/lead-management/internal/ports"
 	"lead-gen/backend/platform/jobs"
 )
 
@@ -36,7 +37,7 @@ func TestReassessJobEndpoint(t *testing.T) {
 	if err != nil {
 		t.Fatalf("CreateCompany: %v", err)
 	}
-	if err := env.profiles.Save(ctx, company); err != nil {
+	if err := env.profiles.Save(ports.WithTenant(ctx, testTenantID), company); err != nil {
 		t.Fatalf("Save профиля: %v", err)
 	}
 	unsuitable, err := domain.CreateLeadAssessment(domain.CreateLeadAssessmentParams{

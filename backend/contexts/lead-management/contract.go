@@ -12,12 +12,15 @@ import (
 	"fmt"
 	"time"
 
+	"lead-gen/backend/contexts/lead-management/internal/adapters/verification/dns"
+	"lead-gen/backend/contexts/lead-management/internal/adapters/verification/remote"
 	"lead-gen/backend/contexts/lead-management/internal/app"
+	"lead-gen/backend/contexts/lead-management/internal/domain"
 	"lead-gen/backend/contexts/lead-management/internal/ports"
 	"lead-gen/backend/platform/observability/observ"
-	"lead-gen/contracts/integration-platform/crawl"
+	"lead-gen/contracts/integration-platform/budget"
 	"lead-gen/contracts/integration-platform/llm"
-	"lead-gen/contracts/integration-platform/search"
+	"lead-gen/contracts/lead-management/addressverification"
 	"lead-gen/contracts/lead-management/deliverytarget"
 	"lead-gen/contracts/lead-management/emailgeneration"
 	"lead-gen/contracts/lead-management/leadsearch"
@@ -29,10 +32,10 @@ import (
 type LeadSearchDeps struct {
 	// Repositories — адаптеры хранилища (карточки и контакты).
 	Repositories Repositories
-	// Search — порт поиска Firecrawl.
-	Search search.Port
-	// Crawl — порт обхода Firecrawl.
-	Crawl crawl.Port
+	// Budget — общий Firecrawl Guard factory. Без него дозабор честно недоступен.
+	Budget budget.Factory
+	// MaxCredits — настроенный per-task cap; 0 не отключает account admission.
+	MaxCredits int
 	// Clock — часы; nil — системное время.
 	Clock ports.Clock
 	// Limits — пределы обхода одного сайта.
@@ -63,8 +66,8 @@ func NewLeadSearch(deps LeadSearchDeps) leadsearch.Port {
 	useCase := &app.SearchLeadsForRequest{
 		Profiles:    deps.Repositories.Profiles,
 		Contacts:    deps.Repositories.Contacts,
-		Search:      deps.Search,
-		Crawl:       deps.Crawl,
+		Budget:      deps.Budget,
+		MaxCredits:  deps.MaxCredits,
 		Clock:       deps.Clock,
 		Limits:      deps.Limits,
 		MaxResults:  deps.MaxResults,
@@ -89,10 +92,11 @@ func NewLeadSearch(deps LeadSearchDeps) leadsearch.Port {
 				leads = append(leads, leadsearch.LeadRef{ID: lead.CompanyID, Origin: string(lead.Origin)})
 			}
 			return leadsearch.Result{
-				Found:    result.Found,
-				FromPool: result.FromPool,
-				Crawled:  result.Crawled,
-				Leads:    leads,
+				Found:         result.Found,
+				FromPool:      result.FromPool,
+				Crawled:       result.Crawled,
+				Leads:         leads,
+				PartialReason: result.PartialReason,
 			}, nil
 		},
 	})
@@ -144,20 +148,22 @@ func NewEmailGeneration(deps EmailGenerationDeps) emailgeneration.Port {
 	return emailgeneration.InProc(emailgeneration.InProcHandler{
 		GenerateFunc: func(ctx context.Context, request emailgeneration.Request) (emailgeneration.Email, error) {
 			draft, err := useCase.Run(ctx, app.DraftEmailInput{
-				RequestID: request.RequestID,
-				TenantID:  request.TenantID,
-				LeadID:    request.LeadID,
-				Criteria:  request.Criteria,
-				Language:  request.Language,
-				Tone:      request.Tone,
+				RequestID:     request.RequestID,
+				TenantID:      request.TenantID,
+				LeadID:        request.LeadID,
+				Criteria:      request.Criteria,
+				Language:      request.Language,
+				Tone:          request.Tone,
+				SenderCompany: request.SenderCompany,
 			})
 			if err != nil {
 				return emailgeneration.Email{}, emailGenerationError(err)
 			}
 			return emailgeneration.Email{
-				Subject:  draft.Subject,
-				Body:     draft.Body,
-				Language: draft.Language,
+				Subject:      draft.Subject,
+				Body:         draft.Body,
+				Language:     draft.Language,
+				RecipientRef: draft.RecipientRef,
 			}, nil
 		},
 	})
@@ -225,5 +231,94 @@ func deliveryTargetError(err error) error {
 		return fmt.Errorf("%w: %v", deliverytarget.ErrRejected, err)
 	default:
 		return fmt.Errorf("%w: %v", deliverytarget.ErrUnavailable, err)
+	}
+}
+
+// AddressVerificationDeps — зависимости фабрики in-proc адаптера контракта
+// address-verification. Контакты обязательны; проверка адреса без внешнего
+// сервиса и DNS честно недоступна, а не выдаётся за подтверждённый адрес.
+type AddressVerificationDeps struct {
+	// Repositories — адаптеры хранилища (контакты).
+	Repositories Repositories
+	// TenantID — тенант-владелец ссылки; пусто — владелец честно недоступен.
+	TenantID string
+	// Verifier — внешний сервис проверки адресов. nil — собирается по
+	// VerifierEndpoint; при пустом адресе проверка честно недоступна.
+	Verifier ports.AddressVerifier
+	// VerifierEndpoint — адрес внешнего сервиса проверки (когда Verifier не задан).
+	VerifierEndpoint string
+	// VerifierAPIKey — ключ доступа к сервису проверки; пусто — не отправляется.
+	VerifierAPIKey string
+	// DNS — резолвер домена; nil — системный резолвер Go.
+	DNS ports.DNSResolver
+	// Clock — часы; nil — системное время.
+	Clock ports.Clock
+}
+
+// NewAddressVerification собирает опубликованный контракт address-verification
+// поверх use case разрешения получателя и верификации адреса владельца.
+//
+// Это публичная фабрика владельца верификации: точка сборки (cmd/lead-gen) не
+// имеет доступа к внутренним пакетам контекста, поэтому прямой адаптер контракта
+// объявлен здесь. При co-location он вызывается в процессе; сетевой транспорт —
+// точка расширения (design.md, «Отложено»).
+//
+// Снимок несёт статус и вердикт владельца «адрес подтверждён»: вердикт выводится
+// из политики владельца по статусу (DecisionAllow), а не выдумывается
+// потребителем. Неразрешимая ссылка — ErrRejected, недоступность владельца или
+// сервиса проверки — ErrUnavailable; выдуманный «подтверждён» не возвращается.
+func NewAddressVerification(deps AddressVerificationDeps) addressverification.Port {
+	if deps.Repositories.Contacts == nil {
+		// Владелец не собран: честно сообщаем о недоступности, а не выдумываем
+		// статус верификации.
+		return addressverification.InProc(addressverification.InProcHandler{})
+	}
+	verifier := deps.Verifier
+	if verifier == nil {
+		verifier = remote.New(remote.Config{Endpoint: deps.VerifierEndpoint, APIKey: deps.VerifierAPIKey})
+	}
+	resolverDNS := deps.DNS
+	if resolverDNS == nil {
+		resolverDNS = dns.New()
+	}
+	resolve := &app.ResolveDeliveryTarget{Contacts: deps.Repositories.Contacts, TenantID: deps.TenantID}
+	verify := &app.VerifyAddress{DNS: resolverDNS, Verifier: verifier, Clock: deps.Clock}
+	policy := domain.DefaultVerificationPolicy()
+	return addressverification.InProc(addressverification.InProcHandler{
+		VerificationFunc: func(ctx context.Context, q addressverification.Query) (addressverification.Snapshot, error) {
+			if err := q.Validate(); err != nil {
+				return addressverification.Snapshot{}, err
+			}
+			recipient, err := resolve.Run(ctx, app.ResolveRecipientInput{TenantID: q.TenantID, RecipientRef: q.RecipientRef})
+			if err != nil {
+				return addressverification.Snapshot{}, addressVerificationError(err)
+			}
+			checked, err := verify.Run(ctx, app.VerifyAddressInput{Address: recipient.Address})
+			if err != nil {
+				return addressverification.Snapshot{}, addressVerificationError(err)
+			}
+			decision, _ := policy.Decision(checked.Status)
+			return addressverification.Snapshot{
+				RecipientRef: q.RecipientRef,
+				Status:       addressverification.Status(checked.Status),
+				Verified:     decision == domain.DecisionAllow,
+				Reason:       checked.Reason,
+				CheckedAt:    checked.CheckedAt,
+			}, nil
+		},
+	})
+}
+
+// addressVerificationError переводит ошибку сценария в исход опубликованного
+// контракта: неразрешимая ссылка — ErrRejected, прочее — ErrUnavailable. Ошибка не
+// выдаётся за подтверждённый адрес.
+func addressVerificationError(err error) error {
+	switch {
+	case err == nil:
+		return nil
+	case errors.Is(err, app.ErrInvalidDeliveryTarget):
+		return fmt.Errorf("%w: %v", addressverification.ErrRejected, err)
+	default:
+		return fmt.Errorf("%w: %v", addressverification.ErrUnavailable, err)
 	}
 }

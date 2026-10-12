@@ -89,12 +89,13 @@ func New(baseURL string, opts ...Option) (*Client, error) {
 // POST {base}/email-generation.
 func (c *Client) Generate(ctx context.Context, request emailgeneration.Request) (emailgeneration.Email, error) {
 	payload, err := json.Marshal(generateRequest{
-		RequestID: request.RequestID,
-		TenantID:  request.TenantID,
-		LeadID:    request.LeadID,
-		Criteria:  request.Criteria,
-		Language:  request.Language,
-		Tone:      request.Tone,
+		RequestID:     request.RequestID,
+		TenantID:      request.TenantID,
+		LeadID:        request.LeadID,
+		Criteria:      request.Criteria,
+		Language:      request.Language,
+		Tone:          request.Tone,
+		SenderCompany: request.SenderCompany,
 	})
 	if err != nil {
 		return emailgeneration.Email{}, fmt.Errorf("%w: сборка тела команды: %v", emailgeneration.ErrUnavailable, err)
@@ -121,9 +122,10 @@ func (c *Client) Generate(ctx context.Context, request emailgeneration.Request) 
 		return emailgeneration.Email{}, err
 	}
 	return emailgeneration.Email{
-		Subject:  body.Subject,
-		Body:     body.Body,
-		Language: body.Language,
+		Subject:      body.Subject,
+		Body:         body.Body,
+		Language:     body.Language,
+		RecipientRef: body.RecipientRef,
 	}, nil
 }
 
@@ -193,17 +195,19 @@ func decodeBody(resp *http.Response, dst any) error {
 // generateRequest — тело команды. Имена полей совпадают с контрактом эндпоинта
 // lead-management POST /email-generation.
 type generateRequest struct {
-	RequestID string `json:"request_id"`
-	TenantID  string `json:"tenant_id"`
-	LeadID    string `json:"lead_id"`
-	Criteria  string `json:"criteria"`
-	Language  string `json:"language,omitempty"`
-	Tone      string `json:"tone,omitempty"`
+	RequestID     string                         `json:"request_id"`
+	TenantID      string                         `json:"tenant_id"`
+	LeadID        string                         `json:"lead_id"`
+	Criteria      string                         `json:"criteria"`
+	Language      string                         `json:"language,omitempty"`
+	Tone          string                         `json:"tone,omitempty"`
+	SenderCompany *emailgeneration.SenderCompany `json:"sender_company,omitempty"`
 }
 
 // generateResponse — ответ владельца на команду генерации (200 OK).
 type generateResponse struct {
-	Subject  string `json:"subject"`
-	Body     string `json:"body"`
-	Language string `json:"language,omitempty"`
+	Subject      string `json:"subject"`
+	Body         string `json:"body"`
+	Language     string `json:"language,omitempty"`
+	RecipientRef string `json:"recipient_ref,omitempty"`
 }

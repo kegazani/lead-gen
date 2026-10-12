@@ -95,6 +95,39 @@ func (s *Server) handleCollectSite(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, result)
 }
 
+// landingDocumentSourceBody — один предоставленный документ в теле запроса.
+type landingDocumentSourceBody struct {
+	Source string `json:"source"`
+	Format string `json:"format,omitempty"`
+}
+
+// parseDocumentsBody — тело запроса разбора предоставленных документов.
+type parseDocumentsBody struct {
+	Sources []landingDocumentSourceBody `json:"sources"`
+}
+
+// handleParseDocuments обслуживает POST /content/landing-documents: принимает
+// предоставленные документы (коммерческое предложение) и разбирает их движком
+// сбора данных. Извлечённые тексты возвращаются в documents и передаются
+// генерации наполнения как материалы.
+func (s *Server) handleParseDocuments(w http.ResponseWriter, r *http.Request) {
+	var body parseDocumentsBody
+	if err := decodeJSON(w, r, &body); err != nil {
+		writeErrorMessage(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	sources := make([]command.DocumentSource, 0, len(body.Sources))
+	for _, source := range body.Sources {
+		sources = append(sources, command.DocumentSource{Source: source.Source, Format: source.Format})
+	}
+	result, err := s.deps.ParseDocuments.Handle(r.Context(), command.ParseDocuments{Sources: sources})
+	if err != nil {
+		writeDomainError(w, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, result)
+}
+
 // landingCheckBody — тело запроса проверки текста на заимствование.
 type landingCheckBody struct {
 	Text      string   `json:"text"`

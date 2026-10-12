@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <script src="/static/theme.js"></script>
+  <title>Дашборд по клиентам</title>
+  <link rel="stylesheet" href="/static/console.css">
+  <script src="/static/console-a11y.js" defer></script>
+  <script src="/static/htmx.min.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main-content">Перейти к содержимому</a>
+  <main class="page" id="main-content">
+<section class="cockpit-dashboard" data-fullscreen>
+  <h1>Дашборд по клиентам</h1>
+  <p class="hint">Порог минимальной группы: 1</p>
+  <table class="table">
+    <thead>
+      <tr>
+        <th>Клиент</th>
+        <th>Найдено</th>
+        <th>Обработано</th>
+        <th>Отклонено</th>
+        <th>В работе</th>
+        <th>Результат</th>
+        <th>Аномалии</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>tenant-1</td>
+        <td><span class="status status-queued"><span aria-hidden="true">◈</span> 7</span></td>
+        <td><span class="status status-done"><span aria-hidden="true">■</span> 4</span></td>
+        <td><span class="status status-failed"><span aria-hidden="true">✕</span> 0</span></td>
+        <td><span class="status status-running"><span aria-hidden="true">▸</span> 0</span></td>
+        <td><span class="status status-active"><span aria-hidden="true">✓</span> 0</span></td>
+        <td>процесс замер</td>
+      </tr>
+    </tbody>
+  </table>
+  <p><a href="/platform/operations?actor=user-1&amp;tenant_id=tenant-1">Операции: цифры процесса</a></p>
+</section>
+  </main>
+</body>
+</html>

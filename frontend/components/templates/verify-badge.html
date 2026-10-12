@@ -1,0 +1,3 @@
+{{- define "verify-badge" -}}
+<span class="verify verify-{{.Class}}"{{ with .Title }} title="{{.}}"{{ end }}><span class="verify-icon" aria-hidden="true">{{.Icon}}</span><span class="verify-label">{{.Label}}</span>{{ with .Meta }} <span class="verify-meta">{{.}}</span>{{ end }}</span>
+{{- end -}}

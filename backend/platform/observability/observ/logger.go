@@ -11,6 +11,7 @@ import (
 // дополнительные структурированные атрибуты (пары «ключ, значение» в формате
 // log/slog), а не склеенную строку.
 type Logger interface {
+	Debug(msg string, f Fields, attrs ...any)
 	Info(msg string, f Fields, attrs ...any)
 	Warn(msg string, f Fields, attrs ...any)
 	Error(msg string, err error, f Fields, attrs ...any)
@@ -21,24 +22,45 @@ type slogLogger struct {
 	log *slog.Logger
 }
 
-// NewLogger возвращает логгер с JSON-выводом в stderr. Поля корреляции
-// добавляются как отдельные атрибуты, поэтому логи фильтруются по tenant_id и
-// корреляции без разбора текста сообщения.
+// NewLogger возвращает логгер с JSON-выводом в stderr и уровнем Info. Поля
+// корреляции добавляются как отдельные атрибуты, поэтому логи фильтруются по
+// tenant_id и корреляции без разбора текста сообщения.
 func NewLogger() Logger {
-	return newLogger(os.Stderr)
+	return NewLoggerWithLevel(slog.LevelInfo)
 }
 
-// NewLoggerWithWriter возвращает логгер с JSON-выводом в заданный приёмник.
-// Применяется для тестов и кастомных приёмников; NewLogger — сокращение для
-// stderr.
+// NewLoggerWithWriter возвращает логгер с JSON-выводом в заданный приёмник и
+// уровнем Info. Применяется для тестов и кастомных приёмников.
 func NewLoggerWithWriter(w io.Writer) Logger {
-	return newLogger(w)
+	return newLogger(w, slog.LevelInfo)
 }
 
-// newLogger собирает логгер с заданным приёмником; вынесено отдельно, чтобы
-// тесты проверяли форму вывода без перехвата stderr.
-func newLogger(w io.Writer) Logger {
-	return &slogLogger{log: slog.New(slog.NewJSONHandler(w, nil))}
+// NewLoggerWithLevel возвращает логгер с JSON-выводом в stderr и заданным
+// уровнем. Уровень задаётся конфигурацией запуска (-log-level), а не жёстко в
+// коде; он хранится в slog.LevelVar, поэтому применим без пересборки логгера.
+func NewLoggerWithLevel(level slog.Level) Logger {
+	return newLogger(os.Stderr, level)
+}
+
+// NewLoggerWithWriterAndLevel возвращает логгер с JSON-выводом в заданный
+// приёмник и заданным уровнем. Применяется в тестах фильтрации по уровню.
+func NewLoggerWithWriterAndLevel(w io.Writer, level slog.Level) Logger {
+	return newLogger(w, level)
+}
+
+// newLogger собирает логгер с заданным приёмником и уровнем; вынесено отдельно,
+// чтобы тесты проверяли форму вывода без перехвата stderr.
+func newLogger(w io.Writer, level slog.Level) Logger {
+	levelVar := &slog.LevelVar{}
+	levelVar.Set(level)
+	handler := slog.NewJSONHandler(w, &slog.HandlerOptions{Level: levelVar})
+	return &slogLogger{log: slog.New(handler)}
+}
+
+func (l *slogLogger) Debug(msg string, f Fields, attrs ...any) {
+	a := f.attrs()
+	a = append(a, attrs...)
+	l.log.Debug(msg, a...)
 }
 
 func (l *slogLogger) Info(msg string, f Fields, attrs ...any) {
@@ -64,7 +86,7 @@ func (l *slogLogger) Error(msg string, err error, f Fields, attrs ...any) {
 
 // attrs переводит поля корреляции в атрибуты slog, пропуская пустые.
 func (f Fields) attrs() []any {
-	attrs := make([]any, 0, 4)
+	attrs := make([]any, 0, 5)
 	if f.TenantID != "" {
 		attrs = append(attrs, slog.String("tenant_id", f.TenantID))
 	}
@@ -76,6 +98,9 @@ func (f Fields) attrs() []any {
 	}
 	if f.TaskID != "" {
 		attrs = append(attrs, slog.String("task_id", f.TaskID))
+	}
+	if f.WorkflowID != "" {
+		attrs = append(attrs, slog.String("workflow_id", f.WorkflowID))
 	}
 	return attrs
 }

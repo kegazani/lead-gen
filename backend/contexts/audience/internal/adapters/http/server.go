@@ -18,11 +18,13 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"time"
 
 	"lead-gen/backend/contexts/audience/internal/app/command"
 	"lead-gen/backend/contexts/audience/internal/app/query"
 	"lead-gen/backend/contexts/audience/internal/domain"
 	"lead-gen/backend/contexts/audience/internal/ports"
+	"lead-gen/backend/platform/readiness"
 )
 
 const (
@@ -70,6 +72,30 @@ type Dependencies struct {
 	FixSnapshot    FixAudienceSnapshotUseCase
 	GetSnapshot    GetAudienceSnapshotUseCase
 	SegmentMembers SegmentMembersUseCase
+	Readiness      func(context.Context) ReadinessReport
+}
+
+// ReadinessReport — владельческий безопасный отчёт endpoint готовности.
+type ReadinessReport struct {
+	Role     string             `json:"role"`
+	Profiles []ReadinessProfile `json:"profiles"`
+	Status   readiness.Status   `json:"status"`
+	Ready    bool               `json:"ready"`
+}
+
+type ReadinessProfile struct {
+	Capability string           `json:"capability"`
+	Status     readiness.Status `json:"status"`
+	Ready      bool             `json:"ready"`
+	Checks     []ReadinessCheck `json:"checks"`
+}
+
+type ReadinessCheck struct {
+	ID         string               `json:"id"`
+	Status     readiness.Status     `json:"status"`
+	Reason     readiness.ReasonCode `json:"reason"`
+	ObservedAt time.Time            `json:"observed_at"`
+	Required   bool                 `json:"required"`
 }
 
 // Server — HTTP-сервер среза. Нулевое значение непригодно: используйте NewServer.
@@ -102,6 +128,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("POST /audience-snapshots", s.handleFixSnapshot)
 	mux.HandleFunc("GET /audience-snapshots/{snapshotID}", s.handleGetSnapshot)
 	mux.HandleFunc("GET /healthz", s.handleHealth)
+	mux.HandleFunc("GET /readyz", s.handleReadiness)
 
 	return mux
 }
@@ -120,6 +147,19 @@ type healthResponse struct {
 // handleHealth обслуживает GET /healthz: сервис запущен и принимает запросы.
 func (s *Server) handleHealth(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, healthResponse{Status: "ok", Service: "audience"})
+}
+
+func (s *Server) handleReadiness(w http.ResponseWriter, r *http.Request) {
+	if s.deps.Readiness == nil {
+		writeJSON(w, http.StatusServiceUnavailable, ReadinessReport{Role: "api", Status: readiness.StatusUnknown})
+		return
+	}
+	report := s.deps.Readiness(r.Context())
+	status := http.StatusOK
+	if !report.Ready {
+		status = http.StatusServiceUnavailable
+	}
+	writeJSON(w, status, report)
 }
 
 // decodeJSON читает тело запроса в dst. Ошибка разбора — ошибка транспорта,

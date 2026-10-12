@@ -42,6 +42,7 @@ func commandEnvelope() contracts.Envelope {
 		TenantID:      "tenant-1",
 		CorrelationID: "campaign-1",
 		CausationID:   "decision-1",
+		WorkflowID:    "wf-42",
 		Name:          "approved-action",
 		SchemaVersion: "1.2.0",
 	}
@@ -101,6 +102,9 @@ func TestClientCommandRoundTrip(t *testing.T) {
 	}
 	if gotReq.Envelope.CorrelationID != "campaign-1" || gotReq.Envelope.CausationID != "decision-1" {
 		t.Fatalf("корреляция потеряна: %+v", gotReq.Envelope)
+	}
+	if gotReq.Envelope.WorkflowID != "wf-42" {
+		t.Fatalf("workflow_id потерян при передаче по транспорту: %+v", gotReq.Envelope)
 	}
 	if gotReq.Envelope.SchemaVersion != "1.2.0" || gotReq.Envelope.TenantID != "tenant-1" {
 		t.Fatalf("версия или тенант потеряны: %+v", gotReq.Envelope)

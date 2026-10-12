@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"lead-gen/backend/contexts/lead-management/internal/domain"
 	"lead-gen/contracts/integration-platform/llm"
 )
 
@@ -13,7 +14,7 @@ import (
 // приходит от заглушки LLM, а промпт построен из оффера и данных лида.
 func TestDraftEmailForLeadGeneratesEmail(t *testing.T) {
 	profiles := newMemProfiles()
-	seedCompany(profiles, "lead.example", "ООО Ромашка")
+	seedCompanyInTenant(profiles, "tenant-1", "lead.example", "ООО Ромашка")
 	contacts := newMemContacts()
 	seedContact(contacts, "lead.example", "sales@lead.example", "Коммерческий директор")
 
@@ -55,6 +56,81 @@ func TestDraftEmailForLeadGeneratesEmail(t *testing.T) {
 	// Адрес контакта в промпт не попадает: данные лида обезличены.
 	if strings.Contains(prompt, "sales@lead.example") {
 		t.Fatalf("промпт содержит персональные данные: %s", prompt)
+	}
+}
+
+// TestDraftEmailForLeadFillsRecipientRef проверяет, что владелец прикладывает
+// непрозрачную ссылку на получателя из контакта лида с пригодным адресом:
+// непустую и равную идентификатору контакта, а не адресу.
+func TestDraftEmailForLeadFillsRecipientRef(t *testing.T) {
+	profiles := newMemProfiles()
+	seedCompanyInTenant(profiles, "tenant-1", "lead.example", "ООО Ромашка")
+
+	prov := domain.AttributeProvenance{SourceURL: "https://lead.example", ExtractedAt: testTime, Method: domain.MethodRegex}
+	contact, err := domain.CreateContact(domain.CreateContactParams{
+		ID:        "contact-1",
+		CompanyID: domain.CompanyID("lead.example"),
+		Email:     &domain.ContactAttribute{Value: "sales@lead.example", Provenance: prov},
+		CreatedAt: testTime,
+	})
+	if err != nil {
+		t.Fatalf("CreateContact: %v", err)
+	}
+	contacts := newMemContacts()
+	if err := contacts.Save(context.Background(), contact); err != nil {
+		t.Fatalf("Save: %v", err)
+	}
+
+	llmPort := &fakeLLM{converse: []llm.ConverseReply{{Text: "Тема письма\n\nТело письма."}}}
+	useCase := &DraftEmailForLead{Profiles: profiles, Contacts: contacts, LLM: llmPort}
+
+	draft, err := useCase.Run(context.Background(), DraftEmailInput{
+		RequestID: "req-1", TenantID: "tenant-1", LeadID: "lead.example", Criteria: "оффер",
+	})
+	if err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if draft.RecipientRef != contact.ID().String() {
+		t.Fatalf("RecipientRef = %q, ожидался id контакта %q", draft.RecipientRef, contact.ID().String())
+	}
+	// Ссылка непрозрачна: адрес в неё не попадает.
+	if draft.RecipientRef == "sales@lead.example" {
+		t.Fatalf("RecipientRef не должен быть адресом: %q", draft.RecipientRef)
+	}
+}
+
+// TestDraftEmailForLeadWithoutRecipientRef проверяет честно пустую ссылку, когда
+// получателя приложить нечем: нет контакта вовсе или контакт без пригодного
+// адреса.
+func TestDraftEmailForLeadWithoutRecipientRef(t *testing.T) {
+	cases := []struct {
+		name     string
+		contacts func() *memContacts
+	}{
+		{name: "без контакта", contacts: newMemContacts},
+		{name: "контакт без email", contacts: func() *memContacts {
+			contacts := newMemContacts()
+			seedContactWithoutEmail(contacts, "lead.example", "contact-1")
+			return contacts
+		}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			profiles := newMemProfiles()
+			seedCompanyInTenant(profiles, "tenant-1", "lead.example", "ООО Ромашка")
+			llmPort := &fakeLLM{converse: []llm.ConverseReply{{Text: "Тема письма\n\nТело письма."}}}
+			useCase := &DraftEmailForLead{Profiles: profiles, Contacts: tc.contacts(), LLM: llmPort}
+
+			draft, err := useCase.Run(context.Background(), DraftEmailInput{
+				RequestID: "req-1", TenantID: "tenant-1", LeadID: "lead.example", Criteria: "оффер",
+			})
+			if err != nil {
+				t.Fatalf("Run: %v", err)
+			}
+			if draft.RecipientRef != "" {
+				t.Fatalf("RecipientRef = %q, ожидалась пустая ссылка", draft.RecipientRef)
+			}
+		})
 	}
 }
 

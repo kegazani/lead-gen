@@ -33,10 +33,10 @@
     root.style.colorScheme = theme;
   }
 
-  function label(mode) {
-    if (mode === 'light') return 'Светлая';
-    if (mode === 'dark') return 'Тёмная';
-    return 'Как в системе';
+  function label(toggle, mode) {
+    // Подписи режимов приходят из каталога сообщений через data-атрибуты nav:
+    // единственный источник пользовательского текста — каталог, а не скрипт.
+    return toggle.getAttribute('data-theme-label-' + mode) || '';
   }
 
   // Синхронно, до отрисовки: применяем сохранённый режим.
@@ -57,9 +57,10 @@
 
     function paint() {
       toggle.setAttribute('data-mode', mode);
-      toggle.setAttribute('aria-label', 'Тема оформления: ' + label(mode) + '. Нажмите, чтобы сменить.');
+      var pattern = toggle.getAttribute('data-theme-aria') || '';
+      toggle.setAttribute('aria-label', pattern.replace('%s', label(toggle, mode)));
       var value = toggle.querySelector('[data-theme-name]');
-      if (value) value.textContent = label(mode);
+      if (value) value.textContent = label(toggle, mode);
     }
 
     toggle.addEventListener('click', function () {

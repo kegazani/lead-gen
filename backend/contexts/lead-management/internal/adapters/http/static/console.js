@@ -17,6 +17,14 @@
 (function () {
   'use strict';
 
+  // adminBasePath возвращает внешний префикс пути консоли под единым origin
+  // (admin-proxy). Префикс вставляет сервер в <meta name="admin-base-path">,
+  // чтобы адрес переноса лида не дублировался в скрипте.
+  function adminBasePath() {
+    var meta = document.querySelector('meta[name="admin-base-path"]');
+    return meta && meta.content ? meta.content : '';
+  }
+
   // ==========================================================
   // 1. Сохранение выбора заданий между обновлениями журнала
   // ==========================================================
@@ -226,7 +234,7 @@
       column.classList.remove('is-heating');
     }, 650);
 
-    fetch('/funnel/' + encodeURIComponent(leadId) + '/stage', {
+    fetch(adminBasePath() + '/funnel/' + encodeURIComponent(leadId) + '/stage', {
       method: 'POST',
       credentials: 'same-origin',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -235,7 +243,7 @@
       .then(function () {
         // Сервер выполняет перенос и отвечает redirect (POST/redirect/GET);
         // клиент только перечитывает состояние.
-        window.location.assign('/funnel');
+        window.location.assign(adminBasePath() + '/funnel');
       })
       .catch(function () {
         // Сеть откажет — перенос остаётся доступен формой в колонке.
@@ -406,9 +414,17 @@
 	  var cardsCompositionKey = 'leadgen.cardsComposition';
 
 	  // cardsCompositionValue сводит неизвестный состав к значению по умолчанию
-	  // («Подходящие»).
+	  // («Подходящие»). Состав — четыре группы; неизвестное или устаревшее значение
+	  // (в частности прежнее «other») сводится к группе по умолчанию.
 	  function cardsCompositionValue(raw) {
-	    return raw === 'other' ? 'other' : 'fits';
+	    switch (raw) {
+	      case 'hypothesis':
+	      case 'unsuitable':
+	      case 'unassessed':
+	        return raw;
+	      default:
+	        return 'fits';
+	    }
 	  }
 
 	  // cardsCompositionButtons возвращает кнопки переключателя состава.
@@ -439,6 +455,14 @@
 	    } catch (error) {
 	      return null;
 	    }
+	  }
+
+	  // cardsFilterActive сообщает, активен ли серверный фильтр по причине отсева.
+	  // При активном фильтре запомненный состав не применяется при загрузке:
+	  // показывается вся отфильтрованная выборка, а не одна группа.
+	  function cardsFilterActive() {
+	    var container = cardsContainer();
+	    return !!container && container.getAttribute('data-cards-filter') === 'true';
 	  }
 
 	  // click ловит переключение состава: выбор применяется без запроса к серверу и
@@ -473,9 +497,13 @@
 	  });
 
 	  // Выбор вида и состава применяется при загрузке независимо: каждый
-	  // переживает перезагрузку и не сбрасывает другой.
+	  // переживает перезагрузку и не сбрасывает другой. При активном фильтре по
+	  // причине отсева запомненный состав не применяется: показывается вся
+	  // отфильтрованная выборка.
 	  applyCardsView(storedCardsView());
-	  applyCardsComposition(storedCardsComposition());
+	  if (!cardsFilterActive()) {
+	    applyCardsComposition(storedCardsComposition());
+	  }
 
 	  // Скрипт подключён с defer: разметка уже разобрана, начальная синхронизация
 	  // сразу отключает кнопку при пустом выборе и восстанавливает раскрытие строк.

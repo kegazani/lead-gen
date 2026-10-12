@@ -77,11 +77,11 @@ type batchApproveView struct {
 // остальные. Предикат чистый и детерминированный: признаки не зависят от
 // порядка вызовов.
 func batchRiskPredicate(risky domain.DraftID) domain.CanBeDecidedInPackage {
-	return func(draftID domain.DraftID, _ int) []domain.RiskReason {
-		if draftID == risky {
-			return []domain.RiskReason{domain.RiskPersonalDataDetected}
+	return func(_ context.Context, req domain.RiskFactsRequest) ([]domain.RiskReason, error) {
+		if req.DraftID == risky {
+			return []domain.RiskReason{domain.RiskStopRuleTriggered}, nil
 		}
-		return nil
+		return nil, nil
 	}
 }
 
@@ -215,7 +215,8 @@ func TestOutreachApprovalBatchEndToEnd(t *testing.T) {
 	// Разнородный черновик: другой материал при том же сегменте.
 	createDraftThroughHTTP(t, fixture, campaignID,
 		batchE2EOtherDraft, "material-2", batchE2ESegment, "recipient-other")
-	// Рисковый черновик: тот же ключ однородности, но обнаружены персональные данные.
+	// Рисковый черновик: тот же ключ однородности, но признак риска от владельца
+	// (стоп-лист) исключает его из пакета.
 	createDraftThroughHTTP(t, fixture, campaignID,
 		batchE2ERiskyDraft, batchE2EMaterial, batchE2ESegment, "recipient-risky")
 
@@ -272,7 +273,7 @@ func TestOutreachApprovalBatchEndToEnd(t *testing.T) {
 	if excluded.DraftID != batchE2ERiskyDraft || excluded.DraftVersion != 1 {
 		t.Fatalf("исключённый черновик: %+v", excluded)
 	}
-	if len(excluded.Reasons) != 1 || excluded.Reasons[0] != string(domain.RiskPersonalDataDetected) {
+	if len(excluded.Reasons) != 1 || excluded.Reasons[0] != string(domain.RiskStopRuleTriggered) {
 		t.Fatalf("причины исключения: %+v", excluded.Reasons)
 	}
 	if len(composition.Individual) != 1 || composition.Individual[0].DraftID != batchE2EOtherDraft {

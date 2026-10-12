@@ -26,13 +26,15 @@ func NewRequestIntent(slice *Slice) requestintent.Port {
 	return requestintent.InProc(requestintent.InProcHandler{
 		SubmitFunc: func(ctx context.Context, in requestintent.SubmitIntent) (requestintent.SubmitResult, error) {
 			result, err := slice.SubmitRequest.Handle(ctx, command.SubmitRequest{
-				RequestID:     domain.RequestID(in.RequestID),
-				OfferID:       domain.OfferID(in.OfferID),
-				TenantID:      domain.TenantID(in.TenantID),
-				Content:       in.Content,
-				Target:        in.Target,
-				Actor:         domain.ActorID(in.Actor),
-				CorrelationID: domain.CorrelationID(in.CorrelationID),
+				RequestID:        domain.RequestID(in.RequestID),
+				OfferID:          domain.OfferID(in.OfferID),
+				TenantID:         domain.TenantID(in.TenantID),
+				Content:          in.Content,
+				Target:           in.Target,
+				ExecutionPurpose: in.ExecutionPurpose,
+				SenderCompany:    senderCompanyDomain(in.SenderCompany),
+				Actor:            domain.ActorID(in.Actor),
+				CorrelationID:    domain.CorrelationID(in.CorrelationID),
 			})
 			if err != nil {
 				return requestintent.SubmitResult{}, requestIntentError(err)
@@ -56,9 +58,43 @@ func NewRequestIntent(slice *Slice) requestintent.Port {
 				OfferContent:  view.Offer.Content,
 				OfferTarget:   view.Offer.Target,
 				OfferRevision: view.Offer.Revision,
+				Phase:         view.Phase,
+				ErrorReason:   view.ErrorReason,
+				ErrorMessage:  view.ErrorMessage,
 			}, nil
 		},
+		ListFunc: func(ctx context.Context, q requestintent.ListQuery) ([]requestintent.ListEntry, error) {
+			items, err := slice.ListRequests.Handle(ctx, query.ListRequests{
+				TenantID: domain.TenantID(q.TenantID),
+			})
+			if err != nil {
+				return nil, requestIntentError(err)
+			}
+			entries := make([]requestintent.ListEntry, 0, len(items))
+			for _, item := range items {
+				entries = append(entries, requestintent.ListEntry{
+					RequestID: item.RequestID,
+					Status:    string(item.Status),
+				})
+			}
+			return entries, nil
+		},
 	})
+}
+
+func senderCompanyDomain(snapshot *requestintent.SenderCompanySnapshot) *domain.SenderCompanySnapshot {
+	if snapshot == nil {
+		return nil
+	}
+	result := &domain.SenderCompanySnapshot{
+		CompanyName: snapshot.CompanyName, Website: snapshot.Website,
+		Description: snapshot.Description,
+		Services:    make([]domain.SenderServiceSnapshot, len(snapshot.Services)),
+	}
+	for i, service := range snapshot.Services {
+		result.Services[i] = domain.SenderServiceSnapshot{Name: service.Name, Short: service.Short, Full: service.Full}
+	}
+	return result
 }
 
 // requestIntentError переводит ошибку сценария заявки в исход опубликованного
@@ -72,10 +108,13 @@ func requestIntentError(err error) error {
 	case errors.Is(err, ports.ErrRequestNotFound):
 		return fmt.Errorf("%w: %v", requestintent.ErrNotFound, err)
 	case errors.Is(err, domain.ErrOfferRequired),
+		errors.Is(err, domain.ErrRequestSubmissionConflict),
 		errors.Is(err, domain.ErrEmptyOfferContent),
 		errors.Is(err, domain.ErrEmptyID),
 		errors.Is(err, domain.ErrMissingActor),
-		errors.Is(err, domain.ErrMissingTime):
+		errors.Is(err, domain.ErrMissingTime),
+		errors.Is(err, domain.ErrRequestLimitReached),
+		errors.Is(err, domain.ErrActiveRequestLimitReached):
 		return fmt.Errorf("%w: %v", requestintent.ErrRejected, err)
 	default:
 		return fmt.Errorf("%w: %v", requestintent.ErrUnavailable, err)

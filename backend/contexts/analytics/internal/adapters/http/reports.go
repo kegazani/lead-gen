@@ -1,8 +1,6 @@
 package httpapi
 
 import (
-	"bytes"
-	"encoding/csv"
 	"errors"
 	"net/http"
 	"strings"
@@ -44,10 +42,20 @@ func (s *Server) handleReports(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.render(w, http.StatusOK, pageReports, components.Page{
-		Layout:  components.Layout{Title: "Отчётность"},
-		Sidebar: components.ConsoleNav(s.console, components.ConsoleSectionReports),
-		View:    view,
+		Layout:  components.Layout{Title: consoleMessages().Text(msgReportsTitle)},
+		Sidebar: s.consoleNav(r),
+		View:    reportPage{ReportView: view, Live: components.Live{ID: "console-live"}, CanManageJobs: s.canManageJobs(r)},
 	})
+}
+
+// reportPage оборачивает срез отчётности областью живых объявлений: встраивание
+// сохраняет доступ к полям среза, а Live добавляет регион aria-live на страницу
+// (web-frontend-architecture, срез 7, 7.3). CanManageJobs управляет показом ссылки
+// на раздел заданий: недоступное роли не показывается (design.md, Решение 9).
+type reportPage struct {
+	query.ReportView
+	Live          components.Live
+	CanManageJobs bool
 }
 
 // handleReportsJSON обслуживает GET /reports.json: те же агрегаты в JSON. Записи
@@ -73,23 +81,14 @@ func (s *Server) handleReportsCSV(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	var buffer bytes.Buffer
-	buffer.WriteString("\ufeff")
-	writer := csv.NewWriter(&buffer)
-	for _, row := range query.ExportRows(view) {
-		if err := writer.Write(row); err != nil {
-			http.Error(w, "сборка выгрузки: "+err.Error(), http.StatusInternalServerError)
-			return
-		}
-	}
-	writer.Flush()
-	if err := writer.Error(); err != nil {
+	body, err := query.RenderCSV(view)
+	if err != nil {
 		http.Error(w, "сборка выгрузки: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	w.Header().Set("Content-Type", "text/csv; charset=utf-8")
-	w.Header().Set("Content-Disposition", `attachment; filename="`+reportFilename("csv")+`"`)
-	_, _ = buffer.WriteTo(w)
+	w.Header().Set("Content-Type", query.CSVContentType)
+	w.Header().Set("Content-Disposition", `attachment; filename="`+query.ExportFilename("csv", time.Now())+"\"")
+	_, _ = w.Write(body)
 }
 
 // handleReportsXLSX обслуживает GET /reports/export.xlsx: выгрузка отчёта в XLSX.
@@ -99,14 +98,14 @@ func (s *Server) handleReportsXLSX(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	var buffer bytes.Buffer
-	if err := writeXLSX(&buffer, "Отчёт", query.ExportRows(view)); err != nil {
+	body, err := query.RenderXLSX(view)
+	if err != nil {
 		http.Error(w, "сборка выгрузки: "+err.Error(), http.StatusInternalServerError)
 		return
 	}
-	w.Header().Set("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-	w.Header().Set("Content-Disposition", `attachment; filename="`+reportFilename("xlsx")+`"`)
-	_, _ = buffer.WriteTo(w)
+	w.Header().Set("Content-Type", query.XLSXContentType)
+	w.Header().Set("Content-Disposition", `attachment; filename="`+query.ExportFilename("xlsx", time.Now())+"\"")
+	_, _ = w.Write(body)
 }
 
 // exportView собирает срез для выгрузки: проверяет доступ и разбор фильтров.
@@ -177,9 +176,4 @@ func parsePeriodParam(value string, endOfDay bool) (time.Time, error) {
 		return time.Time{}, errors.New("период должен быть датой ГГГГ-ММ-ДД или меткой RFC3339")
 	}
 	return parsed, nil
-}
-
-// reportFilename собирает имя файла выгрузки отчёта с датой.
-func reportFilename(extension string) string {
-	return "report-" + time.Now().UTC().Format("20060102") + "." + extension
 }

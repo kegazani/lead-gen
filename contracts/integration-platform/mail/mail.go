@@ -9,9 +9,15 @@ package mail
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"strings"
 )
+
+// ErrOutcomeUnknown означает, что SMTP-сервер мог принять письмо, но клиент
+// потерял подтверждение после передачи DATA. Такой исход нельзя автоматически
+// повторять без сверки с почтовым ящиком.
+var ErrOutcomeUnknown = errors.New("mail: исход отправки неизвестен")
 
 // Port — порт отправки письма. Реализуется адаптером доставки (в срезе — SMTP).
 type Port interface {
@@ -22,6 +28,10 @@ type Port interface {
 
 // Message — собранное письмо, готовое к доставке.
 type Message struct {
+	// MessageID — стабильный уникальный идентификатор отправляемого сообщения.
+	// Используется для сверки результата внешней отправки; не гарантирует
+	// дедупликацию на стороне почтового провайдера.
+	MessageID string
 	// From — адрес отправителя. Обязателен.
 	From string
 	// To — адрес получателя. Обязателен.
@@ -40,6 +50,9 @@ func (m Message) Validate() error {
 	}
 	if strings.TrimSpace(m.To) == "" {
 		invalid = append(invalid, "to")
+	}
+	if strings.TrimSpace(m.MessageID) == "" {
+		invalid = append(invalid, "message_id")
 	}
 	if len(invalid) > 0 {
 		return fmt.Errorf("mail: message: некорректные поля: %s", strings.Join(invalid, ", "))

@@ -1,20 +1,21 @@
 {{- define "content" -}}
 {{- with .View -}}
+{{ template "live" .Live }}
 <header class="page-head">
-  <h1>Форумы</h1>
+  <h1>{{ text "lead.forum.title" }}</h1>
 </header>
 
 <section class="panel">
-  <h2>Поиск сигналов</h2>
+  <h2>{{ text "lead.forum.search" }}</h2>
   <form method="get" action="/forum-signals">
     {{ template "field" .QueryField }}
-    <p class="actions"><button type="submit">Искать</button></p>
+    <p class="actions"><button type="submit">{{ text "lead.forum.find" }}</button></p>
   </form>
 </section>
 
 {{- if .Query }}
 <section class="panel">
-  <h2>Сигналы по запросу «{{.Query}}»</h2>
+  <h2>{{ text "lead.forum.by_query" }} «{{.Query}}»</h2>
   <ul class="signal-list">
   {{- range .Signals }}
     <li class="signal">
@@ -23,7 +24,7 @@
       <p class="signal-meta"><a class="link" href="{{.URL}}" rel="noopener noreferrer">{{.URL}}</a>{{with .Date}} · {{.}}{{end}}</p>
     </li>
   {{- else }}
-    <li class="empty">Сигналов не найдено</li>
+    <li class="empty">{{ text "lead.forum.empty" }}</li>
   {{- end }}
   </ul>
 </section>

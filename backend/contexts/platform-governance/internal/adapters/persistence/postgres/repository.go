@@ -16,6 +16,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -45,8 +46,11 @@ type Repository struct {
 	begin func(context.Context) (pgx.Tx, error)
 }
 
-// Repository реализует порт репозитория тенантов.
-var _ ports.TenantRepository = (*Repository)(nil)
+// Repository реализует порт репозитория тенантов и read-модель списка тенантов.
+var (
+	_ ports.TenantRepository = (*Repository)(nil)
+	_ ports.TenantDirectory  = (*Repository)(nil)
+)
 
 // New создаёт репозиторий поверх пула соединений. Каждый Save выполняется в
 // собственной транзакции.
@@ -80,6 +84,50 @@ func (r *Repository) Save(ctx context.Context, tenant *domain.Tenant) error {
 	})
 }
 
+// List возвращает обзор тенантов для админ-консоли: идентификатор, название
+// компании и состояние — без пользователей и аудита. Порядок устойчив
+// (company_name, затем id), поэтому список экрана воспроизводим. Отдельный
+// индекс не заводится: список читает всю таблицу тенантов, а её размер
+// определяется числом клиентов платформы, а не объёмом данных.
+func (r *Repository) List(ctx context.Context) ([]ports.TenantSummary, error) {
+	rows, err := r.db.Query(ctx, selectTenantList)
+	if err != nil {
+		return nil, fmt.Errorf("postgres: чтение списка тенантов: %w", err)
+	}
+	defer rows.Close()
+
+	summaries := make([]ports.TenantSummary, 0)
+	for rows.Next() {
+		var (
+			id, companyName, state         string
+			description, inn, companyEmail string
+			website, legalData             string
+			profileStatus                  string
+			createdAt                      time.Time
+		)
+		if err := rows.Scan(&id, &companyName, &state, &description, &inn, &companyEmail,
+			&website, &legalData, &profileStatus, &createdAt); err != nil {
+			return nil, fmt.Errorf("postgres: разбор строки списка тенантов: %w", err)
+		}
+		summaries = append(summaries, ports.TenantSummary{
+			ID:            domain.TenantID(id),
+			CompanyName:   companyName,
+			State:         domain.TenantState(state),
+			Description:   description,
+			INN:           inn,
+			CompanyEmail:  companyEmail,
+			Website:       website,
+			LegalData:     legalData,
+			ProfileStatus: domain.ProfileStatus(profileStatus),
+			CreatedAt:     createdAt,
+		})
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("postgres: чтение списка тенантов: %w", err)
+	}
+	return summaries, nil
+}
+
 // FindByID загружает тенант по идентификатору через domain.RehydrateTenant.
 // Отсутствие тенанта даёт ошибку, для которой истинно
 // errors.Is(err, ports.ErrTenantNotFound).
@@ -93,6 +141,43 @@ func (r *Repository) FindByID(ctx context.Context, id domain.TenantID) (*domain.
 		return nil, fmt.Errorf("postgres: восстановление тенанта %s: %w", id, err)
 	}
 	return tenant, nil
+}
+
+// FindByIdentity ищет тенант по идентифицирующим данным компании — ИНН или
+// email компании. Пустые значения не совпадают: идентификация задаётся только
+// непустым значением. Отсутствие даёт ports.ErrTenantNotFound.
+func (r *Repository) FindByIdentity(ctx context.Context, inn, companyEmail string) (*domain.Tenant, error) {
+	var id string
+	err := r.db.QueryRow(ctx, findTenantByIdentity, inn, companyEmail).Scan(&id)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, fmt.Errorf("%w: inn=%s email=%s", ports.ErrTenantNotFound, inn, companyEmail)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("postgres: поиск тенанта по идентифицирующим данным: %w", err)
+	}
+	return r.FindByID(ctx, domain.TenantID(id))
+}
+
+// FindUserByLogin ищет пользователя по логину (email учётной записи) среди всех
+// тенантов и возвращает тенант-владельца и идентификатор пользователя. Пустой
+// логин не совпадает. Отсутствие даёт ports.ErrTenantNotFound.
+func (r *Repository) FindUserByLogin(ctx context.Context, login string) (*domain.Tenant, domain.UserID, error) {
+	if login == "" {
+		return nil, "", fmt.Errorf("%w: пустой логин", ports.ErrTenantNotFound)
+	}
+	var tenantID, userID string
+	err := r.db.QueryRow(ctx, findUserByLogin, login).Scan(&tenantID, &userID)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, "", fmt.Errorf("%w: login=%s", ports.ErrTenantNotFound, login)
+	}
+	if err != nil {
+		return nil, "", fmt.Errorf("postgres: поиск пользователя по логину: %w", err)
+	}
+	tenant, err := r.FindByID(ctx, domain.TenantID(tenantID))
+	if err != nil {
+		return nil, "", err
+	}
+	return tenant, domain.UserID(userID), nil
 }
 
 // withTransaction выполняет fn в транзакции, если репозиторий привязан к пулу;
@@ -121,10 +206,21 @@ func (r *Repository) withTransaction(ctx context.Context, fn func(execer) error)
 // Подчинённые таблицы (пользователи, аудит) предварительно очищаются: снимок
 // содержит агрегат целиком, поэтому полная замена не оставляет удалённых строк.
 func saveSnapshot(ctx context.Context, q execer, snapshot domain.TenantSnapshot) error {
+	profileJSON, err := json.Marshal(snapshot.Profile)
+	if err != nil {
+		return fmt.Errorf("postgres: сериализация профиля тенанта %s: %w", snapshot.ID, err)
+	}
 	if _, err := q.Exec(ctx, upsertTenant,
 		snapshot.ID.String(),
 		snapshot.CompanyName,
 		snapshot.Description,
+		snapshot.INN,
+		snapshot.CompanyEmail,
+		snapshot.Website,
+		snapshot.LegalData,
+		snapshot.RegistrationReason,
+		profileJSON,
+		string(snapshot.ProfileStatus),
 		snapshot.CreatedAt,
 		string(snapshot.State),
 		int64(snapshot.Version),
@@ -140,6 +236,7 @@ func saveSnapshot(ctx context.Context, q execer, snapshot domain.TenantSnapshot)
 			position,
 			user.ID.String(),
 			user.Login,
+			user.PasswordHash,
 			roleStrings(user.Roles),
 		); err != nil {
 			return fmt.Errorf("postgres: запись пользователя %s: %w", user.ID, err)
@@ -171,11 +268,20 @@ func saveSnapshot(ctx context.Context, q execer, snapshot domain.TenantSnapshot)
 func loadSnapshot(ctx context.Context, q execer, id domain.TenantID) (domain.TenantSnapshot, error) {
 	snapshot := domain.TenantSnapshot{}
 	var state string
+	var profileStatus string
+	var profileRaw []byte
 	var version int64
 	err := q.QueryRow(ctx, selectTenant, id.String()).Scan(
 		&snapshot.ID,
 		&snapshot.CompanyName,
 		&snapshot.Description,
+		&snapshot.INN,
+		&snapshot.CompanyEmail,
+		&snapshot.Website,
+		&snapshot.LegalData,
+		&snapshot.RegistrationReason,
+		&profileRaw,
+		&profileStatus,
 		&snapshot.CreatedAt,
 		&state,
 		&version,
@@ -187,6 +293,12 @@ func loadSnapshot(ctx context.Context, q execer, id domain.TenantID) (domain.Ten
 		return domain.TenantSnapshot{}, fmt.Errorf("postgres: чтение тенанта %s: %w", id, err)
 	}
 	snapshot.State = domain.TenantState(state)
+	snapshot.ProfileStatus = domain.ProfileStatus(profileStatus)
+	if len(profileRaw) > 0 {
+		if err := json.Unmarshal(profileRaw, &snapshot.Profile); err != nil {
+			return domain.TenantSnapshot{}, fmt.Errorf("postgres: разбор профиля тенанта %s: %w", id, err)
+		}
+	}
 	if version > 0 {
 		snapshot.Version = uint64(version)
 	}
@@ -215,15 +327,16 @@ func queryUsers(ctx context.Context, q execer, id domain.TenantID) ([]domain.Ten
 
 	users := make([]domain.TenantUserSnapshot, 0)
 	for rows.Next() {
-		var userID, login string
+		var userID, login, passwordHash string
 		var roles []string
-		if err := rows.Scan(&userID, &login, &roles); err != nil {
+		if err := rows.Scan(&userID, &login, &passwordHash, &roles); err != nil {
 			return nil, fmt.Errorf("postgres: разбор пользователя тенанта %s: %w", id, err)
 		}
 		users = append(users, domain.TenantUserSnapshot{
-			ID:    domain.UserID(userID),
-			Login: login,
-			Roles: roleValues(roles),
+			ID:           domain.UserID(userID),
+			Login:        login,
+			PasswordHash: passwordHash,
+			Roles:        roleValues(roles),
 		})
 	}
 	if err := rows.Err(); err != nil {
@@ -281,20 +394,27 @@ func roleValues(roles []string) []domain.Role {
 // схеме сервиса (Schema) и не параметризует её извне.
 const (
 	upsertTenant = `
-INSERT INTO "platform-governance".tenant (id, company_name, description, created_at, state, version)
-VALUES ($1, $2, $3, $4, $5, $6)
+INSERT INTO "platform-governance".tenant (id, company_name, description, inn, company_email, website, legal_data, registration_reason, profile, profile_status, created_at, state, version)
+VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
 ON CONFLICT (id) DO UPDATE SET
-    company_name = EXCLUDED.company_name,
-    description  = EXCLUDED.description,
-    created_at   = EXCLUDED.created_at,
-    state        = EXCLUDED.state,
-    version      = EXCLUDED.version`
+    company_name        = EXCLUDED.company_name,
+    description         = EXCLUDED.description,
+    inn                 = EXCLUDED.inn,
+    company_email       = EXCLUDED.company_email,
+    website             = EXCLUDED.website,
+    legal_data          = EXCLUDED.legal_data,
+    registration_reason = EXCLUDED.registration_reason,
+    profile             = EXCLUDED.profile,
+    profile_status      = EXCLUDED.profile_status,
+    created_at          = EXCLUDED.created_at,
+    state               = EXCLUDED.state,
+    version             = EXCLUDED.version`
 
 	deleteUsers = `DELETE FROM "platform-governance".tenant_user WHERE tenant_id = $1`
 
 	insertUser = `
-INSERT INTO "platform-governance".tenant_user (tenant_id, position, id, login, roles)
-VALUES ($1, $2, $3, $4, $5)`
+INSERT INTO "platform-governance".tenant_user (tenant_id, position, id, login, password_hash, roles)
+VALUES ($1, $2, $3, $4, $5, $6)`
 
 	deleteAudit = `DELETE FROM "platform-governance".audit_record WHERE tenant_id = $1`
 
@@ -303,12 +423,30 @@ INSERT INTO "platform-governance".audit_record (tenant_id, position, id, actor, 
 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`
 
 	selectTenant = `
-SELECT id, company_name, description, created_at, state, version
+SELECT id, company_name, description, inn, company_email, website, legal_data, registration_reason, profile, profile_status, created_at, state, version
 FROM "platform-governance".tenant
 WHERE id = $1`
 
+	selectTenantList = `
+SELECT id, company_name, state, description, inn, company_email, website, legal_data, profile_status, created_at
+FROM "platform-governance".tenant
+ORDER BY company_name, id`
+
+	findTenantByIdentity = `
+SELECT id
+FROM "platform-governance".tenant
+WHERE (inn <> '' AND inn = $1)
+   OR (company_email <> '' AND company_email = $2)
+LIMIT 1`
+
+	findUserByLogin = `
+SELECT tenant_id, id
+FROM "platform-governance".tenant_user
+WHERE login = $1
+LIMIT 1`
+
 	selectUsers = `
-SELECT id, login, roles
+SELECT id, login, password_hash, roles
 FROM "platform-governance".tenant_user
 WHERE tenant_id = $1
 ORDER BY position`

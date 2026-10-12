@@ -11,11 +11,11 @@ import (
 // riskyDraft помечает один черновик признаком риска: внешний предикат сообщает
 // признаки, а запрос лишь показывает результат проверки.
 func riskyDraft(id domain.DraftID) domain.CanBeDecidedInPackage {
-	return func(draftID domain.DraftID, _ int) []domain.RiskReason {
-		if draftID == id {
-			return []domain.RiskReason{domain.RiskPersonalDataDetected}
+	return func(_ context.Context, req domain.RiskFactsRequest) ([]domain.RiskReason, error) {
+		if req.DraftID == id {
+			return []domain.RiskReason{domain.RiskStopRuleTriggered}, nil
 		}
-		return nil
+		return nil, nil
 	}
 }
 
@@ -41,7 +41,7 @@ func TestDraftQueueShowsRiskPerDraftAndFilters(t *testing.T) {
 	if item.DraftID != domain.DraftID("draft-pending") {
 		t.Fatalf("черновик: got %q", item.DraftID)
 	}
-	if !item.Risky() || len(item.RiskReasons) != 1 || item.RiskReasons[0] != domain.RiskPersonalDataDetected {
+	if !item.Risky() || len(item.RiskReasons) != 1 || item.RiskReasons[0] != domain.RiskStopRuleTriggered {
 		t.Fatalf("результат проверки риска не показан: %+v", item.RiskReasons)
 	}
 	if item.CampaignID != campaign.ID() {
@@ -92,7 +92,7 @@ func TestDraftQueueChannelFilter(t *testing.T) {
 	if err != nil {
 		t.Fatalf("ParseActionChannel: %v", err)
 	}
-	handler := NewDraftQueueHandler(repo, repo, nil, allowAccess())
+	handler := NewDraftQueueHandler(repo, repo, riskFor(), allowAccess())
 	items, err := handler.Handle(context.Background(), DraftQueue{
 		TenantID: domain.TenantID("tenant-1"),
 		Actor:    domain.ActorID("operator-1"),
@@ -112,7 +112,7 @@ func TestDraftQueueExcludesForeignTenant(t *testing.T) {
 	mustDraft(t, foreign, domain.DraftID("draft-foreign"), testSpec(t, domain.ActionChannelEmailName))
 	repo := newFakeRepository(own, foreign)
 
-	handler := NewDraftQueueHandler(repo, repo, nil, allowAccess())
+	handler := NewDraftQueueHandler(repo, repo, riskFor(), allowAccess())
 	items, err := handler.Handle(context.Background(), DraftQueue{
 		TenantID: domain.TenantID("tenant-1"),
 		Actor:    domain.ActorID("operator-1"),
@@ -130,7 +130,7 @@ func TestDraftQueueExcludesForeignTenant(t *testing.T) {
 func TestDraftQueueRejectsUnknownRiskFilter(t *testing.T) {
 	campaign := campaignWithDrafts(t)
 	repo := newFakeRepository(campaign)
-	handler := NewDraftQueueHandler(repo, repo, nil, allowAccess())
+	handler := NewDraftQueueHandler(repo, repo, riskFor(), allowAccess())
 	_, err := handler.Handle(context.Background(), DraftQueue{
 		TenantID: domain.TenantID("tenant-1"),
 		Actor:    domain.ActorID("operator-1"),
@@ -144,7 +144,7 @@ func TestDraftQueueRejectsUnknownRiskFilter(t *testing.T) {
 func TestDraftQueueRequiresAccess(t *testing.T) {
 	campaign := campaignWithDrafts(t)
 	repo := newFakeRepository(campaign)
-	handler := NewDraftQueueHandler(repo, repo, nil, &stubAccess{allowed: false})
+	handler := NewDraftQueueHandler(repo, repo, riskFor(), &stubAccess{allowed: false})
 	_, err := handler.Handle(context.Background(), DraftQueue{
 		TenantID: domain.TenantID("tenant-1"),
 		Actor:    domain.ActorID("operator-1"),

@@ -17,12 +17,24 @@ import (
 type Persistence struct {
 	// Projection — хранилище эксплуатационной проекции дашборда (PostgreSQL).
 	Projection ports.ProjectionStore
+
+	// Exports — хранилище заданий длительной выгрузки отчёта (PostgreSQL).
+	Exports ports.ReportExportStore
+
+	// Insight — хранилище снимков качества поиска и применений рекомендаций
+	// (PostgreSQL). Закрывает шов проводки: composition root передаёт его в
+	// Config.InsightStore, иначе снимки остаются in-memory dev. Порт публикуется
+	// тем же способом, что Projection и Exports — полем Persistence.
+	Insight ports.InsightStore
 }
 
 // NewPostgresPersistence собирает PostgreSQL-адаптеры хранилища аналитики поверх
-// пула зелёной зоны: проекция дашборда хранится в схеме analytics.
+// пула зелёной зоны: проекция дашборда, задания выгрузки отчёта и снимки качества
+// поиска с применениями рекомендаций хранятся в схеме analytics.
 func NewPostgresPersistence(pool *pgxpool.Pool) Persistence {
 	return Persistence{
 		Projection: postgres.NewProjectionStore(pool),
+		Exports:    postgres.NewReportExportStore(pool),
+		Insight:    postgres.NewInsightStore(pool),
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
@@ -20,7 +21,8 @@ import (
 // оператором, а атомарность записи агрегата и его событий обеспечивает
 // unit-of-work, привязывающий репозиторий к транзакции через NewTx.
 type Repository struct {
-	db execer
+	db   execer
+	ping func(context.Context) error
 }
 
 // Repository реализует порт репозитория заявок.
@@ -31,7 +33,15 @@ func NewRepository(pool *pgxpool.Pool) *Repository {
 	if pool == nil {
 		panic("postgres: NewRepository с nil-пулом")
 	}
-	return &Repository{db: pool}
+	return &Repository{db: pool, ping: pool.Ping}
+}
+
+// Ping проверяет реальную доступность пула без чтения или изменения доменных данных.
+func (r *Repository) Ping(ctx context.Context) error {
+	if r == nil || r.ping == nil {
+		return errors.New("request-fulfillment: PostgreSQL pool is not configured")
+	}
+	return r.ping(ctx)
 }
 
 // NewTx создаёт репозиторий, привязанный к активной транзакции. Запись идёт в
@@ -105,6 +115,47 @@ func (r *Repository) FindByID(ctx context.Context, id domain.RequestID) (*domain
 	return request, nil
 }
 
+// FindByCampaign загружает заявку по идентификатору кампании в границах
+// тенанта. Кампания хранится в снимке (JSONB); запрос обслуживается выраженным
+// индексом (миграция 0003). Отсутствие даёт ports.ErrRequestNotFound.
+func (r *Repository) FindByCampaign(ctx context.Context, tenantID domain.TenantID, campaignID domain.CampaignID) (*domain.Request, error) {
+	if strings.TrimSpace(string(campaignID)) == "" {
+		return nil, fmt.Errorf("%w: пустая кампания", ports.ErrRequestNotFound)
+	}
+	rows, err := r.db.Query(ctx, selectRequestsByCampaign, tenantID.String(), campaignID.String())
+	if err != nil {
+		return nil, fmt.Errorf("postgres: чтение заявки по кампании %s: %w", campaignID, err)
+	}
+	defer rows.Close()
+
+	var snapshots []domain.RequestSnapshot
+	for rows.Next() {
+		var raw string
+		if err := rows.Scan(&raw); err != nil {
+			return nil, fmt.Errorf("postgres: разбор заявки по кампании %s: %w", campaignID, err)
+		}
+		var snapshot domain.RequestSnapshot
+		if err := json.Unmarshal([]byte(raw), &snapshot); err != nil {
+			return nil, fmt.Errorf("postgres: разбор снимка заявки: %w", err)
+		}
+		snapshots = append(snapshots, snapshot)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("postgres: чтение заявки по кампании %s: %w", campaignID, err)
+	}
+	if len(snapshots) == 0 {
+		return nil, fmt.Errorf("%w: кампания %s", ports.ErrRequestNotFound, campaignID)
+	}
+	if len(snapshots) > 1 {
+		return nil, fmt.Errorf("postgres: кампания %s неоднозначна: найдено %d заявок", campaignID, len(snapshots))
+	}
+	request, err := domain.RehydrateRequest(snapshots[0])
+	if err != nil {
+		return nil, fmt.Errorf("postgres: восстановление заявки %s: %w", snapshots[0].ID, err)
+	}
+	return request, nil
+}
+
 // ListByStatus возвращает заявки в заданном статусе, упорядоченные по
 // идентификатору. Обслуживает чтение очереди валидации (submitted).
 func (r *Repository) ListByStatus(ctx context.Context, status domain.RequestStatus) ([]*domain.Request, error) {
@@ -134,6 +185,55 @@ func (r *Repository) ListByStatus(ctx context.Context, status domain.RequestStat
 		return nil, fmt.Errorf("postgres: чтение заявок в статусе %q: %w", status, err)
 	}
 	return requests, nil
+}
+
+// ListByTenant возвращает все заявки тенанта, упорядоченные по идентификатору.
+// Обслуживает историю заявок клиента и список заявок компании в админке.
+func (r *Repository) ListByTenant(ctx context.Context, tenantID domain.TenantID) ([]*domain.Request, error) {
+	rows, err := r.db.Query(ctx, selectRequestsByTenant, tenantID.String())
+	if err != nil {
+		return nil, fmt.Errorf("postgres: чтение заявок тенанта %s: %w", tenantID, err)
+	}
+	defer rows.Close()
+
+	requests := make([]*domain.Request, 0)
+	for rows.Next() {
+		var raw string
+		if err := rows.Scan(&raw); err != nil {
+			return nil, fmt.Errorf("postgres: разбор заявки тенанта %s: %w", tenantID, err)
+		}
+		var snapshot domain.RequestSnapshot
+		if err := json.Unmarshal([]byte(raw), &snapshot); err != nil {
+			return nil, fmt.Errorf("postgres: разбор снимка заявки: %w", err)
+		}
+		request, err := domain.RehydrateRequest(snapshot)
+		if err != nil {
+			return nil, fmt.Errorf("postgres: восстановление заявки %s: %w", snapshot.ID, err)
+		}
+		requests = append(requests, request)
+	}
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("postgres: чтение заявок тенанта %s: %w", tenantID, err)
+	}
+	return requests, nil
+}
+
+// CountByTenant возвращает число заявок тенанта в нетерминальных статусах.
+func (r *Repository) CountByTenant(ctx context.Context, tenantID domain.TenantID) (int, error) {
+	var count int
+	if err := r.db.QueryRow(ctx, countRequestsNonTerminal, tenantID.String()).Scan(&count); err != nil {
+		return 0, fmt.Errorf("postgres: подсчёт заявок тенанта %s: %w", tenantID, err)
+	}
+	return count, nil
+}
+
+// CountInWork возвращает число заявок тенанта в статусе processing.
+func (r *Repository) CountInWork(ctx context.Context, tenantID domain.TenantID) (int, error) {
+	var count int
+	if err := r.db.QueryRow(ctx, countRequestsProcessing, tenantID.String()).Scan(&count); err != nil {
+		return 0, fmt.Errorf("postgres: подсчёт заявок в работе тенанта %s: %w", tenantID, err)
+	}
+	return count, nil
 }
 
 // loadSnapshot читает снимок заявки. Отсутствие даёт ports.ErrRequestNotFound.
@@ -179,4 +279,26 @@ SELECT snapshot::text
 FROM "request-fulfillment".request
 WHERE status = $1
 ORDER BY id`
+
+	selectRequestsByTenant = `
+SELECT snapshot::text
+FROM "request-fulfillment".request
+WHERE tenant_id = $1
+ORDER BY id`
+
+	selectRequestsByCampaign = `
+SELECT snapshot::text
+FROM "request-fulfillment".request
+WHERE tenant_id = $1 AND snapshot->>'CampaignID' = $2
+ORDER BY id`
+
+	countRequestsNonTerminal = `
+SELECT count(*)
+FROM "request-fulfillment".request
+WHERE tenant_id = $1 AND status NOT IN ('fulfilled', 'rejected', 'cancelled', 'failed')`
+
+	countRequestsProcessing = `
+SELECT count(*)
+FROM "request-fulfillment".request
+WHERE tenant_id = $1 AND status = 'processing'`
 )

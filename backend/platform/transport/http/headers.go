@@ -25,6 +25,7 @@ const (
 	headerTenantID       = "X-Tenant-Id"
 	headerCorrelationID  = "X-Correlation-Id"
 	headerCausationID    = "X-Causation-Id"
+	headerWorkflowID     = "X-Workflow-Id"
 	headerName           = "X-Contract-Name"
 	headerSchemaVersion  = "X-Schema-Version"
 	headerIdempotencyKey = "Idempotency-Key"
@@ -47,6 +48,9 @@ func writeEnvelope(h http.Header, e contracts.Envelope) {
 	if e.CausationID != "" {
 		h.Set(headerCausationID, e.CausationID)
 	}
+	if e.WorkflowID != "" {
+		h.Set(headerWorkflowID, e.WorkflowID)
+	}
 	if e.Name != "" {
 		h.Set(headerName, e.Name)
 	}
@@ -64,6 +68,7 @@ func readEnvelope(h http.Header) contracts.Envelope {
 		TenantID:      h.Get(headerTenantID),
 		CorrelationID: h.Get(headerCorrelationID),
 		CausationID:   h.Get(headerCausationID),
+		WorkflowID:    h.Get(headerWorkflowID),
 		Name:          h.Get(headerName),
 		SchemaVersion: h.Get(headerSchemaVersion),
 	}

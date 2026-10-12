@@ -1,0 +1,39 @@
+{{- define "content" -}}
+<section class="console-tenant">
+  <h1>{{ text "console.tenant.title" }}</h1>
+  {{- with .View.Notice }}
+  <p class="notice" role="status">{{.}}</p>
+  {{- end }}
+  <p class="tenant-label">{{ text "console.tenant.active" }}: {{ .View.TenantID }}</p>
+  {{- if .View.Tenants }}
+  <table class="table">
+    <thead>
+      <tr><th>{{ text "console.tenant.col.id" }}</th><th>{{ text "console.tenant.col.company" }}</th><th>{{ text "console.tenant.col.state" }}</th><th>{{ text "console.tenant.col.action" }}</th></tr>
+    </thead>
+    <tbody>
+      {{- range .View.Tenants }}
+      <tr>
+        <td>{{ .ID }}</td>
+        <td>{{ .CompanyName }}</td>
+        <td><span class="status status-{{ .Class }}">{{ .StateLabel }}</span></td>
+        <td>
+          {{- if .Active }}
+          <span class="status status-active">{{ text "console.tenant.current" }}</span>
+          {{- else }}
+          <form method="post" action="/console/tenant/switch" class="inline-form">
+            <input type="hidden" name="csrf" value="{{ $.View.CSRF }}">
+            <input type="hidden" name="tenant_id" value="{{ .ID }}">
+            <input type="hidden" name="actor" value="{{ $.View.Actor }}">
+            <button type="submit">{{ text "console.tenant.switch" }}</button>
+          </form>
+          {{- end }}
+        </td>
+      </tr>
+      {{- end }}
+    </tbody>
+  </table>
+  {{- else }}
+  <p class="portal-empty">{{ text "console.tenant.empty" }}</p>
+  {{- end }}
+</section>
+{{- end -}}

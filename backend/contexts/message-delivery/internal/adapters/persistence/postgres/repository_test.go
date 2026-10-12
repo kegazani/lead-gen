@@ -103,6 +103,7 @@ func newMessage(t *testing.T, id, key string) *domain.Message {
 		ID:               domain.MessageID(id),
 		TenantID:         domain.TenantID("tenant-1"),
 		ApprovedActionID: domain.ApprovedActionID("act-1"),
+		CampaignID:       "handoff-" + id,
 		RecipientRef:     domain.RecipientRef("ref-1"),
 		Address:          address,
 		SenderDomain:     sender,
@@ -134,6 +135,9 @@ func TestMessageRepository_RoundTrip(t *testing.T) {
 	}
 	if byID.Subject() != "Тема" || byID.Body() != "Тело" {
 		t.Fatalf("содержимое не сохранено: %q / %q", byID.Subject(), byID.Body())
+	}
+	if byID.CampaignID() != "handoff-msg-1" {
+		t.Fatalf("ссылка на кампанию не сохранена: %q", byID.CampaignID())
 	}
 	byKey, err := repo.FindByIdempotencyKey(ctx, "tenant-1|act-1")
 	if err != nil {
@@ -195,6 +199,28 @@ func TestMessageRepository_ListRetryable(t *testing.T) {
 	}
 	if len(exhausted) != 0 {
 		t.Fatalf("исчерпанный лимит не должен возвращать сообщение: %+v", exhausted)
+	}
+}
+
+func TestMessageRepository_UnknownOutcomePersistsAcrossAdapterRestart(t *testing.T) {
+	pool := testPool(t)
+	truncate(t)
+	ctx := context.Background()
+	message := newMessage(t, "msg-unknown", "tenant-1|act-unknown")
+	startAndRecord(t, message, domain.OutcomeUnknown, "outcome-unknown")
+	if err := postgres.NewMessageRepository(pool).Save(ctx, message); err != nil {
+		t.Fatal(err)
+	}
+	restarted := postgres.NewMessageRepository(pool)
+	restored, err := restarted.FindByIdempotencyKey(ctx, "tenant-1|act-unknown")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if restored.Status() != domain.MessageStatusUnknown || restored.IsRetryable() {
+		t.Fatalf("неизвестный исход восстановлен неверно: status=%q retryable=%v", restored.Status(), restored.IsRetryable())
+	}
+	if due, err := restarted.ListRetryable(ctx, 10, 10); err != nil || len(due) != 0 {
+		t.Fatalf("unknown не должен попадать в retry-выборку: due=%v err=%v", due, err)
 	}
 }
 

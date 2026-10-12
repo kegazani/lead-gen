@@ -1,0 +1,55 @@
+{{- define "node-card" -}}
+<article class="card topology-card" data-live-announce="{{ text "topology.node.loaded" }}" data-focus-after-swap="#topology-node-heading">
+  {{- if .Found }}
+  <h2 id="topology-node-heading">{{ .Card.Label }}</h2>
+  <dl class="job-facts">
+    <dt>{{ text "topology.node.id" }}</dt><dd>{{ .Card.ID }}</dd>
+    <dt>{{ text "topology.node.kind" }}</dt><dd>{{ .Card.KindLabel }}</dd>
+    <dt>{{ text "topology.node.zone" }}</dt><dd>{{ .Card.ZoneLabel }}</dd>
+    <dt>{{ text "topology.node.state" }}</dt><dd><span class="status status-{{ .Card.StateClass }}"><span aria-hidden="true">{{ .Card.StateIcon }}</span> {{ .Card.StateLabel }}</span></dd>
+    <dt>{{ text "topology.node.roles" }}</dt><dd>{{ range $i, $value := .Card.Roles }}{{ if $i }}, {{ end }}{{ $value }}{{ end }}</dd>
+    <dt>{{ text "topology.node.groups" }}</dt><dd>{{ range $i, $value := .Card.Groups }}{{ if $i }}, {{ end }}{{ $value }}{{ end }}</dd>
+    {{- if .Card.Addresses }}
+    <dt>{{ text "topology.node.addresses" }}</dt><dd>{{ range $i, $value := .Card.Addresses }}{{ if $i }}, {{ end }}{{ $value }}{{ end }}</dd>
+    {{- end }}
+    <dt>{{ text "topology.node.contracts" }}</dt><dd>{{ range $i, $value := .Card.Contracts }}{{ if $i }}, {{ end }}{{ $value }}{{ end }}</dd>
+  </dl>
+  {{- if .Card.Connections }}
+  <h3>{{ text "topology.node.connections" }}</h3>
+  <table class="table">
+    <thead>
+      <tr>
+        <th>{{ text "topology.col.edge" }}</th>
+        <th>{{ text "topology.col.service" }}</th>
+        <th>{{ text "topology.col.transport" }}</th>
+        <th>{{ text "topology.col.mechanism" }}</th>
+        <th>{{ text "topology.col.contract" }}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {{- range .Card.Connections }}
+      <tr>
+        <td>{{ .Edge }}</td>
+        <td>{{ .Direction }} {{ .Peer }}</td>
+        <td>{{ .Transport }}</td>
+        <td>{{ .Mechanism }}</td>
+        <td>{{ .Contract }}</td>
+      </tr>
+      {{- end }}
+    </tbody>
+  </table>
+  {{- end }}
+  {{- else }}
+  <h2 id="topology-node-heading">{{ .Missing }}</h2>
+  {{- end }}
+</article>
+{{- end -}}
+
+{{- define "content" -}}
+<section class="console-topology-node">
+  <h1>{{ text "topology.node.title" }}</h1>
+  <p><a href="{{ .View.Card.BackURL }}">{{ text "topology.node.back" }}</a></p>
+  {{ template "node-card" .View }}
+  {{ template "live" .View.Live }}
+</section>
+{{- end -}}

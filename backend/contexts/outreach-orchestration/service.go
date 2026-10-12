@@ -14,8 +14,11 @@ import (
 	composition "lead-gen/backend/platform/composition"
 	"lead-gen/backend/platform/consoleauth"
 	"lead-gen/backend/platform/observability/observ"
+	"lead-gen/backend/platform/readiness"
 	"lead-gen/backend/platform/transport/amqp"
+	"lead-gen/contracts/content-production/contentversion"
 	"lead-gen/contracts/outreach-orchestration/approvedaction"
+	"lead-gen/contracts/platform-governance/accessdecision"
 	"lead-gen/frontend/components"
 )
 
@@ -31,12 +34,19 @@ type Config struct {
 	// Interval — интервал публикации approved-action транспортным relay.
 	Interval time.Duration
 
-	// Grants — права доступа среза. По умолчанию доступ закрыт.
+	// Grants — права доступа dev/test-двойника: используются только когда не
+	// задан Access (dev-сборка без владельца). По умолчанию доступ закрыт.
 	Grants []Grant
 
+	// Access — решение о доступе из контракта access-decision владельца
+	// platform-governance. Продуктовый путь (cmd/lead-gen) задаёт его явно,
+	// включая честный недоступный решатель, когда владелец не собран. nil —
+	// dev-сборка на правах Grants.
+	Access accessdecision.Decider
+
 	// Risk — внешний предикат признаков риска пакетного пути. ОБЯЗАТЕЛЕН:
-	// передаётся в Build явно (реальный или осознанная заглушка
-	// NoUpstreamRiskChecks). См. Params.Risk.
+	// собирается через NewRiskFacts поверх портов владельцев и передаётся в Build
+	// явно (см. Params.Risk). Заглушки на продуктовом пути нет.
 	Risk domain.CanBeDecidedInPackage
 
 	// Publisher — издатель брокера. nil означает, что публикация не собирается:
@@ -67,6 +77,9 @@ type Config struct {
 	// сюда NewPostgresPersistence, и тогда агрегат и события переживают рестарт,
 	// а движок последовательностей пишет их атомарно в PostgreSQL.
 	Persistence Persistence
+	// ContentVersions — опубликованный источник exact-version владельца
+	// content-production для редакторского чтения.
+	ContentVersions contentversion.Source
 
 	// ConsoleAuth — учётные данные оператора консольных экранов рассылок (срез 4
 	// web-frontend-architecture). Пустое значение означает, что консоль не
@@ -75,6 +88,14 @@ type Config struct {
 
 	// Console — базовые адреса сервисов консоли для общей навигации по разделам.
 	Console components.ConsoleBases
+
+	// BasePath — внешний префикс пути консоли под единым origin (admin-proxy).
+	// Пусто — корень origin.
+	BasePath string
+
+	// ExternalPrefixes — префиксы других консолей единого origin: ссылки на них
+	// в навигации не переписываются под собственный префикс.
+	ExternalPrefixes []string
 
 	// Наблюдаемость сервиса: логгер, метрики и трейсер впрыскиваются
 	// composition root'ом; обязательны.
@@ -86,13 +107,14 @@ type Config struct {
 // Service — собранный сервис outreach-orchestration. Реализует
 // composition.Service: раннер на каждую объявленную роль.
 type Service struct {
-	slice    *Slice
-	sink     *AMQPSink
-	apiAddr  string
-	interval time.Duration
-	logger   observ.Logger
-	metrics  observ.Metrics
-	tracer   observ.Tracer
+	slice     *Slice
+	sink      *AMQPSink
+	apiAddr   string
+	interval  time.Duration
+	logger    observ.Logger
+	metrics   observ.Metrics
+	tracer    observ.Tracer
+	readiness *ReadinessReport
 }
 
 // New собирает сервис из in-memory адаптеров. Публикация собирается, если задан
@@ -126,7 +148,9 @@ func New(cfg Config) (*Service, error) {
 	var sink relay.Sink
 	var amqpSink *AMQPSink
 	if cfg.ApprovedActionSink == nil && cfg.ApprovedActionConsumer == nil && cfg.Publisher != nil {
-		amqpSink = NewAMQPSink(cfg.Publisher, cfg.Interval)
+		amqpSink = NewAMQPSink(cfg.Publisher, cfg.Interval).
+			WithLogger(cfg.Logger).
+			WithMetrics(cfg.Metrics)
 		sink = amqpSink
 	}
 
@@ -139,27 +163,51 @@ func New(cfg Config) (*Service, error) {
 
 	slice, err := Build(Params{
 		Grants:                  cfg.Grants,
+		Access:                  cfg.Access,
 		Risk:                    cfg.Risk,
 		Sink:                    sink,
 		ApprovedActionSink:      cfg.ApprovedActionSink,
 		ApprovedActionTransport: transport,
 		ApprovedActionConsumer:  cfg.ApprovedActionConsumer,
 		Persistence:             cfg.Persistence,
+		ContentVersions:         cfg.ContentVersions,
 		ConsoleAuth:             cfg.ConsoleAuth,
 		Console:                 cfg.Console,
+		BasePath:                cfg.BasePath,
+		ExternalPrefixes:        cfg.ExternalPrefixes,
 	})
 	if err != nil {
 		return nil, err
 	}
+	var publicationDestination any = amqpSink
+	if cfg.ApprovedActionSink != nil {
+		publicationDestination = cfg.ApprovedActionSink
+	} else if cfg.ApprovedActionConsumer != nil {
+		publicationDestination = cfg.ApprovedActionConsumer
+	}
+	readinessReport := NewReadinessReport(cfg.Persistence, publicationDestination)
+	slice.Readiness = readinessReport
+	slice.Server.SetReadiness(func(ctx context.Context) readiness.Snapshot {
+		return readinessReport.RoleReadiness(ctx, composition.RoleAPI)
+	})
 	return &Service{
-		slice:    slice,
-		sink:     amqpSink,
-		apiAddr:  cfg.APIAddr,
-		interval: cfg.Interval,
-		logger:   cfg.Logger,
-		metrics:  cfg.Metrics,
-		tracer:   cfg.Tracer,
+		slice:     slice,
+		sink:      amqpSink,
+		apiAddr:   cfg.APIAddr,
+		interval:  cfg.Interval,
+		logger:    cfg.Logger,
+		metrics:   cfg.Metrics,
+		tracer:    cfg.Tracer,
+		readiness: readinessReport,
 	}, nil
+}
+
+// RoleReadiness сообщает владельческую готовность роли, не запуская её раннер.
+func (s *Service) RoleReadiness(ctx context.Context, role composition.Role) readiness.Snapshot {
+	if s == nil || s.readiness == nil {
+		return readiness.Snapshot{Capability: string(role), Status: readiness.StatusUnknown, Ready: false}
+	}
+	return s.readiness.RoleReadiness(ctx, role)
 }
 
 // GrantsFromStrings строит права доступа среза из строковых значений флагов

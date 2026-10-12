@@ -1,17 +1,18 @@
 // Package firecrawl — адаптер внешнего движка Firecrawl (v1 HTTP API).
 //
-// Адаптер реализует сразу два порта интеграционной платформы — search.Port
-// (поиск по запросу) и crawl.Port (обход сайта и структурированная экстракция
-// контактов). Источник истины для полей — DTO контрактов lead-gen/contracts,
-// а не сырой JSON Firecrawl: здесь только прагматичное отображение ответов API
-// на типы портов. Ошибки провайдера возвращаются обычными ошибками Go, без
-// утечки типов HTTP/SDK наружу.
+// Адаптер реализует сразу три порта интеграционной платформы — search.Port
+// (поиск по запросу), crawl.Port (обход сайта и структурированная экстракция
+// контактов) и documentparse.Port (разбор предоставленного документа). Источник
+// истины для полей — DTO контрактов lead-gen/contracts, а не сырой JSON Firecrawl:
+// здесь только прагматичное отображение ответов API на типы портов. Ошибки
+// провайдера возвращаются обычными ошибками Go, без утечки типов HTTP/SDK наружу.
 package firecrawl
 
 import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -37,8 +38,21 @@ const defaultBaseURL = "https://api.firecrawl.dev"
 // отправляется вовсе, а денежной границей служит обёртка бюджета (guard).
 const defaultSearchLimit = 5
 
-// pollInterval — пауза между опросами статуса асинхронного задания обхода.
-const pollInterval = 500 * time.Millisecond
+// Параметры опроса статуса асинхронного обхода. Пауза растёт с backoff от
+// pollInterval до maxPollInterval, а число итераций ограничено maxPollAttempts —
+// последний предохранитель на случай, когда ни MaxTimeSeconds, ни дедлайн
+// контекста не заданы: цикл опроса обязан завершиться, а не висеть бесконечно.
+const (
+	// pollInterval — начальная пауза между опросами статуса асинхронного задания.
+	pollInterval = 500 * time.Millisecond
+	// maxPollInterval — потолок паузы опроса: длинное задание не требует частого
+	// опроса, а редкий снижает нагрузку на движок.
+	maxPollInterval = 5 * time.Second
+	// pollBackoffFactor — множитель роста паузы между опросами.
+	pollBackoffFactor = 1.5
+	// maxPollAttempts — предельное число опросов статуса без внешнего дедлайна.
+	maxPollAttempts = 400
+)
 
 // finalSnapshotTimeout — дедлайн одной best-effort попытки снять снимок
 // отменённого задания обхода.
@@ -153,14 +167,28 @@ func (c *Client) Search(ctx context.Context, q search.Query) ([]search.Result, e
 
 // Crawl обходит сайт через /v1/crawl. Если движок вернул асинхронное задание
 // (id без данных), адаптер опрашивает статус задания до завершения, уважая
-// отмену контекста. При отмене возвращаются уже собранные страницы вместе с
-// crawl.ErrCancelled: данные, добытые до отмены, не теряются.
+// отмену контекста. Обход ограничен по времени: предел — crawl.Request.MaxTimeSeconds
+// (если задан) либо дедлайн контекста; по истечении возвращается crawl.ErrTimeout,
+// при отмене — crawl.ErrCancelled. В обоих случаях уже собранные страницы
+// возвращаются вместе с ошибкой: данные, добытые до остановки, не теряются.
 func (c *Client) Crawl(ctx context.Context, r crawl.Request) (crawl.CrawlOutcome, error) {
-	if ctx.Err() != nil {
-		return crawl.CrawlOutcome{}, crawl.ErrCancelled
-	}
 	if err := r.Validate(); err != nil {
 		return crawl.CrawlOutcome{}, err
+	}
+	if err := ctx.Err(); err != nil {
+		return crawl.CrawlOutcome{}, crawlStopError(ctx)
+	}
+
+	// Жёсткий дедлайн ВСЕГО обхода: MaxTimeSeconds сужает дедлайн контекста, если
+	// тот шире или отсутствует. Иначе обход ограничивался бы только контекстом
+	// вызывающего, а объявленный контрактом предел времени оставался бы фикцией.
+	crawlCtx := ctx
+	if budget := time.Duration(r.MaxTimeSeconds) * time.Second; budget > 0 {
+		if dl, ok := ctx.Deadline(); !ok || time.Until(dl) > budget {
+			var cancel context.CancelFunc
+			crawlCtx, cancel = context.WithTimeout(ctx, budget)
+			defer cancel()
+		}
 	}
 
 	discoveryDepth := r.MaxDepth
@@ -193,15 +221,16 @@ func (c *Client) Crawl(ctx context.Context, r crawl.Request) (crawl.CrawlOutcome
 			"url", r.StartURL,
 			"limit", r.MaxPages,
 			"maxDiscoveryDepth", discoveryDepth,
+			"maxTimeSeconds", r.MaxTimeSeconds,
 			"maxDepth", "",
 		)
 	}
 
 	var env envelope
-	err := c.doJSON(ctx, http.MethodPost, c.endpoint("/v1/crawl"), body, &env)
+	err := c.doJSON(crawlCtx, http.MethodPost, c.endpoint("/v1/crawl"), body, &env)
 	if err != nil {
-		if ctx.Err() != nil {
-			return crawl.CrawlOutcome{}, crawl.ErrCancelled
+		if crawlCtx.Err() != nil {
+			return crawl.CrawlOutcome{}, crawlStopError(crawlCtx)
 		}
 		return crawl.CrawlOutcome{}, err
 	}
@@ -211,17 +240,18 @@ func (c *Client) Crawl(ctx context.Context, r crawl.Request) (crawl.CrawlOutcome
 
 	// Асинхронное задание: движок вернул id, данные появятся после опроса статуса.
 	if env.ID != "" {
-		var cancelled bool
-		env, cancelled, err = c.pollCrawl(ctx, env.ID)
+		env, err = c.pollCrawl(crawlCtx, env.ID)
 		if err != nil {
-			return crawl.CrawlOutcome{}, err
-		}
-		if cancelled {
-			pages, perr := decodePages(env.Data)
-			if perr != nil {
-				return crawl.CrawlOutcome{}, perr
+			// Ограниченная остановка (таймаут/отмена): отдаём нормализованную
+			// причину вместе с уже собранными страницами.
+			if errors.Is(err, crawl.ErrCancelled) || errors.Is(err, crawl.ErrTimeout) {
+				pages, perr := decodePages(env.Data)
+				if perr != nil {
+					return crawl.CrawlOutcome{}, perr
+				}
+				return crawl.CrawlOutcome{Pages: pages}, err
 			}
-			return crawl.CrawlOutcome{Pages: pages}, crawl.ErrCancelled
+			return crawl.CrawlOutcome{}, err
 		}
 	}
 
@@ -323,32 +353,7 @@ func isJSONNull(raw json.RawMessage) bool {
 // Scrape обходит одну страницу через /v1/scrape в режиме markdown и возвращает
 // её содержимое. Используется как базовая операция скрейпа (1 кредит).
 func (c *Client) Scrape(ctx context.Context, url string) (ScrapeResult, error) {
-	if err := ctx.Err(); err != nil {
-		return ScrapeResult{}, err
-	}
-
-	var env envelope
-	err := c.doJSON(ctx, http.MethodPost, c.endpoint("/v1/scrape"), map[string]any{
-		"url":     url,
-		"formats": []string{"markdown"},
-	}, &env)
-	if err != nil {
-		return ScrapeResult{}, err
-	}
-	if err := env.check(); err != nil {
-		return ScrapeResult{}, err
-	}
-
-	var raw scrapeJSON
-	if err := json.Unmarshal(env.Data, &raw); err != nil {
-		return ScrapeResult{}, fmt.Errorf("firecrawl: scrape: декодирование страницы: %w", err)
-	}
-	meta := stringifyMetadata(raw.Metadata)
-	return ScrapeResult{
-		URL:      pageURL(raw.URL, meta),
-		Markdown: raw.Markdown,
-		Metadata: meta,
-	}, nil
+	return c.scrape(ctx, url, nil)
 }
 
 // Map получает список URL сайта через /v1/map без загрузки контента (1 кредит
@@ -383,36 +388,64 @@ func (c *Client) Map(ctx context.Context, url string) ([]string, error) {
 	return list, nil
 }
 
-// pollCrawl опрашивает статус асинхронного задания до завершения. Контекст
-// уважается на каждой итерации: при отмене движку отправляется запрос остановки
-// удалённого обхода, и возвращается признак cancelled вместе с best-effort снимком
-// уже собранных страниц.
-func (c *Client) pollCrawl(ctx context.Context, id string) (envelope, bool, error) {
+// pollCrawl опрашивает статус асинхронного задания до завершения. Опрос уважает
+// контекст на каждой итерации, пауза растёт с backoff до потолка, а число
+// итераций ограничено. При остановке (истечение дедлайна или отмена) движку
+// отправляется запрос остановки удалённого обхода, и возвращается нормализованная
+// причина — crawl.ErrTimeout (время) или crawl.ErrCancelled (отмена) — вместе с
+// best-effort снимком уже собранных страниц.
+func (c *Client) pollCrawl(ctx context.Context, id string) (envelope, error) {
 	statusURL := c.endpoint("/v1/crawl/" + id)
-	for {
+	interval := pollInterval
+	for attempt := 0; ; attempt++ {
 		if ctx.Err() != nil {
-			return c.stopCrawl(ctx, id, statusURL), true, nil
+			return c.stopCrawl(ctx, id, statusURL), crawlStopError(ctx)
 		}
 
 		var env envelope
 		if err := c.doJSON(ctx, http.MethodGet, statusURL, nil, &env); err != nil {
 			if ctx.Err() != nil {
-				return c.stopCrawl(ctx, id, statusURL), true, nil
+				return c.stopCrawl(ctx, id, statusURL), crawlStopError(ctx)
 			}
-			return envelope{}, false, err
+			return envelope{}, err
 		}
 
 		switch env.Status {
 		case "completed":
-			return env, false, nil
+			return env, nil
 		case "failed", "cancelled":
-			return envelope{}, false, fmt.Errorf("firecrawl: обход %s завершился статусом %q", id, env.Status)
+			return envelope{}, fmt.Errorf("firecrawl: обход %s завершился статусом %q", id, env.Status)
 		}
 
-		if !wait(ctx, pollInterval) {
-			return c.stopCrawl(ctx, id, statusURL), true, nil
+		// Последний предохранитель: без внешнего дедлайна и MaxTimeSeconds цикл
+		// всё равно обязан завершиться, а не опрашивать статус бесконечно.
+		if attempt+1 >= maxPollAttempts {
+			return c.stopCrawl(ctx, id, statusURL), crawl.ErrTimeout
 		}
+
+		if !wait(ctx, interval) {
+			return c.stopCrawl(ctx, id, statusURL), crawlStopError(ctx)
+		}
+		interval = nextPollInterval(interval)
 	}
+}
+
+// nextPollInterval увеличивает паузу опроса с backoff до потолка maxPollInterval.
+func nextPollInterval(current time.Duration) time.Duration {
+	next := time.Duration(float64(current) * pollBackoffFactor)
+	if next > maxPollInterval {
+		return maxPollInterval
+	}
+	return next
+}
+
+// crawlStopError переводит остановку обхода в нормализованную причину контракта:
+// истечение времени — crawl.ErrTimeout, отмена вызывающим — crawl.ErrCancelled.
+func crawlStopError(ctx context.Context) error {
+	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+		return crawl.ErrTimeout
+	}
+	return crawl.ErrCancelled
 }
 
 // stopCrawl останавливает удалённое задание обхода и возвращает best-effort снимок

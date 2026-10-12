@@ -38,8 +38,8 @@ type OpenAIConfig struct {
 	APIKey string
 }
 
-// NewFirecrawl собирает адаптер Firecrawl, реализующий search.Port и crawl.Port.
-// Возвращает ошибку, если не задан ключ доступа.
+// NewFirecrawl собирает адаптер Firecrawl, реализующий search.Port, crawl.Port и
+// documentparse.Port. Возвращает ошибку, если не задан ключ доступа.
 func NewFirecrawl(cfg FirecrawlConfig) (*firecrawl.Client, error) {
 	if strings.TrimSpace(cfg.APIKey) == "" {
 		return nil, fmt.Errorf("integrationplatform: firecrawl: APIKey обязателен")
@@ -74,11 +74,19 @@ type FirecrawlGuardConfig struct {
 	MaxRetries int
 	// RetryBase — базовая задержка повтора. Ноль — 1 секунда.
 	RetryBase time.Duration
+	// RegistryMaxEntries — предел process-local task scopes; 0 — bounded default.
+	RegistryMaxEntries int
+	// RegistryFinishedTTL — retention settled task scopes для replay; 0 — bounded
+	// default. Unknown/active scopes не вытесняются по TTL.
+	RegistryFinishedTTL time.Duration
 }
 
 // NewFirecrawlGuard собирает бюджетную обёртку Firecrawl, реализующую
 // budget.Factory. Возвращает ошибку, если не задан ключ доступа.
 func NewFirecrawlGuard(cfg FirecrawlGuardConfig) (*firecrawl.Guard, error) {
+	if cfg.RegistryMaxEntries < 0 || cfg.RegistryFinishedTTL < 0 {
+		return nil, fmt.Errorf("integrationplatform: firecrawl guard registry limits не могут быть отрицательными")
+	}
 	client, err := NewFirecrawl(FirecrawlConfig{APIKey: cfg.APIKey, BaseURL: cfg.BaseURL, Logger: cfg.Logger})
 	if err != nil {
 		return nil, err
@@ -94,6 +102,10 @@ func NewFirecrawlGuard(cfg FirecrawlGuardConfig) (*firecrawl.Guard, error) {
 		BalanceTTL: cfg.BalanceTTL,
 		MaxRetries: cfg.MaxRetries,
 		RetryBase:  cfg.RetryBase,
+		Registry: firecrawl.RegistryConfig{
+			MaxEntries:  cfg.RegistryMaxEntries,
+			FinishedTTL: cfg.RegistryFinishedTTL,
+		},
 	}), nil
 }
 

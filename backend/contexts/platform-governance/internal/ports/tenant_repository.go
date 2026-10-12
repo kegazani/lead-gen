@@ -25,4 +25,15 @@ type TenantRepository interface {
 	// возвращается ошибка, для которой истинно errors.Is(err, ErrTenantNotFound);
 	// загруженный агрегат в этом случае равен nil.
 	FindByID(ctx context.Context, id domain.TenantID) (*domain.Tenant, error)
+
+	// FindByIdentity ищет тенант по идентифицирующим данным компании — ИНН или
+	// email компании. Пустые значения не совпадают. Если тенанта нет, возвращается
+	// ошибка, для которой истинно errors.Is(err, ErrTenantNotFound).
+	FindByIdentity(ctx context.Context, inn, companyEmail string) (*domain.Tenant, error)
+
+	// FindUserByLogin ищет пользователя по логину (email учётной записи) среди
+	// всех тенантов и возвращает тенант-владельца и идентификатор пользователя.
+	// Пустой логин не совпадает. Если пользователя нет, возвращается ошибка, для
+	// которой истинно errors.Is(err, ErrTenantNotFound).
+	FindUserByLogin(ctx context.Context, login string) (*domain.Tenant, domain.UserID, error)
 }

@@ -64,6 +64,25 @@ func newStore(t *testing.T) ports.ProjectionStore {
 	return postgres.NewProjectionStore(pool)
 }
 
+// TestInsightStoreContract прогоняет общий contract suite порта InsightStore
+// против PostgreSQL-реализации.
+func TestInsightStoreContract(t *testing.T) {
+	contracttest.RunInsightStoreContract(t, func(t *testing.T) ports.InsightStore {
+		t.Helper()
+		return newInsightStore(t)
+	})
+}
+
+// newInsightStore возвращает хранилище инсайтов с пустым состоянием.
+func newInsightStore(t *testing.T) ports.InsightStore {
+	t.Helper()
+	pool := testPool(t)
+	if _, err := pool.Exec(context.Background(), truncateInsightTables); err != nil {
+		t.Fatalf("очистка инсайтов: %v", err)
+	}
+	return postgres.NewInsightStore(pool)
+}
+
 // testPool подключается к базе из окружения и применяет миграции один раз за
 // прогон. Без заданной строки подключения тесты пропускаются.
 func testPool(t *testing.T) *pgxpool.Pool {
@@ -110,3 +129,6 @@ func applyMigrations(ctx context.Context, pool *pgxpool.Pool) error {
 
 // TRUNCATE очищает проекцию, сохраняя схему и таблицу.
 const truncateTable = `TRUNCATE "analytics".company_projection`
+
+// TRUNCATE очищает таблицы инсайтов, сохраняя схему и таблицы.
+const truncateInsightTables = `TRUNCATE "analytics".quality_insight_snapshot, "analytics".quality_insight_application`

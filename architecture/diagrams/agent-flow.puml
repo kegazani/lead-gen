@@ -1,0 +1,51 @@
+@startuml agent-flow
+title Поток агента компании: супервизор, пайплайн блоков, наблюдение
+autonumber
+skinparam shadowing false
+
+participant "platform-governance" as Governance
+participant "agent-orchestration" as Agents
+participant "lead-management" as Leads
+participant "content-production" as Content
+participant "outreach-orchestration" as Outreach
+participant "message-delivery" as Delivery
+participant "engagement-observation" as Engagement
+participant "analytics" as Analytics
+
+Governance -> Agents : agent-command [tenant-context]
+Agents -> Agents : супервизор порождает agent-run по версии пайплайна
+loop по блокам пайплайна (версионируемый состав)
+  Agents -> Leads : блок search (lead-search)
+  Leads --> Agents : кандидаты компаний
+  Agents -> Leads : блок classify (lead-relevance)
+  Leads --> Agents : вердикт и свидетельства
+  Agents -> Leads : блок enrich / size-assess
+  Leads --> Agents : атрибуты компании
+  Agents -> Leads : блок verify-email
+  Leads --> Agents : результат верификации адреса
+  Agents -> Content : блок generate-email (content-request)
+  Content --> Agents : материал письма
+  alt шаг необратимый
+    Agents -> Outreach : блок await-approval (campaign-command)
+    Outreach --> Agents : решение оператора
+  end
+end
+alt обязательный блок недоступен
+  Agents --> Agents : agent-run-blocked (честная недоступность)
+else все шаги успешны
+  Agents -> Delivery : блок send (approved-action)
+  Delivery --> Engagement : delivery-event
+  Engagement --> Agents : engagement-event (блок observe)
+end
+Agents -> Agents : блок decide-next и agent-run-completed
+Agents --> Analytics : agent-event
+
+' CTX:platform-governance
+' CTX:agent-orchestration
+' CTX:lead-management
+' CTX:content-production
+' CTX:outreach-orchestration
+' CTX:message-delivery
+' CTX:engagement-observation
+' CTX:analytics
+@enduml

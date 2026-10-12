@@ -31,7 +31,7 @@ func (c approvedActionConsumer) deliver(ctx context.Context, action approvedacti
 // реализация владельца, а не её копия у потребителя.
 func TestApprovedActionContractBindsOwnerImplementation(t *testing.T) {
 	slice, err := outreachorchestration.Build(outreachorchestration.Params{
-		Risk: outreachorchestration.NoUpstreamRiskChecks,
+		Risk: noRiskFacts,
 	})
 	if err != nil {
 		t.Fatalf("сборка среза: %v", err)
@@ -61,7 +61,7 @@ func TestApprovedActionContractBindsOwnerImplementation(t *testing.T) {
 // интерфейсом стоит адаптер, соблюдающий ключ идемпотентности контракта.
 func TestApprovedActionContractIsIdempotentAcrossTransport(t *testing.T) {
 	slice, err := outreachorchestration.Build(outreachorchestration.Params{
-		Risk: outreachorchestration.NoUpstreamRiskChecks,
+		Risk: noRiskFacts,
 	})
 	if err != nil {
 		t.Fatalf("сборка среза: %v", err)

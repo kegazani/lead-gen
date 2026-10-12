@@ -2,12 +2,15 @@ package firecrawl
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"math/rand"
+	"sync/atomic"
 	"time"
 
 	"lead-gen/contracts/integration-platform/budget"
 	"lead-gen/contracts/integration-platform/crawl"
+	"lead-gen/contracts/integration-platform/documentparse"
 	"lead-gen/contracts/integration-platform/search"
 )
 
@@ -21,6 +24,10 @@ const (
 	defaultMaxRetries = 4
 	defaultRetryBase  = 5 * time.Second
 )
+
+// ErrExtractCostUnknown возвращается, пока для используемой формы Firecrawl
+// Extract нет подтверждённой верхней оценки стоимости.
+var ErrExtractCostUnknown = errors.New("firecrawl: стоимость Extract не подтверждена")
 
 // GuardConfig — настройки бюджетной обёртки Firecrawl.
 type GuardConfig struct {
@@ -42,22 +49,26 @@ type GuardConfig struct {
 	Sleep func(ctx context.Context, d time.Duration) error
 	// Jitter — источник случайного разброса задержки повтора; nil — math/rand.
 	Jitter func(max int64) int64
+	// Registry ограничивает process-local task scopes. Нулевые поля используют
+	// конечные default capacity/TTL; эти значения не являются monetary cap.
+	Registry RegistryConfig
 }
 
 // Guard — разделяемое состояние аккаунта Firecrawl для всех воркеров процесса:
 // raw-клиент, лимитер, кэш остатка и реестр бюджетов задач. Создаёт бюджетную
-// задачу через Task.
+// задачу через Task и останавливает новые операции аккаунта после HTTP 402.
 type Guard struct {
-	client     *Client
-	limiter    *Limiter
-	usage      *Usage
-	registry   *Registry
-	balanceTTL time.Duration
-	maxRetries int
-	retryBase  time.Duration
-	clock      Clock
-	sleep      func(ctx context.Context, d time.Duration) error
-	jitter     func(max int64) int64
+	client         *Client
+	limiter        *Limiter
+	usage          *Usage
+	registry       *Registry
+	balanceTTL     time.Duration
+	maxRetries     int
+	retryBase      time.Duration
+	clock          Clock
+	sleep          func(ctx context.Context, d time.Duration) error
+	jitter         func(max int64) int64
+	accountStopped atomic.Bool
 }
 
 // NewGuard собирает обёртку, применяя значения по умолчанию.
@@ -97,7 +108,7 @@ func NewGuard(cfg GuardConfig) *Guard {
 		client:     cfg.Client,
 		limiter:    limiter,
 		usage:      usage,
-		registry:   NewRegistry(),
+		registry:   mustNewRegistry(cfg.Registry),
 		balanceTTL: balanceTTL,
 		maxRetries: maxRetries,
 		retryBase:  retryBase,
@@ -105,6 +116,14 @@ func NewGuard(cfg GuardConfig) *Guard {
 		sleep:      sleep,
 		jitter:     jitter,
 	}
+}
+
+func mustNewRegistry(cfg RegistryConfig) *Registry {
+	r, err := NewRegistry(cfg)
+	if err != nil {
+		panic(err)
+	}
+	return r
 }
 
 // Task создаёт (или возвращает существующий) бюджет задачи с заданным лимитом
@@ -125,6 +144,17 @@ func (g *Guard) Task(id string, maxCredits int) (*Task, error) {
 func (g *Guard) Begin(taskID string, maxCredits int) (budget.Task, error) {
 	return g.Task(taskID, maxCredits)
 }
+
+// Finish реализует budget.Factory: блокирует новые резервы scope и ждёт
+// завершения in-flight попыток. Без exact provider operation evidence unknown
+// outcome остаётся pinned; агрегированный account balance его не разрешает.
+func (g *Guard) Finish(ctx context.Context, taskID string) error {
+	return g.registry.Finish(ctx, taskID)
+}
+
+// RegistryStatus возвращает ограниченный status snapshot Guard для наблюдения
+// capacity pressure и pinned unknown/outstanding scope.
+func (g *Guard) RegistryStatus() budget.RegistryStatus { return g.registry.Status() }
 
 // CreditBalance реализует budget.AccountReader: возвращает остаток кредитов.
 func (g *Guard) CreditBalance() budget.Balance {
@@ -163,9 +193,9 @@ func (g *Guard) isFresh(updatedAt time.Time) bool {
 }
 
 // Task — бюджетная обёртка операций Firecrawl одной задачи. Реализует
-// search.Port и crawl.Port; каждый затратный вызов резервирует кредиты атомарно,
-// выдерживает лимитер, при 429 повторяет с backoff, при 402 останавливает
-// бюджет, и после вызова сверяет фактический расход.
+// search.Port и crawl.Port; каждая попытка атомарно резервируется до сети,
+// выдерживает лимитер, при явном 429 может повториться с новым резервом, а
+// неизвестный исход удерживает полный резерв без автоматического повтора.
 type Task struct {
 	id     string
 	budget *TaskBudget
@@ -174,22 +204,26 @@ type Task struct {
 
 // Проверка на этапе компиляции, что Task реализует оба порта и контракт бюджета.
 var (
-	_ search.Port          = (*Task)(nil)
-	_ crawl.Port           = (*Task)(nil)
-	_ budget.Task          = (*Task)(nil)
-	_ budget.Factory       = (*Guard)(nil)
-	_ budget.AccountReader = (*Guard)(nil)
+	_ search.Port                 = (*Task)(nil)
+	_ crawl.Port                  = (*Task)(nil)
+	_ documentparse.Port          = (*Task)(nil)
+	_ budget.Task                 = (*Task)(nil)
+	_ budget.Factory              = (*Guard)(nil)
+	_ budget.RegistryStatusReader = (*Guard)(nil)
+	_ budget.AccountReader        = (*Guard)(nil)
 )
 
 // Snapshot возвращает снимок бюджета задачи по контракту budget.
 func (t *Task) Snapshot() budget.Snapshot {
 	s := t.budget.Snapshot()
 	return budget.Snapshot{
-		MaxCredits:            s.MaxCredits,
-		ConfirmedSpentCredits: s.ConfirmedSpentCredits,
-		ReservedCredits:       s.ReservedCredits,
-		Available:             s.Available,
-		Status:                string(s.Status),
+		MaxCredits:              s.MaxCredits,
+		ConfirmedSpentCredits:   s.ConfirmedSpentCredits,
+		ReservedCredits:         s.ReservedCredits,
+		UnknownCredits:          s.UnknownCredits,
+		OutstandingReservations: s.OutstandingReservations,
+		Available:               s.Available,
+		Status:                  string(s.Status),
 	}
 }
 
@@ -299,16 +333,25 @@ func (t *Task) Extract(ctx context.Context, r crawl.ExtractRequest) ([]crawl.Con
 	if err := r.Validate(); err != nil {
 		return nil, err
 	}
-	var contacts []crawl.ContactCandidate
+	return nil, ErrExtractCostUnknown
+}
+
+// ParseDocument разбирает предоставленный документ через движок. Учитывается по
+// базовой стоимости scrape (1 кредит): разбор документа — одна операция движка.
+func (t *Task) ParseDocument(ctx context.Context, r documentparse.Request) (documentparse.Document, error) {
+	if err := r.Validate(); err != nil {
+		return documentparse.Document{}, err
+	}
+	var document documentparse.Document
 	err := t.runFixed(ctx, OpScrape, 1, func(ctx context.Context) (int, error) {
-		got, err := t.guard.client.Extract(ctx, r)
-		contacts = got
+		got, err := t.guard.client.ParseDocument(ctx, r)
+		document = got
 		if err != nil {
 			return 0, err
 		}
 		return 1, nil
 	})
-	return contacts, err
+	return document, err
 }
 
 // runFixed — обёртка операций с фиксированной стоимостью 1 кредит.
@@ -323,61 +366,122 @@ func (t *Task) runFixed(ctx context.Context, op Operation, cost int, call func(c
 	return t.runReserved(ctx, op, cost, false, call)
 }
 
-// runReserved — общий путь затратной операции: резервирование верхнего предела,
-// лимитер, вызов с повтором 429 и сверка фактического расхода. При 402 бюджет
-// задачи останавливается. Неиспользованный резерв освобождается всегда.
+// runReserved — общий путь затратной операции. Каждая явно безопасная повторная
+// попытка резервируется отдельно. Любой неизвестный исход сохраняет полный резерв
+// и не повторяется; crawl create POST поэтому никогда не дублируется при сетевом
+// сбое. Только явный 429, подтверждающий отказ до обработки, допускает новый
+// зарезервированный повтор. HTTP 402 останавливает весь Guard.
 func (t *Task) runReserved(ctx context.Context, op Operation, cost int, crawlOp bool, call func(context.Context) (int, error)) error {
-	if err := ctx.Err(); err != nil {
-		return err
+	for attempt := 0; ; attempt++ {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if t.guard.accountStopped.Load() {
+			return fmt.Errorf("firecrawl: затратные операции аккаунта остановлены после HTTP 402")
+		}
+		// Повторная платная попытка должна пройти свежую account admission
+		// отдельно: успешный 429 не превращает следующий запрос в бесплатный.
+		bal, err := t.guard.freshBalance(ctx)
+		if err != nil {
+			return err
+		}
+		if bal.Value < cost {
+			return fmt.Errorf("firecrawl: остаток аккаунта (%d) меньше стоимости операции (%d)", bal.Value, cost)
+		}
+		retry, callErr := t.runReservedAttempt(ctx, cost, crawlOp, bal, call)
+		if !retry || attempt >= t.guard.maxRetries {
+			return callErr
+		}
+		if err := t.guard.sleepRetry(ctx, attempt, RetryAfter(callErr)); err != nil {
+			return err
+		}
+		_ = op // операция остаётся в одном и том же retry policy path.
 	}
-	if err := t.budget.Reserve(cost); err != nil {
-		return err
-	}
-	actual := 0
-	defer func() { t.budget.Settle(cost, actual) }()
+}
 
+// runReservedAttempt закрывает reservation для всех не-сетевых исходов и
+// переводит panic/неизвестную сеть в pinned unknown. Он возвращает retry=true
+// только для явного 429, доказывающего отсутствие списания.
+func (t *Task) runReservedAttempt(ctx context.Context, cost int, crawlOp bool, balance usageBalance, call func(context.Context) (int, error)) (retry bool, err error) {
+	if err := t.budget.Reserve(cost); err != nil {
+		return false, err
+	}
+	resolved := false
+	networkStarted := false
 	var release func()
-	var err error
+	defer func() {
+		if recovered := recover(); recovered != nil {
+			if release != nil {
+				release()
+			}
+			if !resolved {
+				if networkStarted {
+					_ = t.budget.MarkUnknown(cost)
+				} else {
+					_ = t.budget.Settle(cost, 0)
+				}
+			}
+			panic(recovered)
+		}
+	}()
+
 	if crawlOp {
 		release, err = t.guard.limiter.AcquireCrawl(ctx)
 	} else {
 		release, err = t.guard.limiter.Acquire(ctx)
 	}
 	if err != nil {
-		return err
+		_ = t.budget.Settle(cost, 0) // сеть не вызывалась
+		resolved = true
+		return false, err
 	}
-	defer release()
+	if t.guard.accountStopped.Load() {
+		release()
+		_ = t.budget.Settle(cost, 0) // аккаунт остановлен до отправки
+		resolved = true
+		return false, fmt.Errorf("firecrawl: затратные операции аккаунта остановлены после HTTP 402")
+	}
+	if !t.budget.CanStart() {
+		release()
+		_ = t.budget.Settle(cost, 0) // task был остановлен/закрыт до сети
+		resolved = true
+		return false, budget.ErrTaskClosed
+	}
 
-	actual, err = t.callWithRetry(ctx, call)
+	networkStarted = true
+	actual, callErr := call(ctx)
+	release()
+	if callErr == nil {
+		err = t.budget.Settle(cost, actual)
+		resolved = true
+		return false, err
+	}
+	if IsPaymentRequired(callErr) {
+		t.guard.accountStopped.Store(true)
+		t.budget.Stop()
+		err = t.budget.Settle(cost, 0) // явный 402 — отказ без подтверждённого расхода
+		resolved = true
+		if err != nil {
+			return false, err
+		}
+		return false, callErr
+	}
+	if IsRateLimited(callErr) {
+		err = t.budget.Settle(cost, 0)
+		resolved = true
+		if err != nil {
+			return false, err
+		}
+		return true, callErr
+	}
+	// Транспортная ошибка, 5xx, неизвестный статус/ответ: запрос мог быть
+	// обработан провайдером. Резерв остаётся pinned, а новые попытки блокируются.
+	err = t.budget.MarkUnknown(cost)
+	resolved = true
 	if err != nil {
-		if IsPaymentRequired(err) {
-			t.budget.Stop()
-		}
-		return err
+		return false, err
 	}
-	return nil
-}
-
-// callWithRetry повторяет вызов при HTTP 429 и при транзиентных сбоях транспорта
-// (обрыв соединения, таймаут сети, 5xx). Задержка — заголовок Retry-After,
-// если он есть; иначе экспоненциальный бэкофф; число повторов ограничено.
-// Отмена и дедлайн контекста повторами не считаются: IsTransient их исключает.
-func (t *Task) callWithRetry(ctx context.Context, call func(context.Context) (int, error)) (int, error) {
-	for attempt := 0; ; attempt++ {
-		actual, err := call(ctx)
-		if err == nil || !retryable(err) || attempt >= t.guard.maxRetries {
-			return actual, err
-		}
-		if err := t.guard.sleepRetry(ctx, attempt, RetryAfter(err)); err != nil {
-			return 0, err
-		}
-	}
-}
-
-// retryable сообщает, повторяем ли вызов: превышение лимита (429) или
-// транзиентный сбой транспорта/сервера.
-func retryable(err error) bool {
-	return IsRateLimited(err) || IsTransient(err)
+	return false, callErr
 }
 
 // sleepRetry — задержка перед повтором: серверное значение Retry-After, если оно

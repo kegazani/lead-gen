@@ -1,0 +1,50 @@
+## Контекст
+
+Основной `RunSearch` уже подключён к `firecrawl.Guard` с бюджетом задачи, общим limiter/retry и account balance. Флаг `-firecrawl-max-credits` уже существует в конфигурации lead-gen и передаётся как `buildOptions.firecrawlMaxCredits`, но текущая сборка Guard его не применяет. `RunSearch` payload policy уже использует лимит задачи. `SearchLeadsForRequest` в `lead-management/internal/app/search_leads.go` получает raw Search/Crawl/Extract и вызывает их напрямую. В Guard имеются `TaskBudget`, резервирование/settlement и ограниченные wrappers; неизвестная стоимость или account balance блокируют операцию fail-closed.
+
+Изменение охватывает `integration-platform` (владелец публичного контракта `contracts/integration-platform/budget`, Guard и process-local registry) и `lead-management` (владелец поиска и вызывающий terminal API). Бюджет не переносится в `lead-management`; новые capability/агрегаты и межконтекстное владение доменными данными не вводятся. Каталог и диаграммы не меняются.
+
+## Цели и ограничения
+
+- Все сетевые вызовы Search/Crawl/Extract со synchronous `/lead-search` проходят один реальный Guard policy path.
+- Admission и reservation выполняются до сетевого обращения; неизвестная/неподдерживаемая стоимость приводит к отказу без сети.
+- Settlement подтверждает только известное использование. При неопределённом исходе резерв сохраняется и защищает бюджет от повторного расхода.
+- HTTP и in-process используют один use case/wiring, без обходного raw клиента.
+- Отмена блокирует новые платные действия, не отбрасывая уже полученные страницы, которые можно безопасно обработать и сохранить.
+- Существующие HTTP-коды/контракт и бизнес-результаты сохраняются, кроме корректного отказа затратного шага по admission.
+- Бюджет `TaskBudget` process-local; никакой гарантии долговременного или межпроцессного учёта этим change не создаётся.
+
+## Решение
+
+Сборка владельца `lead-management` должна передавать уже настроенный `FirecrawlMaxCredits` в конфигурацию сервиса. Один Guard и его account policy/limiter/retry переиспользуются обоими сценариями; каждый сценарий получает отдельный process-local `TaskBudget` с одним и тем же настроенным лимитом. Значение `0` означает отсутствие per-task cap, а не отсутствие account admission: каждое действие по-прежнему требует свежего доступного account balance и точного резерва операции. Неизвестные balance или cost запрещают вызов. Ограниченные wrappers внедряются вместо raw Search/Crawl/Extract.
+
+Для каждой операции wrapper применяет действующие правила Guard: чтение свежего account balance, общий limiter, проверку поддерживаемой стоимости и резервирование до вызова. Каждая разрешённая повторная попытка резервируется отдельно. Только явный HTTP 429 рассматривается как подтверждённый отказ без списания и допускает новый зарезервированный повтор; транспортная ошибка, 5xx и неизвестный результат удерживают полный резерв и не повторяются. HTTP 402 останавливает admission всего Guard аккаунта. Settlement не обрезает расход выше резерва: overrun фиксируется полностью и блокирует бюджет. Exact upper bound Extract пока не подтверждён, поэтому его Guard операция отклоняется до сети. Если `/lead-search` не может пропустить Extract и продолжить без него, endpoint сообщает честный частичный результат/недоступность согласно существующей форме ответа; он не вызывает Extract и не представляет поиск как полный успех.
+
+Бюджет задачи не сохраняется в БД и не становится общим между процессами. Account balance остаётся внешним подтверждённым snapshot по существующей политике, а не ledger списаний данного приложения.
+
+### Жизненный цикл реестра TaskBudget
+
+Публичный budget contract в `contracts/integration-platform/budget` предоставляет `Finish(ctx, taskID)` либо эквивалентный явный terminal API. `Factory.Begin` возвращает Task с Search/Crawl/Extract/Snapshot; контракт дополняется операцией завершения, не передавая владение реестром контексту-потребителю. `Finish` идемпотентен: повторный вызов не меняет подтверждённые суммы и состояние.
+
+Реестр TaskBudget — process-local registry, индексированный стабильным task ID. Для каждого task ID допускается одна запись и один экземпляр бюджета; повторный вызов с тем же ID во время retention получает тот же бюджет и не начинает новый расходный лимит. Terminal settlement допускается только когда все reservations подтверждены либо явно освобождены, outstanding reservations отсутствуют и неизвестных исходов нет. При вызове `Finish` до этого условия scope остаётся незавершённым и не вытесняемым. Firecrawl возвращает только агрегированный account balance без per-request usage ID/операционного usage; уменьшение account balance не позволяет установить, какая операция его вызвала. Поэтому `Finish` никогда не снимает unknown на основании агрегатного balance refresh. Пока exact provider operation reconciliation отсутствует, unknown reservation остаётся pinned, task остаётся stopped, а `Finish` возвращает typed unresolved outcome. TTL и capacity cleanup не снимают это состояние.
+
+Registry SHALL иметь конечные, явно именованные настройки максимальной ёмкости и TTL завершённых записей с конечными bounded defaults; значения по умолчанию — operational limits реестра, не денежный лимит и не внешний billing cap. Настройки валидируются при создании; нулевые/отрицательные значения не означают бесконечную ёмкость или retention. На admission реестр удаляет только terminal settled записи, у которых TTL истёк и нет reservations. Если после очистки свободного места нет, возвращается стабильная ошибка capacity exhaustion; отказ происходит до Firecrawl HTTP. Нельзя вытеснять active/unknown записи или записи с незакрытым резервом ни по возрасту, ни ради capacity. Снимок состояния Guard SHALL expose entries, capacity, active/finished scopes, outstanding/unknown reservations и количество отказов capacity, чтобы операционная сторона видела давление реестра. Registry остаётся fail-closed до разрешения состояний либо рестарта процесса.
+
+`RunSearch` и `SearchLeadsForRequest` вызывают `Finish` на всех terminal путях, включая ошибки, cancellation, partial result и panic cleanup. `Finish` блокирует новые резервы, ждёт in-flight попытки и помечает запись завершённой только после settlement всех known reservations и отсутствия unknown outcomes. Если имеется unknown, `Finish` возвращает typed unresolved outcome и оставляет scope pinned; повторный `Finish` безопасен, но не даёт списать неизвестный расход как нулевой. Точный provider operation reconciliation в текущей Firecrawl API форме отсутствует и остаётся открытой возможностью, не заменяемой aggregate account delta. TTL начинается после terminal settlement; eviction допускается только после TTL и при отсутствии reservations/unknown outcomes. Пока scope удерживается, replay того же task ID возвращает прежний scope и не начинает новый бюджет.
+
+Это не durable учёт: registry и TTL живут только в процессе, не координируют реплики и не обеспечивают межпроцессную идемпотентность/биллинг. После рестарта локальные записи и резервы утрачиваются; неизвестный исход не становится ни подтверждённо списанным, ни бесплатным. `UpdatedAt` account cache — локальное время успешного получения ответа и используется только для TTL свежести; API Firecrawl в текущей форме не предоставляет timestamp наблюдения баланса. Параллельные `RefreshCredit` сериализованы, чтобы поздно завершившийся старый запрос не перезаписал более новое успешное чтение. Не заявлять production total billing cap, точный durable balance или гарантированное предотвращение повторного списания через рестарт.
+
+Отмена распространяется через `context.Context`. До отправки вызова отмена освобождает ещё не использованный резерв; после отправки неизвестный исход сохраняет полный резерв, а новые платные вызовы не начинаются. Асинхронный Crawl create POST не повторяется при неизвестном исходе; полученный job ID используется для GET polling. Обработка уже возвращённых страниц отделяется от дальнейшей сетевой работы, чтобы завершить допустимое сохранение partial results. Ошибка/отмена не скрывается как полный успех или бесплатная операция.
+
+## Тестирование и безопасность
+
+Регрессия должна проходить через реально собранный HTTP `POST /lead-search`, проверить отказ admission до любого Firecrawl HTTP вызова и отдельно использовать настоящий Firecrawl adapter, направленный на локальный `httptest.Server`, вместе с memory repository. Тесты проверяют Search/Crawl/Extract, подтверждённый settlement, unknown pin до reconciliation, отмену/partial pages и parity HTTP/in-process. На contract/registry тестах проверить идемпотентный `Finish`, запрет settlement при reservation/unknown outcome, capacity exhaustion без eviction активных/unknown и до HTTP, TTL retention/replay одного task ID, а также eviction только после TTL без reservations. Проверить `Finish` из обоих search paths только для settled terminal исходов. Тестовые двойники допустимы только в тестах.
+
+Не запускать live provider calls и не расходовать кредиты без изолированного аккаунта. Финальные гейты: `make check`, `go -C tools/archlint run .`, `openspec validate lead-search-firecrawl-budget --strict`; не заявлять долговременный billing или межпроцессную атомарность.
+
+## Риски и открытые вопросы
+
+- Нужно сопоставить стоимость всех реальных Search/Crawl/Extract форм в адаптере с существующей моделью credit estimator; неподдержанные формы должны отклоняться до сети. Существующий `-firecrawl-max-credits` должен стать эффективным на обоих путях, без нового числа и без поля в HTTP-запросе. Capacity и TTL — отдельные явно именованные process-local параметры с bounded defaults, не внешняя финансовая гарантия.
+- В частности, подтверждённой верхней границы стоимости Extract нет; он остаётся uncallable в Guard до получения проверяемого источника цены.
+- Неопределённый исход удерживает бюджет до завершения процесса/контекста: это безопаснее повторной траты, но может уменьшить доступный остаток задачи.
+- Перед реализацией проверить текущий scope/account-shared Guard lifetime и исключить случайное создание отдельного limiter для каждого вызова.

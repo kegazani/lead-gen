@@ -89,8 +89,8 @@ type DraftQueueHandler struct {
 // NewDraftQueueHandler собирает запрос из порта репозитория, перечислителя
 // кампаний, внешнего предиката риска и (необязательного) порта доступа. Без
 // порта доступа любой запрос отвергается с ErrAccessDenied, а не обслуживается
-// без проверки. nil-предикат риска означает «рисков нет» и трактуется доменом
-// так же.
+// без проверки. Предикат риска обязателен: домен трактует nil как недоступность
+// фактов, а не как «рисков нет».
 func NewDraftQueueHandler(
 	campaigns ports.CampaignRepository,
 	lister ports.CampaignLister,
@@ -138,7 +138,15 @@ func (h *DraftQueueHandler) Handle(ctx context.Context, q DraftQueue) ([]DraftQu
 			if !q.Channel.IsZero() && !draft.Channel().Equals(q.Channel) {
 				continue
 			}
-			reasons := riskReasons(h.risk, draft.ID(), draft.Version())
+			reasons, err := riskReasons(ctx, h.risk, domain.RiskFactsRequest{
+				TenantID:  q.TenantID,
+				DraftID:   draft.ID(),
+				Version:   draft.Version(),
+				Recipient: draft.Spec().Recipient,
+			})
+			if err != nil {
+				return nil, err
+			}
 			if !q.Risk.matches(len(reasons) > 0) {
 				continue
 			}
@@ -194,10 +202,11 @@ func (h *DraftQueueHandler) scope(ctx context.Context, q DraftQueue) ([]domain.C
 	return ids, nil
 }
 
-// riskReasons применяет внешний предикат, допуская nil как «рисков нет».
-func riskReasons(can domain.CanBeDecidedInPackage, id domain.DraftID, version int) []domain.RiskReason {
+// riskReasons применяет внешний предикат. Незаданный предикат — недоступность
+// фактов, а не «рисков нет»: пустая очередь не должна выдаваться за проверенную.
+func riskReasons(ctx context.Context, can domain.CanBeDecidedInPackage, req domain.RiskFactsRequest) ([]domain.RiskReason, error) {
 	if can == nil {
-		return nil
+		return nil, fmt.Errorf("%w: предикат признаков риска не задан", domain.ErrRiskFactsUnavailable)
 	}
-	return can(id, version)
+	return can(ctx, req)
 }

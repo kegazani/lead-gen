@@ -90,6 +90,10 @@ type SearchJobProgress struct {
 	UpdatedAt time.Time
 }
 
+// ErrSearchJobExists — задание с таким идентификатором уже стоит в хранилище.
+// Отличает дубликат (идемпотентный повтор постановки) от прочих сбоев записи.
+var ErrSearchJobExists = errors.New("ports: задание с таким идентификатором уже существует")
+
 // ErrInvalidBudget — бюджет кредитов задания некорректен.
 var ErrInvalidBudget = errors.New("ports: бюджет кредитов не может быть отрицательным")
 

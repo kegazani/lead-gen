@@ -4,6 +4,7 @@ import (
 	"errors"
 	"net/http"
 	"net/url"
+	"strings"
 
 	"lead-gen/backend/contexts/request-fulfillment/internal/app/query"
 	"lead-gen/backend/contexts/request-fulfillment/internal/domain"
@@ -16,41 +17,87 @@ import (
 // исполнение стоит на человеческой паузе. Unavailable различает честный исход
 // «исполнение недоступно» и пустую очередь.
 type approvalQueueView struct {
-	TenantID    string
-	Actor       string
-	Items       []query.ApprovalItem
-	Unavailable bool
+	Live               components.Live
+	TenantID           string
+	Actor              string
+	Items              []approvalQueueRow
+	Executions         []executionHistoryRow
+	Unavailable        bool
+	HistoryUnavailable bool
+}
+
+// approvalQueueRow — строка очереди утверждения: элемент очереди и раскрытый
+// недобор. Недобор в элементе — указатель (nil — цель не задана); шаблон не
+// разыменовывает указатели, поэтому признак и значение готовит владелец экрана.
+type approvalQueueRow struct {
+	query.ApprovalItem
+	HasShortfall   bool
+	ShortfallCount int
+}
+
+// executionHistoryRow — строка запущенного исполнения, включая workflow,
+// который уже вышел из очереди ожидания операторского решения.
+type executionHistoryRow struct {
+	RequestID string
+	Status    domain.RequestStatus
+	Phase     string
+	Execution string
+	Found     int
+	Drafted   int
+}
+
+// approvalQueueRows раскрывает элементы очереди в строки экрана.
+func approvalQueueRows(items []query.ApprovalItem) []approvalQueueRow {
+	rows := make([]approvalQueueRow, 0, len(items))
+	for _, item := range items {
+		row := approvalQueueRow{ApprovalItem: item}
+		if item.Shortfall != nil {
+			row.HasShortfall = true
+			row.ShortfallCount = *item.Shortfall
+		}
+		rows = append(rows, row)
+	}
+	return rows
 }
 
 // approvalView — модель экрана утверждения одной заявки: заявка и наблюдаемое
-// состояние исполнения. Фазу и найденное число решает владелец экрана, а не
-// шаблон.
+// состояние исполнения. Фазу, найденное число, цель и недобор решает владелец
+// экрана, а не шаблон. HasShortfall отличает «недобор рассчитан» от «цель не
+// задана»: при незаданной цели недобор не показывается нулём. Diagnosis —
+// наблюдаемое объяснение недобора (пусто, если объяснять нечего).
 type approvalView struct {
-	TenantID    string
-	Actor       string
-	Request     query.RequestView
-	Notice      string
-	CSRF        string
-	Phase       string
-	Execution   string
-	Found       int
-	Unavailable bool
-	CanDecide   bool
+	Live              components.Live
+	TenantID          string
+	Actor             string
+	Request           query.RequestView
+	Notice            string
+	CSRF              string
+	Phase             string
+	Execution         string
+	Found             int
+	Target            int
+	Shortfall         int
+	HasShortfall      bool
+	Diagnosis         string
+	Unavailable       bool
+	CanDecide         bool
+	Drafts            []query.EmailDraftView
+	DraftsUnavailable bool
 }
 
 // handleApprovalQueue обслуживает GET /approvals: очередь заявок, ожидающих
 // утверждения результата исполнения.
 func (s *Server) handleApprovalQueue(w http.ResponseWriter, r *http.Request) {
-	tenant := r.URL.Query().Get("tenant_id")
+	tenant := activeTenant(r)
 	actor := actorOf(r)
-	view := approvalQueueView{TenantID: tenant, Actor: actor}
+	view := approvalQueueView{Live: consoleLive, TenantID: tenant, Actor: actor}
 	if s.deps.ApprovalQueue == nil {
 		view.Unavailable = true
 	} else {
 		items, err := s.deps.ApprovalQueue.Handle(r.Context(), query.ApprovalQueue{TenantID: domain.TenantID(tenant)})
 		switch {
 		case err == nil:
-			view.Items = items
+			view.Items = approvalQueueRows(items)
 		case errors.Is(err, query.ErrApprovalRuntimeUnavailable):
 			// Рантайм недоступен — это не пустая очередь: показываем исход честно.
 			view.Unavailable = true
@@ -59,17 +106,98 @@ func (s *Server) handleApprovalQueue(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 	}
+	if s.deps.ListRequests == nil || s.deps.WorkflowStatus == nil {
+		view.HistoryUnavailable = true
+	} else {
+		requests, err := s.deps.ListRequests.Handle(r.Context(), query.ListRequests{TenantID: domain.TenantID(tenant)})
+		if err != nil {
+			s.renderPlainError(w, http.StatusInternalServerError, "история исполнений недоступна")
+			return
+		}
+		for _, request := range requests {
+			if !isExecutionHistoryStatus(request.Status) {
+				continue
+			}
+			status, err := s.deps.WorkflowStatus.WorkflowStatus(r.Context(), request.RequestID)
+			switch {
+			case errors.Is(err, ports.ErrWorkflowNotFound):
+				// Терминальный доменный статус остаётся в операторской истории,
+				// даже если Temporal уже не хранит соответствующий workflow.
+				if !isTerminalHistoryStatus(request.Status) {
+					continue
+				}
+				view.Executions = append(view.Executions, executionHistoryRow{
+					RequestID: request.RequestID,
+					Status:    request.Status,
+				})
+				continue
+			case errors.Is(err, ports.ErrWorkflowUnavailable):
+				view.HistoryUnavailable = true
+				continue
+			case err != nil:
+				s.renderPlainError(w, http.StatusInternalServerError, "чтение состояния исполнения недоступно")
+				return
+			case status.Phase == query.ApprovalPhaseAwaitingApproval:
+				// Такие исполнения уже показаны в основной очереди утверждения.
+				continue
+			}
+			view.Executions = append(view.Executions, executionHistoryRow{
+				RequestID: request.RequestID,
+				Status:    request.Status,
+				Phase:     status.Phase,
+				Execution: executionStatusLabel(status.Execution),
+				Found:     status.Found,
+				Drafted:   status.Drafted,
+			})
+		}
+	}
 	s.render(w, http.StatusOK, pageApprovalQueue, components.Page{
-		Layout:  components.Layout{Title: "Очередь утверждения"},
-		Sidebar: s.consoleNav(components.ConsoleSectionExecution),
+		Layout:  components.Layout{Title: consoleMessages().Text(msgReqApprovalQueueTitle)},
+		Sidebar: s.consoleNav(components.ConsoleSectionExecution, tenant, actor),
 		View:    view,
 	})
+}
+
+func isExecutionHistoryStatus(status domain.RequestStatus) bool {
+	switch status {
+	case domain.StatusProcessing, domain.StatusFulfilled, domain.StatusRejected, domain.StatusFailed, domain.StatusCancelled:
+		return true
+	default:
+		return false
+	}
+}
+
+func isTerminalHistoryStatus(status domain.RequestStatus) bool {
+	switch status {
+	case domain.StatusFulfilled, domain.StatusRejected, domain.StatusFailed, domain.StatusCancelled:
+		return true
+	default:
+		return false
+	}
+}
+
+func executionStatusLabel(status string) string {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "running":
+		return "Выполняется"
+	case "completed":
+		return "Завершено"
+	case "failed":
+		return "Сбой"
+	case "canceled", "cancelled":
+		return "Отменено"
+	default:
+		if strings.TrimSpace(status) == "" {
+			return "Неизвестно"
+		}
+		return status
+	}
 }
 
 // handleApprovalScreen обслуживает GET /requests/{requestID}/approval: экран
 // утверждения одной заявки.
 func (s *Server) handleApprovalScreen(w http.ResponseWriter, r *http.Request) {
-	s.renderApprovalScreen(w, r, http.StatusOK, r.URL.Query().Get("tenant_id"), actorOf(r), "")
+	s.renderApprovalScreen(w, r, http.StatusOK, activeTenant(r), actorOf(r), "")
 }
 
 // handleApprovalApprove обслуживает POST .../approval/approve: сигнал утверждения.
@@ -126,8 +254,8 @@ func (s *Server) renderApprovalScreen(w http.ResponseWriter, r *http.Request, st
 		return
 	}
 	s.render(w, status, pageApprovalScreen, components.Page{
-		Layout:  components.Layout{Title: "Утверждение заявки " + model.Request.RequestID},
-		Sidebar: s.consoleNav(components.ConsoleSectionExecution),
+		Layout:  components.Layout{Title: consoleMessages().Text(msgReqApprovalTitlePrefix) + " " + model.Request.RequestID},
+		Sidebar: s.consoleNav(components.ConsoleSectionExecution, tenant, actor),
 		View:    model,
 	})
 }
@@ -143,7 +271,25 @@ func (s *Server) loadApproval(r *http.Request, tenant, actor, notice string) (ap
 	if err != nil {
 		return approvalView{}, err
 	}
-	model := approvalView{TenantID: tenant, Actor: actor, Request: view, Notice: notice, CSRF: consoleauth.CSRF(r)}
+	model := approvalView{Live: consoleLive, TenantID: tenant, Actor: actor, Request: view, Notice: notice, CSRF: consoleauth.CSRF(r)}
+	if s.deps.EmailDrafts == nil {
+		model.DraftsUnavailable = true
+	} else {
+		drafts, err := s.deps.EmailDrafts.Handle(r.Context(), query.EmailDrafts{
+			RequestID: domain.RequestID(view.RequestID),
+			TenantID:  domain.TenantID(tenant),
+		})
+		if errors.Is(err, ports.ErrRequestNotFound) {
+			return approvalView{}, err
+		}
+		if err != nil {
+			// Ошибка чтения не равна пустому списку: сохраняем заявку на экране,
+			// но явно сообщаем, что drafts store сейчас недоступно.
+			model.DraftsUnavailable = true
+		} else {
+			model.Drafts = drafts
+		}
+	}
 	if s.deps.WorkflowStatus == nil {
 		model.Unavailable = true
 		return model, nil
@@ -163,8 +309,46 @@ func (s *Server) loadApproval(r *http.Request, tenant, actor, notice string) (ap
 	model.Phase = status.Phase
 	model.Execution = status.Execution
 	model.Found = status.Found
+	model.Target, model.Shortfall, model.HasShortfall = shortfallState(status)
+	model.Diagnosis = shortfallDiagnosis(status)
 	model.CanDecide = view.Status == domain.StatusProcessing && status.Phase == query.ApprovalPhaseAwaitingApproval
 	return model, nil
+}
+
+// shortfallState возвращает наблюдаемые «цель / недобор» и признак того, что
+// недобор рассчитан. При незаданной цели (Shortfall == nil) недобор не
+// рассчитывается и не показывается: HasShortfall равно false. Цель берётся из
+// состояния, а при её отсутствии в старом исполнении выводится точно из
+// наблюдаемого остатка (`найдено + недобор`), а не выдумывается.
+func shortfallState(status ports.WorkflowStatus) (target int, shortfall int, hasShortfall bool) {
+	if status.Shortfall == nil {
+		return 0, 0, false
+	}
+	shortfall = *status.Shortfall
+	target = status.Target
+	if target <= 0 && shortfall > 0 {
+		target = status.Found + shortfall
+	}
+	return target, shortfall, true
+}
+
+// shortfallDiagnosis формулирует наблюдаемое объяснение недобора. Диагноз
+// строится только из того, что действительно наблюдается (цель достигнута,
+// поиск не нашёл ни одного лида, поиск остановился с остатком). Данные задания
+// поиска о тонкой причине остановки (цели обхода исчерпаны, ошибки разбора или
+// оценки, отсев оценкой) этому контексту отдельным контрактом не публикуются,
+// поэтому такая причина не выдумывается (AGENTS.md §3; design.md, Решение 5).
+func shortfallDiagnosis(status ports.WorkflowStatus) string {
+	if status.Shortfall == nil {
+		return ""
+	}
+	if *status.Shortfall == 0 {
+		return consoleMessages().Text(msgReqShortfallReached)
+	}
+	if status.Found == 0 {
+		return consoleMessages().Text(msgReqShortfallNoLeads)
+	}
+	return consoleMessages().Text(msgReqShortfallPartial)
 }
 
 // approvalScreenURL собирает адрес экрана утверждения заявки. Тенант пока берётся

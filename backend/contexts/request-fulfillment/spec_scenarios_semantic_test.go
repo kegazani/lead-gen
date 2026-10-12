@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"testing"
+	"time"
 
 	requestfulfillment "lead-gen/backend/contexts/request-fulfillment"
 	"lead-gen/backend/contexts/request-fulfillment/internal/app/command"
@@ -13,19 +14,27 @@ import (
 )
 
 // fakeVector — фейковый порт векторного хранилища для сценариев эмбеддинга оффера.
-type fakeVector struct{ err error }
+type fakeVector struct {
+	err                      error
+	assertOutsideTransaction func(context.Context) error
+}
 
 // Embed реализует vector.Port.
-func (f fakeVector) Embed(_ context.Context, text string) (vector.Vector, error) {
+func (f fakeVector) Embed(ctx context.Context, text string) (vector.Vector, error) {
 	if f.err != nil {
 		return nil, f.err
+	}
+	if f.assertOutsideTransaction != nil {
+		if err := f.assertOutsideTransaction(ctx); err != nil {
+			return nil, err
+		}
 	}
 	return vector.Vector{float32(len(text)), 1}, nil
 }
 
 // Upsert реализует vector.Port.
-func (f fakeVector) Upsert(_ context.Context, document vector.Document) (vector.Vector, error) {
-	return f.Embed(context.Background(), document.Text)
+func (f fakeVector) Upsert(ctx context.Context, document vector.Document) (vector.Vector, error) {
+	return f.Embed(ctx, document.Text)
 }
 
 // Search реализует vector.Port.
@@ -55,6 +64,28 @@ func TestSpecScenarioOfferEmbedding(t *testing.T) {
 	}
 	if len(request.Offer().Embedding()) == 0 {
 		t.Fatal("заявка не сохранила вектор оффера")
+	}
+}
+
+// TestEmbeddingPortRunsOutsideTransaction проверяет boundary-поведение внешнего
+// порта: во время Embed тот же UnitOfWork можно независимо вызвать с переданным
+// контекстом, значит сетевой вызов не удерживается внутри transaction callback.
+func TestEmbeddingPortRunsOutsideTransaction(t *testing.T) {
+	ctx := context.Background()
+	var uow ports.UnitOfWork
+	provider := fakeVector{assertOutsideTransaction: func(callCtx context.Context) error {
+		watchdogCtx, cancel := context.WithTimeout(callCtx, 2*time.Second)
+		defer cancel()
+		return uow.WithinTransaction(watchdogCtx, func(context.Context, ports.Transaction) error { return nil })
+	}}
+	built, err := requestfulfillment.Build(requestfulfillment.Config{Vector: provider})
+	if err != nil {
+		t.Fatal(err)
+	}
+	uow = built.UnitOfWork
+	submitAndValidate(t, built)
+	if _, err := built.EmbedOffer.Handle(ctx, command.EmbedOffer{RequestID: "req-1", TenantID: "tenant-1"}); err != nil {
+		t.Fatalf("векторный порт вызван внутри transaction scope: %v", err)
 	}
 }
 

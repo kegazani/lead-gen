@@ -4,7 +4,6 @@ import (
 	"context"
 	"crypto/rand"
 	"encoding/hex"
-	"errors"
 	"fmt"
 	"sort"
 	"sync"
@@ -87,7 +86,7 @@ func (s *SearchJobStore) Create(_ context.Context, job jobs.Job) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if _, exists := s.jobs[job.ID]; exists {
-		return errors.New("memory: задание уже существует")
+		return fmt.Errorf("memory: %w: %s", ports.ErrSearchJobExists, job.ID)
 	}
 	query := string(job.Payload)
 	maxCredits := 0
@@ -180,6 +179,46 @@ func (s *SearchJobStore) UpdateStatus(_ context.Context, id string, from, to job
 	record.updatedAt = time.Now().UTC()
 	if t := eventTypeForStatus(to); t != "" {
 		s.recordEventLocked(ports.SearchJobEvent{JobID: id, Type: t, Code: code, CreatedAt: record.updatedAt})
+	}
+	return nil
+}
+
+// RenewLease продлевает только принадлежащую переданной попытке running-аренду.
+func (s *SearchJobStore) RenewLease(_ context.Context, id string, attempt int) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	record, ok := s.jobs[id]
+	if !ok {
+		return fmt.Errorf("memory: %w: %s", jobs.ErrNotFound, id)
+	}
+	if record.status != jobs.StatusRunning || record.attempts != attempt {
+		return fmt.Errorf("memory: %w: lease задания %s потерян", jobs.ErrTransitionRejected, id)
+	}
+	record.updatedAt = time.Now().UTC()
+	return nil
+}
+
+// UpdateOwnedStatus завершает задание только если статус и поколение lease
+// совпадают с попыткой, которая его взяла.
+func (s *SearchJobStore) UpdateOwnedStatus(_ context.Context, id string, attempt int, to jobs.Status, reason, code string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	record, ok := s.jobs[id]
+	if !ok {
+		return fmt.Errorf("memory: %w: %s", jobs.ErrNotFound, id)
+	}
+	if record.status != jobs.StatusRunning || record.attempts != attempt {
+		return fmt.Errorf("memory: %w: lease задания %s потерян", jobs.ErrTransitionRejected, id)
+	}
+	record.status = to
+	if to == jobs.StatusFailed {
+		record.errText, record.errCode = reason, code
+	} else {
+		record.errText, record.errCode = "", ""
+	}
+	record.updatedAt = time.Now().UTC()
+	if eventType := eventTypeForStatus(to); eventType != "" {
+		s.recordEventLocked(ports.SearchJobEvent{JobID: id, Type: eventType, Code: code, CreatedAt: record.updatedAt})
 	}
 	return nil
 }
@@ -364,7 +403,16 @@ func (s *SearchJobStore) RecordResult(_ context.Context, id string, resultRef []
 	if !ok {
 		return fmt.Errorf("memory: задание %s не найдено", id)
 	}
-	record.resultRef = append([]string(nil), resultRef...)
+	seen := make(map[string]struct{}, len(record.resultRef)+len(resultRef))
+	merged := make([]string, 0, len(record.resultRef)+len(resultRef))
+	for _, ref := range append(append([]string(nil), record.resultRef...), resultRef...) {
+		if _, exists := seen[ref]; exists {
+			continue
+		}
+		seen[ref] = struct{}{}
+		merged = append(merged, ref)
+	}
+	record.resultRef = merged
 	record.updatedAt = time.Now().UTC()
 	return nil
 }
@@ -464,6 +512,18 @@ func (s *SearchJobStore) ListSearchJobs(_ context.Context, limit int) ([]ports.S
 		list = append(list, job)
 	}
 	return list, nil
+}
+
+// GetSearchJob возвращает сохранённое состояние задания с ранее записанными
+// result refs для безопасного повторного исполнения.
+func (s *SearchJobStore) GetSearchJob(_ context.Context, id string) (ports.SearchJob, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	record, ok := s.jobs[id]
+	if !ok {
+		return ports.SearchJob{}, fmt.Errorf("memory: %w: %s", jobs.ErrNotFound, id)
+	}
+	return recordToSearchJob(*record), nil
 }
 
 // recordToJob собирает jobs.Job из хранимого состояния, закодировав запрос,

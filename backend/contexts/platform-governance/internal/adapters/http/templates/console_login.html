@@ -1,0 +1,21 @@
+{{- define "content" -}}
+<section class="console-login auth-shell">
+  <div class="auth-card">
+    <h1>{{ text "console.login.title" }}</h1>
+    {{- with .View.Notice }}
+    <p class="notice" role="status">{{.}}</p>
+    {{- end }}
+    <form method="post" action="/console/login" class="auth-form">
+      <p class="field">
+        <label for="console-username">{{ text "console.login.username" }}</label>
+        <input id="console-username" name="username" type="text" value="{{ .View.Username }}" autocomplete="username" required>
+      </p>
+      <p class="field">
+        <label for="console-password">{{ text "console.login.password" }}</label>
+        <input id="console-password" name="password" type="password" autocomplete="current-password" required>
+      </p>
+      <button type="submit">{{ text "console.login.submit" }}</button>
+    </form>
+  </div>
+</section>
+{{- end -}}

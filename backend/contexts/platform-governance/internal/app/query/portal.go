@@ -25,10 +25,12 @@ type PortalState struct {
 // (OfferContent/OfferTarget) намеренно не переносятся — клиентский ответ их не
 // содержит.
 type PortalView struct {
-	TenantID   string
-	RequestID  string
-	Status     string
-	HasRequest bool
+	TenantID     string
+	RequestID    string
+	Status       string
+	ErrorMessage string
+	ErrorReason  string
+	HasRequest   bool
 }
 
 // PortalStateHandler — use case чтения состояния портала.
@@ -64,9 +66,11 @@ func (h *PortalStateHandler) Handle(ctx context.Context, q PortalState) (PortalV
 		return PortalView{}, app.TranslateRequestIntent(err)
 	}
 	return PortalView{
-		TenantID:   q.TenantID,
-		RequestID:  result.RequestID,
-		Status:     result.Status,
-		HasRequest: true,
+		TenantID:     q.TenantID,
+		RequestID:    result.RequestID,
+		Status:       result.Status,
+		ErrorMessage: result.ErrorMessage,
+		ErrorReason:  result.ErrorReason,
+		HasRequest:   true,
 	}, nil
 }

@@ -1,0 +1,96 @@
+{{- define "content" -}}
+<section class="console-registrations">
+  <h1>{{ text "console.registrations.title" }}</h1>
+  {{- with .View.Notice }}
+  <p class="notice" role="status">{{.}}</p>
+  {{- end }}
+
+  {{- if .View.Registrations }}
+  <table class="table">
+    <thead>
+      <tr>
+        <th>{{ text "console.registrations.col.company" }}</th>
+        <th>{{ text "console.registrations.col.description" }}</th>
+        <th>{{ text "console.registrations.col.inn" }}</th>
+        <th>{{ text "console.registrations.col.email" }}</th>
+        <th>{{ text "console.registrations.col.website" }}</th>
+        <th>{{ text "console.registrations.col.legal" }}</th>
+        <th>{{ text "console.registrations.col.created" }}</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody>
+      {{- range .View.Registrations }}
+      <tr>
+        <td>{{ .CompanyName }}</td>
+        <td>{{ .Description }}</td>
+        <td>{{ .INN }}</td>
+        <td>{{ .CompanyEmail }}</td>
+        <td>{{ .Website }}</td>
+        <td>{{ .LegalData }}</td>
+        <td>{{ .CreatedAt }}</td>
+        <td>
+          <form method="post" action="/console/registrations/{{ .TenantID }}/approve" class="inline-form">
+            <input type="hidden" name="csrf" value="{{ $.View.CSRF }}">
+            <input type="hidden" name="actor" value="{{ $.View.Actor }}">
+            <input type="hidden" name="command_id" value="{{ .ApproveCommandID }}">
+            <button type="submit">{{ text "console.registrations.approve" }}</button>
+          </form>
+          <form method="post" action="/console/registrations/{{ .TenantID }}/reject" class="inline-form">
+            <input type="hidden" name="csrf" value="{{ $.View.CSRF }}">
+            <input type="hidden" name="actor" value="{{ $.View.Actor }}">
+            <input type="hidden" name="command_id" value="{{ .RejectCommandID }}">
+            <label for="reject-{{ .TenantID }}">{{ text "console.registrations.reason" }}</label>
+            <input id="reject-{{ .TenantID }}" name="reason" type="text" required>
+            <button type="submit">{{ text "console.registrations.reject" }}</button>
+          </form>
+        </td>
+      </tr>
+      {{- end }}
+    </tbody>
+  </table>
+  {{- else }}
+  <p class="portal-empty">{{ text "console.registrations.empty" }}</p>
+  {{- end }}
+
+  <h2>{{ text "console.profiles.title" }}</h2>
+  {{- if .View.Profiles }}
+  {{- range .View.Profiles }}
+  <article class="fact-panel">
+    <h3>{{ .CompanyName }}</h3>
+    <dl class="facts">
+      <div><dt>{{ text "console.profiles.description" }}</dt><dd>{{ .Description }}</dd></div>
+      <div><dt>{{ text "console.profiles.target" }}</dt><dd>{{ .Target }}</dd></div>
+    </dl>
+    {{- if .Services }}
+    <h4>{{ text "console.profiles.services" }}</h4>
+    {{- range .Services }}
+    <details class="service">
+      <summary>{{ .Name }} — {{ .Short }}</summary>
+      <p>{{ .Full }}</p>
+    </details>
+    {{- end }}
+    {{- end }}
+    {{- if .Unavailable }}
+    <p class="portal-empty">{{ text "console.profiles.unavailable" }}</p>
+    {{- else }}
+    <form method="post" action="/console/registrations/{{ .TenantID }}/profile/approve" class="inline-form">
+      <input type="hidden" name="csrf" value="{{ $.View.CSRF }}">
+      <input type="hidden" name="actor" value="{{ $.View.Actor }}">
+      <input type="hidden" name="command_id" value="{{ .ApproveCommandID }}">
+      <button type="submit">{{ text "console.profiles.approve" }}</button>
+    </form>
+    <form method="post" action="/console/registrations/{{ .TenantID }}/profile/reject" class="inline-form">
+      <input type="hidden" name="csrf" value="{{ $.View.CSRF }}">
+      <input type="hidden" name="actor" value="{{ $.View.Actor }}">
+      <input type="hidden" name="command_id" value="{{ .RejectCommandID }}">
+      <button type="submit">{{ text "console.profiles.reject" }}</button>
+    </form>
+    {{- end }}
+  </article>
+  {{- end }}
+  {{- else }}
+  <p class="portal-empty">{{ text "console.profiles.empty" }}</p>
+  {{- end }}
+</section>
+{{- end -}}

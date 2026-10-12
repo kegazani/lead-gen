@@ -1,13 +1,14 @@
-// Package access — минимальный адаптер ports.AccessDecision.
+// Package access — адаптер порта ports.AccessDecision контекста data-governance.
 //
-// ЗАГЛУШКА СРЕЗА. Реализация проверяет только то, что актору явно выдано право
-// действовать в пределах конкретного тенанта: пара (tenant, actor) должна
-// присутствовать в списке разрешений. Никаких ролей, политик, групп, наследования
-// или проверки claims здесь нет — полная семантика RBAC остаётся за контекстом
-// platform-governance и подключается контрактом access-decision.
+// В пакете две реализации одного порта:
 //
-// Адаптер намеренно не выдаёт себя за готовую авторизацию: положительное решение
-// здесь означает лишь «пара актор-тенант есть в списке среза».
+//   - Contract — продуктовая: тонкий перевод типов к опубликованному контракту
+//     access-decision владельца platform-governance. Решение выдаёт владелец; здесь
+//     только доменные типы потребителя переводятся в форму контракта. Именно это
+//     значение подключает точка сборки cmd/lead-gen.
+//   - Decider — dev/test-двойник: список разрешённых пар (актор, тенант). Он не
+//     выдаёт себя за авторизацию и не используется на продуктовом пути. Полная
+//     семантика RBAC принадлежит platform-governance.
 package access
 
 import (
@@ -24,14 +25,30 @@ import (
 // отказ инфраструктуры проверить право, а не отрицательное решение.
 var ErrMissingSubject = errors.New("access: не задан актор или тенант")
 
-// Decider — список разрешений среза: какие акторы вправе действовать в каких
-// тенантах. Чтение безопасно при параллельных вызовах.
+// subjectError проверяет, что субъект проверки задан. Пустые актор или тенант —
+// отказ инфраструктуры, а не отрицательное решение.
+func subjectError(actor domain.ActorID, tenant domain.TenantID) error {
+	if strings.TrimSpace(string(actor)) == "" {
+		return fmt.Errorf("%w: actor", ErrMissingSubject)
+	}
+	if strings.TrimSpace(string(tenant)) == "" {
+		return fmt.Errorf("%w: tenant", ErrMissingSubject)
+	}
+	return nil
+}
+
+// Decider — список разрешений dev/test-двойника: какие акторы вправе действовать
+// в каких тенантах. Чтение безопасно при параллельных вызовах.
+//
+// Это НЕ продуктовая авторизация: положительное решение здесь означает лишь
+// «пара актор-тенант есть в списке двойника». Продуктовый путь использует Contract
+// поверх решения владельца platform-governance.
 type Decider struct {
 	mu     sync.RWMutex
 	grants map[string]struct{}
 }
 
-// NewDecider создаёт пустой список разрешений. По умолчанию доступ запрещён:
+// NewDecider создаёт пустой dev/test-двойник. По умолчанию доступ запрещён:
 // право появляется только после явного Grant.
 func NewDecider() *Decider {
 	return &Decider{grants: make(map[string]struct{})}
@@ -66,11 +83,8 @@ func (d *Decider) CanAct(_ context.Context, actor domain.ActorID, tenant domain.
 // grantKey строит ключ разрешения. Тенант идёт первым, чтобы граница тенанта была
 // явной: одна и та же пара в другом тенанте не совпадает.
 func grantKey(actor domain.ActorID, tenant domain.TenantID) (string, error) {
-	if strings.TrimSpace(string(actor)) == "" {
-		return "", fmt.Errorf("%w: actor", ErrMissingSubject)
-	}
-	if strings.TrimSpace(string(tenant)) == "" {
-		return "", fmt.Errorf("%w: tenant", ErrMissingSubject)
+	if err := subjectError(actor, tenant); err != nil {
+		return "", err
 	}
 	return string(tenant) + "|" + string(actor), nil
 }

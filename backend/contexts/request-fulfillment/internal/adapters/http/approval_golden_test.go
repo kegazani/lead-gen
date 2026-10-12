@@ -66,7 +66,7 @@ func TestApprovalQueueRenderGolden(t *testing.T) {
 // TestApprovalQueueEmptyRenderGolden фиксирует пустое состояние очереди: оно
 // отличается от недоступности исполнения отдельным золотым файлом.
 func TestApprovalQueueEmptyRenderGolden(t *testing.T) {
-	server := newApprovalServer(t, stubWorkflow{status: ports.WorkflowStatus{Phase: "searching"}}, stubWorkflow{})
+	server := newApprovalServer(t, stubWorkflow{statusErr: ports.ErrWorkflowNotFound}, stubWorkflow{})
 	client := prepareApprovalClient(t, server)
 
 	body := readBody(t, client.get(t, "/approvals?tenant_id="+tenantID))
@@ -94,4 +94,15 @@ func TestApprovalStatusFragmentRenderGolden(t *testing.T) {
 		t.Fatalf("HTMX-утверждение = %d, ожидался 200: %s", resp.StatusCode, readBody(t, resp))
 	}
 	assertApprovalGolden(t, "approval-status.golden", readBody(t, resp))
+}
+
+// TestApprovalScreenShortfallRenderGolden фиксирует срез «цель / найдено /
+// недобор» и наблюдаемый диагноз недобора на экране заявки: разметка не меняется
+// незаметно.
+func TestApprovalScreenShortfallRenderGolden(t *testing.T) {
+	server := newApprovalServer(t, stubWorkflow{status: shortfallStatus(5, 2, 3)}, stubWorkflow{})
+	client := prepareApprovalClient(t, server)
+
+	body := readBody(t, client.get(t, approvalScreenPath()))
+	assertApprovalGolden(t, "approval-shortfall.golden", body)
 }

@@ -65,16 +65,24 @@ type RunSearch struct {
 	// лимит не применяется, но фактический расход измеряется. Значение по
 	// умолчанию не подставляется.
 	Budget budget.Factory
+	// MaxCredits — настроенный предел FirecrawlMaxCredits, применяемый как жёсткий
+	// per-task cap поверх лимита, сохранённого в задании; 0 cap не задаёт.
+	MaxCredits int
 
 	// Signals — реестр отмены выполняющихся заданий (nil — сигнал отмены
 	// недоступен; отмена queued-заданий всё равно работает через хранилище).
 	Signals *jobs.CancelRegistry
 
 	// Наблюдаемость: логгер, метрики и трейсер впрыскиваются composition root'ом.
-	Logger      observ.Logger
-	Metrics     observ.Metrics
-	Tracer      observ.Tracer
-	ServiceName string
+	Logger            observ.Logger
+	Metrics           observ.Metrics
+	Tracer            observ.Tracer
+	FailureNormalizer jobs.FailureNormalizer
+	ServiceName       string
+
+	// TenantID — тенант-владелец пула: задания воркера сохраняют и читают лиды в
+	// этом тенанте (см. ports.WithTenant). Пусто — тенант по умолчанию.
+	TenantID string
 }
 
 // errEmptyQuery — запрос поиска не может быть пустым.
@@ -221,6 +229,9 @@ func (r *RunSearch) Cancel(ctx context.Context, jobID string) error {
 // Обвязка наблюдаемости живёт здесь, а не в jobs.Runner: task_id — идентификатор
 // задания, и его смысл знает только прикладной слой.
 func (r *RunSearch) Handle(ctx context.Context, job jobs.Job) error {
+	// Лиды задания принадлежат тенанту-владельцу пула: область хранения
+	// проносится до адаптеров (порт читает её из контекста).
+	ctx = ports.WithTenant(ctx, r.TenantID)
 	f := observ.Fields{TaskID: job.ID}
 	ctx = observ.WithFields(ctx, f)
 	ctx, finish := r.Tracer.Start(ctx, "job.search")
@@ -245,7 +256,11 @@ func (r *RunSearch) Handle(ctx context.Context, job jobs.Job) error {
 		if errors.As(err, &se) {
 			_ = r.Jobs.RecordEvent(context.WithoutCancel(ctx), ports.SearchJobEvent{JobID: job.ID, Type: ports.EventError, Code: se.Code(), CreatedAt: time.Now().UTC()})
 		}
-		r.Logger.Error("задание упало", err, f)
+		failure := normalizeSearchFailure(r.FailureNormalizer, err)
+		r.Logger.Error("задание упало", nil, f,
+			"error_code", failure.Code,
+			"reason", failure.Message,
+			"diagnostic", failure.Diagnostic)
 		r.Metrics.Incr("jobs_total", map[string]string{"service": r.ServiceName, "outcome": "failed"})
 		r.Metrics.Observe("jobs_duration_seconds", duration.Seconds(), map[string]string{"service": r.ServiceName})
 		finish(err)
@@ -282,7 +297,11 @@ func (r *RunSearch) handle(ctx context.Context, job jobs.Job) error {
 	// сам бюджет: лимит не применяется, но фактический расход измеряется. Значение
 	// по умолчанию не подставляется.
 	if r.Budget != nil {
-		t, err := r.Budget.Begin(job.ID, payload.MaxCredits)
+		maxCredits := payload.MaxCredits
+		if r.MaxCredits > 0 && (maxCredits == 0 || maxCredits > r.MaxCredits) {
+			maxCredits = r.MaxCredits
+		}
+		t, err := r.Budget.Begin(job.ID, maxCredits)
 		if err != nil {
 			return newSearchJobError(ErrorCodeBudgetExhausted, fmt.Errorf("app: бюджет задания %s: %w", job.ID, err))
 		}
@@ -292,7 +311,17 @@ func (r *RunSearch) handle(ctx context.Context, job jobs.Job) error {
 		// чтобы журнал показывал расход и резерв даже для упавшего задания.
 		defer func() {
 			if err := r.Jobs.RecordBudget(context.WithoutCancel(ctx), job.ID, task.Snapshot()); err != nil {
-				r.Logger.Error("запись бюджета задания", err, observ.Fields{TaskID: job.ID})
+				searchDiagnostic(r.Logger, true, "запись бюджета задания", "budget_record_failed", observ.Fields{TaskID: job.ID}, "service", r.ServiceName)
+			}
+		}()
+		// Terminal settlement выполняется после всех операций, в том числе при
+		// ошибке, отмене или panic. Unknown reservation освобождается только если
+		// сам Guard подтвердит reconciliation свежим account balance.
+		defer func() {
+			finishCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), 20*time.Second)
+			defer cancel()
+			if err := r.Budget.Finish(finishCtx, job.ID); err != nil {
+				searchDiagnostic(r.Logger, true, "завершение бюджета задания", "budget_finish_failed", observ.Fields{TaskID: job.ID}, "service", r.ServiceName)
 			}
 		}()
 	}
@@ -304,16 +333,37 @@ func (r *RunSearch) handle(ctx context.Context, job jobs.Job) error {
 		interpretation = *payload.Interpretation
 	}
 	state := &assessmentState{jobID: job.ID, interpretation: interpretation, verdicts: make(map[string]domain.AssessmentVerdict)}
+	companyIDs := make(map[string]struct{})
+	// Восстановленный job использует уже durable result refs. Они не очищаются и
+	// не засчитываются повторно при продолжении того же задания.
+	if reader, ok := r.Jobs.(interface {
+		GetSearchJob(context.Context, string) (ports.SearchJob, error)
+	}); ok {
+		previous, err := reader.GetSearchJob(ctx, job.ID)
+		if err != nil {
+			return newSearchJobError(ErrorCodeResultSaveFailed, fmt.Errorf("чтение прежнего результата задания %s: %w", job.ID, err))
+		}
+		for _, id := range previous.ResultRef {
+			if id = strings.TrimSpace(id); id != "" {
+				companyIDs[id] = struct{}{}
+			}
+		}
+	}
 
-	rep := newProgressReporter(r.Jobs, job.ID, r.now, task, r.Logger)
+	rep := newProgressReporter(r.Jobs, job.ID, r.now, task, r.Logger, r.FailureNormalizer)
 	rep.target(targetCompanies)
+	rep.result(func() []string { return sortedCompanyIDs(companyIDs) })
 	rep.phase(ctx, PhasePlanning)
 
 	// План из payload — согласованный диалогом и подтверждённый оператором;
 	// пустые цели означают фолбэк на планирование по запросу.
 	limits := r.effectiveLimits(payload.Plan)
 	var targets []llm.Target
-	if payload.Plan != nil && payload.Plan.HasTargets() {
+	if targetReached(targetCompanies, companyIDs) {
+		// Восстановленный результат уже достиг квоты — не запускаем повторный
+		// платный план и не начинаем краулинг.
+		rep.plannedTargets(0)
+	} else if payload.Plan != nil && payload.Plan.HasTargets() {
 		targets = targetsFromPlan(payload.Plan)
 		rep.plannedTargets(len(targets))
 		rep.tokens(0)
@@ -324,10 +374,6 @@ func (r *RunSearch) handle(ctx context.Context, job jobs.Job) error {
 		rep.tokens(tokens)
 	}
 
-	companyIDs := make(map[string]struct{})
-	// Результат фиксируется на границах flush вместе с прогрессом: список
-	// найденных компаний виден по ходу прогона, а не только после завершения.
-	rep.result(func() []string { return sortedCompanyIDs(companyIDs) })
 	// crawledURLs — множество нормализованных уже обойдённых URL: повторный обход
 	// того же адреса (в том числе из другой цели) пропускается и не тратит
 	// кредиты.
@@ -359,7 +405,9 @@ func (r *RunSearch) handle(ctx context.Context, job jobs.Job) error {
 		ids := sortedCompanyIDs(companyIDs)
 		rep.found(len(ids))
 		rep.stop(stopReason, targetMet())
-		rep.flush(context.WithoutCancel(ctx))
+		flushCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), searchLeadsDrainBudget)
+		defer cancel()
+		rep.flush(flushCtx)
 		return jobs.ErrCancelled
 	}
 
@@ -376,6 +424,12 @@ func (r *RunSearch) handle(ctx context.Context, job jobs.Job) error {
 			if err := r.processTarget(ctx, targets[i], companyIDs, crawledURLs, s, c, rep, limits, state, targetCompanies, maxResults); err != nil {
 				if errors.Is(err, jobs.ErrCancelled) {
 					return finishCancelled()
+				}
+				flushCtx, cancel := context.WithTimeout(context.WithoutCancel(ctx), searchLeadsDrainBudget)
+				rep.flush(flushCtx)
+				cancel()
+				if saveErr := rep.resultError(); saveErr != nil {
+					return newSearchJobError(ErrorCodeResultSaveFailed, errors.Join(err, saveErr))
 				}
 				return err
 			}
@@ -442,6 +496,9 @@ func (r *RunSearch) handle(ctx context.Context, job jobs.Job) error {
 	rep.found(len(ids))
 	rep.stop(stopReason, targetMet())
 	rep.flush(ctx)
+	if err := rep.resultError(); err != nil {
+		return newSearchJobError(ErrorCodeResultSaveFailed, err)
+	}
 	return nil
 }
 
@@ -605,8 +662,7 @@ func (r *RunSearch) processTarget(ctx context.Context, target llm.Target, compan
 			// продолжается со следующей цели; повторной попытки по этому запросу нет.
 			r.Metrics.Incr("downstream_errors_total", map[string]string{"service": r.ServiceName, "engine": "search"})
 			if r.Logger != nil {
-				r.Logger.Warn("поиск: запрос не удался", observ.Fields{},
-					"service", r.ServiceName, "query", target.Query, "error", err.Error())
+				searchDiagnostic(r.Logger, false, "поиск: запрос не удался", "search_request_failed", observ.Fields{TaskID: rep.id}, "service", r.ServiceName)
 			}
 			return nil
 		}
@@ -676,8 +732,11 @@ func (r *RunSearch) crawlURL(ctx context.Context, startURL string, companyIDs, c
 		IncludePaths:   limits.IncludePaths,
 		ExcludePaths:   limits.ExcludePaths,
 	})
-	cancelled := errors.Is(err, crawl.ErrCancelled)
-	if err != nil && !cancelled {
+	// Остановка обхода — таймаут (crawl.ErrTimeout) или отмена (crawl.ErrCancelled) —
+	// не отменяет задание: это ограниченная остановка одного сайта. Уже добытые
+	// страницы обрабатываются, а цикл продолжает следующие цели.
+	bounded := errors.Is(err, crawl.ErrCancelled) || errors.Is(err, crawl.ErrTimeout)
+	if err != nil && !bounded {
 		if ctx.Err() != nil {
 			return jobs.ErrCancelled
 		}
@@ -686,8 +745,7 @@ func (r *RunSearch) crawlURL(ctx context.Context, startURL string, companyIDs, c
 		// продолжается со следующей цели — «ничего не упускать» важнее строгости.
 		r.Metrics.Incr("downstream_errors_total", map[string]string{"service": r.ServiceName, "engine": "crawl"})
 		if r.Logger != nil {
-			r.Logger.Warn("поиск: обход сайта не удался", observ.Fields{},
-				"service", r.ServiceName, "url", startURL, "error", err.Error())
+			searchDiagnostic(r.Logger, false, "поиск: обход сайта не удался", "crawl_request_failed", observ.Fields{TaskID: rep.id}, "service", r.ServiceName)
 		}
 		return nil
 	}
@@ -697,7 +755,7 @@ func (r *RunSearch) crawlURL(ctx context.Context, startURL string, companyIDs, c
 	// контекст, чтобы сохранение не сорвалось из-за истёкшего дедлайна, а число
 	// дренируемых страниц ограничено, чтобы не оборачиваться долгим домечиванием.
 	pageCtx := crawlCtx
-	if cancelled {
+	if bounded {
 		pageCtx = context.WithoutCancel(ctx)
 	}
 	rep.crawled(len(outcome.Pages))
@@ -707,7 +765,7 @@ func (r *RunSearch) crawlURL(ctx context.Context, startURL string, companyIDs, c
 		if targetReached(targetCompanies, companyIDs) {
 			break
 		}
-		if cancelled {
+		if bounded {
 			if i >= cancelledDrainLimit {
 				break
 			}
@@ -757,8 +815,7 @@ func (r *RunSearch) processPage(ctx context.Context, page crawl.Page, companyIDs
 			// молча оставалась без контактов, и причина «email не нашёлся» не
 			// всплывала. Теперь она пишется в лог.
 			if r.Logger != nil {
-				r.Logger.Warn("поиск: эскалация на extract не удалась", observ.Fields{},
-					"service", r.ServiceName, "url", page.URL, "error", err.Error())
+				searchDiagnostic(r.Logger, false, "поиск: эскалация на extract не удалась", "extract_request_failed", observ.Fields{TaskID: rep.id}, "service", r.ServiceName)
 			}
 		}
 	}
@@ -768,10 +825,8 @@ func (r *RunSearch) processPage(ctx context.Context, page crawl.Page, companyIDs
 	// ли эскалация и что она вернула. Без этой строки провал «email не ищется»
 	// неотличим от «на странице его нет».
 	if r.Logger != nil {
-		r.Logger.Info("поиск: страница обработана", observ.Fields{},
+		r.Logger.Info("поиск: страница обработана", observ.Fields{TaskID: rep.id},
 			"service", r.ServiceName,
-			"url", page.URL,
-			"domain", identity,
 			"cheap_contacts", len(cheapContacts),
 			"cheap_emails", cheapEmails,
 			"cheap_phones", cheapPhones,
@@ -787,11 +842,10 @@ func (r *RunSearch) processPage(ctx context.Context, page crawl.Page, companyIDs
 		rep.addParseErrors(1)
 		return nil
 	}
-	companyIDs[identity] = struct{}{}
-
 	if err := r.saveCompany(ctx, identity, name, description, socials, contacts, at); err != nil {
 		return err
 	}
+	companyIDs[identity] = struct{}{}
 	rep.found(len(companyIDs))
 
 	// Оценка привязывается к паре (задание, компания) и сохраняется после
@@ -836,11 +890,10 @@ func (r *RunSearch) assessCompany(ctx context.Context, state *assessmentState, c
 	if err != nil {
 		// Ошибка оценки не прерывает поиск и не превращается в вердикт, но и не
 		// теряется: она фиксируется счётчиком прогресса и структурным логом с
-		// заданием, компанией и причиной.
+		// task_id и безопасным кодом диагностики.
 		rep.addAssessmentErrors(1)
 		if r.Logger != nil {
-			r.Logger.Error("поиск: оценка компании не удалась", err, observ.Fields{},
-				"service", r.ServiceName, "job", state.jobID, "company", companyID)
+			searchDiagnostic(r.Logger, true, "поиск: оценка компании не удалась", "assessment_compute_failed", observ.Fields{TaskID: state.jobID}, "service", r.ServiceName)
 		}
 		return
 	}
@@ -854,21 +907,21 @@ func (r *RunSearch) assessCompany(ctx context.Context, state *assessmentState, c
 	switch {
 	case getErr == nil:
 		if err := stored.ChangeVerdict(assessment.Verdict(), assessment.SignalKind(), assessment.Evidence(), at); err != nil {
-			r.logAssessmentWarn(state.jobID, companyID, "ревизия оценки компании", err)
+			r.logAssessmentWarn(state.jobID, "ревизия оценки компании", "assessment_revision_failed")
 			return
 		}
 		if err := r.Assessments.Save(ctx, stored); err != nil {
-			r.logAssessmentError(state.jobID, err)
+			r.logAssessmentError(state.jobID, "assessment_save_failed")
 			return
 		}
 		assessment = stored
 	case errors.Is(getErr, ports.ErrAssessmentNotFound):
 		if err := r.Assessments.Save(ctx, assessment); err != nil {
-			r.logAssessmentError(state.jobID, err)
+			r.logAssessmentError(state.jobID, "assessment_save_failed")
 			return
 		}
 	default:
-		r.logAssessmentWarn(state.jobID, companyID, "чтение прежней оценки компании", getErr)
+		r.logAssessmentWarn(state.jobID, "чтение прежней оценки компании", "assessment_read_failed")
 		return
 	}
 
@@ -896,20 +949,19 @@ func countVerdicts(verdicts map[string]domain.AssessmentVerdict) ports.VerdictCo
 
 // logAssessmentWarn пишет предупреждение оценки; оценка — дополнительный
 // результат и не прерывает поиск.
-func (r *RunSearch) logAssessmentWarn(jobID, companyID, what string, err error) {
+func (r *RunSearch) logAssessmentWarn(jobID, what, diagnosticCode string) {
 	if r.Logger == nil {
 		return
 	}
-	r.Logger.Warn("поиск: "+what, observ.Fields{},
-		"service", r.ServiceName, "job", jobID, "company", companyID, "error", err.Error())
+	searchDiagnostic(r.Logger, false, "поиск: "+what, diagnosticCode, observ.Fields{TaskID: jobID}, "service", r.ServiceName)
 }
 
 // logAssessmentError пишет ошибку записи оценки, не прерывая поиск.
-func (r *RunSearch) logAssessmentError(jobID string, err error) {
+func (r *RunSearch) logAssessmentError(jobID, diagnosticCode string) {
 	if r.Logger == nil {
 		return
 	}
-	r.Logger.Error("поиск: сохранение оценки компании", err, observ.Fields{TaskID: jobID})
+	searchDiagnostic(r.Logger, true, "поиск: сохранение оценки компании", diagnosticCode, observ.Fields{TaskID: jobID}, "service", r.ServiceName)
 }
 
 // saveCompany создаёт карточку компании либо дополняет существующую (дедупликация

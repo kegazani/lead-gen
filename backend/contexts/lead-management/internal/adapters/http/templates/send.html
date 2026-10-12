@@ -1,24 +1,25 @@
 {{- define "content" -}}
 {{- with .View -}}
+{{ template "live" .Live }}
 <header class="page-head">
-  <h1>Отправка</h1>
+  <h1>{{ text "lead.send.title" }}</h1>
 </header>
 
 {{- if or (gt .Sent 0) (gt .Skipped 0) }}
 <section class="panel">
-  <h2>Итог рассылки</h2>
-  <p>Отправлено: {{.Sent}}, пропущено: {{.Skipped}}</p>
+  <h2>{{ text "lead.send.result" }}</h2>
+  <p>{{ text "lead.send.sent" }} {{.Sent}}, {{ text "lead.send.skipped" }} {{.Skipped}}</p>
 </section>
 {{- end }}
 
 <section class="panel">
-  <h2>Рассылка по сегменту</h2>
+  <h2>{{ text "lead.send.segment" }}</h2>
   <form method="post" action="/send-segment">
     <input type="hidden" name="csrf" value="{{.CSRF}}">
     <p class="field">
-      <label for="template">Шаблон</label>
+      <label for="template">{{ text "lead.card.template" }}</label>
       <select id="template" name="template">
-        <option value="">— выберите шаблон —</option>
+        <option value="">{{ text "lead.card.template_choose" }}</option>
         {{- range .Options }}
         <option value="{{.ID}}"{{if .Selected}} selected{{end}}>{{.Name}}</option>
         {{- end }}
@@ -26,15 +27,15 @@
     </p>
     {{ .ValuesHTML }}
     <p class="actions">
-      <button type="button" class="button-secondary" hx-post="/send/preview" hx-include="closest form" hx-target="#email-preview">Предпросмотр</button>
-      <button type="submit">Разослать</button>
+      <button type="button" class="button-secondary" hx-post="/send/preview" hx-include="closest form" hx-target="#email-preview">{{ text "lead.card.preview" }}</button>
+      <button type="submit">{{ text "lead.send.submit" }}</button>
     </p>
   </form>
-  <div id="email-preview">{{ .Preview }}</div>
+  <div id="email-preview" data-live-announce="{{ text "lead.live.card" }}" data-focus-after-swap="#email-preview">{{ .Preview }}</div>
 </section>
 
 <section class="panel">
-  <h2>Библиотека шаблонов</h2>
+  <h2>{{ text "lead.send.library" }}</h2>
   {{ .TemplateList }}
 </section>
 {{- end -}}

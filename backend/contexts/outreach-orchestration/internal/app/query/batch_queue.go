@@ -94,7 +94,7 @@ func (h *BatchQueueHandler) Handle(ctx context.Context, q BatchQueue) (BatchQueu
 		return BatchQueueProjection{}, fmt.Errorf("загрузка кампании %s: %w", q.CampaignID, ports.ErrCampaignNotFound)
 	}
 
-	built, err := campaign.BuildApprovalBatch(q.Limits, h.risk)
+	built, err := campaign.BuildApprovalBatch(ctx, q.Limits, h.risk)
 	if err != nil {
 		return BatchQueueProjection{}, err
 	}

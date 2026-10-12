@@ -31,7 +31,25 @@ func approvedEvent(t *testing.T) domain.ActionApproved {
 		DecisionID:   "decision-1",
 		Actor:        "operator-1",
 		Channel:      channel,
+		Material:     "asset-1@ver-1",
 		At:           eventTime,
+	}
+}
+
+// TestMapActionApprovedCarriesMaterialRef проверяет, что отображение relay
+// переносит ссылку на материал утверждённого черновика в контракт: без неё
+// материал письма на основном пути не разрешается.
+func TestMapActionApprovedCarriesMaterialRef(t *testing.T) {
+	t.Parallel()
+	action, ok, err := relay.MapActionApproved(approvedEvent(t))
+	if err != nil {
+		t.Fatalf("MapActionApproved: %v", err)
+	}
+	if !ok {
+		t.Fatal("утверждённое событие должно публиковаться")
+	}
+	if action.MaterialVersionRef != "asset-1@ver-1" {
+		t.Fatalf("MaterialVersionRef = %q, ожидалось %q", action.MaterialVersionRef, "asset-1@ver-1")
 	}
 }
 

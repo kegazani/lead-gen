@@ -69,6 +69,10 @@ const (
 	AccessRoleRevoked AccessChangeKind = "role-revoked"
 	// AccessTenantDisabled — тенант отключён.
 	AccessTenantDisabled AccessChangeKind = "tenant-disabled"
+	// AccessTenantRegistered — заявка на регистрацию одобрена, тенант активен.
+	AccessTenantRegistered AccessChangeKind = "tenant-registered"
+	// AccessTenantRegistrationRejected — заявка на регистрацию отклонена.
+	AccessTenantRegistrationRejected AccessChangeKind = "tenant-registration-rejected"
 )
 
 // TenantAccessChanged — доступ тенанта изменён. Поля экспортированы: событие —
@@ -78,8 +82,6 @@ type TenantAccessChanged struct {
 	// UserID — пользователь, чьи роли изменились; пусто для изменения
 	// состояния тенанта.
 	UserID UserID
-	// Login — логин пользователя.
-	Login string
 	// Roles — роли пользователя после изменения.
 	Roles []Role
 	// Change — характер изменения.

@@ -26,7 +26,7 @@ func writeTempFile(t *testing.T, name, content string) string {
 }
 
 // TestLoadRealSources проверяет сборку графа из настоящих источников:
-// одиннадцать узлов-сервисов, двадцать девять рёбер с транспортом и контрактом,
+// двенадцать узлов-сервисов, сорок девять рёбер с транспортом и контрактом,
 // группы deploy и инфраструктурные узлы.
 func TestLoadRealSources(t *testing.T) {
 	graph, err := Load(realCatalogPath, realServicesPath, realInfrastructurePath)
@@ -59,14 +59,14 @@ func TestLoadRealSources(t *testing.T) {
 			t.Errorf("узел %q: неизвестный kind %q", node.ID, node.Kind)
 		}
 	}
-	if services != 11 {
-		t.Errorf("узлов-сервисов: %d, ожидалось 11", services)
+	if services != 12 {
+		t.Errorf("узлов-сервисов: %d, ожидалось 12", services)
 	}
 	if infrastructure != 8 {
 		t.Errorf("инфраструктурных узлов: %d, ожидалось 8", infrastructure)
 	}
-	if len(graph.Edges) != 29 {
-		t.Errorf("рёбер: %d, ожидалось 29", len(graph.Edges))
+	if len(graph.Edges) != 51 {
+		t.Errorf("рёбер: %d, ожидалось 51", len(graph.Edges))
 	}
 	if !containsString(groups["outreach-orchestration"], "core") {
 		t.Errorf("группы outreach-orchestration = %v, ожидалась core", groups["outreach-orchestration"])

@@ -11,6 +11,7 @@ import (
 	"lead-gen/backend/contexts/platform-governance/internal/app/query"
 	"lead-gen/backend/contexts/platform-governance/internal/domain"
 	"lead-gen/backend/contexts/platform-governance/internal/ports"
+	"lead-gen/frontend/components"
 )
 
 // Заголовки внутреннего API доступа. Актор приходит проверенным: аутентификация
@@ -197,8 +198,10 @@ func (s *Server) decodeJSON(w http.ResponseWriter, r *http.Request, target any) 
 	return true
 }
 
-// writeJSON отдаёт JSON-ответ.
+// writeJSON отдаёт JSON-ответ. Ответы консоли несут данные тенанта и оператора,
+// поэтому не кэшируются (web-frontend-architecture, срез 7, 7.5).
 func (s *Server) writeJSON(w http.ResponseWriter, status int, payload any) {
+	components.SetNoStore(w)
 	w.Header().Set("Content-Type", "application/json; charset=utf-8")
 	w.WriteHeader(status)
 	_ = json.NewEncoder(w).Encode(payload)
@@ -221,10 +224,14 @@ func adminStatus(err error) int {
 	case errors.Is(err, domain.ErrEmptyID), errors.Is(err, domain.ErrUnknownRole),
 		errors.Is(err, domain.ErrRolesRequired), errors.Is(err, domain.ErrCompanyNameRequired),
 		errors.Is(err, domain.ErrDescriptionRequired), errors.Is(err, domain.ErrUserLoginRequired),
-		errors.Is(err, domain.ErrUnknownAuditAction):
+		errors.Is(err, domain.ErrUnknownAuditAction),
+		errors.Is(err, domain.ErrRegistrationReasonRequired),
+		errors.Is(err, domain.ErrProfileIncomplete):
 		return http.StatusBadRequest
 	case errors.Is(err, domain.ErrTenantDisabled), errors.Is(err, domain.ErrRoleNotAssigned),
-		errors.Is(err, domain.ErrDuplicateUser):
+		errors.Is(err, domain.ErrDuplicateUser),
+		errors.Is(err, domain.ErrRegistrationState),
+		errors.Is(err, domain.ErrProfileState):
 		return http.StatusConflict
 	case errors.Is(err, ports.ErrTenantNotFound), errors.Is(err, domain.ErrUserNotFound):
 		return http.StatusNotFound
@@ -251,6 +258,14 @@ func adminMessage(err error) string {
 		return "тенант отключён"
 	case errors.Is(err, domain.ErrRoleNotAssigned):
 		return "роль не назначена пользователю"
+	case errors.Is(err, domain.ErrRegistrationReasonRequired):
+		return "Укажите причину отклонения"
+	case errors.Is(err, domain.ErrRegistrationState):
+		return "Заявка уже не на рассмотрении"
+	case errors.Is(err, domain.ErrProfileState):
+		return "Действие недопустимо в текущем состоянии профиля"
+	case errors.Is(err, domain.ErrProfileIncomplete):
+		return "Профиль заполнен не полностью"
 	default:
 		return "команда отклонена"
 	}

@@ -1,48 +1,89 @@
 {{- define "content" -}}
 <section class="approval-screen" hx-boost="true">
-  <h1>Утверждение заявки {{.View.Request.RequestID}}</h1>
-  <p>Статус: <span class="status status-{{.View.Request.Status}}">{{.View.Request.Status}}</span></p>
+  {{ template "live" .View.Live }}
+  <h1>{{ text "request.approval.title" }}</h1>
+  <p class="hint">
+    <span class="status status-{{.View.Request.Status}}">{{ label "request.status" .View.Request.Status }}</span>
+    <span class="request-id">{{ text "request.number" }} {{.View.Request.RequestID}}</span>
+  </p>
   {{- with .View.Notice }}
   <p class="notice" role="status">{{.}}</p>
   {{- end }}
 
-  <section id="workflow" hx-target="this" hx-swap="outerHTML">
-    {{ template "approval-status" .View }}
+  <div class="split">
+    <article class="offer">
+      <h2>{{ text "request.offer.title" }}</h2>
+      <p class="offer-content">{{.View.Request.Offer.Content}}</p>
+      <dl class="facts">
+        {{- with .View.Request.Offer.Target }}
+        <div><dt>{{ text "request.offer.target" }}</dt><dd class="offer-target">{{.}}</dd></div>
+        {{- end }}
+        <div><dt>{{ text "request.offer.revision" }}</dt><dd class="offer-revision">{{.View.Request.Offer.Revision}}</dd></div>
+      </dl>
+    </article>
+
+    <section id="workflow" hx-target="this" hx-swap="innerHTML" data-focus-after-swap="#workflow" data-live-announce="{{ text "request.live.workflow" }}">
+      {{ template "approval-status" .View }}
+    </section>
+  </div>
+
+  <section class="request-email-drafts" aria-labelledby="request-email-drafts-title">
+    <h2 id="request-email-drafts-title">{{ text "request.approval.email_drafts.title" }}</h2>
+    {{- if .View.DraftsUnavailable }}
+    <p class="watermark" role="status">{{ text "request.approval.email_drafts.unavailable" }}</p>
+    {{- else if not .View.Drafts }}
+    <p class="hint" role="status">{{ text "request.approval.email_drafts.empty" }}</p>
+    {{- else }}
+    <div class="request-email-drafts-list">
+      {{- range .View.Drafts }}
+      <article class="request-email-draft">
+        <p class="request-email-draft-lead"><strong>{{ text "request.approval.email_drafts.lead" }}</strong> <code>{{ .LeadID }}</code></p>
+        <h3 class="request-email-draft-subject">{{ .Subject }}</h3>
+        <pre class="request-email-draft-body">{{ .Body }}</pre>
+      </article>
+      {{- end }}
+    </div>
+    {{- end }}
   </section>
 
-  <article class="offer">
-    <h2>Оффер</h2>
-    <p class="offer-content">{{.View.Request.Offer.Content}}</p>
-    {{- with .View.Request.Offer.Target }}
-    <p class="offer-target">Цель: {{.}}</p>
-    {{- end }}
-    <p class="offer-revision">Версия оффера: {{.View.Request.Offer.Revision}}</p>
-  </article>
-
   {{- if .View.CanDecide }}
-  <form method="post" action="/requests/{{.View.Request.RequestID}}/approval/approve">
-    <input type="hidden" name="tenant_id" value="{{.View.TenantID}}">
-    <input type="hidden" name="csrf" value="{{.View.CSRF}}">
-    <button type="submit">Утвердить</button>
-  </form>
-  <form method="post" action="/requests/{{.View.Request.RequestID}}/approval/reject">
-    <input type="hidden" name="tenant_id" value="{{.View.TenantID}}">
-    <input type="hidden" name="csrf" value="{{.View.CSRF}}">
-    <button type="submit">Отклонить</button>
-  </form>
+  <div class="decision-bar">
+    <p class="decision-note">{{ text "request.approval.decision.note" }}</p>
+    <form method="post" action="/requests/{{.View.Request.RequestID}}/approval/reject">
+      <input type="hidden" name="tenant_id" value="{{.View.TenantID}}">
+      <input type="hidden" name="csrf" value="{{.View.CSRF}}">
+      <button type="submit" class="button-danger">{{ text "request.validation.reject" }}</button>
+    </form>
+    <form method="post" action="/requests/{{.View.Request.RequestID}}/approval/approve">
+      <input type="hidden" name="tenant_id" value="{{.View.TenantID}}">
+      <input type="hidden" name="csrf" value="{{.View.CSRF}}">
+      <button type="submit">{{ text "request.approval.approve" }}</button>
+    </form>
+  </div>
   {{- end }}
 </section>
 {{- end -}}
 
 {{- define "approval-status" -}}
 <article class="approval-status">
-  <h2>Исполнение</h2>
+  <h2>{{ text "request.approval.execution.title" }}</h2>
   {{- if .Unavailable }}
-  <p class="watermark" role="status">Исполнение недоступно: рантайм workflow не подключён</p>
+  <p class="watermark" role="status">{{ text "request.approval_queue.unavailable" }}</p>
   {{- else }}
-  <p class="phase">Фаза: <span class="status status-{{.Phase}}">{{.Phase}}</span></p>
-  <p class="execution">Состояние: {{.Execution}}</p>
-  <p class="found">Найдено лидов: {{.Found}}</p>
+  <dl class="facts">
+    <div><dt>{{ text "request.approval.execution.phase" }}</dt><dd class="phase"><span class="status status-{{.Phase}}">{{ label "request.phase" .Phase }}</span></dd></div>
+    <div><dt>{{ text "request.approval.execution.state" }}</dt><dd class="execution">{{ label "request.execution" .Execution }}</dd></div>
+    {{- if .HasShortfall }}
+    <div><dt>{{ text "request.approval.target" }}</dt><dd class="target num">{{.Target}}</dd></div>
+    {{- end }}
+    <div><dt>{{ text "request.approval_queue.found" }}</dt><dd class="found num">{{.Found}}</dd></div>
+    {{- if .HasShortfall }}
+    <div><dt>{{ text "request.approval.shortfall" }}</dt><dd class="shortfall num">{{.Shortfall}}</dd></div>
+    {{- end }}
+  </dl>
+  {{- if .HasShortfall }}
+  {{- with .Diagnosis }}<p class="shortfall-diagnosis hint" role="status">{{.}}</p>{{- end }}
+  {{- end }}
   {{- end }}
 </article>
 {{- end -}}

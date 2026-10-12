@@ -70,7 +70,7 @@ func TestSendToLeadSendsAndRecordsMessage(t *testing.T) {
 	mailPort := &fakeMail{}
 
 	u := newSendToLead(profiles, contacts, messages, templates, mailPort)
-	result, err := u.Send(context.Background(), "example.com", "intro", nil, "key-1")
+	result, err := u.Send(context.Background(), "example.com", "intro", nil, "key-1", "")
 	if err != nil {
 		t.Fatalf("Send: %v", err)
 	}
@@ -110,7 +110,7 @@ func TestSendToLeadUnknownTemplate(t *testing.T) {
 	seedContact(contacts, "example.com", "anna@example.com", "CEO")
 
 	u := newSendToLead(profiles, contacts, newMemMessages(), newMemTemplates(), &fakeMail{})
-	if _, err := u.Send(context.Background(), "example.com", "missing", nil, "key-3"); !errors.Is(err, ErrTemplateNotFound) {
+	if _, err := u.Send(context.Background(), "example.com", "missing", nil, "key-3", ""); !errors.Is(err, ErrTemplateNotFound) {
 		t.Fatalf("ожидалась ErrTemplateNotFound, получено %v", err)
 	}
 }
@@ -140,7 +140,7 @@ func TestSendToLeadRefusesSuppressedLead(t *testing.T) {
 	}
 
 	u := newSendToLead(profiles, contacts, messages, templates, &fakeMail{})
-	if _, err := u.Send(context.Background(), "example.com", "intro", nil, "key-2"); !errors.Is(err, ErrLeadSuppressed) {
+	if _, err := u.Send(context.Background(), "example.com", "intro", nil, "key-2", ""); !errors.Is(err, ErrLeadSuppressed) {
 		t.Fatalf("ожидалась ErrLeadSuppressed, получено %v", err)
 	}
 }
@@ -157,7 +157,7 @@ func TestSendToLeadKeepsHistoryImmutableAfterTemplateEdit(t *testing.T) {
 	)
 
 	u := newSendToLead(profiles, contacts, messages, templates, &fakeMail{})
-	if _, err := u.Send(context.Background(), "example.com", "intro", nil, "key-1"); err != nil {
+	if _, err := u.Send(context.Background(), "example.com", "intro", nil, "key-1", ""); err != nil {
 		t.Fatalf("Send: %v", err)
 	}
 

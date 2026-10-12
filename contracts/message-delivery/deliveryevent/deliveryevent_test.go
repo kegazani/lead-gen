@@ -64,6 +64,29 @@ func TestDeliveryEvent_RequiredFields(t *testing.T) {
 	}
 }
 
+func TestDeliveryEvent_CampaignOptional(t *testing.T) {
+	// Ссылка на кампанию (MINOR 1.1.0) необязательна: событие без неё валидно.
+	if err := validEvent().Validate(); err != nil {
+		t.Fatalf("событие без кампании должно быть валидно: %v", err)
+	}
+	withCampaign := validEvent()
+	withCampaign.CampaignID = "handoff-req-1"
+	raw, err := json.Marshal(withCampaign)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var restored DeliveryEvent
+	if err := json.Unmarshal(raw, &restored); err != nil {
+		t.Fatal(err)
+	}
+	if restored.CampaignID != "handoff-req-1" {
+		t.Fatalf("ссылка на кампанию не пережила round-trip: %+v", restored)
+	}
+	if SchemaVersion != "1.1.0" {
+		t.Fatalf("ожидалась версия схемы 1.1.0, got %q", SchemaVersion)
+	}
+}
+
 func TestDeliveryEvent_RejectsUnknownOutcome(t *testing.T) {
 	unknown := validEvent()
 	unknown.Outcome = "forwarded"

@@ -24,6 +24,12 @@ var ErrMessageNotFound = errors.New("lead-management: сообщение не н
 var ErrContactNotFound = errors.New("lead-management: контакт не найден")
 
 // LeadProfileRepository — репозиторий карточек компаний (зелёная зона).
+//
+// Выборка тенант-скоупна: активный тенант берётся из контекста (см. TenantFrom),
+// Save записывает карточку в этом тенанте, а FindByID/ListVisible/ListSnoozed/
+// Delete не возвращают (и не меняют) карточки чужого тенанта. Пустая область —
+// тенант по умолчанию ” (прежнее поведение и совместимость с существующими
+// данными).
 type LeadProfileRepository interface {
 	// Save сохраняет карточку (создаёт или дополняет).
 	Save(ctx context.Context, company *domain.Company) error

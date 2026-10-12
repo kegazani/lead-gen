@@ -69,7 +69,7 @@ func newCardServer(t *testing.T) *httpapi.Server {
 	templates := memory.NewEmailTemplateRepository()
 	assessments := memory.NewAssessmentStore()
 
-	seedCompany(t, profiles, "example.com", "Пример Компании", "Описание компании",
+	seedCompanyUnscoped(t, profiles, "example.com", "Пример Компании", "Описание компании",
 		"https://www.linkedin.com/company/example")
 	seedContact(t, contacts, "example.com", "hello@example.com", "+7 999 123-45-67", "основатель")
 	seedTemplate(t, templates, "intro", "Приветствие", "Тема для {{company}}", "Здравствуйте, {{company}}!",
@@ -327,10 +327,10 @@ func newCardsListServer(t *testing.T) *httpapi.Server {
 	jobs := memory.NewSearchJobStore()
 	messages := memory.NewOutboundMessageRepository()
 
-	seedCompany(t, profiles, "example.com", "Пример Компании", "Описание компании с email",
+	seedCompanyUnscoped(t, profiles, "example.com", "Пример Компании", "Описание компании с email",
 		"https://www.linkedin.com/company/example")
 	seedContact(t, contacts, "example.com", "hello@example.com", "+7 999 123-45-67", "основатель")
-	seedCompany(t, profiles, "phone.example.com", "Только Телефон", "Описание компании без email")
+	seedCompanyUnscoped(t, profiles, "phone.example.com", "Только Телефон", "Описание компании без email")
 
 	showcase := &app.Showcase{Jobs: jobs, Profiles: profiles, Contacts: contacts, Messages: messages}
 	return httpapi.NewServer(httpapi.Dependencies{

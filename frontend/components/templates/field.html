@@ -7,7 +7,7 @@
   <textarea id="{{.ID}}" name="{{.Name}}" rows="{{.Rows}}"{{if .Error}} aria-invalid="true"{{end}}{{if .Required}} required{{end}}>{{.Value}}</textarea>
   {{- else }}
   <label for="{{.ID}}">{{.Label}}</label>
-  <input id="{{.ID}}" name="{{.Name}}" type="text" value="{{.Value}}"{{with .Autocomplete}} autocomplete="{{.}}"{{end}}{{if .Error}} aria-invalid="true"{{end}}{{if .Required}} required{{end}}>
+  <input id="{{.ID}}" name="{{.Name}}" type="{{if .Type}}{{.Type}}{{else}}text{{end}}" value="{{.Value}}"{{with .Autocomplete}} autocomplete="{{.}}"{{end}}{{if .Error}} aria-invalid="true"{{end}}{{if .Required}} required{{end}}>
   {{- end }}
   {{- with .Error }}
   <span class="field-error">{{.}}</span>

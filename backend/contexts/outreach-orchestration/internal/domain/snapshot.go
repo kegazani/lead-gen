@@ -52,6 +52,7 @@ type CampaignSnapshot struct {
 	Name      string
 	Window    CampaignWindow
 	State     CampaignState
+	Purpose   CampaignPurpose `json:"purpose,omitempty"`
 	Drafts    []ActionDraftSnapshot
 	Decisions []OperatorDecisionSnapshot
 
@@ -113,6 +114,7 @@ func (c *Campaign) Snapshot() CampaignSnapshot {
 		Name:       c.name,
 		Window:     c.window,
 		State:      c.state,
+		Purpose:    c.Purpose(),
 		Drafts:     drafts,
 		Decisions:  decisions,
 		Sequences:  sequences,
@@ -188,6 +190,13 @@ func RehydrateCampaign(s CampaignSnapshot) (*Campaign, error) {
 	if !s.State.isValid() {
 		return nil, fmt.Errorf("%w: %q у кампании %s", ErrInvalidCampaignState, s.State, s.ID)
 	}
+	purpose := s.Purpose
+	if purpose == "" {
+		purpose = CampaignPurposeDelivery
+	}
+	if purpose != CampaignPurposeDelivery && purpose != CampaignPurposeEditorial {
+		return nil, ErrInvalidCampaignPurpose
+	}
 
 	c := &Campaign{
 		id:          s.ID,
@@ -195,10 +204,14 @@ func RehydrateCampaign(s CampaignSnapshot) (*Campaign, error) {
 		name:        strings.TrimSpace(s.Name),
 		window:      s.Window,
 		state:       s.State,
+		purpose:     purpose,
 		drafts:      make(map[DraftID]*ActionDraft),
 		order:       make([]DraftID, 0, len(s.Drafts)),
 		definitions: make(map[SequenceID]*SequenceDefinition),
 		executions:  make(map[ExecutionID]*SequenceExecution),
+	}
+	if c.Purpose() == CampaignPurposeEditorial && (len(s.Drafts) > 0 || len(s.Decisions) > 0 || len(s.Sequences) > 0 || len(s.Executions) > 0) {
+		return nil, ErrEditorialDeliveryForbidden
 	}
 
 	for _, ds := range s.Drafts {
