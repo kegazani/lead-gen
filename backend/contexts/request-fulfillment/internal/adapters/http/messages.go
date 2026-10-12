@@ -13,9 +13,11 @@ var requestCatalog = map[components.MessageKey]string{
 	msgReqLoginSubmit: "Войти",
 	msgReqLoginError:  "Неверный логин или пароль.",
 
-	msgReqValidationQueueTitle: "Очередь валидации",
-	msgReqValidationQueueHint:  "Новые заявки клиентов: проверьте оффер и решите, брать ли заявку в работу.",
-	msgReqValidationQueueEmpty: "Заявок на валидацию нет",
+	msgReqValidationQueueTitle: "Заявки",
+	msgReqValidationQueueHint:  "Заявки клиентов и текущая стадия поиска и генерации писем. Список обновляется автоматически.",
+	msgReqValidationQueueEmpty: "Заявок нет",
+	msgReqProgressPending:      "Состояние исполнения ещё не получено",
+	msgReqProgressRefreshError: "Обновление списка недоступно. Показано последнее полученное состояние.",
 
 	msgReqValidationTitlePrefix: "Валидация заявки",
 	msgReqStatusLabel:           "Статус:",
@@ -146,6 +148,8 @@ const (
 	msgReqValidationQueueTitle components.MessageKey = "request.validation_queue.title"
 	msgReqValidationQueueHint  components.MessageKey = "request.validation_queue.hint"
 	msgReqValidationQueueEmpty components.MessageKey = "request.validation_queue.empty"
+	msgReqProgressPending      components.MessageKey = "request.progress.pending"
+	msgReqProgressRefreshError components.MessageKey = "request.progress.refresh_error"
 
 	msgReqValidationTitlePrefix components.MessageKey = "request.validation.title"
 	msgReqStatusLabel           components.MessageKey = "request.validation.status"

@@ -256,6 +256,7 @@ func (s *Server) routes() http.Handler {
 	// Скрипт клиентской подписки на поток. CSP экранов запрещает inline-скрипты,
 	// поэтому подписка — отдельный файл, раздаваемый из встроенного каталога.
 	mux.Handle("GET /static/company_requests.js", s.companyStreamScript())
+	mux.Handle("GET /static/request_progress.js", s.requestProgressScript())
 
 	return mux
 }

@@ -1,28 +1,45 @@
 {{- define "content" -}}
-<section class="validation-queue">
+<section class="validation-queue" data-request-progress data-tenant-id="{{.View.TenantID}}" data-refresh-error="{{ text "request.progress.refresh_error" }}" data-refresh-updated="{{ text "request.live.offer" }}">
   {{ template "live" .View.Live }}
   <h1>{{ text "request.validation_queue.title" }}</h1>
   <p class="hint">{{ text "request.validation_queue.hint" }} <span class="tenant-label">{{ text "request.tenant" }} {{.View.TenantID}}</span></p>
+  <p class="hint" data-refresh-status role="status" aria-live="polite"></p>
   <table class="table queue">
     <thead>
       <tr>
         <th scope="col">{{ text "request.queue.col.request" }}</th>
         <th scope="col">{{ text "request.queue.col.status" }}</th>
+        <th scope="col">{{ text "request.approval.execution.phase" }}</th>
+        <th scope="col">{{ text "request.queue.col.found" }}</th>
+        <th scope="col">{{ text "request.execution_history.drafted" }}</th>
         <th scope="col"><span class="live-region">{{ text "request.queue.col.action" }}</span></th>
       </tr>
     </thead>
     <tbody>
     {{- range .View.Items }}
-      <tr class="queue-item">
+      {{- $screen := "validation" }}{{- if .HasExecution }}{{- $screen = "approval" }}{{- end }}
+      <tr class="queue-item" data-request-id="{{.RequestID}}">
         <td>
-          <a class="cell-main" href="/requests/{{.RequestID}}/validation?tenant_id={{urlquery $.View.TenantID}}">{{.Offer.Content}}</a>
+          <a class="cell-main" href="/requests/{{.RequestID}}/{{$screen}}?tenant_id={{urlquery $.View.TenantID}}">{{.Offer.Content}}</a>
           <span class="cell-sub">{{ text "request.number" }} {{.RequestID}}</span>
         </td>
         <td><span class="status status-{{.Status}}">{{ label "request.status" .Status }}</span></td>
-        <td><a class="button button-secondary" href="/requests/{{.RequestID}}/validation?tenant_id={{urlquery $.View.TenantID}}">{{ text "request.queue.open" }}</a></td>
+        <td>
+          {{- if .ExecutionKnown }}
+          {{- if .Phase }}<span class="status status-{{.Phase}}">{{ label "request.phase" .Phase }}</span>{{- end }}
+          {{- if .Execution }}<span class="cell-sub">{{.Execution}}</span>{{- end }}
+          {{- else if .ExecutionUnavailable }}
+          <span class="cell-sub">{{ text "request.execution_history.unavailable" }}</span>
+          {{- else if .HasExecution }}
+          <span class="cell-sub">{{ text "request.progress.pending" }}</span>
+          {{- else }}—{{- end }}
+        </td>
+        <td>{{- if .ExecutionKnown }}{{.Found}}{{if gt .Target 0}} / {{.Target}}{{end}}{{- else }}—{{- end }}</td>
+        <td>{{- if .ExecutionKnown }}{{.Drafted}}{{- else }}—{{- end }}</td>
+        <td><a class="button button-secondary" href="/requests/{{.RequestID}}/{{$screen}}?tenant_id={{urlquery $.View.TenantID}}">{{ text "request.queue.open" }}</a></td>
       </tr>
     {{- else }}
-      <tr><td colspan="3" class="queue-empty">{{ text "request.validation_queue.empty" }}</td></tr>
+      <tr><td colspan="6" class="queue-empty">{{ text "request.validation_queue.empty" }}</td></tr>
     {{- end }}
     </tbody>
   </table>

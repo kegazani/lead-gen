@@ -43,12 +43,26 @@ func newPages() (*components.Set, error) {
 	return components.NewWithMessages(consoleMessages(), templateFS, pageLogin, pageValidationQueue, pageValidationScreen, pageApprovalQueue, pageApprovalScreen, pageCompanyRequests)
 }
 
-// queueView — модель очереди валидации: заявки submitted текущего тенанта.
+// queueView — модель списка заявок текущего тенанта на всех стадиях.
 type queueView struct {
 	Live     components.Live
 	TenantID string
 	Actor    string
-	Items    []query.ValidationItem
+	Items    []requestQueueRow
+}
+
+// requestQueueRow сохраняет заявку в списке, даже если её workflow пока
+// недоступен. Счётчики показываются только при полученном состоянии исполнения.
+type requestQueueRow struct {
+	query.ValidationItem
+	HasExecution         bool
+	ExecutionKnown       bool
+	ExecutionUnavailable bool
+	Phase                string
+	Execution            string
+	Found                int
+	Target               int
+	Drafted              int
 }
 
 // screenView — модель экрана валидации одной заявки. Поля форм собираются здесь, а
@@ -73,7 +87,7 @@ type screenView struct {
 	LeadTargetField components.Field
 }
 
-// handleValidationQueue обслуживает GET /validation: очередь заявок на валидацию.
+// handleValidationQueue обслуживает GET /validation: заявки и ход их исполнения.
 func (s *Server) handleValidationQueue(w http.ResponseWriter, r *http.Request) {
 	tenant := activeTenant(r)
 	actor := actorOf(r)
@@ -82,10 +96,40 @@ func (s *Server) handleValidationQueue(w http.ResponseWriter, r *http.Request) {
 		s.renderPlainError(w, http.StatusInternalServerError, "очередь валидации недоступна")
 		return
 	}
+	rows := make([]requestQueueRow, 0, len(items))
+	for _, item := range items {
+		row := requestQueueRow{ValidationItem: item}
+		switch item.Status {
+		case domain.StatusValidated, domain.StatusProcessing, domain.StatusFulfilled, domain.StatusFailed:
+			row.HasExecution = true
+		}
+		if row.HasExecution {
+			if s.deps.WorkflowStatus == nil {
+				row.ExecutionUnavailable = true
+			} else {
+				state, stateErr := s.deps.WorkflowStatus.WorkflowStatus(r.Context(), item.RequestID)
+				switch {
+				case stateErr == nil:
+					row.ExecutionKnown = true
+					row.Phase, row.Execution = state.Phase, executionStatusLabel(state.Execution)
+					row.Found, row.Drafted = state.Found, state.Drafted
+					row.Target = state.Target
+				case errors.Is(stateErr, ports.ErrWorkflowNotFound):
+					// Отсутствие состояния не удаляет уже одобренную заявку.
+				default:
+					row.ExecutionUnavailable = true
+				}
+			}
+		}
+		rows = append(rows, row)
+	}
 	s.render(w, http.StatusOK, pageValidationQueue, components.Page{
-		Layout:  components.Layout{Title: consoleMessages().Text(msgReqValidationQueueTitle)},
+		Layout: components.Layout{
+			Title:   consoleMessages().Text(msgReqValidationQueueTitle),
+			Scripts: append(append([]string{}, components.ConsoleScripts...), "/static/request_progress.js"),
+		},
 		Sidebar: s.consoleNav(components.ConsoleSectionRequests, tenant, actor),
-		View:    queueView{Live: consoleLive, TenantID: tenant, Actor: actor, Items: items},
+		View:    queueView{Live: consoleLive, TenantID: tenant, Actor: actor, Items: rows},
 	})
 }
 

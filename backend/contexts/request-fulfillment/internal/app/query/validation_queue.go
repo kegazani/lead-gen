@@ -7,7 +7,7 @@ import (
 	"lead-gen/backend/contexts/request-fulfillment/internal/ports"
 )
 
-// ValidationQueue — запрос очереди валидации: заявки тенанта в статусе submitted.
+// ValidationQueue — запрос операторского списка заявок тенанта.
 type ValidationQueue struct {
 	TenantID domain.TenantID
 }
@@ -30,10 +30,11 @@ func NewValidationQueueHandler(requests ports.RequestRepository) *ValidationQueu
 	return &ValidationQueueHandler{requests: requests}
 }
 
-// Handle возвращает заявки на валидацию. Чужие тенанты не попадают в выборку:
+// Handle возвращает заявки на всех стадиях, включая поиск и завершение.
+// Чужие тенанты не попадают в выборку:
 // изоляция обеспечивается фильтром владельца, а не экраном.
 func (h *ValidationQueueHandler) Handle(ctx context.Context, q ValidationQueue) ([]ValidationItem, error) {
-	requests, err := h.requests.ListByStatus(ctx, domain.StatusSubmitted)
+	requests, err := h.requests.ListByTenant(ctx, q.TenantID)
 	if err != nil {
 		return nil, err
 	}
