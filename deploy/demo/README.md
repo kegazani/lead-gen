@@ -11,6 +11,8 @@ docker compose -p lead-gen-demo -f compose.demo.yaml up -d --build --wait --wait
 берутся из `CONSOLE_PASSWORD`/`CONSOLE_USER` (по умолчанию `admin`/`admin`).
 Пароль записывает одноразовый helper в отдельный том с правами runtime-пользователя;
 приложения читают файл. `.env` в Git не добавляется.
+Служебный образ собирается один раз сервисом `app`; `demand` использует этот же
+образ без отдельной сборки и без загрузки тега из внешнего реестра.
 
 - Клиент: http://localhost:18000/login — зарегистрируйте свою компанию.
 - Оператор: http://localhost:18000/admin/console — одобрите регистрацию и профиль.

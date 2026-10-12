@@ -4,9 +4,9 @@ name: lead-gen-demo
 
 x-demo-app: &demo-app
   image: ${LEADGEN_DEMO_IMAGE:-lead-gen-demo:local}
-  build:
-    context: .
-    dockerfile: Dockerfile
+  # Общий образ собирает только app; demand использует тот же локальный тег.
+  # Это исключает одновременный export одного тега в Docker Desktop.
+  pull_policy: never
   restart: unless-stopped
   user: "65532:65532"
   volumes:
@@ -145,6 +145,9 @@ services:
 
   app:
     <<: *demo-app
+    build:
+      context: .
+      dockerfile: Dockerfile
     depends_on:
       console-secret-init:
         condition: service_completed_successfully
