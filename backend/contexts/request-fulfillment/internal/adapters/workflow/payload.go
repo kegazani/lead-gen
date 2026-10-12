@@ -113,10 +113,16 @@ type DeliveryOutcome struct {
 // Поля — только фаза и счётчики: содержание оффера и текст писем в состояние не
 // попадают.
 type Status struct {
-	RequestID string
-	Phase     string
-	Found     int
-	Drafted   int
+	SearchRound      int
+	SearchRoundLimit int
+	StepLimitSeconds int
+	SourcesKnown     bool
+	FromPool         int
+	Crawled          int
+	RequestID        string
+	Phase            string
+	Found            int
+	Drafted          int
 	// Target — явно заданная цель заявки по числу компаний (0 — цель не задана):
 	// наблюдаемое значение, по которому экран показывает цель рядом с найденным и
 	// недобором. Значение по умолчанию здесь не подставляется — оно не цель заявки.
@@ -160,6 +166,8 @@ type searchInput struct {
 // searchResult — результат шага поиска: сколько лидов найдено и идентификаторы
 // найденных компаний. Только идентификаторы: карточек и PII в payload нет.
 type searchResult struct {
+	Origins       []string
+	SourcesKnown  bool
 	Found         int
 	LeadIDs       []string
 	PartialReason string

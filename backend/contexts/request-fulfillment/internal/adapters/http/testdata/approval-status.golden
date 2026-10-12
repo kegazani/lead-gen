@@ -5,4 +5,11 @@
     <div><dt>Состояние исполнения:</dt><dd class="execution">Выполняется</dd></div>
     <div><dt>Найдено лидов:</dt><dd class="found num">4</dd></div>
   </dl>
+  <section class="execution-details">
+    <h3>Подробности исполнения</h3>
+    <dl class="facts">
+      <div><dt>Писем сохранено:</dt><dd data-saved-drafts>0</dd></div>
+    </dl>
+    <h4>Откуда найдены лиды</h4><p class="hint">Происхождение лидов этого исполнения не записано. Нельзя определить, сколько взято из базы и сколько найдено обходом.</p>
+  </section>
 </article>

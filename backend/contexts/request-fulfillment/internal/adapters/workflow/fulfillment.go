@@ -13,6 +13,7 @@ import (
 	"go.temporal.io/sdk/workflow"
 
 	"lead-gen/backend/contexts/request-fulfillment/internal/domain"
+	"lead-gen/contracts/lead-management/leadsearch"
 )
 
 // Имена workflow, activities, сигналов и запросов. Имена заданы явно: workflow
@@ -223,6 +224,7 @@ func Fulfillment(ctx workflow.Context, params Params) (Status, error) {
 	logger := workflow.GetLogger(ctx)
 	policy := params.Policy.withDefaults()
 	state := Status{RequestID: params.RequestID, Phase: PhaseStartingProcessing, Target: params.LeadTarget}
+	state.StepLimitSeconds = int(policy.LongStartToClose / time.Second)
 
 	if err := workflow.SetQueryHandler(ctx, QueryStatus, func() (Status, error) { return state, nil }); err != nil {
 		return state, err
@@ -281,9 +283,14 @@ func Fulfillment(ctx workflow.Context, params Params) (Status, error) {
 	}
 	state.Phase = PhaseSearching
 	topUpVersion := workflow.GetVersion(ctx, changeTopUpLoop, workflow.DefaultVersion, 1)
+	state.SearchRoundLimit = 1
+	if topUpVersion >= 1 {
+		state.SearchRoundLimit = maxTopUpRounds
+	}
 	seen := make(map[string]struct{})
 	leadIDs := make([]string, 0, target)
 	for round := 0; ; round++ {
+		state.SearchRound = round + 1
 		if failureCompensation >= 1 && workflowTimedOut(ctx, deadline) {
 			return failRequest(ctx, terminalIntentVersion, terminalChecksumVersion, compensationCtx, params, base, failCodeWorkflowTimedOut, &state)
 		}
@@ -299,7 +306,7 @@ func Fulfillment(ctx workflow.Context, params Params) (Status, error) {
 		if result.PartialReason != "" {
 			state.PartialReason = result.PartialReason
 		}
-		for _, id := range result.LeadIDs {
+		for i, id := range result.LeadIDs {
 			if strings.TrimSpace(id) == "" {
 				continue
 			}
@@ -308,8 +315,17 @@ func Fulfillment(ctx workflow.Context, params Params) (Status, error) {
 			}
 			seen[id] = struct{}{}
 			leadIDs = append(leadIDs, id)
+			if result.SourcesKnown && i < len(result.Origins) {
+				switch result.Origins[i] {
+				case leadsearch.OriginPool:
+					state.FromPool++
+				case leadsearch.OriginCrawl:
+					state.Crawled++
+				}
+			}
 		}
 		state.Found = len(seen)
+		state.SourcesKnown = result.SourcesKnown && state.FromPool+state.Crawled == state.Found
 		if state.Found >= target {
 			state.PartialReason = ""
 			break

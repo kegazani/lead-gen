@@ -9,6 +9,7 @@ import (
 
 	enumspb "go.temporal.io/api/enums/v1"
 	"go.temporal.io/api/serviceerror"
+	workflowpb "go.temporal.io/api/workflow/v1"
 	"go.temporal.io/sdk/client"
 
 	"lead-gen/backend/platform/observability/observ"
@@ -172,6 +173,41 @@ type Execution struct {
 	Status     string
 	StartTime  time.Time
 	CloseTime  time.Time
+	Activities []ActivityState
+}
+
+// ActivityState содержит только эксплуатационные метаданные шага, без payload
+// и свободного текста исключений внешних интеграций.
+type ActivityState struct {
+	Type          string
+	State         string
+	Attempt       int32
+	StartedAt     time.Time
+	HeartbeatAt   time.Time
+	NextAttemptAt time.Time
+	FailureKind   string
+}
+
+func activityState(info *workflowpb.PendingActivityInfo) ActivityState {
+	state := ActivityState{Type: info.GetActivityType().GetName(), State: info.GetState().String(), Attempt: info.GetAttempt()}
+	if t := info.GetLastStartedTime(); t != nil {
+		state.StartedAt = t.AsTime()
+	}
+	if t := info.GetLastHeartbeatTime(); t != nil {
+		state.HeartbeatAt = t.AsTime()
+	}
+	if t := info.GetNextAttemptScheduleTime(); t != nil {
+		state.NextAttemptAt = t.AsTime()
+	}
+	if failure := info.GetLastFailure(); failure != nil {
+		state.FailureKind = "error"
+		if failure.GetTimeoutFailureInfo() != nil {
+			state.FailureKind = "timeout"
+		} else if failure.GetCanceledFailureInfo() != nil {
+			state.FailureKind = "cancelled"
+		}
+	}
+	return state
 }
 
 // Describe возвращает состояние исполнения. Пустой runID означает текущее
@@ -195,6 +231,11 @@ func (c *Client) Describe(ctx context.Context, workflowID, runID string) (Execut
 	}
 	if info.GetCloseTime() != nil {
 		execution.CloseTime = info.GetCloseTime().AsTime()
+	}
+	for _, pending := range response.GetPendingActivities() {
+		if pending != nil {
+			execution.Activities = append(execution.Activities, activityState(pending))
+		}
 	}
 	return execution, nil
 }

@@ -54,7 +54,7 @@ func TestEditorialExecutionClosesRequestWithVisibleShortfall(t *testing.T) {
 	if err := env.GetWorkflowResult(&status); err != nil {
 		t.Fatal(err)
 	}
-	if status.Phase != PhaseFulfilled || status.Target != 25 || status.Found != 1 || status.Shortfall == nil || *status.Shortfall != 24 {
+	if status.SourcesKnown || status.FromPool != 0 || status.Crawled != 0 || status.Phase != PhaseFulfilled || status.Target != 25 || status.Found != 1 || status.Shortfall == nil || *status.Shortfall != 24 {
 		t.Fatalf("итог с недобором = %+v", status)
 	}
 	env.AssertExpectations(t)
@@ -142,5 +142,34 @@ func TestEditorialGenerationFailureDoesNotFulfillRequest(t *testing.T) {
 		t.Fatal("ошибка генерации должна завершить workflow отказом")
 	}
 	env.AssertNotCalled(t, "ExecuteActivity", ActivityFulfillRequest)
+	env.AssertExpectations(t)
+}
+
+// Один лид из нового обхода не становится пуловым при повторе в следующем раунде.
+func TestExecutionDetailsCountUniqueSourcesAcrossRounds(t *testing.T) {
+	env := newEnv(t)
+	env.OnActivity(ActivityStartProcessing, mock.Anything, mock.Anything).Return(nil)
+	results := []searchResult{
+		{LeadIDs: []string{"pool-a", "crawl-b"}, Origins: []string{"pool", "crawl"}, SourcesKnown: true},
+		{LeadIDs: []string{"pool-a", "crawl-b", "crawl-c"}, Origins: []string{"pool", "pool", "crawl"}, SourcesKnown: true},
+		{LeadIDs: []string{"pool-a", "crawl-b", "crawl-c"}, Origins: []string{"pool", "pool", "pool"}, SourcesKnown: true},
+	}
+	for round, result := range results {
+		expectedRound := round
+		env.OnActivity(ActivitySearchLeads, mock.Anything, mock.MatchedBy(func(in searchInput) bool { return in.Round == expectedRound })).Return(result, nil).Once()
+	}
+	env.OnActivity(ActivityDraftEmails, mock.Anything, mock.Anything).Return(draftResult{Drafted: 3}, nil).Once()
+	env.OnActivity(ActivityFulfillRequest, mock.Anything, mock.Anything).Return(nil).Once()
+	env.ExecuteWorkflow(Fulfillment, Params{RequestID: "req-sources", TenantID: "tenant-1", LeadTarget: 4, ExecutionPurpose: domain.ExecutionPurposeEditorial})
+	if err := env.GetWorkflowError(); err != nil {
+		t.Fatal(err)
+	}
+	var status Status
+	if err := env.GetWorkflowResult(&status); err != nil {
+		t.Fatal(err)
+	}
+	if status.Found != 3 || status.FromPool != 1 || status.Crawled != 2 || !status.SourcesKnown || status.SearchRound != 3 || status.SearchRoundLimit != 3 {
+		t.Fatalf("детали: %+v", status)
+	}
 	env.AssertExpectations(t)
 }

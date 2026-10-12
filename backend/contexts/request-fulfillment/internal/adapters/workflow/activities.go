@@ -257,9 +257,13 @@ func (a *Activities) SearchLeads(ctx context.Context, in searchInput) (searchRes
 			return searchResult{}, fmt.Errorf("activity: поиск лидов: %w", err)
 		}
 	}
-	result := searchResult{Found: outcome.Found, LeadIDs: make([]string, 0, len(outcome.Leads)), PartialReason: outcome.PartialReason}
+	result := searchResult{Found: outcome.Found, LeadIDs: make([]string, 0, len(outcome.Leads)), PartialReason: outcome.PartialReason, SourcesKnown: true}
 	for _, lead := range outcome.Leads {
 		result.LeadIDs = append(result.LeadIDs, lead.ID)
+		result.Origins = append(result.Origins, lead.Origin)
+		if lead.Origin != leadsearch.OriginPool && lead.Origin != leadsearch.OriginCrawl {
+			result.SourcesKnown = false
+		}
 	}
 	return result, nil
 }

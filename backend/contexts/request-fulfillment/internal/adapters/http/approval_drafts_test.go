@@ -21,11 +21,15 @@ func (unavailableDraftStore) ListByRequest(context.Context, string, string) ([]p
 	return nil, ports.ErrDraftStoreUnavailable
 }
 
-func prepareApprovalScreenWithDraftStore(t *testing.T, store ports.EmailDraftStore) *consoleClient {
+func prepareApprovalScreenWithDraftStore(t *testing.T, store ports.EmailDraftStore, status ...ports.WorkflowStatusReader) *consoleClient {
 	t.Helper()
-	slice, err := requestfulfillment.Build(requestfulfillment.Config{
+	config := requestfulfillment.Config{
 		DraftStore: store, ConsoleUser: consoleUser, ConsolePassword: consolePassword,
-	})
+	}
+	if len(status) > 0 {
+		config.WorkflowStatus = status[0]
+	}
+	slice, err := requestfulfillment.Build(config)
 	if err != nil {
 		t.Fatalf("сборка среза: %v", err)
 	}
@@ -33,6 +37,24 @@ func prepareApprovalScreenWithDraftStore(t *testing.T, store ports.EmailDraftSto
 	t.Cleanup(server.Close)
 	client := prepareApprovalClient(t, server)
 	return client
+}
+
+func TestExecutionDetailsShowSavedEmailsBeforeGenerationCompletes(t *testing.T) {
+	store := persistence.NewDraftStore()
+	client := prepareApprovalScreenWithDraftStore(t, store, stubWorkflow{status: ports.WorkflowStatus{
+		Phase: "drafting", Execution: "Running", Found: 8, Drafted: 0, Target: 25,
+		SearchRound: 3, SearchRoundLimit: 3, SourcesKnown: true, FromPool: 8,
+		Activities: []ports.ExecutionActivity{{Type: "DraftEmails", State: "Started", Attempt: 1}},
+	}})
+	if err := store.SaveDrafts(context.Background(), []ports.EmailDraft{{RequestID: requestID, TenantID: tenantID, LeadID: "lead-a", Subject: "Первое письмо", Body: "Текст письма", Language: "ru"}}); err != nil {
+		t.Fatal(err)
+	}
+	body := readBody(t, client.get(t, approvalScreenPath()))
+	for _, want := range []string{`data-saved-drafts>1</dd>`, "Из существующей базы:", "Добавлено новым обходом:", "Первое письмо", "Письма создаются и сохраняются по одному", "Подготовка и сохранение писем"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("в карточке не видно %q", want)
+		}
+	}
 }
 
 func TestApprovalScreenShowsReadOnlyDraftsBoundToLead(t *testing.T) {

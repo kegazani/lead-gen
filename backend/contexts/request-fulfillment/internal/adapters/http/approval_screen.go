@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/url"
 	"strings"
+	"time"
 
 	"lead-gen/backend/contexts/request-fulfillment/internal/app/query"
 	"lead-gen/backend/contexts/request-fulfillment/internal/domain"
@@ -66,6 +67,7 @@ func approvalQueueRows(items []query.ApprovalItem) []approvalQueueRow {
 // задана»: при незаданной цели недобор не показывается нулём. Diagnosis —
 // наблюдаемое объяснение недобора (пусто, если объяснять нечего).
 type approvalView struct {
+	Details           executionDetailsView
 	Live              components.Live
 	TenantID          string
 	Actor             string
@@ -295,6 +297,7 @@ func (s *Server) loadApproval(r *http.Request, tenant, actor, notice string) (ap
 			model.Drafts = drafts
 		}
 	}
+	model.Details = executionDetails(ports.WorkflowStatus{}, len(model.Drafts), !model.DraftsUnavailable, time.Now())
 	if s.deps.WorkflowStatus == nil {
 		model.Unavailable = true
 		return model, nil
@@ -312,6 +315,7 @@ func (s *Server) loadApproval(r *http.Request, tenant, actor, notice string) (ap
 		return approvalView{}, err
 	}
 	model.Phase = status.Phase
+	model.Details = executionDetails(status, len(model.Drafts), !model.DraftsUnavailable, time.Now())
 	model.SearchRunning = status.Phase == "searching" && strings.EqualFold(status.Execution, "running")
 	model.Execution = status.Execution
 	model.Found = status.Found

@@ -3,6 +3,7 @@ package ports
 import (
 	"context"
 	"errors"
+	"time"
 )
 
 // StartFulfillment — вход запуска исполнения заявки. Поля — только
@@ -26,13 +27,23 @@ type WorkflowRun struct {
 
 // WorkflowStatus — наблюдаемое состояние исполнения заявки для API и консоли.
 type WorkflowStatus struct {
-	RequestID  string
-	WorkflowID string
-	RunID      string
-	Phase      string
-	Execution  string
-	Found      int
-	Drafted    int
+	SearchRound      int
+	SearchRoundLimit int
+	StepLimitSeconds int
+	SourcesKnown     bool
+	FromPool         int
+	Crawled          int
+	RuntimeKnown     bool
+	StartedAt        time.Time
+	ClosedAt         time.Time
+	Activities       []ExecutionActivity
+	RequestID        string
+	WorkflowID       string
+	RunID            string
+	Phase            string
+	Execution        string
+	Found            int
+	Drafted          int
 	// Target — явно заданная цель заявки по числу компаний (0 — цель не задана).
 	// Нужна экрану, чтобы показать цель рядом с найденным и недобором.
 	Target int
@@ -44,6 +55,17 @@ type WorkflowStatus struct {
 	NoLeads bool
 	// PartialReason — стабильный безопасный код причины неполного поиска.
 	PartialReason string
+}
+
+// ExecutionActivity — безопасные метаданные выполняемого шага.
+type ExecutionActivity struct {
+	Type          string    `json:"type"`
+	State         string    `json:"state"`
+	Attempt       int32     `json:"attempt"`
+	StartedAt     time.Time `json:"started_at"`
+	HeartbeatAt   time.Time `json:"heartbeat_at"`
+	NextAttemptAt time.Time `json:"next_attempt_at"`
+	FailureKind   string    `json:"failure_kind,omitempty"`
 }
 
 // WorkflowStarter — порт запуска workflow исполнения заявки. Реализуется

@@ -377,6 +377,15 @@ func (s *Server) handleEmailDrafts(w http.ResponseWriter, r *http.Request) {
 // workflowStatusResponse — форма наблюдаемого состояния исполнения заявки.
 // Отражает только идентификаторы и фазу — никаких данных оффера.
 type workflowStatusResponse struct {
+	SearchRound      int                       `json:"search_round,omitempty"`
+	SearchRoundLimit int                       `json:"search_round_limit,omitempty"`
+	StepLimitSeconds int                       `json:"step_limit_seconds,omitempty"`
+	SourcesKnown     bool                      `json:"sources_known"`
+	FromPool         int                       `json:"from_pool"`
+	Crawled          int                       `json:"crawled"`
+	RuntimeKnown     bool                      `json:"runtime_known"`
+	Activities       []ports.ExecutionActivity `json:"activities,omitempty"`
+
 	RequestID  string `json:"request_id"`
 	WorkflowID string `json:"workflow_id"`
 	RunID      string `json:"run_id,omitempty"`
@@ -448,6 +457,9 @@ func (s *Server) handleWorkflowStatus(w http.ResponseWriter, r *http.Request) {
 		Shortfall:     status.Shortfall,
 		NoLeads:       status.NoLeads,
 		PartialReason: status.PartialReason,
+		SearchRound:   status.SearchRound, SearchRoundLimit: status.SearchRoundLimit, StepLimitSeconds: status.StepLimitSeconds,
+		SourcesKnown: status.SourcesKnown, FromPool: status.FromPool, Crawled: status.Crawled,
+		RuntimeKnown: status.RuntimeKnown, Activities: status.Activities,
 	})
 }
 

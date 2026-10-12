@@ -91,5 +91,38 @@
   {{- with .Diagnosis }}<p class="shortfall-diagnosis hint" role="status">{{.}}</p>{{- end }}
   {{- end }}
   {{- end }}
+  <section class="execution-details">
+    <h3>{{ text "request.details.title" }}</h3>
+    {{- with .Details.Explanation }}<p class="hint">{{.}}</p>{{ end }}
+    <dl class="facts">
+      {{- with .Details.Elapsed }}<div><dt>{{ text "request.details.elapsed" }}</dt><dd>{{.}}</dd></div>{{ end }}
+      {{- if .Details.SearchRound }}<div><dt>{{ text "request.details.round" }}</dt><dd>{{ .Details.SearchRound }} / {{ text "request.details.round_max" }} {{ .Details.SearchRoundLimit }}</dd></div>{{ end }}
+      <div><dt>{{ text "request.details.saved" }}</dt><dd data-saved-drafts>{{ if .Details.DraftsKnown }}{{ .Details.SavedDrafts }}{{ else }}{{ text "request.details.unknown" }}{{ end }}</dd></div>
+      {{- with .Details.StepLimit }}<div><dt>{{ text "request.details.step_limit" }}</dt><dd>{{.}}</dd></div>{{ end }}
+    </dl>
+    {{- if .Details.StepLimit }}<p class="hint">{{ text "request.details.step_limit_hint" }}</p>{{ end }}
+    {{- with .Details.SearchIssue }}<p class="notice">{{.}}</p>{{ end }}
+    <h4>{{ text "request.details.sources" }}</h4>
+    {{- if .Details.SourcesKnown }}
+    <dl class="facts">
+      <div><dt>{{ text "request.details.pool" }}</dt><dd>{{ .Details.FromPool }}</dd></div>
+      <div><dt>{{ text "request.details.crawl" }}</dt><dd>{{ .Details.Crawled }}</dd></div>
+    </dl>
+    {{- else }}<p class="hint">{{ text "request.details.sources_unknown" }}</p>{{ end }}
+    {{- range .Details.Steps }}
+    <article class="execution-step">
+      <h4>{{ .Label }}</h4>
+      <p>{{ .State }}</p>
+      <dl class="facts">
+        <div><dt>{{ text "request.details.attempt" }}</dt><dd>{{ .Attempt }}</dd></div>
+        {{- with .RunningFor }}<div><dt>{{ text "request.details.running_for" }}</dt><dd>{{.}}</dd></div>{{ end }}
+        {{- with .HeartbeatAge }}<div><dt>{{ text "request.details.heartbeat" }}</dt><dd>{{.}} {{ text "request.details.ago" }}</dd></div>{{ end }}
+        {{- with .RetryIn }}<div><dt>{{ text "request.details.retry_in" }}</dt><dd>{{.}}</dd></div>{{ end }}
+        {{- with .Failure }}<div><dt>{{ text "request.details.failure" }}</dt><dd>{{.}}</dd></div>{{ end }}
+      </dl>
+      {{- if .HeartbeatAge }}<p class="hint">{{ text "request.details.heartbeat_hint" }}</p>{{ end }}
+    </article>
+    {{- end }}
+  </section>
 </article>
 {{- end -}}

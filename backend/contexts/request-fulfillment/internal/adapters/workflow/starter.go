@@ -100,6 +100,8 @@ func (c *Client) WorkflowStatus(ctx context.Context, requestID string) (ports.Wo
 		return ports.WorkflowStatus{}, fmt.Errorf("%w: %v", ports.ErrWorkflowUnavailable, err)
 	}
 	result := ports.WorkflowStatus{
+		SearchRound: status.SearchRound, SearchRoundLimit: status.SearchRoundLimit, StepLimitSeconds: status.StepLimitSeconds,
+		SourcesKnown: status.SourcesKnown, FromPool: status.FromPool, Crawled: status.Crawled,
 		RequestID:     requestID,
 		WorkflowID:    workflowID,
 		Phase:         status.Phase,
@@ -113,6 +115,14 @@ func (c *Client) WorkflowStatus(ctx context.Context, requestID string) (ports.Wo
 	if execution, err := c.client.Describe(ctx, workflowID, ""); err == nil {
 		result.Execution = execution.Status
 		result.RunID = execution.RunID
+		result.RuntimeKnown = true
+		result.StartedAt, result.ClosedAt = execution.StartTime, execution.CloseTime
+		for _, step := range execution.Activities {
+			result.Activities = append(result.Activities, ports.ExecutionActivity{
+				Type: step.Type, State: step.State, Attempt: step.Attempt, StartedAt: step.StartedAt,
+				HeartbeatAt: step.HeartbeatAt, NextAttemptAt: step.NextAttemptAt, FailureKind: step.FailureKind,
+			})
+		}
 	}
 	return result, nil
 }
