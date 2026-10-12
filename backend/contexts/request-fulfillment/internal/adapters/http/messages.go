@@ -17,14 +17,18 @@ var requestCatalog = map[components.MessageKey]string{
 	msgReqValidationQueueHint:  "Заявки клиентов и текущая стадия поиска и генерации писем. Список обновляется автоматически.",
 	msgReqValidationQueueEmpty: "Заявок нет",
 	msgReqProgressPending:      "Состояние исполнения ещё не получено",
-	msgReqProgressRefreshError: "Обновление списка недоступно. Показано последнее полученное состояние.",
+	msgReqProgressRefreshError: "Обновление недоступно. Показано последнее полученное состояние.",
+	msgReqProgressUpdated:      "Состояние заявки обновлено.",
+	msgReqSearchRunning:        "Поиск запущен автоматически после одобрения. Сейчас система ищет сайты и обходит их. Число найденных обновляется после завершения раунда поиска; 0 на этом этапе ещё не означает отсутствие результатов. Эта карточка обновляется каждые 5 секунд.",
+	msgReqExecutionLink:        "Открыть поиск и результат",
+	msgReqExecutionStarted:     "Заявка одобрена. Поиск запускается автоматически; его состояние, найденные лиды и письма доступны в исполнении.",
 
 	msgReqValidationTitlePrefix: "Валидация заявки",
 	msgReqStatusLabel:           "Статус:",
 	msgReqSaveOffer:             "Сохранить правку",
-	msgReqTake:                  "Взять в работу",
+	msgReqTake:                  "Взять на проверку",
 	msgReqCall:                  "Инициировать звонок-уточнение",
-	msgReqApprove:               "Одобрить",
+	msgReqApprove:               "Одобрить и начать поиск",
 	msgReqReject:                "Отклонить",
 	msgReqDecisionTitle:         "Решение валидации",
 	msgReqDecisionOutcome:       "Исход:",
@@ -78,7 +82,7 @@ var requestCatalog = map[components.MessageKey]string{
 	msgReqDecisionNote: "Решение необратимо: после утверждения заявка уходит в исполнение, после отклонения — отменяется.",
 	msgReqEditTitle:    "Правка оффера",
 	msgReqDecideTitle:  "Решение по заявке",
-	msgReqTakeHint:     "Возьмите заявку в работу, чтобы проверить оффер и принять решение.",
+	msgReqTakeHint:     "Возьмите заявку на проверку, проверьте оффер и одобрите её, чтобы начать поиск.",
 	msgReqCallHint:     "Если оффер неясен, уточните его у клиента звонком.",
 
 	// Экран заявок компании: список с историей переходов и действиями возврата
@@ -150,6 +154,10 @@ const (
 	msgReqValidationQueueEmpty components.MessageKey = "request.validation_queue.empty"
 	msgReqProgressPending      components.MessageKey = "request.progress.pending"
 	msgReqProgressRefreshError components.MessageKey = "request.progress.refresh_error"
+	msgReqProgressUpdated      components.MessageKey = "request.progress.updated"
+	msgReqSearchRunning        components.MessageKey = "request.progress.search_running"
+	msgReqExecutionLink        components.MessageKey = "request.validation.execution_link"
+	msgReqExecutionStarted     components.MessageKey = "request.validation.execution_started"
 
 	msgReqValidationTitlePrefix components.MessageKey = "request.validation.title"
 	msgReqStatusLabel           components.MessageKey = "request.validation.status"

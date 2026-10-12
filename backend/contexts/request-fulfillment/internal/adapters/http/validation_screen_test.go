@@ -101,7 +101,7 @@ func TestValidationScreenLifecycle(t *testing.T) {
 
 	// Экран просит взять заявку в работу.
 	screen := readBody(t, client.get(t, validationScreenPath()))
-	if !strings.Contains(screen, "Взять в работу") {
+	if !strings.Contains(screen, "Взять на проверку") {
 		t.Fatalf("экран не предложил взять заявку в работу: %s", screen)
 	}
 	csrf := csrfFromHTML(screen)

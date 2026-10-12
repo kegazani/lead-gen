@@ -7,6 +7,7 @@
   <title>Утверждение заявки req-1</title>
   <link rel="stylesheet" href="/static/console.css">
   <script src="/static/console-a11y.js" defer></script>
+  <script src="/static/request_progress.js" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#main-content">Перейти к содержимому</a>
@@ -36,13 +37,14 @@
   </button>
 </nav>
   <main class="page" id="main-content">
-<section class="approval-screen" hx-boost="true">
+<section class="approval-screen" hx-boost="true" data-request-progress="detail" data-tenant-id="tenant-1" data-refresh-error="Обновление недоступно. Показано последнее полученное состояние." data-refresh-updated="Состояние заявки обновлено.">
   <p class="live-region" id="console-live" role="status" aria-live="polite" aria-atomic="true" aria-label="Объявления" data-live-region></p>
   <h1>Утверждение заявки</h1>
-  <p class="hint">
+  <p class="hint" data-execution-summary>
     <span class="status status-processing">В работе</span>
     <span class="request-id">№ req-1</span>
   </p>
+  <p class="hint" role="status" aria-live="polite" data-refresh-status></p>
 
   <div class="split">
     <article class="offer">
@@ -54,7 +56,7 @@
       </dl>
     </article>
 
-    <section id="workflow" hx-target="this" hx-swap="innerHTML" data-focus-after-swap="#workflow" data-live-announce="Состояние исполнения обновлено">
+    <section id="workflow" data-execution-workflow hx-target="this" hx-swap="innerHTML" data-focus-after-swap="#workflow" data-live-announce="Состояние исполнения обновлено">
       <article class="approval-status">
   <h2>Исполнение</h2>
   <dl class="facts">
@@ -68,10 +70,12 @@
     </section>
   </div>
 
-  <section class="request-email-drafts" aria-labelledby="request-email-drafts-title">
+  <section class="request-email-drafts" data-execution-drafts aria-labelledby="request-email-drafts-title">
     <h2 id="request-email-drafts-title">Сформированные письма</h2>
     <p class="hint" role="status">Для этой заявки писем пока нет.</p>
   </section>
+
+  <div data-execution-actions>
   <div class="decision-bar">
     <p class="decision-note">Решение необратимо: после утверждения заявка уходит в исполнение, после отклонения — отменяется.</p>
     <form method="post" action="/requests/req-1/approval/reject">
@@ -84,6 +88,7 @@
       <input type="hidden" name="csrf" value="TOKEN">
       <button type="submit">Утвердить</button>
     </form>
+  </div>
   </div>
 </section>
   </main>

@@ -1,5 +1,5 @@
 {{- define "content" -}}
-<section class="validation-queue" data-request-progress data-tenant-id="{{.View.TenantID}}" data-refresh-error="{{ text "request.progress.refresh_error" }}" data-refresh-updated="{{ text "request.live.offer" }}">
+<section class="validation-queue" data-request-progress data-tenant-id="{{.View.TenantID}}" data-refresh-error="{{ text "request.progress.refresh_error" }}" data-refresh-updated="{{ text "request.progress.updated" }}">
   {{ template "live" .View.Live }}
   <h1>{{ text "request.validation_queue.title" }}</h1>
   <p class="hint">{{ text "request.validation_queue.hint" }} <span class="tenant-label">{{ text "request.tenant" }} {{.View.TenantID}}</span></p>

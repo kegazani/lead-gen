@@ -81,6 +81,8 @@ type approvalView struct {
 	Diagnosis         string
 	Unavailable       bool
 	CanDecide         bool
+	SearchRunning     bool
+	HasTarget         bool
 	Drafts            []query.EmailDraftView
 	DraftsUnavailable bool
 }
@@ -257,7 +259,7 @@ func (s *Server) renderApprovalScreen(w http.ResponseWriter, r *http.Request, st
 		return
 	}
 	s.render(w, status, pageApprovalScreen, components.Page{
-		Layout:  components.Layout{Title: consoleMessages().Text(msgReqApprovalTitlePrefix) + " " + model.Request.RequestID},
+		Layout:  components.Layout{Title: consoleMessages().Text(msgReqApprovalTitlePrefix) + " " + model.Request.RequestID, Scripts: append(append([]string{}, components.ConsoleScripts...), "/static/request_progress.js")},
 		Sidebar: s.consoleNav(components.ConsoleSectionExecution, tenant, actor),
 		View:    model,
 	})
@@ -310,9 +312,11 @@ func (s *Server) loadApproval(r *http.Request, tenant, actor, notice string) (ap
 		return approvalView{}, err
 	}
 	model.Phase = status.Phase
+	model.SearchRunning = status.Phase == "searching" && strings.EqualFold(status.Execution, "running")
 	model.Execution = status.Execution
 	model.Found = status.Found
 	model.Target, model.Shortfall, model.HasShortfall = shortfallState(status)
+	model.HasTarget = model.Target > 0
 	model.Diagnosis = shortfallDiagnosis(status)
 	model.CanDecide = view.Status == domain.StatusProcessing && status.Phase == query.ApprovalPhaseAwaitingApproval
 	return model, nil
@@ -325,7 +329,7 @@ func (s *Server) loadApproval(r *http.Request, tenant, actor, notice string) (ap
 // наблюдаемого остатка (`найдено + недобор`), а не выдумывается.
 func shortfallState(status ports.WorkflowStatus) (target int, shortfall int, hasShortfall bool) {
 	if status.Shortfall == nil {
-		return 0, 0, false
+		return status.Target, 0, false
 	}
 	shortfall = *status.Shortfall
 	target = status.Target

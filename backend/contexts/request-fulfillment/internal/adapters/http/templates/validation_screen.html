@@ -6,6 +6,10 @@
     <span class="status status-{{.View.Request.Status}}">{{ label "request.status" .View.Request.Status }}</span>
     <span class="request-id">{{ text "request.number" }} {{.View.Request.RequestID}}</span>
   </p>
+  {{- if .View.HasExecution }}
+  <p class="hint">{{ text "request.validation.execution_started" }}</p>
+  <p><a href="/requests/{{.View.Request.RequestID}}/approval?tenant_id={{.View.TenantID}}">{{ text "request.validation.execution_link" }}</a></p>
+  {{- end }}
   {{- with .View.Notice }}
   <p class="notice" role="status">{{.}}</p>
   {{- end }}

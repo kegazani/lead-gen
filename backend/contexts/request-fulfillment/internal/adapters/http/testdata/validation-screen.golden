@@ -83,7 +83,7 @@
             <input id="lead-target" name="lead_target" type="number" min="0" step="1" value="">
             <span class="field-hint">Необязательно; пусто или 0 — без цели</span>
           </p>
-          <button type="submit">Одобрить</button>
+          <button type="submit">Одобрить и начать поиск</button>
         </form>
 
         <form class="card-section" method="post" action="/requests/req-1/validation/call">

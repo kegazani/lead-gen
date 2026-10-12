@@ -222,7 +222,7 @@ const (
 func Fulfillment(ctx workflow.Context, params Params) (Status, error) {
 	logger := workflow.GetLogger(ctx)
 	policy := params.Policy.withDefaults()
-	state := Status{RequestID: params.RequestID, Phase: PhaseStartingProcessing}
+	state := Status{RequestID: params.RequestID, Phase: PhaseStartingProcessing, Target: params.LeadTarget}
 
 	if err := workflow.SetQueryHandler(ctx, QueryStatus, func() (Status, error) { return state, nil }); err != nil {
 		return state, err

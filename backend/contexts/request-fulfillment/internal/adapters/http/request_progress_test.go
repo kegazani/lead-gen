@@ -107,3 +107,27 @@ func TestRequestListKeepsRequestWhenWorkflowStateMissing(t *testing.T) {
 		})
 	}
 }
+
+func TestExecutionCardExplainsRunningSearchAndShowsTarget(t *testing.T) {
+	server := newApprovalServer(t, stubWorkflow{status: ports.WorkflowStatus{
+		Phase: "searching", Execution: "Running", Target: 25,
+	}}, stubWorkflow{})
+	client := prepareApprovalClient(t, server)
+	response := client.get(t, approvalScreenPath())
+	if response.StatusCode != http.StatusOK {
+		t.Fatalf("карточка: %d", response.StatusCode)
+	}
+	body := readBody(t, response)
+	for _, want := range []string{`data-request-progress="detail"`, "Поиск запущен автоматически", "0 на этом этапе", `class="target num">25`, "/static/request_progress.js", "data-execution-drafts"} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("в карточке нет %q", want)
+		}
+	}
+	if strings.Contains(body, `class="shortfall num"`) {
+		t.Fatal("незавершённый поиск показывает ещё не рассчитанный недобор")
+	}
+	validation := readBody(t, client.get(t, validationScreenPath()))
+	if !strings.Contains(validation, "Открыть поиск и результат") {
+		t.Fatal("запущенная заявка не предлагает открыть исполнение")
+	}
+}

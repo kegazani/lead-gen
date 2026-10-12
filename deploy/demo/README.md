@@ -17,7 +17,11 @@ docker compose -p lead-gen-demo -f compose.demo.yaml up -d --build --wait --wait
 - Клиент: http://localhost:18000/login — зарегистрируйте свою компанию.
 - Оператор: http://localhost:18000/admin/console — одобрите регистрацию и профиль.
 - Заявки: http://localhost:18000/intake/validation — откройте и одобрите заявку,
-  при желании задав цель 25. После запуска здесь видны стадия и счётчики.
+  при желании задав цель 25. «Взять на проверку» открывает проверку заявки;
+  «Одобрить и начать поиск» автоматически запускает краулинг. После одобрения
+  нажмите «Открыть поиск и результат»: стадия, статус и письма обновляются
+  каждые 5 секунд. Число найденных обновляется после завершения раунда поиска;
+  начальный 0 ещё не означает, что ничего не найдено.
 - Лиды: http://localhost:18000/lead-console/cards.
 - Отчёты: http://localhost:18000/reporting/dashboard.
 
@@ -40,7 +44,7 @@ docker compose -p lead-gen-demo -f compose.demo.yaml up -d --build --wait --wait
 docker compose -p lead-gen-demo -f compose.demo.yaml restart web
 ```
 
- Проверка и логи:
+Проверка и логи:
 
 ```bash
 docker compose -p lead-gen-demo -f compose.demo.yaml ps

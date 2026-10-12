@@ -1,11 +1,12 @@
 {{- define "content" -}}
-<section class="approval-screen" hx-boost="true">
+<section class="approval-screen" hx-boost="true" data-request-progress="detail" data-tenant-id="{{.View.TenantID}}" data-refresh-error="{{ text "request.progress.refresh_error" }}" data-refresh-updated="{{ text "request.progress.updated" }}">
   {{ template "live" .View.Live }}
   <h1>{{ text "request.approval.title" }}</h1>
-  <p class="hint">
+  <p class="hint" data-execution-summary>
     <span class="status status-{{.View.Request.Status}}">{{ label "request.status" .View.Request.Status }}</span>
     <span class="request-id">{{ text "request.number" }} {{.View.Request.RequestID}}</span>
   </p>
+  <p class="hint" role="status" aria-live="polite" data-refresh-status></p>
   {{- with .View.Notice }}
   <p class="notice" role="status">{{.}}</p>
   {{- end }}
@@ -22,12 +23,12 @@
       </dl>
     </article>
 
-    <section id="workflow" hx-target="this" hx-swap="innerHTML" data-focus-after-swap="#workflow" data-live-announce="{{ text "request.live.workflow" }}">
+    <section id="workflow" data-execution-workflow hx-target="this" hx-swap="innerHTML" data-focus-after-swap="#workflow" data-live-announce="{{ text "request.live.workflow" }}">
       {{ template "approval-status" .View }}
     </section>
   </div>
 
-  <section class="request-email-drafts" aria-labelledby="request-email-drafts-title">
+  <section class="request-email-drafts" data-execution-drafts aria-labelledby="request-email-drafts-title">
     <h2 id="request-email-drafts-title">{{ text "request.approval.email_drafts.title" }}</h2>
     {{- if .View.DraftsUnavailable }}
     <p class="watermark" role="status">{{ text "request.approval.email_drafts.unavailable" }}</p>
@@ -46,6 +47,7 @@
     {{- end }}
   </section>
 
+  <div data-execution-actions>
   {{- if .View.CanDecide }}
   <div class="decision-bar">
     <p class="decision-note">{{ text "request.approval.decision.note" }}</p>
@@ -61,6 +63,7 @@
     </form>
   </div>
   {{- end }}
+  </div>
 </section>
 {{- end -}}
 
@@ -70,10 +73,13 @@
   {{- if .Unavailable }}
   <p class="watermark" role="status">{{ text "request.approval_queue.unavailable" }}</p>
   {{- else }}
+  {{- if .SearchRunning }}
+  <p class="hint" role="status">{{ text "request.progress.search_running" }}</p>
+  {{- end }}
   <dl class="facts">
     <div><dt>{{ text "request.approval.execution.phase" }}</dt><dd class="phase"><span class="status status-{{.Phase}}">{{ label "request.phase" .Phase }}</span></dd></div>
     <div><dt>{{ text "request.approval.execution.state" }}</dt><dd class="execution">{{ label "request.execution" .Execution }}</dd></div>
-    {{- if .HasShortfall }}
+    {{- if .HasTarget }}
     <div><dt>{{ text "request.approval.target" }}</dt><dd class="target num">{{.Target}}</dd></div>
     {{- end }}
     <div><dt>{{ text "request.approval_queue.found" }}</dt><dd class="found num">{{.Found}}</dd></div>

@@ -79,6 +79,7 @@ type screenView struct {
 	CanTake             bool
 	CanEditOffer        bool
 	CanDecide           bool
+	HasExecution        bool
 	OfferField          components.Field
 	TargetField         components.Field
 	ReasonField         components.Field
@@ -389,6 +390,7 @@ func screenModel(tenant, actor, notice string, view query.RequestView) screenVie
 		CanTake:      view.Status == domain.StatusSubmitted,
 		CanEditOffer: editable,
 		CanDecide:    view.Status == domain.StatusValidating,
+		HasExecution: view.Status == domain.StatusValidated || view.Status == domain.StatusProcessing || view.Status == domain.StatusFulfilled || view.Status == domain.StatusFailed,
 		OfferField: components.Field{
 			ID: "offer-content", Name: "content", Label: "Оффер",
 			Type: "textarea", Rows: 6, Value: view.Offer.Content, Required: true,
