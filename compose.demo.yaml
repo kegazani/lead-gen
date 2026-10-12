@@ -1,0 +1,214 @@
+# Изолированный локальный демо-контур. Читает обычный .env, но не требует
+# production release manifest, внешних DB volumes или host trust paths.
+name: lead-gen-demo
+
+x-demo-app: &demo-app
+  image: ${LEADGEN_DEMO_IMAGE:-lead-gen-demo:local}
+  build:
+    context: .
+    dockerfile: Dockerfile
+  restart: unless-stopped
+  user: "65532:65532"
+  volumes:
+    - demo-console-secrets:/run/leadgen-demo:ro
+  environment: &demo-app-env
+    LEADGEN_SECRET_GENERATION: demo
+    CONSOLE_USER: ${CONSOLE_USER:-admin}
+    CONSOLE_PASSWORD_FILE: /run/leadgen-demo/demo/console-password
+  healthcheck:
+    test: [CMD, /usr/local/bin/lead-gen, -healthcheck, -healthcheck-url, "http://127.0.0.1:19090/livez"]
+    interval: 5s
+    timeout: 5s
+    retries: 30
+    start_period: 10s
+
+services:
+  console-secret-init:
+    image: alpine:3.22
+    restart: "no"
+    network_mode: none
+    environment:
+      DEMO_CONSOLE_PASSWORD: ${CONSOLE_PASSWORD:-admin}
+    volumes:
+      - demo-console-secrets:/stage
+    entrypoint: [/bin/sh, -ec]
+    command:
+      - |
+        test -n "$$DEMO_CONSOLE_PASSWORD"
+        umask 077
+        mkdir -p /stage/demo
+        printf '%s' "$$DEMO_CONSOLE_PASSWORD" > /stage/demo/console-password
+        printf '%s\n' demo > /stage/demo/generation
+        chown -R 65532:65532 /stage
+        chmod 0700 /stage /stage/demo
+        chmod 0400 /stage/demo/console-password /stage/demo/generation
+
+  postgres:
+    image: postgres:17.6-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_DB: leadgen
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?задайте POSTGRES_PASSWORD в .env}
+    volumes:
+      - demo-postgres-data:/var/lib/postgresql/data
+      - ./deploy/demo/init-postgres.sql:/docker-entrypoint-initdb.d/01-demo.sql:ro
+    healthcheck:
+      test: [CMD-SHELL, "pg_isready -U postgres -d leadgen"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+
+  rabbitmq:
+    image: rabbitmq:4.1-management-alpine
+    restart: unless-stopped
+    environment:
+      RABBITMQ_DEFAULT_USER: demo
+      RABBITMQ_DEFAULT_PASS: demo
+    volumes:
+      - demo-rabbitmq-data:/var/lib/rabbitmq
+    healthcheck:
+      test: [CMD, rabbitmq-diagnostics, -q, ping]
+      interval: 5s
+      timeout: 10s
+      retries: 30
+
+  temporal:
+    image: temporalio/auto-setup:1.26.2
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DB: postgres12
+      DB_PORT: "5432"
+      POSTGRES_SEEDS: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_PWD: ${POSTGRES_PASSWORD}
+      DEFAULT_NAMESPACE: leadgen-demo
+      BIND_ON_IP: 0.0.0.0
+    healthcheck:
+      test: [CMD, temporal, --address, "127.0.0.1:7233", operator, cluster, health]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+
+  demand:
+    <<: *demo-app
+    depends_on:
+      console-secret-init:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    environment:
+      <<: *demo-app-env
+      FIRECRAWL_API_KEY: ${FIRECRAWL_API_KEY:?задайте FIRECRAWL_API_KEY в .env}
+      LLM_API_KEY: ${LLM_API_KEY:?задайте LLM_API_KEY в .env}
+      LLM_BASE_URL: ${LLM_BASE_URL:-https://api.deepseek.com}
+      LLM_MODEL: ${LLM_MODEL:-deepseek-flash}
+    command:
+      - -config
+      - /deploy/services.yaml
+      - -service
+      - lead-management
+      - -api-port-base
+      - "19082"
+      - -api-bind-host
+      - 0.0.0.0
+      - -liveness-addr
+      - 0.0.0.0:19090
+      - -lead-green-dsn
+      - postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/leadgen_lead_green?sslmode=disable
+      - -lead-red-dsn
+      - postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/leadgen_lead_red?sslmode=disable
+      - -support-green-dsn
+      - postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/leadgen?sslmode=disable
+      - -broker-url
+      - amqp://demo:demo@rabbitmq:5672/
+      - -firecrawl-max-credits
+      - ${FIRECRAWL_MAX_CREDITS:-150}
+      - -firecrawl-crawl-interval
+      - ${FIRECRAWL_CRAWL_INTERVAL:-5s}
+      - -lead-max-pages
+      - ${LEAD_MAX_PAGES:-2}
+      - -lead-max-time-seconds
+      - ${LEAD_MAX_TIME_SECONDS:-15}
+      - -lead-search-max-results
+      - ${LEAD_SEARCH_MAX_RESULTS:-50}
+      - -lead-search-deadline
+      - ${LEAD_SEARCH_DEADLINE:-8m}
+      - -smtp-from
+      - ${SMTP_FROM:-leads@lead.example}
+
+  app:
+    <<: *demo-app
+    depends_on:
+      console-secret-init:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      temporal:
+        condition: service_healthy
+      demand:
+        condition: service_healthy
+    command:
+      - -config
+      - /deploy/services.yaml
+      - -service
+      - request-fulfillment,platform-governance
+      - -db-policy
+      - legacy
+      - -api-port-base
+      - "19080"
+      - -api-bind-host
+      - 0.0.0.0
+      - -liveness-addr
+      - 0.0.0.0:19090
+      - -request-green-dsn
+      - postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/leadgen?sslmode=disable
+      - -support-green-dsn
+      - postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/leadgen?sslmode=disable
+      - -broker-url
+      - amqp://demo:demo@rabbitmq:5672/
+      - -temporal-address
+      - temporal:7233
+      - -temporal-namespace
+      - leadgen-demo
+      - -temporal-task-queue
+      - leadgen-demo
+      - -request-intent-url
+      - http://127.0.0.1:19080
+      - -request-executions-url
+      - http://127.0.0.1:19080
+      - -lead-search-url
+      - http://demand:19082
+      - -email-generation-url
+      - http://demand:19082
+
+  web:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    depends_on:
+      app:
+        condition: service_healthy
+      demand:
+        condition: service_healthy
+    ports:
+      - "127.0.0.1:${LEADGEN_DEMO_HTTP_PORT:-18000}:8000"
+    volumes:
+      - ./deploy/demo/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+    healthcheck:
+      test: [CMD, wget, -q, -O, /dev/null, "http://127.0.0.1:8000/readyz"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  demo-postgres-data:
+  demo-rabbitmq-data:
+  demo-console-secrets:

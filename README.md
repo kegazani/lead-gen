@@ -75,23 +75,25 @@ edge — отдельный минимальный образ модулей `fr
 
 ## Локальная разработка
 
-Требуется Go 1.25+.
+Для разработки без Docker требуется Go 1.27+.
 
-**Быстрый старт MVP-среза поиска лидов через Docker** (PostgreSQL + консоль,
-без локального Go):
+**Локальное демо через Docker**, без установки Go. Используйте существующий
+`.env` с `POSTGRES_PASSWORD`, `FIRECRAWL_API_KEY`, `LLM_API_KEY` и настройками LLM:
 
 ```sh
-cp .env.example .env   # заполнить FIRECRAWL_API_KEY
-docker compose up --build
+test -f .env || cp .env.example .env  # заполнить ключи, если .env новый
+docker compose -p lead-gen-demo -f compose.demo.yaml up -d --build --wait --wait-timeout 240
 ```
 
-Консоль — <http://localhost:8080/>. Подробности и ручной запуск —
-[`backend/contexts/lead-management/README.md`](backend/contexts/lead-management/README.md).
+Клиентский портал — <http://localhost:18000/login>, оператор —
+<http://localhost:18000/admin/console>. Логин/пароль оператора берутся из `.env`
+(`CONSOLE_USER`/`CONSOLE_PASSWORD`, по умолчанию `admin`/`admin`).
+Демо поднимает собственные PostgreSQL, RabbitMQ и Temporal; данные сохраняются
+в отдельных томах. Инструкции — [`deploy/demo/README.md`](deploy/demo/README.md).
 
-Тот же `docker compose up --build` поднимает **self-hosted Temporal** (сервер,
-интерфейс <http://localhost:8233/>, БД) и сервис `request-fulfillment` с воркером
-workflow (API заявок — <http://localhost:8081/>). Подробнее — `deploy/README.md`,
-раздел «Рантайм исполнения: Temporal».
+Штатный `compose.yaml` использует отдельную процедуру DB release и подготовки
+секретов: простого `.env` для его первого запуска недостаточно. Этот путь описан
+в [`deploy/README.md`](deploy/README.md).
 
 ```sh
 make check     # сборка, тесты, vet, importlint, archlint, OpenSpec
