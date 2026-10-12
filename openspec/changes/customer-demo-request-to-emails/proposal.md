@@ -23,4 +23,4 @@
 
 ## Impact
 
-Затронуты существующие bounded contexts `platform-governance` (регистрация и profile approval), `request-fulfillment` (заявка, исполнение и видимость результата) и `lead-management` (crawl и генерация). Интеграционная сборка `backend/cmd/lead-gen` затрагивается только если для этого пути потребуется изменить composition wiring. Новые bounded contexts и capability не вводятся. Доставка, outreach campaign/handoff и editorial approval не входят в изменение.
+Затронуты существующие bounded contexts `platform-governance` (регистрация и profile approval), `request-fulfillment` (заявка, исполнение и видимость результата) и `lead-management` (crawl и генерация). Интеграционная сборка `backend/cmd/lead-gen` затрагивается только если для этого пути потребуется изменить composition wiring. Для устранения блокеров навигации демо также подключается существующий экран `analytics` (отчёты) с общим входом. Новые bounded contexts и capability не вводятся. Доставка, outreach campaign/handoff и editorial approval не входят в изменение.

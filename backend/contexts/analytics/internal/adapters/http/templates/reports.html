@@ -21,6 +21,7 @@
     <a href="/reports/export.csv?tenant_id={{ .View.TenantID }}&from={{ .View.Filters.From }}&to={{ .View.Filters.To }}&segment={{ .View.Filters.Segment }}&source={{ .View.Filters.Source }}&campaign_id={{ .View.Filters.CampaignID }}">{{ text "analytics.reports.export.csv" }}</a>
     <a href="/reports/export.xlsx?tenant_id={{ .View.TenantID }}&from={{ .View.Filters.From }}&to={{ .View.Filters.To }}&segment={{ .View.Filters.Segment }}&source={{ .View.Filters.Source }}&campaign_id={{ .View.Filters.CampaignID }}">{{ text "analytics.reports.export.xlsx" }}</a>
     <form class="reports-export-async" method="post" action="/reports/exports/html?tenant_id={{ .View.TenantID }}&format=csv&from={{ .View.Filters.From }}&to={{ .View.Filters.To }}&segment={{ .View.Filters.Segment }}&source={{ .View.Filters.Source }}&campaign_id={{ .View.Filters.CampaignID }}">
+      <input type="hidden" name="csrf" value="{{ .View.CSRF }}">
       <button type="submit">{{ text "analytics.reports.export.async" }}</button>
     </form>
     {{- if .View.CanManageJobs }}

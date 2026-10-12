@@ -18,6 +18,7 @@ import (
 	"lead-gen/backend/contexts/analytics/internal/ports"
 	"lead-gen/backend/contexts/analytics/internal/readmodel"
 	composition "lead-gen/backend/platform/composition"
+	"lead-gen/backend/platform/consoleauth"
 	"lead-gen/backend/platform/jobs"
 	"lead-gen/backend/platform/messaging/inbox"
 	"lead-gen/backend/platform/observability/observ"
@@ -39,6 +40,8 @@ func (SystemClock) Now() time.Time { return time.Now() }
 
 // Config — параметры сборки сервиса, задаваемые точкой входа cmd/lead-gen.
 type Config struct {
+	// ConsoleAuth — общий вход платформенного оператора; пусто — прежний dev API.
+	ConsoleAuth consoleauth.Config
 	// APIAddr — адрес HTTP-сервера роли api (дашборд клиента).
 	APIAddr string
 
@@ -268,6 +271,7 @@ func Build(cfg Config) (*Slice, error) {
 	jobsHandler := query.NewJobsHandler(exportStore)
 
 	server := httpapi.NewServer(httpapi.Dependencies{
+		ConsoleAuth:         cfg.ConsoleAuth,
 		Dashboard:           dashboard,
 		Reports:             reports,
 		Events:              events,

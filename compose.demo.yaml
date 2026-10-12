@@ -143,6 +143,31 @@ services:
       - -smtp-from
       - ${SMTP_FROM:-leads@lead.example}
 
+  reports:
+    <<: *demo-app
+    depends_on:
+      console-secret-init:
+        condition: service_completed_successfully
+      postgres:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+    command:
+      - -config
+      - /deploy/services.yaml
+      - -service
+      - analytics
+      - -api-port-base
+      - "19083"
+      - -api-bind-host
+      - 0.0.0.0
+      - -liveness-addr
+      - 0.0.0.0:19090
+      - -support-green-dsn
+      - postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/leadgen?sslmode=disable
+      - -broker-url
+      - amqp://demo:demo@rabbitmq:5672/
+
   app:
     <<: *demo-app
     build:
@@ -158,6 +183,8 @@ services:
       temporal:
         condition: service_healthy
       demand:
+        condition: service_healthy
+      reports:
         condition: service_healthy
     command:
       - -config
@@ -192,6 +219,8 @@ services:
       - http://demand:19082
       - -email-generation-url
       - http://demand:19082
+      - -analytics-url
+      - http://reports:19083
 
   web:
     image: nginx:1.27-alpine
@@ -200,6 +229,8 @@ services:
       app:
         condition: service_healthy
       demand:
+        condition: service_healthy
+      reports:
         condition: service_healthy
     ports:
       - "127.0.0.1:${LEADGEN_DEMO_HTTP_PORT:-18000}:8000"

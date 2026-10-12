@@ -2,10 +2,13 @@ package httpapi_test
 
 import (
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
+	requestfulfillment "lead-gen/backend/contexts/request-fulfillment"
 	"lead-gen/backend/contexts/request-fulfillment/internal/ports"
+	"lead-gen/frontend/components"
 )
 
 func TestRequestListKeepsRequestAcrossLifecycle(t *testing.T) {
@@ -59,6 +62,27 @@ func TestRequestListShowsSearchProgress(t *testing.T) {
 		t.Fatal("скрипт обновления не доступен браузеру")
 	}
 	response.Body.Close()
+}
+
+func TestRequestQueuesRequireCompanySelection(t *testing.T) {
+	slice, err := requestfulfillment.Build(requestfulfillment.Config{
+		ConsoleUser: consoleUser, ConsolePassword: consolePassword,
+		Console: components.ConsoleBases{components.ConsoleServicePlatform: "/admin"},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewServer(slice.Server)
+	defer server.Close()
+	client := newConsoleClient(server)
+	client.login(t)
+	for _, path := range []string{"/validation", "/approvals"} {
+		response := client.get(t, path)
+		response.Body.Close()
+		if response.StatusCode != http.StatusSeeOther || response.Header.Get("Location") != "/admin/console/tenant?actor=operator" {
+			t.Fatalf("%s без компании: status=%d location=%q", path, response.StatusCode, response.Header.Get("Location"))
+		}
+	}
 }
 
 func TestRequestListKeepsRequestWhenWorkflowStateMissing(t *testing.T) {

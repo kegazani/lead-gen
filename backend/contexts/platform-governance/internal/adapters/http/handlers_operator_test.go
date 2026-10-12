@@ -53,6 +53,34 @@ func TestOperatorSeesTenantListWithoutActiveTenant(t *testing.T) {
 	}
 }
 
+// Устаревший выбор не должен запирать оператора вне списка компаний.
+func TestOperatorCanRecoverStaleTenantSelection(t *testing.T) {
+	slice := newOperatorSlice(t)
+	pending := registerClientPending(t, slice, "pending@example.ru", "7700000099", "pending-co@example.ru")
+	server := httptest.NewServer(slice.Server)
+	defer server.Close()
+	for _, tenant := range []string{"removed-tenant", pending} {
+		req, _ := http.NewRequest(http.MethodGet, server.URL+"/console/tenant?actor=operator-1", nil)
+		req.AddCookie(&http.Cookie{Name: consolescope.CookieName, Value: tenant})
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		page := body(t, resp)
+		if resp.StatusCode != http.StatusOK || !strings.Contains(page, "ООО Василёк") {
+			t.Fatalf("оператор не смог сменить устаревший выбор %s: %d", tenant, resp.StatusCode)
+		}
+		if strings.Contains(page, `name="tenant_id" value="`+pending+`"`) || !strings.Contains(page, "на проверке") {
+			t.Fatal("неактивная компания предлагает переключение либо скрывает свой статус")
+		}
+	}
+	resp := postForm(t, server, "/console/tenant/switch", url.Values{"tenant_id": {pending}, "actor": {"operator-1"}})
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("неактивная компания доступна для переключения: %d", resp.StatusCode)
+	}
+}
+
 // TestOperatorActsInForeignTenant проверяет, что оператор действует в тенанте, где
 // он не состоит пользователем: решение о доступе выдаёт роль администратора
 // платформы.

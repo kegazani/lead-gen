@@ -89,7 +89,10 @@ type screenView struct {
 
 // handleValidationQueue обслуживает GET /validation: заявки и ход их исполнения.
 func (s *Server) handleValidationQueue(w http.ResponseWriter, r *http.Request) {
-	tenant := activeTenant(r)
+	tenant, ok := s.requireSelectedTenant(w, r)
+	if !ok {
+		return
+	}
 	actor := actorOf(r)
 	items, err := s.deps.ValidationQueue.Handle(r.Context(), query.ValidationQueue{TenantID: domain.TenantID(tenant)})
 	if err != nil {

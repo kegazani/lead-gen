@@ -27,6 +27,9 @@
   {{- end }}
   {{- if .CanRetry }}
   <form method="post" action="/reports/exports/{{ .ID }}/retry">
+    {{- with .CSRF }}
+    <input type="hidden" name="csrf" value="{{ . }}">
+    {{- end }}
     <button type="submit">{{ text "analytics.export.job.retry" }}</button>
   </form>
   {{- end }}

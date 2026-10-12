@@ -22,6 +22,8 @@ import (
 	"lead-gen/backend/contexts/analytics/internal/app/command"
 	"lead-gen/backend/contexts/analytics/internal/app/query"
 	"lead-gen/backend/contexts/analytics/internal/ports"
+	"lead-gen/backend/platform/consoleauth"
+	"lead-gen/backend/platform/consolescope"
 	"lead-gen/backend/platform/observability/observ"
 	"lead-gen/frontend/components"
 )
@@ -54,6 +56,8 @@ const defaultRole = "client"
 // Dependencies — внешние зависимости HTTP-адаптера: прикладные сценарии и порт
 // решения о доступе.
 type Dependencies struct {
+	// ConsoleAuth — сессии настроенного платформенного оператора.
+	ConsoleAuth consoleauth.Config
 	// Dashboard — чтение среза дашборда.
 	Dashboard *query.DashboardHandler
 
@@ -128,7 +132,31 @@ type Server struct {
 func NewServer(deps Dependencies) *Server {
 	server := &Server{deps: deps, console: deps.Console, logger: deps.Logger}
 	server.pages, _ = newPages()
-	server.handler = components.PrefixMiddleware(deps.BasePath, server.routes(), deps.ExternalPrefixes...)
+	handler := server.routes()
+	if deps.ConsoleAuth.Username != "" && deps.ConsoleAuth.Password != "" {
+		sessions := consoleauth.New(deps.ConsoleAuth)
+		handler = sessions.Middleware(consoleauth.Policy{
+			LoginPath:      strings.TrimRight(deps.Console[components.ConsoleServicePlatform], "/") + "/console/login",
+			Public:         []string{"/healthz", "/readyz", "/operations/numbers", "/operations/clients"},
+			PublicPrefixes: []string{"/static/"},
+		})(handler)
+		protected := handler
+		handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			// Все отчётные обработчики получают одинаковый выбор компании,
+			// включая прямой адрес без tenant_id и ссылки выгрузки.
+			if r.URL.Query().Get("tenant_id") == "" {
+				if tenant := consolescope.ActiveTenant(r); tenant != "" {
+					copyRequest := r.Clone(r.Context())
+					values := copyRequest.URL.Query()
+					values.Set("tenant_id", tenant)
+					copyRequest.URL.RawQuery = values.Encode()
+					r = copyRequest
+				}
+			}
+			protected.ServeHTTP(w, r)
+		})
+	}
+	server.handler = components.PrefixMiddleware(deps.BasePath, handler, deps.ExternalPrefixes...)
 	return server
 }
 
@@ -478,11 +506,13 @@ func (s *Server) render(w http.ResponseWriter, status int, page string, model co
 }
 
 // navContext собирает контекст навигации консоли из запроса: активный тенант и
-// актор. У консоли отчётов нет сессии оператора, поэтому актор берётся из
-// параметра запроса или заголовка X-Actor, как в админ-консоли платформы. Пустые
-// значения дают ссылки без параметров (прежнее поведение).
+// актор. При общем входе субъект берётся из сессии; dev API без входа сохраняет
+// параметр запроса или заголовок X-Actor. Пустые значения дают прежние ссылки.
 func navContext(r *http.Request) components.ConsoleContext {
 	actor := strings.TrimSpace(r.URL.Query().Get("actor"))
+	if session := consoleauth.Current(r.Context()); session != nil {
+		actor = session.Username()
+	}
 	if actor == "" {
 		actor = strings.TrimSpace(r.Header.Get("X-Actor"))
 	}
@@ -502,10 +532,13 @@ func (s *Server) consoleNav(r *http.Request) components.Nav {
 	return components.ConsoleNavWithContext(s.console, components.ConsoleSectionReports, navContext(r))
 }
 
-// roleOf возвращает роль запроса из параметра или заголовка, подставляя
-// значение по умолчанию. Контур без аутентификации: настоящие роли —
-// platform-governance.
+// roleOf использует платформенного оператора из сессии. Dev API без входа
+// сохраняет роль из параметра или заголовка и значение по умолчанию.
 func roleOf(r *http.Request) string {
+	if consoleauth.Current(r.Context()) != nil {
+		// Этот вход выдан только настроенному платформенному оператору.
+		return "admin"
+	}
 	for _, value := range []string{r.URL.Query().Get("role"), r.Header.Get("X-Role")} {
 		if trimmed := strings.TrimSpace(value); trimmed != "" {
 			return trimmed

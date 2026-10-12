@@ -19,7 +19,7 @@
         <td>
           {{- if .Active }}
           <span class="status status-active">{{ text "console.tenant.current" }}</span>
-          {{- else }}
+          {{- else if .Selectable }}
           <form method="post" action="/console/tenant/switch" class="inline-form">
             <input type="hidden" name="csrf" value="{{ $.View.CSRF }}">
             <input type="hidden" name="tenant_id" value="{{ .ID }}">

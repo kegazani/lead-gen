@@ -88,7 +88,10 @@ type approvalView struct {
 // handleApprovalQueue обслуживает GET /approvals: очередь заявок, ожидающих
 // утверждения результата исполнения.
 func (s *Server) handleApprovalQueue(w http.ResponseWriter, r *http.Request) {
-	tenant := activeTenant(r)
+	tenant, ok := s.requireSelectedTenant(w, r)
+	if !ok {
+		return
+	}
 	actor := actorOf(r)
 	view := approvalQueueView{Live: consoleLive, TenantID: tenant, Actor: actor}
 	if s.deps.ApprovalQueue == nil {

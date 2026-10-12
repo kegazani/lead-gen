@@ -8,6 +8,7 @@ import (
 
 	"lead-gen/backend/contexts/analytics/internal/app/query"
 	"lead-gen/backend/contexts/analytics/internal/ports"
+	"lead-gen/backend/platform/consoleauth"
 	"lead-gen/frontend/components"
 )
 
@@ -44,7 +45,7 @@ func (s *Server) handleReports(w http.ResponseWriter, r *http.Request) {
 	s.render(w, http.StatusOK, pageReports, components.Page{
 		Layout:  components.Layout{Title: consoleMessages().Text(msgReportsTitle)},
 		Sidebar: s.consoleNav(r),
-		View:    reportPage{ReportView: view, Live: components.Live{ID: "console-live"}, CanManageJobs: s.canManageJobs(r)},
+		View:    reportPage{ReportView: view, Live: components.Live{ID: "console-live"}, CanManageJobs: s.canManageJobs(r), CSRF: consoleauth.CSRF(r)},
 	})
 }
 
@@ -56,6 +57,7 @@ type reportPage struct {
 	query.ReportView
 	Live          components.Live
 	CanManageJobs bool
+	CSRF          string
 }
 
 // handleReportsJSON обслуживает GET /reports.json: те же агрегаты в JSON. Записи

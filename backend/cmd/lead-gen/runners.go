@@ -361,6 +361,7 @@ func buildService(
 	switch id {
 	case analytics.ServiceID:
 		cfg := analytics.Config{
+			ConsoleAuth:       consoleauth.Config{Username: opts.consoleUser, Password: opts.consolePassword},
 			APIAddr:           opts.apiAddrFor(analytics.ServiceID),
 			Consumer:          opts.consumer,
 			DeliveryQueue:     opts.analyticsDeliveryQueue,
@@ -390,6 +391,11 @@ func buildService(
 			// Снимки качества поиска (lead-quality-insights) переживают рестарт:
 			// без хранилища они остаются in-memory dev и предупреждают об этом.
 			cfg.InsightStore = persistence.Insight
+			if err := applyMigrations(pool, "backend/platform/consoleauth/migrations/green", consoleauth.Schema); err != nil {
+				pool.Close()
+				return nil, err
+			}
+			cfg.ConsoleAuth.Store = consoleauth.NewPostgresStore(pool)
 		}
 		return analytics.New(cfg)
 	case outreachorchestration.ServiceID:
@@ -1605,8 +1611,8 @@ func buildLeadManagement(opts buildOptions, tracer observ.Tracer, broker amqp.Pu
 	forumClient := integrationplatform.NewForum(integrationplatform.ForumConfig{Search: firecrawlClient})
 
 	var repos leadmanagement.Repositories
-	// Стор сессий консоли в общей (зелёной) базе: сессия, выданная другой
-	// консолью той же базы, принимается и здесь. Без DSN — память процесса.
+	// Сессии отделены от лидов: общая support DB позволяет принимать вход
+	// платформенной консоли при раздельных базах контекстов.
 	var consoleStore consoleauth.Store
 	if opts.leadGreenDSN == "" {
 		// Dev без внешней СУБД: состояние живёт в памяти процесса.
@@ -1647,6 +1653,24 @@ func buildLeadManagement(opts buildOptions, tracer observ.Tracer, broker amqp.Pu
 		// (нет shutdown-хука в composition.Service), поэтому закрываются на выходе.
 		repos = leadmanagement.NewPostgresRepositories(greenPool, redPool)
 		consoleStore = consoleauth.NewPostgresStore(greenPool)
+	}
+	if dsn := strings.TrimSpace(opts.supportGreenDSN); dsn != "" {
+		pool, err := newServicePool(dsn, consoleauth.Schema)
+		if err != nil {
+			return nil, err
+		}
+		if err := applyMigrations(pool, "backend/platform/consoleauth/migrations/green", consoleauth.Schema); err != nil {
+			pool.Close()
+			return nil, err
+		}
+		if opts.runtimeDBResources == nil {
+			pool.Close()
+			return nil, errors.New("lead-management: runtime pool registry обязателен для общей базы сессий")
+		}
+		if err := opts.runtimeDBResources.addServicePool(pool); err != nil {
+			return nil, err
+		}
+		consoleStore = consoleauth.NewPostgresStore(pool)
 	}
 
 	// Та же сборка хранилища публикуется для co-location-контрактов

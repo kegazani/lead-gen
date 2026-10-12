@@ -29,6 +29,9 @@
         <td class="jobs-updated">{{ .UpdatedLabel }}</td>
         <td class="jobs-action">
           <form method="post" action="/reports/exports/{{ .ID }}/retry">
+            {{- with $.View.CSRF }}
+            <input type="hidden" name="csrf" value="{{ . }}">
+            {{- end }}
             <button type="submit">{{ text "analytics.jobs.retry" }}</button>
           </form>
         </td>

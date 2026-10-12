@@ -126,6 +126,7 @@ type consoleTenantRow struct {
 	StateLabel  string
 	Class       string
 	Active      bool
+	Selectable  bool
 }
 
 // consoleTenantView — модель экрана «Выбор тенанта».
@@ -258,22 +259,23 @@ func (s *Server) handleConsoleRoot(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleConsoleTenant обслуживает GET /console/tenant: список тенантов и выбор
-// активного. Доступ к списку решается матрицей по активному тенанту
-// (SectionTenant/View); само переключение проверяется отдельно в
+// активного. Платформенный оператор открывает список независимо от выбора;
+// для остальных доступ решается матрицей по активному тенанту. Переключение
+// проверяется отдельно в
 // handleConsoleTenantSwitch — видимость формы не заменяет серверную проверку.
 func (s *Server) handleConsoleTenant(w http.ResponseWriter, r *http.Request) {
 	tenant := s.activeTenant(r)
 	actor := consoleActor(r)
-	if strings.TrimSpace(tenant) == "" {
-		// Список тенантов открывается без активного тенанта: право на него даёт
-		// принадлежность к платформенным операторам, а не роль в конкретном
-		// тенанте — иначе выбор тенанта недостижим («курица и яйцо»).
-		if !s.platformOperator(actor) {
+	// Список принадлежит платформенному оператору, даже если сохранённый
+	// выбор ссылается на удалённую или отключённую компанию.
+	if !s.platformOperator(actor) {
+		if strings.TrimSpace(tenant) == "" {
 			s.renderConsoleDenied(w, http.StatusBadRequest, "Не задан тенант")
 			return
 		}
-	} else if !s.consoleGuard(w, r, tenant, app.SectionTenant, app.ActionView) {
-		return
+		if !s.consoleGuard(w, r, tenant, app.SectionTenant, app.ActionView) {
+			return
+		}
 	}
 	tenants, err := s.deps.ListTenants.Handle(r.Context(), query.ListTenants{})
 	if err != nil {
@@ -639,6 +641,7 @@ func tenantRows(tenants []query.TenantView, active string) []consoleTenantRow {
 			StateLabel:  tenantStateLabel(tenant.State),
 			Class:       components.StatusClass(tenant.State),
 			Active:      tenant.ID == active,
+			Selectable:  tenant.State == string(domain.TenantActive),
 		})
 	}
 	return rows
@@ -652,6 +655,10 @@ func tenantStateLabel(state string) string {
 		return "активен"
 	case string(domain.TenantDisabled):
 		return "отключён"
+	case string(domain.TenantPending):
+		return "на проверке"
+	case string(domain.TenantRejected):
+		return "отклонён"
 	default:
 		return "неизвестно"
 	}

@@ -7,6 +7,7 @@ import (
 	"strings"
 
 	"lead-gen/backend/contexts/analytics/internal/ports"
+	"lead-gen/backend/platform/consoleauth"
 	"lead-gen/backend/platform/jobs"
 	"lead-gen/frontend/components"
 )
@@ -86,6 +87,7 @@ func (s *Server) handleReportExportProgress(w http.ResponseWriter, r *http.Reque
 	}
 
 	view := exportProgressViewOf(record, s.canManageJobs(r), navContext(r))
+	view.CSRF = consoleauth.CSRF(r)
 	if isHTMX(r) {
 		s.renderFragment(w, pageExportProgress, "export-progress", view)
 		return
@@ -164,6 +166,7 @@ func (s *Server) handleReportJobs(w http.ResponseWriter, r *http.Request) {
 		Layout:  components.Layout{Title: messages.Text(msgJobsTitle)},
 		Sidebar: s.consoleNav(r),
 		View: jobsView{
+			CSRF:    consoleauth.CSRF(r),
 			Rows:    rows,
 			Empty:   len(rows) == 0,
 			Retried: strings.TrimSpace(r.URL.Query().Get("retried")),
@@ -175,6 +178,7 @@ func (s *Server) handleReportJobs(w http.ResponseWriter, r *http.Request) {
 // exportProgressView — модель страницы прогресса задания. Поля уже готовы к показу:
 // шаблон не решает и не форматирует.
 type exportProgressView struct {
+	CSRF            string
 	ID              string
 	StatusLabel     string
 	StatusClass     string
@@ -205,6 +209,7 @@ type jobRow struct {
 
 // jobsView — модель админ-экрана заданий.
 type jobsView struct {
+	CSRF    string
 	Rows    []jobRow
 	Empty   bool
 	Retried string
