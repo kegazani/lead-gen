@@ -40,6 +40,10 @@ type Card struct {
 	// ExtractedAt — дата извлечения названия.
 	ExtractedAt time.Time
 	Contacts    []CardContact
+	// RejectedContacts — сохранённые ранее значения, не прошедшие проверку.
+	RejectedContacts []CardContact
+	Phone            string
+	ContactSourceURL string
 	// Email — email первого контакта с непустым адресом (пусто, если его нет).
 	Email string
 	// NoEmail — ни у одного контакта нет непустого email.
@@ -57,7 +61,8 @@ type CardContact struct {
 	// ExtractedAt — дата извлечения контакта.
 	ExtractedAt time.Time
 	// Method — способ извлечения (markdown/regex/llm).
-	Method string
+	Method        string
+	RejectionCode string
 }
 
 // ListJobs возвращает журнал заданий поиска, новые первыми.
@@ -226,7 +231,7 @@ func (s *Showcase) ListCards(ctx context.Context, limit int) ([]Card, error) {
 
 	for _, c := range companies {
 		card := companyToCard(c)
-		card.Email, card.NoEmail = contactEmail(byCompany[c.ID()])
+		addCardContacts(&card, byCompany[c.ID()])
 		cards = append(cards, card)
 	}
 	return cards, nil
@@ -236,7 +241,7 @@ func (s *Showcase) ListCards(ctx context.Context, limit int) ([]Card, error) {
 // что ни у одного контакта email нет.
 func contactEmail(contacts []*domain.Contact) (email string, noEmail bool) {
 	for _, contact := range contacts {
-		if attr := contact.Email(); attr != nil && attr.Value != "" {
+		if attr := contact.Email(); attr != nil && attr.Value != "" && usableStoredContact(contact) {
 			return attr.Value, false
 		}
 	}
@@ -294,11 +299,27 @@ func (s *Showcase) Card(ctx context.Context, id string) (Card, error) {
 	if err != nil {
 		return Card{}, err
 	}
-	card.Contacts = make([]CardContact, 0, len(contacts))
-	for _, c := range contacts {
-		card.Contacts = append(card.Contacts, contactToCardContact(c))
-	}
+	addCardContacts(&card, contacts)
 	return card, nil
+}
+
+func addCardContacts(card *Card, contacts []*domain.Contact) {
+	card.Email, card.NoEmail = contactEmail(contacts)
+	for _, c := range contacts {
+		row := contactToCardContact(c)
+		if !usableStoredContact(c) {
+			row.RejectionCode = storedContactIssue(c)
+			card.RejectedContacts = append(card.RejectedContacts, row)
+			continue
+		}
+		card.Contacts = append(card.Contacts, row)
+		if card.ContactSourceURL == "" {
+			card.ContactSourceURL = row.SourceURL
+		}
+		if card.Phone == "" {
+			card.Phone = row.Phone
+		}
+	}
 }
 
 // DeleteCard безвозвратно удаляет карточку.

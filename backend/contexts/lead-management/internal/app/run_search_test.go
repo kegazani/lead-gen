@@ -256,7 +256,7 @@ func TestHandleEscalatesWhenLowQuality(t *testing.T) {
 		pages: map[string][]crawl.Page{
 			"https://example.com": {{
 				URL:      "https://example.com",
-				Markdown: "# Example Corp\n\nLeading agency.",
+				Markdown: "# Example Corp\n\nLeading agency.\nhello [at] example [dot] com",
 				Metadata: map[string]string{"description": "Leading agency"},
 			}},
 		},
@@ -770,7 +770,7 @@ func TestRunSearchAssessesCompanyOnSuccessfulPage(t *testing.T) {
 func TestRunSearchRevisesAssessmentWithoutDoubleCount(t *testing.T) {
 	page := crawl.Page{
 		URL:      "https://example.com",
-		Markdown: "# Example Corp\n\nLeading agency.",
+		Markdown: "# Example Corp\n\nLeading agency.\nContact: hello@example.com",
 		Metadata: map[string]string{"description": "Leading agency"},
 	}
 	page2 := page
@@ -958,7 +958,7 @@ func TestRunSearchCancelKeepsSavedCards(t *testing.T) {
 		pages: map[string][]crawl.Page{
 			"https://a.example.com": {{
 				URL:      "https://a.example.com",
-				Markdown: "# Alpha Corp\n\nDesc a",
+				Markdown: "# Alpha Corp\n\nDesc a\nContact: hello@example.com",
 				Metadata: map[string]string{"description": "Desc a"},
 			}},
 		},
@@ -1010,8 +1010,8 @@ func TestRunSearchCancelDrainsFetchedPages(t *testing.T) {
 	profiles := newMemProfiles()
 	ctx, cancel := context.WithCancel(context.Background())
 	crawlPort := &cancelledCrawlWithPages{cancel: cancel, pages: []crawl.Page{
-		{URL: "https://a.example.com", Markdown: "# Alpha Corp\n\nDesc a", Metadata: map[string]string{"description": "Desc a"}},
-		{URL: "https://b.example.com", Markdown: "# Beta LLC\n\nDesc b", Metadata: map[string]string{"description": "Desc b"}},
+		{URL: "https://a.example.com", Markdown: "# Alpha Corp\n\nDesc a\nContact: hello@example.com", Metadata: map[string]string{"description": "Desc a"}},
+		{URL: "https://b.example.com", Markdown: "# Beta LLC\n\nDesc b\nContact: hello@example.com", Metadata: map[string]string{"description": "Desc b"}},
 	}}
 	fs := &fakeSearch{results: []search.Result{{URL: "https://a.example.com"}}}
 	factory := &fakeBudgetFactory{search: fs, crawl: crawlPort}
@@ -1070,7 +1070,7 @@ func TestRunSearchCancelLogsInfoNotError(t *testing.T) {
 func TestRunSearchReportsProgress(t *testing.T) {
 	store := newMemJobs()
 	fc := &fakeCrawl{pages: map[string][]crawl.Page{
-		"https://example.com": {{URL: "https://example.com", Markdown: "# Example\n\nDesc", Metadata: map[string]string{"description": "Desc"}}},
+		"https://example.com": {{URL: "https://example.com", Markdown: "# Example\n\nDesc\nContact: hello@example.com", Metadata: map[string]string{"description": "Desc"}}},
 	}}
 	fs := &fakeSearch{results: searchResult("https://example.com")}
 
@@ -1164,7 +1164,7 @@ func TestRunSearchProcessesPagesFromCancelledCrawl(t *testing.T) {
 	fc := &adapterCancelledCrawl{cancel: cancel, pages: map[string][]crawl.Page{
 		"https://a.example.com": {{
 			URL:      "https://a.example.com",
-			Markdown: "# Alpha Corp\n\nDesc a",
+			Markdown: "# Alpha Corp\n\nDesc a\nContact: hello@example.com",
 			Metadata: map[string]string{"description": "Desc a"},
 		}},
 	}}
@@ -1719,7 +1719,7 @@ func TestRunSearchProcessesPagesFromTimedOutCrawl(t *testing.T) {
 	fc := &timeoutCrawlWithPages{pages: map[string][]crawl.Page{
 		"https://a.example.com": {{
 			URL:      "https://a.example.com",
-			Markdown: "# Alpha Corp\n\nDesc a",
+			Markdown: "# Alpha Corp\n\nDesc a\nContact: hello@example.com",
 			Metadata: map[string]string{"description": "Desc a"},
 		}},
 	}}

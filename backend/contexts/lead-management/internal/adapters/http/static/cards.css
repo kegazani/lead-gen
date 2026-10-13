@@ -98,3 +98,10 @@
 
 /* В полном наборе не показываем сообщения о пустых отдельных группах. */
 .cards[data-cards-composition="all"] .cards-empty { display: none; }
+
+/* Контакты видны в плитке и строке независимо от наличия email. */
+.cards[data-global-catalog="true"] .card-email { display: block; }
+.cards[data-global-catalog="true"][data-cards-view="rows"] .cards-item { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+.cards[data-global-catalog="true"] .card-contact-source,
+.cards[data-global-catalog="true"] .card-desc { grid-column: 1 / -1; overflow-wrap: anywhere; }
+@media (max-width: 720px) { .cards[data-global-catalog="true"][data-cards-view="rows"] .cards-item { grid-template-columns: minmax(0, 1fr); } }

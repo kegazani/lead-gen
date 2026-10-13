@@ -1,10 +1,13 @@
 {{- define "cards-group" -}}
 {{- range . }}
   {{- $verdict := .VerdictClass }}
-  <a class="cards-item{{ if .NoEmail }} is-no-email{{ end }}" href="/cards/{{.ID}}" data-group="{{.Group}}"{{ if .NoEmail }} aria-label="{{.Name}}{{ text "lead.job.no_email_aria" }}"{{ end }}>
+  <a class="cards-item{{ if .NoEmail }} is-no-email{{ end }}" href="/cards/{{.ID}}" {{ with .Group }}data-group="{{.}}"{{ end }}{{ if .NoEmail }} aria-label="{{.Name}}{{ text "lead.job.no_email_aria" }}"{{ end }}>
     <span class="card-email">{{ if .Email }}{{.Email}}{{ else }}<span class="card-no-email">{{ text "lead.company.no_email" }}</span>{{ end }}</span>
     <span class="card-name">{{.Name}}</span>
+    {{- with .Phone }}<span class="card-phone">{{.}}</span>{{ end }}
+    <span class="card-contact-state hint">{{ if .HasContacts }}{{ text "lead.contacts.present" }}{{ else }}{{ text "lead.contacts.absent" }}{{ end }}</span>
     {{- with .VerdictLabel }}<span class="card-verdict verdict verdict-{{$verdict}}">{{.}}</span>{{ end }}
+    {{- with .ContactSourceURL }}<span class="card-contact-source hint">{{ text "lead.header.source" }}: {{.}}</span>{{ end }}
     <span class="card-desc">{{.ShortDescription}}</span>
   </a>
 {{- end -}}
@@ -23,7 +26,7 @@
 
 <p class="hint" role="status" aria-live="polite" data-lead-refresh-status></p>
 <section class="panel" data-lead-results data-tenant-id="{{.TenantID}}" data-refresh-error="{{ text "lead.results.refresh_error" }}" data-refresh-updated="{{ text "lead.results.updated" }}">
-  <p class="hint">{{ text "lead.results.count" }} <strong data-saved-company-count>{{ .Counts.Total }}</strong></p>
+  <p class="hint">{{ text "lead.results.count" }} <strong data-saved-company-count>{{ .Total }}</strong></p>
   {{- with .Filter }}
   <p class="cards-filter" role="status">
     <span>{{ text "lead.cards.filter.title" }}: {{.Label}}</span>
@@ -31,20 +34,26 @@
   </p>
   {{- end }}
   <div class="cards-toolbar">
+    {{- if .JobScoped }}
     <div class="composition-switch" role="group" aria-label="{{ text "lead.cards.composition_aria" }}">
-      <button type="button" class="view-option{{ if not .Filter }} is-active{{ end }}" data-composition-set="all" aria-pressed="{{ if not .Filter }}true{{ else }}false{{ end }}">{{ text "lead.cards.all" }} <span class="count">{{.Counts.Total}}</span></button>
+      <button type="button" class="view-option{{ if not .Filter }} is-active{{ end }}" data-composition-set="all" aria-pressed="{{ if not .Filter }}true{{ else }}false{{ end }}">{{ text "lead.cards.all" }} <span class="count">{{.Total}}</span></button>
       <button type="button" class="view-option" data-composition-set="fits" aria-pressed="false">{{ text "lead.verdict.fits" }} <span class="count">{{.Counts.Fits}}</span></button>
       <button type="button" class="view-option" data-composition-set="hypothesis" aria-pressed="false">{{ text "lead.verdict.hypothesis" }} <span class="count">{{.Counts.Hypothesis}}</span></button>
       <button type="button" class="view-option" data-composition-set="unsuitable" aria-pressed="false">{{ text "lead.verdict.unsuitable" }} <span class="count">{{.Counts.Unsuitable}}</span></button>
       <button type="button" class="view-option" data-composition-set="unassessed" aria-pressed="false">{{ text "lead.verdict.unassessed" }} <span class="count">{{.Counts.Unassessed}}</span></button>
     </div>
+    {{- end }}
     <div class="view-switch" role="group" aria-label="{{ text "lead.cards.view_aria" }}">
       <button type="button" class="view-option is-active" data-view-set="tiles" aria-pressed="true">{{ text "lead.cards.tiles" }}</button>
       <button type="button" class="view-option" data-view-set="rows" aria-pressed="false">{{ text "lead.cards.rows" }}</button>
     </div>
   </div>
 
-  <div class="cards" data-cards-view="tiles" data-cards-composition="{{ if .Filter }}filter{{ else }}all{{ end }}"{{ if .Filter }} data-cards-filter="true"{{ end }}>
+  <div class="cards" data-cards-view="tiles"{{ if not .JobScoped }} data-global-catalog="true"{{ end }} data-cards-composition="{{ if .Filter }}filter{{ else }}all{{ end }}"{{ if .Filter }} data-cards-filter="true"{{ end }}>
+    {{- if not .JobScoped }}
+    {{- template "cards-group" .Rows -}}
+    {{- if not .Rows }}<p class="empty">{{ text "lead.cards.empty" }}</p>{{ end }}
+    {{- else }}
     {{ template "cards-group" .Fits }}
     {{ template "cards-group" .Hypothesis }}
     {{ template "cards-group" .Unsuitable }}
@@ -63,6 +72,7 @@
     {{- end }}
     {{- if not .Unassessed }}
     <p class="empty cards-empty" data-group="unassessed">{{ text "lead.cards.unassessed_empty" }} {{ if .Filter }}<a href="{{ .Filter.Href }}">{{ text "lead.cards.show_all" }}</a>{{ else }}<button type="button" data-composition-set="all">{{ text "lead.cards.show_all" }}</button>{{ end }}</p>
+    {{- end }}
     {{- end }}
     {{- end }}
   </div>

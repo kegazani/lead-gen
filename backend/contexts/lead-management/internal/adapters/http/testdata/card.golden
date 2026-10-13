@@ -82,7 +82,6 @@
   </li>
 </ol>
   </section>
-
   <section class="card-section assessment">
     <h3>Почему эта оценка?</h3>
     <p class="assessment-verdict">
@@ -107,6 +106,7 @@
 
   <section class="card-section">
     <h3>Контакты</h3>
+    <p class="hint">Проверены формат и источник контактов. Доставка email и доступность телефона не подтверждены.</p>
     <table class="table">
       <thead>
         <tr><th>Email</th><th>Телефон</th><th>Роль</th><th>Источник</th><th>Верификация</th></tr>

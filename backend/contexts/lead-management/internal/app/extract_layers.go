@@ -115,24 +115,43 @@ func mergeContacts(cheap, extracted []contactCandidate) []contactCandidate {
 // contactCandidatesFromExtract преобразует результат Firecrawl extract в
 // кандидатов контактов с происхождением MethodLLM. Имя контакта в домене не
 // хранится и отбрасывается.
-func contactCandidatesFromExtract(candidates []crawl.ContactCandidate, sourceURL string, at time.Time) []contactCandidate {
-	prov := domain.AttributeProvenance{SourceURL: sourceURL, ExtractedAt: at, Method: domain.MethodLLM}
+func contactCandidatesFromExtract(candidates []crawl.ContactCandidate, page crawl.Page, at time.Time) []contactCandidate {
+	prov := domain.AttributeProvenance{SourceURL: page.URL, ExtractedAt: at, Method: domain.MethodLLM}
+	evidence := make(map[string]bool)
+	phoneProof := make(map[string]string)
+	for _, c := range extractContacts(page, at) {
+		evidence[c.identity()] = true
+		if c.phone.value != "" {
+			phoneProof[c.phone.value] = c.phone.prov.Evidence
+		}
+	}
+	// Обфускация допустима только когда она действительно присутствует на странице.
+	decoded := dotWordRe.ReplaceAllString(atWordRe.ReplaceAllString(contactText(page.Markdown), "@"), ".")
+	for _, email := range ExtractEmails(decoded) {
+		evidence[email] = true
+	}
 	out := make([]contactCandidate, 0, len(candidates))
 	for _, c := range candidates {
 		email := NormalizeEmail(c.Email)
+		if !validContactEmail(email) || !evidence[email] {
+			email = ""
+		}
 		// Телефон от LLM проходит ту же проверку, что и regex-кандидаты: даты и
 		// прочие числовые последовательности не должны попадать в контакты.
 		phone := ""
-		if isPhoneCandidate(c.Phone) {
+		if evidence[NormalizePhone(c.Phone)] {
 			phone = NormalizePhone(c.Phone)
 		}
 		if email == "" && phone == "" {
 			// Ни email, ни телефона: у кандидата нет идентификатора, он бесполезен.
 			continue
 		}
+		emailProv, phoneProv := prov, prov
+		emailProv.Evidence = email
+		phoneProv.Evidence = phoneProof[phone]
 		out = append(out, contactCandidate{
-			email: contactAttr{value: email, prov: prov},
-			phone: contactAttr{value: phone, prov: prov},
+			email: contactAttr{value: email, prov: emailProv},
+			phone: contactAttr{value: phone, prov: phoneProv},
 			role:  contactAttr{value: strings.TrimSpace(c.Role), prov: prov},
 		})
 	}
@@ -153,11 +172,15 @@ func extractCard(page crawl.Page, at time.Time) (name, description domain.Attrib
 
 	// Приоритет у title: первый H1 в markdown часто — заголовок секции страницы,
 	// а не название компании, тогда как title несёт имя сайта.
-	nameValue := strings.TrimSpace(page.Metadata["title"])
+	nameValue := strings.TrimSpace(page.Metadata["og:site_name"])
+	if nameValue == "" {
+		nameValue = strings.TrimSpace(page.Metadata["title"])
+	}
 	if nameValue == "" {
 		nameValue = h1FromMarkdown(page.Markdown)
 	}
-	if nameValue != "" {
+	nameValue = strings.TrimSpace(tagRe.ReplaceAllString(labelLinkRe.ReplaceAllString(nameValue, "$1"), ""))
+	if usableCompanyName(nameValue) {
 		name = domain.AttributedValue{Value: nameValue, Provenance: prov}
 	}
 
@@ -200,19 +223,19 @@ func extractContacts(page crawl.Page, at time.Time) []contactCandidate {
 		contacts = append(contacts, c)
 	}
 
-	for _, email := range ExtractEmails(page.Markdown) {
+	for _, email := range ExtractEmails(contactText(page.Markdown)) {
 		add(NormalizeEmail(email), contactCandidate{
 			email: contactAttr{value: email, prov: domain.AttributeProvenance{SourceURL: page.URL, ExtractedAt: at, Method: domain.MethodRegex}},
 		})
 	}
-	for _, phone := range ExtractPhones(page.Markdown) {
-		add(NormalizePhone(phone), contactCandidate{
-			phone: contactAttr{value: phone, prov: domain.AttributeProvenance{SourceURL: page.URL, ExtractedAt: at, Method: domain.MethodRegex}},
+	for _, phone := range extractPhoneEvidence(page.Markdown) {
+		add(phone.number, contactCandidate{
+			phone: contactAttr{value: phone.number, prov: domain.AttributeProvenance{SourceURL: page.URL, ExtractedAt: at, Method: domain.MethodRegex, Evidence: phone.evidence}},
 		})
 	}
-	for _, encoded := range extractCloudflareEncoded(page.Markdown) {
+	for _, encoded := range extractCloudflareEncoded(scriptRe.ReplaceAllString(codeRe.ReplaceAllString(page.Markdown, " "), " ")) {
 		email, ok := DecodeCloudflareEmail(encoded)
-		if !ok {
+		if !ok || !validContactEmail(email) {
 			continue
 		}
 		add(NormalizeEmail(email), contactCandidate{

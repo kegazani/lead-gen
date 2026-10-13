@@ -525,7 +525,7 @@ func seedCompanyInTenant(t *testing.T, profiles *memory.LeadProfileRepository, t
 // seedContact сохраняет контакт компании с фиксированным происхождением.
 func seedContact(t *testing.T, contacts *memory.ContactRepository, companyID, email, phone, role string) {
 	t.Helper()
-	prov := domain.AttributeProvenance{SourceURL: "https://" + companyID, ExtractedAt: testTime, Method: domain.MethodRegex}
+	prov := domain.AttributeProvenance{SourceURL: "https://" + companyID, ExtractedAt: testTime, Method: domain.MethodRegex, Evidence: "tel:" + phone}
 	contact, err := domain.CreateContact(domain.CreateContactParams{
 		ID:        email,
 		CompanyID: domain.CompanyID(companyID),
@@ -1130,16 +1130,15 @@ func TestCardsCompositionIndependentOfView(t *testing.T) {
 		"data-cards-composition=\"all\"",
 		"data-view-set=\"tiles\"",
 		"data-view-set=\"rows\"",
-		"data-composition-set=\"fits\"",
-		"data-composition-set=\"hypothesis\"",
-		"data-composition-set=\"unsuitable\"",
-		"data-composition-set=\"unassessed\"",
-		"composition-switch",
+		"data-global-catalog=\"true\"",
 		"view-switch",
 	} {
 		if !strings.Contains(html, want) {
 			t.Fatalf("список карточек не несёт независимую ось %q:\n%s", want, html)
 		}
+	}
+	if strings.Contains(html, "data-composition-set") {
+		t.Fatal("глобальные оценки остались в витрине")
 	}
 }
 
@@ -1198,9 +1197,7 @@ func TestCardsJobScopedComposition(t *testing.T) {
 // разные оценки в двух заданиях, и карточка показывает вердикт того задания, в
 // контексте которого открыта. Без задания чужая оценка не подставляется.
 // TestCardsGlobalComposition проверяет, что общая витрина без контекста задания
-// делит карточки по последней оценке: «Подходит» — в группе по умолчанию,
-// «Не подходит» — во второй группе, а компания без оценок — во второй группе с
-// пометкой «Не оценено». Оценки берутся по всем заданиям, а не только из одного.
+// показывает все компании и их контакты без переноса оценок заданий.
 func TestCardsGlobalComposition(t *testing.T) {
 	env := newTestEnv()
 	seedCompany(t, env.profiles, "fit.example", "Подходящая", "Описание")
@@ -1219,20 +1216,14 @@ func TestCardsGlobalComposition(t *testing.T) {
 	client.login(t, "operator", "secret")
 
 	html := readBody(t, client.get(t, "/cards"))
-	for _, want := range []string{
-		"data-group=\"fits\"",
-		"data-group=\"hypothesis\"",
-		"data-group=\"unsuitable\"",
-		"data-group=\"unassessed\"",
-		"verdict-unsuitable",
-		"Не подходит",
-		"Не оценено",
-		"fit.example",
-		"unsuitable.example",
-		"none.example",
-	} {
+	for _, want := range []string{`data-global-catalog="true"`, "fit.example", "unsuitable.example", "none.example", "Нет пригодных контактов"} {
 		if !strings.Contains(html, want) {
-			t.Fatalf("общая витрина не содержит %q:\n%s", want, html)
+			t.Fatalf("витрина не содержит %q", want)
+		}
+	}
+	for _, unwanted := range []string{"data-composition-set", "verdict-unsuitable", "verdict-unknown"} {
+		if strings.Contains(html, unwanted) {
+			t.Fatalf("общая витрина использует оценку задания: %s", unwanted)
 		}
 	}
 }
@@ -1267,8 +1258,8 @@ func TestCardAssessmentScopedToJob(t *testing.T) {
 	if strings.Contains(general, "verdict-hypothesis") || strings.Contains(general, "verdict-unsuitable") {
 		t.Fatalf("общая карточка подставила оценку из задания:\n%s", general)
 	}
-	if !strings.Contains(general, "Оценка привязана к заданию") {
-		t.Fatalf("общая карточка не объясняет отсутствие оценки:\n%s", general)
+	if strings.Contains(general, `class="card-section assessment"`) {
+		t.Fatal("общая карточка показывает глобальную оценку")
 	}
 }
 
@@ -2659,22 +2650,29 @@ func TestCardsGroupCounts(t *testing.T) {
 	seedCompany(t, env.profiles, "hypo.example", "Гипотеза", "Описание")
 	seedCompany(t, env.profiles, "no.example", "Не подходит", "Описание")
 	seedCompany(t, env.profiles, "none.example", "Без оценки", "Описание")
-	seedAssessment(t, env.assessments, "job-1", "fit.example", domain.VerdictFits, domain.SignalDirect, []domain.Evidence{{
+	job, err := env.jobs.CreateSearchJob(context.Background(), "аудитория", 0)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seedAssessment(t, env.assessments, job.ID, "fit.example", domain.VerdictFits, domain.SignalDirect, []domain.Evidence{{
 		Criterion: "к", Fact: "ф", SourceURL: "https://fit.example/s", Reasoning: "о", SignalKind: domain.SignalDirect,
 	}})
-	seedAssessment(t, env.assessments, "job-1", "hypo.example", domain.VerdictHypothesis, domain.SignalProfile, []domain.Evidence{{
+	seedAssessment(t, env.assessments, job.ID, "hypo.example", domain.VerdictHypothesis, domain.SignalProfile, []domain.Evidence{{
 		Criterion: "к", Fact: "ф", SourceURL: "https://hypo.example/s", Reasoning: "о", SignalKind: domain.SignalProfile, Missing: "прямое заявление",
 	}})
-	seedAssessment(t, env.assessments, "job-1", "no.example", domain.VerdictUnsuitable, domain.SignalProfile, []domain.Evidence{{
+	seedAssessment(t, env.assessments, job.ID, "no.example", domain.VerdictUnsuitable, domain.SignalProfile, []domain.Evidence{{
 		Criterion: "к", Fact: "ф", SourceURL: "https://no.example/s", Reasoning: "о", SignalKind: domain.SignalProfile, Mismatch: "нет отдела продаж",
 	}})
 
+	if err := env.jobs.RecordResult(context.Background(), job.ID, []string{"fit.example", "hypo.example", "no.example", "none.example"}); err != nil {
+		t.Fatal(err)
+	}
 	ts := httptest.NewServer(env.server)
 	defer ts.Close()
 	client := newConsoleClient(ts)
 	client.login(t, "operator", "secret")
 
-	html := readBody(t, client.get(t, "/cards"))
+	html := readBody(t, client.get(t, "/cards?job="+job.ID))
 	for _, want := range []string{
 		`data-composition-set="fits" aria-pressed="false">Подходит <span class="count">1</span>`,
 		`data-composition-set="hypothesis" aria-pressed="false">Гипотеза <span class="count">1</span>`,

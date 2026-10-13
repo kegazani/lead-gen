@@ -55,37 +55,25 @@
 <section class="panel" data-lead-results data-tenant-id="" data-refresh-error="Не удалось обновить список. Показаны последние полученные данные." data-refresh-updated="Список сохранённых компаний обновлён.">
   <p class="hint">Показано сохранённых компаний: <strong data-saved-company-count>2</strong></p>
   <div class="cards-toolbar">
-    <div class="composition-switch" role="group" aria-label="Состав результатов">
-      <button type="button" class="view-option is-active" data-composition-set="all" aria-pressed="true">Все <span class="count">2</span></button>
-      <button type="button" class="view-option" data-composition-set="fits" aria-pressed="false">Подходит <span class="count">0</span></button>
-      <button type="button" class="view-option" data-composition-set="hypothesis" aria-pressed="false">Гипотеза <span class="count">0</span></button>
-      <button type="button" class="view-option" data-composition-set="unsuitable" aria-pressed="false">Не подходит <span class="count">0</span></button>
-      <button type="button" class="view-option" data-composition-set="unassessed" aria-pressed="false">Не оценено <span class="count">2</span></button>
-    </div>
     <div class="view-switch" role="group" aria-label="Вид списка карточек">
       <button type="button" class="view-option is-active" data-view-set="tiles" aria-pressed="true">Плитки</button>
       <button type="button" class="view-option" data-view-set="rows" aria-pressed="false">Строки</button>
     </div>
   </div>
 
-  <div class="cards" data-cards-view="tiles" data-cards-composition="all">
-    
-    
-    
-    
-  <a class="cards-item" href="/cards/example.com" data-group="unassessed">
+  <div class="cards" data-cards-view="tiles" data-global-catalog="true" data-cards-composition="all">
+  <a class="cards-item" href="/cards/example.com" >
     <span class="card-email">hello@example.com</span>
-    <span class="card-name">Пример Компании</span><span class="card-verdict verdict verdict-unknown">Не оценено</span>
+    <span class="card-name">Пример Компании</span><span class="card-phone">&#43;7 999 123-45-67</span>
+    <span class="card-contact-state hint">Контакты найдены</span><span class="card-contact-source hint">Источник: https://example.com</span>
     <span class="card-desc">Описание компании с email</span>
   </a>
-  <a class="cards-item is-no-email" href="/cards/phone.example.com" data-group="unassessed" aria-label="Только Телефон — нет email">
+  <a class="cards-item is-no-email" href="/cards/phone.example.com"  aria-label="Только Телефон — нет email">
     <span class="card-email"><span class="card-no-email">нет email</span></span>
-    <span class="card-name">Только Телефон</span><span class="card-verdict verdict verdict-unknown">Не оценено</span>
+    <span class="card-name">Только Телефон</span>
+    <span class="card-contact-state hint">Нет пригодных контактов</span>
     <span class="card-desc">Описание компании без email</span>
   </a>
-    <p class="empty cards-empty" data-group="fits">Подходящих компаний пока нет <button type="button" data-composition-set="all">Показать все сохранённые компании</button></p>
-    <p class="empty cards-empty" data-group="hypothesis">Гипотез пока нет <button type="button" data-composition-set="all">Показать все сохранённые компании</button></p>
-    <p class="empty cards-empty" data-group="unsuitable">Неподходящих компаний пока нет <button type="button" data-composition-set="all">Показать все сохранённые компании</button></p>
   </div>
 </section>
   </main>

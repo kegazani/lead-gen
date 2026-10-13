@@ -644,8 +644,8 @@ func (s *Server) handleCards(w http.ResponseWriter, r *http.Request) {
 	view := cardsView{Live: consoleLive, Filter: filter, TenantID: s.activeTenant(r)}
 	reason, reasonDetail := filterReason(filter)
 	if jobID == "" {
-		rows := cardRowsWithLatestAssessments(cards, s.latestAssessments(r.Context(), cards))
-		view.Fits, view.Hypothesis, view.Unsuitable, view.Unassessed = groupCardRows(filterCardRows(rows, reason, reasonDetail))
+		view.Rows = cardRows(cards)
+		view.Filter = nil
 	} else {
 		jobDetail, err := s.showcase.Job(r.Context(), jobID)
 		if errors.Is(err, app.ErrJobNotFound) {

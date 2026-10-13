@@ -24,3 +24,11 @@ func TestExecutionDetailsExplainEightLeadsAndRetry(t *testing.T) {
 		t.Fatalf("старые/закрытые данные: %+v", old)
 	}
 }
+
+func TestExecutionDetailsExplainRejectedContactPages(t *testing.T) {
+	status := ports.WorkflowStatus{Found: 0, Target: 25, Phase: "searching", PartialReason: "no_usable_contacts"}
+	view := executionDetails(status, 0, true, time.Now())
+	if view.SearchIssue != "Часть страниц отклонена: не найдены пригодные контакты компании или источник является статьёй." {
+		t.Fatalf("причина недобора скрыта: %+v", view)
+	}
+}

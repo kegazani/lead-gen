@@ -57,6 +57,13 @@ func TestLeadSearchHTTPRoundTrip(t *testing.T) {
 		Contacts: memory.NewContactRepository(),
 		Clock:    fakeClock{t: testTime},
 	}
+	contact, err := domain.CreateContact(domain.CreateContactParams{ID: "sales@pool.example", CompanyID: "pool.example", Email: &domain.ContactAttribute{Value: "sales@pool.example", Provenance: domain.AttributeProvenance{SourceURL: "https://pool.example", ExtractedAt: testTime, Method: domain.MethodRegex}}, CreatedAt: testTime})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := useCase.Contacts.Save(ports.WithTenant(context.Background(), "tenant-1"), contact); err != nil {
+		t.Fatal(err)
+	}
 	client := newLeadSearchClient(t, useCase)
 
 	result, err := client.Search(context.Background(), leadsearch.Query{

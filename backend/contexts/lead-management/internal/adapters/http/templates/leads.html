@@ -20,6 +20,9 @@
         <th scope="col">{{ text "lead.leads.header_site" }}</th>
         <th scope="col">{{ text "lead.leads.header_name" }}</th>
         <th scope="col">{{ text "lead.header.email" }}</th>
+        <th scope="col">{{ text "lead.header.phone" }}</th>
+        <th scope="col">{{ text "lead.header.source" }}</th>
+        <th scope="col">{{ text "lead.contacts.state" }}</th>
       </tr>
     </thead>
     <tbody>
@@ -28,6 +31,9 @@
         <td><a class="link" href="{{.Site}}" target="_blank" rel="noopener noreferrer">{{.Site}}</a></td>
         <td><a class="link" href="{{.CardHref}}">{{.Name}}</a></td>
         <td>{{ if .Email }}<a class="link" href="mailto:{{.Email}}">{{.Email}}</a>{{ else }}<span class="hint">{{ text "lead.company.no_email" }}</span>{{ end }}</td>
+        <td>{{ if .Phone }}<a href="tel:{{.Phone}}">{{.Phone}}</a>{{ else }}—{{ end }}</td>
+        <td>{{ with .ContactSourceURL }}<a class="link" href="{{.}}" target="_blank" rel="noopener noreferrer">{{.}}</a>{{ else }}—{{ end }}</td>
+        <td>{{ if .HasContacts }}{{ text "lead.contacts.present" }}{{ else }}{{ text "lead.contacts.absent" }}{{ end }}</td>
       </tr>
       {{- end }}
     </tbody>

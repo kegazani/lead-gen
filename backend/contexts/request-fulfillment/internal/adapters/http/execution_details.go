@@ -29,6 +29,8 @@ func executionDetails(status ports.WorkflowStatus, savedDrafts int, draftsKnown 
 	}
 	messages := consoleMessages()
 	switch status.PartialReason {
+	case "no_usable_contacts":
+		view.SearchIssue = messages.Text("request.details.issue.contacts")
 	case "search_unavailable":
 		view.SearchIssue = messages.Text("request.details.issue.search")
 	case "crawl_unavailable":

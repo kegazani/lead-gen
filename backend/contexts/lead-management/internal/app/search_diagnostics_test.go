@@ -65,7 +65,7 @@ func TestRunSearchHandleLogsOnlyNormalizedFatalFailures(t *testing.T) {
 			r := &RunSearch{
 				Jobs: store, Profiles: failingProfileRepo{err: tc.err}, Contacts: newMemContacts(),
 				Search: &fakeSearch{results: searchResult(pageURL)},
-				Crawl:  &fakeCrawl{pages: map[string][]crawl.Page{pageURL: {{URL: pageURL, Markdown: "# Safe name\n\nDescription"}}}},
+				Crawl:  &fakeCrawl{pages: map[string][]crawl.Page{pageURL: {{URL: pageURL, Markdown: "# Safe name\n\nDescription\nContact: hello@example.com"}}}},
 				Logger: spy, Metrics: metrics, Tracer: observ.NewTracer("lead-management"),
 				FailureNormalizer: NewSearchFailureNormalizer(), ServiceName: "lead-management",
 			}
@@ -125,7 +125,7 @@ func TestRunSearchHandleNilNormalizerUsesSafeFallback(t *testing.T) {
 	r := &RunSearch{
 		Jobs: store, Profiles: failingProfileRepo{err: errors.New(secret)}, Contacts: newMemContacts(),
 		Search: &fakeSearch{results: searchResult("https://safe.example")},
-		Crawl:  &fakeCrawl{pages: map[string][]crawl.Page{"https://safe.example": {{URL: "https://safe.example", Markdown: "# Safe\n\nDescription"}}}},
+		Crawl:  &fakeCrawl{pages: map[string][]crawl.Page{"https://safe.example": {{URL: "https://safe.example", Markdown: "# Safe\n\nDescription\nContact: hello@example.com"}}}},
 		Logger: spy, Metrics: observ.NewMetrics(), Tracer: observ.NewTracer("lead-management"),
 	}
 	if err := store.Create(context.Background(), jobs.Job{ID: "fallback-job"}); err != nil {
@@ -323,7 +323,7 @@ func TestRunSearchHandleAssessmentReadAndSaveDiagnostics(t *testing.T) {
 			r := &RunSearch{
 				Jobs: newMemJobs(), Profiles: newMemProfiles(), Contacts: newMemContacts(),
 				Search: &fakeSearch{results: searchResult(url)},
-				Crawl:  &fakeCrawl{pages: map[string][]crawl.Page{url: {{URL: url, Markdown: "# Safe\n\nDescription"}}}},
+				Crawl:  &fakeCrawl{pages: map[string][]crawl.Page{url: {{URL: url, Markdown: "# Safe\n\nDescription\nContact: hello@example.com"}}}},
 				LLM:    &fakeLLM{targets: []llm.Target{{Query: "safe query"}}}, Assessments: tc.store,
 				Logger: observ.NewLoggerWithWriter(&output), Metrics: observ.NewMetrics(), Tracer: observ.NewTracer("lead-management"),
 			}

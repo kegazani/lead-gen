@@ -1103,8 +1103,7 @@ func (f *e2eSequentialCrawl) Extract(context.Context, crawl.ExtractRequest) ([]c
 }
 
 // TestGlobalCardsCompositionEndToEnd проверяет сквозной путь до общей витрины: без
-// контекста задания карточки делятся по оценкам, полученным в задании, —
-// «Подходит» в группе по умолчанию, «Не подходит» во второй.
+// контекста задания оценки не становятся свойствами компании.
 func TestGlobalCardsCompositionEndToEnd(t *testing.T) {
 	ctx := context.Background()
 	clock := fixedClock{now: time.Date(2026, time.January, 2, 10, 0, 0, 0, time.UTC)}
@@ -1137,13 +1136,13 @@ func TestGlobalCardsCompositionEndToEnd(t *testing.T) {
 		t.Fatalf("GET /cards = %d, ожидался 200", status)
 	}
 	e2eRequireContains(t, html, []string{
-		"data-group=\"fits\"",
-		"data-group=\"unsuitable\"",
-		"verdict-unsuitable",
-		"Не подходит",
+		`data-global-catalog="true"`,
 		"alpha.example",
 		"beta.example",
 	})
+	if strings.Contains(html, "data-composition-set") || strings.Contains(html, "verdict-unsuitable") {
+		t.Fatal("общая витрина перенесла оценку задания")
+	}
 }
 
 // TestRunningJobScreenShowsExtractedEndToEnd проверяет, что экран выполняющегося

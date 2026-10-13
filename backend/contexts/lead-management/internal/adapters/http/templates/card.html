@@ -56,6 +56,7 @@
     {{ template "timeline" .Card.StagePoints }}
   </section>
 
+  {{- if .JobScoped }}
   <section class="card-section assessment">
     <h3>{{ text "lead.card.assessment_title" }}</h3>
     {{- if .Assessment }}
@@ -76,6 +77,8 @@
     {{- end }}
   </section>
 
+  {{- end }}
+
   {{- if .Card.Socials }}
   <section class="card-section">
     <h3>{{ text "lead.card.socials" }}</h3>
@@ -89,6 +92,7 @@
 
   <section class="card-section">
     <h3>{{ text "lead.card.contacts" }}</h3>
+    <p class="hint">{{ text "lead.contacts.validation_hint" }}</p>
     <table class="table">
       <thead>
         <tr><th>{{ text "lead.header.email" }}</th><th>{{ text "lead.header.phone" }}</th><th>{{ text "lead.header.role" }}</th><th>{{ text "lead.header.source" }}</th><th>{{ text "lead.header.verification" }}</th></tr>
@@ -113,6 +117,20 @@
       </tbody>
     </table>
   </section>
+
+  {{- if .Card.RejectedContacts }}
+  <section class="card-section">
+    <details>
+      <summary>{{ text "lead.contacts.rejected" }} ({{len .Card.RejectedContacts}})</summary>
+      <p class="hint">{{ text "lead.contacts.rejected_hint" }}</p>
+      <table class="table"><thead><tr><th>{{ text "lead.header.email" }}</th><th>{{ text "lead.header.phone" }}</th><th>{{ text "lead.header.source" }}</th><th>{{ text "lead.contacts.rejection_reason" }}</th></tr></thead><tbody>
+      {{- range .Card.RejectedContacts }}
+      <tr><td>{{.Email}}</td><td>{{.Phone}}</td><td>{{ template "provenance" .Source }}</td><td>{{.Rejection}}</td></tr>
+      {{- end }}
+      </tbody></table>
+    </details>
+  </section>
+  {{- end }}
 
   <section class="card-section">
     <h3>{{ text "lead.card.history" }}</h3>

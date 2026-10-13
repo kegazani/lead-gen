@@ -393,6 +393,7 @@ type timelinePoint struct {
 // работоспособным без JavaScript. JobScoped отмечает, что список открыт в
 // контексте задания, поэтому несёт его оценки.
 type cardsView struct {
+	Rows       []cardRow
 	TenantID   string
 	Live       components.Live
 	Fits       []cardRow
@@ -414,6 +415,13 @@ type cardsCounts struct {
 	Hypothesis int
 	Unsuitable int
 	Unassessed int
+}
+
+func (view cardsView) Total() int {
+	if !view.JobScoped {
+		return len(view.Rows)
+	}
+	return view.Counts.Total()
 }
 
 func (counts cardsCounts) Total() int {
@@ -456,6 +464,9 @@ const (
 // Group задаёт состав (группу) карточки: «Подходит»/«Гипотеза»/«Не подходит»/
 // «Не оценено». VerdictLabel — подпись вердикта; без оценки — «Не оценено».
 type cardRow struct {
+	Phone            string
+	ContactSourceURL string
+	HasContacts      bool
 	ID               string
 	Name             string
 	Email            string
@@ -482,11 +493,14 @@ type leadsView struct {
 // leadRow — строка сохранённого лида: ссылка на сайт, домен для подписи,
 // название и адрес.
 type leadRow struct {
-	CardHref string
-	Site     string
-	Domain   string
-	Name     string
-	Email    string
+	Phone            string
+	ContactSourceURL string
+	HasContacts      bool
+	CardHref         string
+	Site             string
+	Domain           string
+	Name             string
+	Email            string
 }
 
 // evidenceRow — свидетельство оценки для раскрытия «Почему эта оценка?»:
@@ -543,17 +557,18 @@ type cardView struct {
 // cardDetail — карточка с полями, статусом, контактами, происхождением и историей
 // переписки.
 type cardDetail struct {
-	ID          string
-	Name        string
-	Description string
-	Socials     []string
-	Source      provenanceView
-	StageBadge  statusBadge
-	Stage       string
-	StagePoints []timelinePoint
-	Snoozed     bool
-	Contacts    []contactRow
-	History     []historyRow
+	ID               string
+	Name             string
+	Description      string
+	Socials          []string
+	Source           provenanceView
+	StageBadge       statusBadge
+	Stage            string
+	StagePoints      []timelinePoint
+	Snoozed          bool
+	Contacts         []contactRow
+	RejectedContacts []contactRow
+	History          []historyRow
 }
 
 // historyRow — строка истории переписки лида.
@@ -569,6 +584,7 @@ type historyRow struct {
 // contactRow — контакт компании с происхождением, способом извлечения и бейджем
 // верификации адреса (7.2).
 type contactRow struct {
+	Rejection    string
 	Email        string
 	Phone        string
 	Role         string
@@ -1256,18 +1272,18 @@ func phaseLabel(phase string) string {
 const maxCardDescription = 160
 
 // cardRows отображает карточки в строки списка без оценок: без контекста задания
-// оценка не подставляется, поэтому все карточки попадают в группу по умолчанию.
+// оценка не подставляется, состав общей витрины не делится на группы.
 func cardRows(cards []app.Card) []cardRow {
 	rows := make([]cardRow, 0, len(cards))
 	for _, c := range cards {
 		rows = append(rows, cardRow{
+			Phone: c.Phone, ContactSourceURL: c.ContactSourceURL, HasContacts: len(c.Contacts) > 0,
 			ID:               c.ID,
 			Name:             c.Name,
 			Email:            c.Email,
 			NoEmail:          c.NoEmail,
 			Description:      c.Description,
 			ShortDescription: shortDescription(c.Description),
-			Group:            cardGroupFits,
 		})
 	}
 	return rows
@@ -1290,6 +1306,7 @@ func allLeadRows(cards []app.Card) []leadRow {
 	rows := make([]leadRow, 0, len(cards))
 	for _, c := range cards {
 		rows = append(rows, leadRow{
+			Phone: c.Phone, ContactSourceURL: c.ContactSourceURL, HasContacts: len(c.Contacts) > 0,
 			CardHref: cardHref(c.ID, ""),
 			Site:     siteURL(c.ID),
 			Domain:   siteDomain(c.ID),
@@ -1560,6 +1577,9 @@ func cardDetailFrom(card app.Card, history []app.CardMessage) cardDetail {
 		Stage:       stage,
 		StagePoints: stageTimeline(stage),
 		Contacts:    contacts,
+	}
+	for _, c := range card.RejectedContacts {
+		detail.RejectedContacts = append(detail.RejectedContacts, contactRow{Rejection: consoleMessages().Text(components.MessageKey("lead.contacts.reject." + c.RejectionCode)), Email: c.Email, Phone: c.Phone, Role: c.Role, Source: provenanceView{Source: c.SourceURL, Date: formatDate(c.ExtractedAt)}, Method: c.Method})
 	}
 	if card.SnoozeUntil != nil && time.Now().UTC().Before(*card.SnoozeUntil) {
 		detail.Snoozed = true

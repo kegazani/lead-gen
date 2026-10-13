@@ -151,7 +151,7 @@ func TestBuiltLeadSearchHTTPDeniesOverCapBeforeFirecrawl(t *testing.T) {
 	}
 }
 
-func TestBuiltLeadSearchHTTPKnownSearchAndCrawlWithExtractDenied(t *testing.T) {
+func TestBuiltLeadSearchHTTPRejectsContactlessPageWhenExtractDenied(t *testing.T) {
 	provider, paid := leadSearchProvider(t, 100, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		switch r.URL.Path {
@@ -166,8 +166,8 @@ func TestBuiltLeadSearchHTTPKnownSearchAndCrawlWithExtractDenied(t *testing.T) {
 	})
 	api := startLeadSearchHTTP(t, provider.URL, 20)
 	result := postLeadSearchHTTP(t, api.url, "known-cost")
-	if result.Found != 1 || result.Crawled != 1 || result.PartialReason != "extract_cost_unknown" {
-		t.Fatalf("ожидался сохранённый частичный результат без Extract: %+v", result)
+	if result.Found != 0 || result.Crawled != 0 || result.PartialReason != "extract_cost_unknown" {
+		t.Fatalf("страница без контактов не должна стать лидом при запрещённом Extract: %+v", result)
 	}
 	if got := paid.Load(); got != 2 {
 		t.Fatalf("платных вызовов=%d, ожидались Search+Crawl, Extract запрещён", got)

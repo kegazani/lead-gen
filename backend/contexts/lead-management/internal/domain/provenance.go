@@ -59,6 +59,9 @@ func validMethod(m ExtractionMethod) bool {
 // AttributeProvenance — происхождение значения атрибута контакта: источник,
 // дата и способ извлечения (entity attribute-provenance каталога).
 type AttributeProvenance struct {
+	// Evidence — фрагмент источника, подтверждающий извлечённый контакт.
+	// Необязателен для совместимости со старыми JSONB-снимками.
+	Evidence string `json:",omitempty"`
 	// SourceURL — URL страницы-источника.
 	SourceURL string
 	// ExtractedAt — дата извлечения.

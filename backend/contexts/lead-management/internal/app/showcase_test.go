@@ -76,7 +76,7 @@ func TestShowcaseCardNotFound(t *testing.T) {
 // seedContactWithoutEmail сохраняет контакт компании без email, чтобы проверить
 // признак «нет email».
 func seedContactWithoutEmail(contacts *memContacts, companyID, id string) {
-	prov := domain.AttributeProvenance{SourceURL: "https://" + companyID, ExtractedAt: testTime, Method: domain.MethodRegex}
+	prov := domain.AttributeProvenance{SourceURL: "https://" + companyID, ExtractedAt: testTime, Method: domain.MethodRegex, Evidence: "tel:+7 000 000-00-00"}
 	contact, err := domain.CreateContact(domain.CreateContactParams{
 		ID:        id,
 		CompanyID: domain.CompanyID(companyID),

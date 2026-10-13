@@ -126,3 +126,22 @@ func (c *Contact) CreatedAt() time.Time { return c.createdAt }
 
 // UpdatedAt возвращает момент последнего изменения.
 func (c *Contact) UpdatedAt() time.Time { return c.updatedAt }
+
+// Enrich подтверждает атрибуты того же контакта новым источником, сохраняя
+// время создания и поля, которые новый обход не нашёл.
+func (c *Contact) Enrich(from *Contact, at time.Time) error {
+	if from == nil || c.id != from.id || c.companyID != from.companyID {
+		return fmt.Errorf("domain: нельзя дополнить контакт данными другой записи")
+	}
+	if from.email != nil && from.email.Value != "" {
+		c.email = from.email
+	}
+	if from.phone != nil && from.phone.Value != "" {
+		c.phone = from.phone
+	}
+	if from.role != nil && from.role.Value != "" {
+		c.role = from.role
+	}
+	c.updatedAt = at
+	return nil
+}

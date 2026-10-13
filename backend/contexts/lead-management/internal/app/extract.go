@@ -1,6 +1,7 @@
 package app
 
 import (
+	"net/url"
 	"regexp"
 	"strings"
 )
@@ -29,6 +30,9 @@ func ExtractEmails(text string) []string {
 	seen := make(map[string]struct{})
 	for _, m := range emailRe.FindAllString(text, -1) {
 		e := NormalizeEmail(m)
+		if !validContactEmail(e) {
+			continue
+		}
 		if _, ok := seen[e]; ok {
 			continue
 		}
@@ -39,8 +43,8 @@ func ExtractEmails(text string) []string {
 }
 
 // isPhoneCandidate проверяет, что найденный фрагмент текста похож на телефон, а
-// не на дату или иную числовую последовательность. Условия: 7–15 цифр (нижняя
-// граница — минимальная длина номера, верхняя — предел E.164); отсутствие
+// не на дату или иную числовую последовательность. Условия: 10–15 цифр (нижняя
+// граница исключает неоднозначные локальные номера, верхняя — предел E.164); отсутствие
 // узнаваемой формы даты; наличие телефонного разделителя (пробел, дефис,
 // скобки) либо ведущего «+». Проверка идёт до нормализации, по исходному
 // фрагменту, потому что разделители и «+» нормализация стирает.
@@ -50,7 +54,7 @@ func isPhoneCandidate(raw string) bool {
 		return false
 	}
 	digits := NormalizePhone(s)
-	if len(digits) < 7 || len(digits) > 15 {
+	if !plausiblePhoneDigits(digits) {
 		return false
 	}
 	if dateRe.MatchString(s) {
@@ -65,22 +69,67 @@ func isPhoneCandidate(raw string) bool {
 // ExtractPhones извлекает телефоны из текста (только цифры) и убирает дубли,
 // сохраняя порядок первого появления. Кандидаты, не прошедшие проверку
 // isPhoneCandidate (даты, слитные последовательности цифр без «+» и
-// разделителей, строки вне диапазона 7–15 цифр), отбрасываются.
+// разделителей, строки вне диапазона 10–15 цифр), отбрасываются.
 func ExtractPhones(text string) []string {
 	var out []string
-	seen := make(map[string]struct{})
-	for _, m := range phoneRe.FindAllString(text, -1) {
-		if !isPhoneCandidate(m) {
-			continue
-		}
-		p := NormalizePhone(m)
-		if _, ok := seen[p]; ok {
-			continue
-		}
-		seen[p] = struct{}{}
-		out = append(out, p)
+	for _, phone := range extractPhoneEvidence(text) {
+		out = append(out, phone.number)
 	}
 	return out
+}
+
+type phoneEvidence struct{ number, evidence string }
+
+func extractPhoneEvidence(text string) []phoneEvidence {
+	var out []phoneEvidence
+	seen := make(map[string]struct{})
+	add := func(p, evidence string) {
+		if _, ok := seen[p]; ok {
+			return
+		}
+		seen[p] = struct{}{}
+		out = append(out, phoneEvidence{number: p, evidence: evidence})
+	}
+	// tel — явное указание назначения; слитный национальный номер допустим.
+	withoutCode := scriptRe.ReplaceAllString(codeRe.ReplaceAllString(text, " "), " ")
+	for _, match := range telLinkRe.FindAllStringSubmatch(withoutCode, -1) {
+		raw, err := url.PathUnescape(strings.TrimSpace(match[1]))
+		if err == nil && !dateRe.MatchString(raw) && plausiblePhoneDigits(NormalizePhone(raw)) {
+			add(NormalizePhone(raw), "tel:"+raw)
+		}
+	}
+	for _, line := range strings.Split(contactText(text), "\n") {
+		for _, pos := range phoneRe.FindAllStringIndex(line, -1) {
+			raw := line[pos[0]:pos[1]]
+			if !isPhoneCandidate(raw) || !phoneBoundaries(line, pos[0], pos[1]) {
+				continue
+			}
+			prefix := line[max(0, pos[0]-80):pos[0]]
+			if numberLabelRe.MatchString(prefix) {
+				continue
+			}
+			international := strings.HasPrefix(raw, "+") && len(NormalizePhone(raw)) >= 10
+			if !international && !phoneLabelRe.MatchString(prefix) {
+				continue
+			}
+			add(NormalizePhone(raw), strings.TrimSpace(prefix+raw))
+		}
+	}
+	return out
+}
+
+// Не извлекаем фрагмент идентификатора, IP, числа с запятой или имени файла.
+func phoneBoundaries(line string, start, end int) bool {
+	bad := func(c byte) bool {
+		return c >= '0' && c <= '9' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || strings.ContainsRune("_.,/", rune(c))
+	}
+	if start > 0 && bad(line[start-1]) {
+		return false
+	}
+	if end < len(line) && bad(line[end]) && !(line[end] == '.' && (end+1 == len(line) || line[end+1] == ' ')) {
+		return false
+	}
+	return true
 }
 
 // ExtractSocials извлекает URL соцсетей (LinkedIn/Twitter/Facebook/Instagram/

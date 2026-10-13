@@ -438,6 +438,8 @@
 	  // контейнере и состояние кнопок. На вид (data-cards-view) не влияет.
 	  function applyCardsComposition(composition) {
 	    composition = cardsCompositionValue(composition);
+	    var globalCatalog = cardsContainer();
+	    if (globalCatalog && globalCatalog.getAttribute('data-global-catalog') === 'true') composition = 'all';
 	    var container = cardsContainer();
 	    if (container) {
 	      container.setAttribute('data-cards-composition', composition);

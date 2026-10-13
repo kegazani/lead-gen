@@ -796,6 +796,10 @@ func (r *RunSearch) processPage(ctx context.Context, page crawl.Page, companyIDs
 	at := r.now()
 
 	name, description, socials := r.extractLayer1(page)
+	if !companySource(page.URL) || !usableCompanyName(name.Value) {
+		rep.addParseErrors(1)
+		return nil
+	}
 	cheapContacts := r.extractLayer2(page)
 	cheapEmails, cheapPhones := contactCounts(cheapContacts)
 
@@ -806,7 +810,7 @@ func (r *RunSearch) processPage(ctx context.Context, page crawl.Page, companyIDs
 		escalated = true
 		candidates, err := c.Extract(ctx, crawl.ExtractRequest{URL: page.URL})
 		if err == nil {
-			extracted := contactCandidatesFromExtract(candidates, page.URL, at)
+			extracted := contactCandidatesFromExtract(candidates, page, at)
 			extractedContacts = len(extracted)
 			contacts = mergeContacts(cheapContacts, extracted)
 		} else {
@@ -836,7 +840,7 @@ func (r *RunSearch) processPage(ctx context.Context, page crawl.Page, companyIDs
 		)
 	}
 
-	if name.Value == "" || identity == "" {
+	if !usableCrawlPage(page, name, contacts) {
 		// Страница не дала ни названия, ни домена: разбор не удался, попытка не
 		// засчитывается в найденные компании.
 		rep.addParseErrors(1)
@@ -1012,10 +1016,10 @@ func persistContacts(ctx context.Context, repo ports.ContactRepository, companyI
 	if err != nil {
 		return err
 	}
-	seen := make(map[string]struct{}, len(existing))
+	seen := make(map[string]*domain.Contact, len(existing))
 	for _, c := range existing {
 		if id := contactIdentityFromDomain(c); id != "" {
-			seen[id] = struct{}{}
+			seen[id] = c
 		}
 	}
 	for _, cand := range contacts {
@@ -1023,17 +1027,28 @@ func persistContacts(ctx context.Context, repo ports.ContactRepository, companyI
 		if id == "" {
 			continue
 		}
-		if _, ok := seen[id]; ok {
-			continue
-		}
-		seen[id] = struct{}{}
 		contact, err := cand.toDomain(companyID, at)
 		if err != nil {
 			return err
 		}
+		if previous := seen[id]; previous != nil {
+			if cand.phone.prov.Evidence == "" && cand.email.prov.Evidence == "" {
+				continue
+			}
+			// Старые записи могут иметь ID, отличный от канонического адреса.
+			contact, err = domain.CreateContact(domain.CreateContactParams{ID: previous.ID().String(), CompanyID: companyID, Email: contact.Email(), Phone: contact.Phone(), Role: contact.Role(), CreatedAt: at})
+			if err != nil {
+				return err
+			}
+			if err := previous.Enrich(contact, at); err != nil {
+				return err
+			}
+			contact = previous
+		}
 		if err := repo.Save(ctx, contact); err != nil {
 			return err
 		}
+		seen[id] = contact
 	}
 	return nil
 }

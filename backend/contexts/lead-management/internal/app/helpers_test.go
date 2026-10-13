@@ -71,7 +71,7 @@ func TestExtractEmails(t *testing.T) {
 
 func TestExtractPhones(t *testing.T) {
 	got := ExtractPhones("Звоните +1 (234) 567-8901 или 555-1234 или (415) 555-2671.")
-	want := []string{"12345678901", "5551234", "4155552671"}
+	want := []string{"12345678901", "4155552671"}
 	if !reflect.DeepEqual(got, want) {
 		t.Fatalf("ExtractPhones = %v, ожидалось %v", got, want)
 	}
@@ -85,7 +85,7 @@ func TestIsPhoneCandidate(t *testing.T) {
 	}{
 		// Телефоны: ведущий «+», скобки, дефисы или пробелы.
 		{name: "номер с ведущим плюсом", in: "+1 (234) 567-8901", want: true},
-		{name: "номер с дефисом", in: "555-1234", want: true},
+		{name: "номер с дефисом", in: "555-1234", want: false},
 		{name: "номер со скобками", in: "(415) 555-2671", want: true},
 		{name: "номер с пробелами", in: "+7 495 123-45-67", want: true},
 		{name: "плюс и слитная запись", in: "+74951234567", want: true},
@@ -140,7 +140,7 @@ func TestContactCandidatesFromExtractFiltersPhones(t *testing.T) {
 		{Phone: "2024.01.01"},                      // дата — не телефон, кандидат без идентификатора
 		{Email: "Only@Example.com", Phone: "2024"}, // мусорный телефон отброшен, email остаётся
 	}
-	got := contactCandidatesFromExtract(candidates, "https://example.com", testTime)
+	got := contactCandidatesFromExtract(candidates, crawl.Page{URL: "https://example.com", Markdown: "Sales@example.com Only@example.com Телефон: +1 (234) 567-8901"}, testTime)
 	if len(got) != 2 {
 		t.Fatalf("кандидатов %d, ожидалось 2: %+v", len(got), got)
 	}

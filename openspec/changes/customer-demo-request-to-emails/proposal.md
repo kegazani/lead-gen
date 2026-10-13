@@ -14,6 +14,7 @@
 ## Capabilities
 
 ### Modified Capabilities
+- `lead-search`: проверка контактов при извлечении и сохранении результатов crawl; общая витрина компаний без глобального вердикта соответствия.
 - `client-portal`: существующая регистрация/profile и передача offer + desired leads.
 - `client-request`: раздельные данные offer и желаемых лидов.
 - `request-fulfillment-execution`: одобрение запускает существующий реальный crawl и генерацию писем найденным лидам.

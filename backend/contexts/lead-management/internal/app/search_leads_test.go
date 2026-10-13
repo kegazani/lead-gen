@@ -57,6 +57,7 @@ func TestSearchLeadsForRequestScopesPoolByTenant(t *testing.T) {
 	seedSearchLeadsCompanyInTenant(t, profiles, "tenant-b", "b.example", "B Co", "разработка на заказ")
 
 	useCase := &SearchLeadsForRequest{Profiles: profiles, Contacts: newMemContacts(), Clock: fakeClock{t: testTime}}
+	seedSearchPoolContacts(t, useCase)
 	resultA, err := useCase.Run(context.Background(), SearchLeadsInput{TenantID: "tenant-a", Criteria: "разработка", Limit: 5})
 	if err != nil {
 		t.Fatalf("Run A: %v", err)
@@ -87,6 +88,7 @@ func TestSearchLeadsForRequestFromPool(t *testing.T) {
 		Clock:    fakeClock{t: testTime},
 	}
 
+	seedSearchPoolContacts(t, useCase)
 	result, err := useCase.Run(context.Background(), SearchLeadsInput{Criteria: "разработка", Limit: 1})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
@@ -112,7 +114,7 @@ func TestSearchLeadsForRequestCrawlsDeficit(t *testing.T) {
 	crawlPort := &fakeCrawl{pages: map[string][]crawl.Page{
 		crawledURL: {{
 			URL:      crawledURL,
-			Markdown: "# Crawled Co\n\nразработка на заказ",
+			Markdown: "# Crawled Co\n\nразработка на заказ\nContact: hello@example.com",
 			Metadata: map[string]string{"title": "Crawled Co", "description": "разработка"},
 		}},
 	}}
@@ -124,6 +126,7 @@ func TestSearchLeadsForRequestCrawlsDeficit(t *testing.T) {
 		Limits:   testCrawlLimits(),
 	}
 
+	seedSearchPoolContacts(t, useCase)
 	result, err := useCase.Run(context.Background(), SearchLeadsInput{Criteria: "разработка", Limit: 2})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
@@ -165,7 +168,7 @@ func TestSearchLeadsContinuesAfterOneSiteTimesOut(t *testing.T) {
 	crawlPort := &fakeCrawl{
 		crawlErrByURL: map[string]error{first: crawl.ErrTimeout},
 		pages: map[string][]crawl.Page{second: {{
-			URL: second, Markdown: "# Working Co\n\nПрограммный продукт для компаний",
+			URL: second, Markdown: "# Working Co\n\nПрограммный продукт для компаний\nContact: hello@example.com",
 			Metadata: map[string]string{"title": "Working Co", "description": "Программный продукт для компаний"},
 		}}},
 	}
@@ -192,8 +195,8 @@ func TestSearchLeadsSiteScopesRespectRoundCreditCap(t *testing.T) {
 	first, second := "https://one.example", "https://two.example"
 	searchPort := &fakeSearch{results: []search.Result{{URL: first}, {URL: second}}}
 	crawlPort := &fakeCrawl{pages: map[string][]crawl.Page{
-		first:  {{URL: first, Markdown: "# One Co\n\nПрограммный продукт для бизнеса", Metadata: map[string]string{"title": "One Co"}}},
-		second: {{URL: second, Markdown: "# Two Co\n\nПрограммный продукт для бизнеса", Metadata: map[string]string{"title": "Two Co"}}},
+		first:  {{URL: first, Markdown: "# One Co\n\nПрограммный продукт для бизнеса\nContact: hello@example.com", Metadata: map[string]string{"title": "One Co"}}},
+		second: {{URL: second, Markdown: "# Two Co\n\nПрограммный продукт для бизнеса\nContact: hello@example.com", Metadata: map[string]string{"title": "Two Co"}}},
 	}}
 	factory := &fakeBudgetFactory{search: searchPort, crawl: crawlPort}
 	u := &SearchLeadsForRequest{
@@ -246,7 +249,7 @@ func TestSearchLeadsForRequestReturnsProfilePersistenceFailure(t *testing.T) {
 	searchPort := &fakeSearch{results: []search.Result{{URL: pageURL}}}
 	crawlPort := &fakeCrawl{pages: map[string][]crawl.Page{pageURL: {{
 		URL:      pageURL,
-		Markdown: "# Persist Failed Co\n\nОписание компании",
+		Markdown: "# Persist Failed Co\n\nОписание компании\nContact: hello@example.com",
 		Metadata: map[string]string{"title": "Persist Failed Co", "description": "Описание компании"},
 	}}}}
 	profiles := failingLeadProfileSave{LeadProfileRepository: newMemProfiles(), err: saveErr}
@@ -271,6 +274,7 @@ func TestSearchLeadsForRequestWithoutCrawl(t *testing.T) {
 	seedSearchLeadsCompany(t, profiles, "pool.example", "Pool Co", "разработка ПО")
 	useCase := &SearchLeadsForRequest{Profiles: profiles, Contacts: newMemContacts(), Clock: fakeClock{t: testTime}}
 
+	seedSearchPoolContacts(t, useCase)
 	result, err := useCase.Run(context.Background(), SearchLeadsInput{Criteria: "разработка", Limit: 5})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
@@ -420,6 +424,7 @@ func TestSearchLeadsForRequestRequiresTwoSignificantTokens(t *testing.T) {
 	seedSearchLeadsCompany(t, profiles, "two-words.example", "Two", "дрон для леса")
 	useCase := &SearchLeadsForRequest{Profiles: profiles, Contacts: newMemContacts()}
 
+	seedSearchPoolContacts(t, useCase)
 	result, err := useCase.Run(context.Background(), SearchLeadsInput{Criteria: "дрон лес", Limit: 5})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
@@ -467,6 +472,7 @@ func TestSearchLeadsForRequestRanksByMatch(t *testing.T) {
 	seedSearchLeadsCompany(t, profiles, "two.example", "Two", "разработка мобильных приложений")
 	useCase := &SearchLeadsForRequest{Profiles: profiles, Contacts: newMemContacts()}
 
+	seedSearchPoolContacts(t, useCase)
 	result, err := useCase.Run(context.Background(), SearchLeadsInput{Criteria: "разработка мобильных приложений", Limit: 2})
 	if err != nil {
 		t.Fatalf("Run: %v", err)
@@ -504,7 +510,7 @@ func TestSearchLeadsForRequestTimeoutKeepsPartialPages(t *testing.T) {
 	crawlPort := &timeoutCrawl{pages: map[string][]crawl.Page{
 		crawledURL: {{
 			URL:      crawledURL,
-			Markdown: "# Timeout Co\n\nразработка на заказ",
+			Markdown: "# Timeout Co\n\nразработка на заказ\nContact: hello@example.com",
 			Metadata: map[string]string{"title": "Timeout Co", "description": "разработка"},
 		}},
 	}}
@@ -525,5 +531,21 @@ func TestSearchLeadsForRequestTimeoutKeepsPartialPages(t *testing.T) {
 	}
 	if _, err := profiles.FindByID(context.Background(), domain.CompanyID("timeout.example")); err != nil {
 		t.Fatalf("карточка из частичных страниц должна быть сохранена: %v", err)
+	}
+}
+
+// Старые пуловые фикстуры теперь имеют контакт, как требует подбор лидов.
+func seedSearchPoolContacts(t *testing.T, u *SearchLeadsForRequest) {
+	t.Helper()
+	profiles := u.Profiles.(*memProfiles)
+	for id := range profiles.byID {
+		ctx := ports.WithTenant(context.Background(), profiles.tenant[id])
+		contact, err := domain.CreateContact(domain.CreateContactParams{ID: "sales@" + id.String(), CompanyID: id, Email: &domain.ContactAttribute{Value: "sales@" + id.String(), Provenance: domain.AttributeProvenance{SourceURL: "https://" + id.String(), ExtractedAt: testTime, Method: domain.MethodRegex}}, CreatedAt: testTime})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := u.Contacts.Save(ctx, contact); err != nil {
+			t.Fatal(err)
+		}
 	}
 }

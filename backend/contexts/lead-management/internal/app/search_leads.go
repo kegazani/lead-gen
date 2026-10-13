@@ -189,7 +189,7 @@ type SearchLeadsForRequest struct {
 // обхода не роняет результат — возвращается то, что уже найдено в пуле, а причина
 // пишется в лог (потребитель видит недобор по счётчикам Crawled/Found).
 func (u *SearchLeadsForRequest) Run(ctx context.Context, in SearchLeadsInput) (SearchLeadsResult, error) {
-	if u.Profiles == nil {
+	if u.Profiles == nil || u.Contacts == nil {
 		return SearchLeadsResult{}, fmt.Errorf("%w: репозиторий карточек не подключён", ErrInvalidSearchCriteria)
 	}
 	criteria := strings.TrimSpace(in.Criteria)
@@ -211,6 +211,28 @@ func (u *SearchLeadsForRequest) Run(ctx context.Context, in SearchLeadsInput) (S
 		finish(err)
 		return SearchLeadsResult{}, fmt.Errorf("app: чтение пула компаний: %w", err)
 	}
+	ids := make([]domain.CompanyID, 0, len(companies))
+	for _, c := range companies {
+		ids = append(ids, c.ID())
+	}
+	contacts, err := u.Contacts.ListByCompanies(ctx, ids)
+	if err != nil {
+		finish(err)
+		return SearchLeadsResult{}, fmt.Errorf("app: чтение контактов пула: %w", err)
+	}
+	usable := make(map[domain.CompanyID]bool)
+	for _, c := range contacts {
+		if usableStoredContact(c) {
+			usable[c.CompanyID()] = true
+		}
+	}
+	pool := companies[:0]
+	for _, c := range companies {
+		if usable[c.ID()] && usableCompanyName(c.Name().Value) && companySource(c.Name().Provenance.SourceURL) {
+			pool = append(pool, c)
+		}
+	}
+	companies = pool
 
 	seen := make(map[string]struct{}, limit)
 	leads := make([]SearchLeadRef, 0, limit)
@@ -448,6 +470,10 @@ func (u *SearchLeadsForRequest) crawlSite(ctx context.Context, crawlPort crawl.P
 // Возвращает идентификатор сохранённой компании и признак успеха. Домен, уже
 // попавший в результат (в том числе из пула), не добавляется повторно.
 func (u *SearchLeadsForRequest) savePage(ctx context.Context, crawlPort crawl.Port, page crawl.Page, seen map[string]struct{}, allowExtract bool, partialReason *string) (string, bool, error) {
+	if !companySource(page.URL) {
+		setSearchPartialReason(partialReason, "no_usable_contacts")
+		return "", false, nil
+	}
 	at := u.now()
 	name, description, socials := extractCard(page, at)
 	contacts := extractContacts(page, at)
@@ -457,7 +483,7 @@ func (u *SearchLeadsForRequest) savePage(ctx context.Context, crawlPort crawl.Po
 	if !isFullCard(name, description, contacts) && allowExtract {
 		candidates, err := crawlPort.Extract(ctx, crawl.ExtractRequest{URL: page.URL})
 		if err == nil {
-			contacts = mergeContacts(contacts, contactCandidatesFromExtract(candidates, page.URL, at))
+			contacts = mergeContacts(contacts, contactCandidatesFromExtract(candidates, page, at))
 		} else {
 			u.warn("поиск под заявку: эскалация на extract не удалась", "url", page.URL, "error", err.Error())
 			setSearchPartialReason(partialReason, searchPartialExtractCostUnknown)
@@ -467,7 +493,8 @@ func (u *SearchLeadsForRequest) savePage(ctx context.Context, crawlPort crawl.Po
 	}
 
 	identity := NormalizeDomain(page.URL)
-	if name.Value == "" || identity == "" {
+	if !usableCrawlPage(page, name, contacts) {
+		setSearchPartialReason(partialReason, "no_usable_contacts")
 		return "", false, nil
 	}
 	if _, ok := seen[identity]; ok {

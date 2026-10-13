@@ -8,6 +8,7 @@ import "lead-gen/frontend/components"
 // приходят из общего слоя и не дублируются.
 var requestCatalog = map[components.MessageKey]string{
 	"request.details.issue.search":      "В завершённом раунде сервис поиска был недоступен.",
+	"request.details.issue.contacts":    "Часть страниц отклонена: не найдены пригодные контакты компании или источник является статьёй.",
 	"request.details.issue.crawl":       "Часть сайтов не удалось обойти в завершённом раунде.",
 	"request.details.issue.extract":     "Расход расширенного извлечения не подтверждён; часть сайтов пропущена.",
 	"request.details.issue.deadline":    "Завершённый раунд достиг предела времени поиска.",
