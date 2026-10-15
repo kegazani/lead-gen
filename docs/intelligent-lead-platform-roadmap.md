@@ -1,0 +1,120 @@
+# Полная программа реализации интеллектуальной лидогенерации
+
+**Объём обязателен целиком.** Пользователь подтвердил необходимость реализации всех перечисленных возможностей и использования изученной информации. Начальные прототипы R1–R4 задают последовательность, а не окончательный состав продукта.
+
+**Где находится:** ветка [`concept/intelligent-lead-research`](https://github.com/kegazani/lead-gen/tree/concept/intelligent-lead-research). В `main` эта программа ещё не влита.
+
+**Статус:** требования/дизайн/план записаны; приёмка полной программы впереди. Части demo существуют, но данный реестр не выдаёт их за проверенную реализацию новых требований. `pending` в [машиночитаемом реестре](concepts/intelligent-lead-research/implementation-coverage.json) означает отсутствие приёмки пункта в полной программе.
+
+## Где требования, решения и работа
+
+- [OpenSpec proposal](../openspec/changes/intelligent-lead-research/proposal.md) — согласованный объём и семь capability.
+- [Спецификации](../openspec/changes/intelligent-lead-research/specs) — проверяемое поведение по capability.
+- [Задачи реализации](../openspec/changes/intelligent-lead-research/tasks.md) — единственное место отметок выполнения; номера ниже относятся к этому файлу.
+- [Подробная концепция](concepts/intelligent-lead-research/README.md) — десять документов с решениями, сценариями и архитектурой.
+- [Источники исследования](concepts/intelligent-lead-research/08-research.md) и [66 source receipts](concepts/intelligent-lead-research/research-sources.json) — прочитанные материалы, пределы выводов и hashes.
+
+## Все 36 требований к реализации
+
+Каждая строка обязательна. Статус приёмки всех строк пока `pending`; задачи не закрываются этим документом. Описание будущего результата ниже служит проверкой полноты вместе с нормативными OpenSpec-требованиями.
+
+### A. Интеллектуальное исследование, связи и память
+
+| ID | Что требуется | Что должно быть принято | Задачи | Решение |
+|---|---|---|---|---|
+| `REQ-01` | Заявки создают и одобряют люди | Оффер, аудитория, рынки, количество и единица цели фиксируются версией человеческого поручения; агент исполняет исследование. | `1.1`, `4.1`, `4.2`, `12.1` | [01](concepts/intelligent-lead-research/01-vision-and-workflows.md); [03](concepts/intelligent-lead-research/03-agent-and-memory.md) |
+| `REQ-02` | LLM самостоятельно выбирает полезные шаги исследования | Планировщик закрывает конкретные пробелы, выбирает разрешённый инструмент, сохраняет краткое основание и останавливает бесполезные повторы. | `4.2`, `4.5`, `4.11` | [03](concepts/intelligent-lead-research/03-agent-and-memory.md) |
+| `REQ-03` | Цепочки ИНН → название → сайт → контакт на другом сайте | Точные ID и предметный контекст связывают источники; контакт другого издателя не прикрепляется компании. | `3.2`, `3.3`, `3.5`, `3.7`, `12.1` | [01](concepts/intelligent-lead-research/01-vision-and-workflows.md); [02](concepts/intelligent-lead-research/02-identity-and-evidence.md) |
+| `REQ-04` | Другие интеллектуальные связки и установление отношений | Поддерживаются бренд, филиал, группа, переименование, несколько сайтов, внешние карточки и документы; неоднозначные связи проверяются. | `3.1`, `3.4`, `3.5`, `4.6` | [01](concepts/intelligent-lead-research/01-vision-and-workflows.md); [02](concepts/intelligent-lead-research/02-identity-and-evidence.md) |
+| `REQ-05` | Запись в память и последующий поиск в ней | Хранятся факты, evidence, история попыток, отрицательные результаты с TTL, временные версии; exact/graph/FTS/semantic retrieval соблюдает scope. | `4.5`, `4.6`, `11.3` | [02](concepts/intelligent-lead-research/02-identity-and-evidence.md); [03](concepts/intelligent-lead-research/03-agent-and-memory.md) |
+| `REQ-06` | Проверка данных и исправление ложных связей | Различаются гипотезы/подтверждения/конфликты; merge обратим, исправления пересматривают зависимые результаты и сохраняют допустимую историю. | `3.4`, `3.5`, `4.9`, `11.4` | [02](concepts/intelligent-lead-research/02-identity-and-evidence.md) |
+| `REQ-07` | Контактные данные вместо случайных цифр | Телефон/email имеют проверяемые символы, назначение, субъект и источник; ID статьи, дата и счётчик не засчитываются как телефон. | `2.1`, `3.3`, `3.6`, `8.8` | [02](concepts/intelligent-lead-research/02-identity-and-evidence.md); [09](concepts/intelligent-lead-research/09-browser-ocr-and-tool-selection.md) |
+
+### B. Международные рынки
+
+| ID | Что требуется | Что должно быть принято | Задачи | Решение |
+|---|---|---|---|---|
+| `REQ-08` | Международный продукт, Россия и русский UI по умолчанию | RU задаёт начальный рынок; язык интерфейса не подменяет страну и язык поиска/переписки. | `5.1`, `5.3`, `5.5` | [04](concepts/intelligent-lead-research/04-markets-and-geography.md) |
+| `REQ-09` | Кнопка «Исследовать международный рынок» | По офферу выполняется ограниченное исследование стран с источниками, неизвестностями, стоимостью и рекомендациями. | `5.2`, `5.3` | [04](concepts/intelligent-lead-research/04-markets-and-geography.md) |
+| `REQ-10` | Выбор одной или нескольких стран из списка | Человек выбирает страны и квоты, может снять RU и добавить поддерживаемые рынки; выбор версионируется и не меняется агентом молча. | `5.1`, `5.4`, `12.1` | [04](concepts/intelligent-lead-research/04-markets-and-geography.md) |
+| `REQ-11` | Локальные языки, реестры, идентификаторы и телефоны | Country profiles определяют local search terms, смысл регистрации/присутствия, источники и нормализацию контактов; покрытие проверяется по рынку. | `3.2`, `3.6`, `5.3`, `5.5` | [02](concepts/intelligent-lead-research/02-identity-and-evidence.md); [04](concepts/intelligent-lead-research/04-markets-and-geography.md) |
+| `REQ-12` | Прокси и региональный поиск/браузер | SERP country, язык, locale, IP egress и сессия разделены; фактическая география, расходы и недоступность наблюдаемы. | `6.1`, `7.5`, `7.6` | [04](concepts/intelligent-lead-research/04-markets-and-geography.md); [05](concepts/intelligent-lead-research/05-acquisition-and-crawlers.md) |
+
+### C. Собственные поиск, обход, браузер и OCR
+
+| ID | Что требуется | Что должно быть принято | Задачи | Решение |
+|---|---|---|---|---|
+| `REQ-13` | Firecrawl работает до готовности собственного контура | Рабочий путь сохраняется до сравнительной приёмки, совместимых receipts и управляемого cutover/rollback. | `7.1`, `7.2`, `7.7`, `11.5` | [05](concepts/intelligent-lead-research/05-acquisition-and-crawlers.md) |
+| `REQ-14` | Развиваем собственный краулер на open-source основе | Обязательны реальный self-hosted runtime, наши profiles/frontier/evidence/session/budget механизмы и поддержка выбранной версии upstream/patches. | `7.1`, `7.2`, `7.3`, `7.4`, `7.7`, `1.3` | [05](concepts/intelligent-lead-research/05-acquisition-and-crawlers.md); [09](concepts/intelligent-lead-research/09-browser-ocr-and-tool-selection.md) |
+| `REQ-15` | Выбрать лучший движок и учесть несколько краулеров | Crawl4AI, Crawlee и Firecrawl сравниваются на одном corpus; общий router допускает дополнительный runtime по доказанной полезности. | `2.2`, `7.1`, `7.2` | [09](concepts/intelligent-lead-research/09-browser-ocr-and-tool-selection.md) |
+| `REQ-16` | Поисковик на нашей платформе: метапоиск | Размещённый у нас backend SearXNG включён в gateway, с наблюдаемыми upstream engines/ограничениями и разрешёнными маршрутами. | `6.1`, `6.3` | [05](concepts/intelligent-lead-research/05-acquisition-and-crawlers.md); [09](concepts/intelligent-lead-research/09-browser-ocr-and-tool-selection.md) |
+| `REQ-17` | Собственный поиск по накопленному корпусу и вертикальный индекс | Нужны независимое накопление разрешённых документов/компаний, indexing/recrawl/dedup и поиск; старт PostgreSQL, масштабирование по измерениям. | `6.4`, `6.5`, `6.6` | [05](concepts/intelligent-lead-research/05-acquisition-and-crawlers.md); [09](concepts/intelligent-lead-research/09-browser-ocr-and-tool-selection.md) |
+| `REQ-18` | Интернет discovery по нужным странам | Gateway подключает принятый regional provider/API; внешний поиск, metasearch и наш корпус различимы в результатах и стоимости. | `6.1`, `6.2`, `5.5` | [05](concepts/intelligent-lead-research/05-acquisition-and-crawlers.md) |
+| `REQ-19` | Поведение на сайтах и интеллектуальная навигация | Render, ожидания, scroll, pagination, public search, reveal contacts и ограниченный LLM browser mode принимаются по сценариям и версиям разрешённой политики. | `8.1`, `8.2`, `8.3`, `8.4` | [09](concepts/intelligent-lead-research/09-browser-ocr-and-tool-selection.md) |
+| `REQ-20` | OCR изображений и разбор документов | HTML/DOM, structured data, text PDF, scanned PDF/images и OCR передают точные locators; неоднозначные символы не исправляются молча. | `8.5`, `8.6`, `8.7`, `8.8`, `8.9` | [09](concepts/intelligent-lead-research/09-browser-ocr-and-tool-selection.md) |
+| `REQ-21` | Нужные вспомогательные компоненты платформы | Source registry, query planner, frontier, session pool, artifacts, model gateway, verification, memory, budgets, review и evaluation связаны контрактами владельцев. | `1.2`, `1.5`, `4.2`, `4.3`, `4.4`, `7.3`, `8.4` | [07](concepts/intelligent-lead-research/07-architecture-and-delivery-plan.md); [09](concepts/intelligent-lead-research/09-browser-ocr-and-tool-selection.md) |
+
+### D. Цель, сохранение, интерфейс и письма
+
+| ID | Что требуется | Что должно быть принято | Задачи | Решение |
+|---|---|---|---|---|
+| `REQ-22` | Цель 25 и добор без дублей | Единица результата фиксируется; засчитываются сохранённые проверенные субъекты, доступен добор либо partial с объяснимым недобором. | `1.1`, `4.9`, `4.10`, `11.1` | [01](concepts/intelligent-lead-research/01-vision-and-workflows.md); [02](concepts/intelligent-lead-research/02-identity-and-evidence.md) |
+| `REQ-23` | Видимый процесс в «Заявки / Исполнение» | UI показывает шаг, вопрос, ожидание, источник, результат, расход, heartbeat и meaningful progress; конечный исход не остаётся бесконечным spinner. | `4.7`, `4.12`, `11.2` | [01](concepts/intelligent-lead-research/01-vision-and-workflows.md); [03](concepts/intelligent-lead-research/03-agent-and-memory.md) |
+| `REQ-24` | Лиды сохраняются и видны с понятным качеством | Кандидаты и принятые записи доступны по фильтрам/источнику; есть объяснение проверок и оценки по заявке, глобальные «подходящие» не вводятся. | `3.7`, `4.9`, `4.12`, `11.4` | [01](concepts/intelligent-lead-research/01-vision-and-workflows.md); [02](concepts/intelligent-lead-research/02-identity-and-evidence.md) |
+| `REQ-25` | Сформированные emails видны на фронте | Версии персонализированного материала, адресат, язык, факты/источники, состояние утверждения и отправки доступны оператору. | `9.1`, `9.2`, `9.3`, `9.6` | [06](concepts/intelligent-lead-research/06-outreach-and-feedback.md) |
+| `REQ-26` | Анализ и управляемая отправка писем | Существующие владельцы генерируют/утверждают точные material/recipient versions; доставка учитывает запреты, идемпотентность и unknown outcome. | `9.1`, `9.2`, `9.3`, `9.4`, `12.1` | [06](concepts/intelligent-lead-research/06-outreach-and-feedback.md) |
+
+### E. Формы, входящие лиды и ответы
+
+| ID | Что требуется | Что должно быть принято | Задачи | Решение |
+|---|---|---|---|---|
+| `REQ-27` | Обращения через формы на чужих сайтах | Находим форму, разбираем поля, готовим материал и реальные контакты отправителя; действующий порядок — ручная отправка оператором с явным подтверждением. | `8.1`, `9.5`, `10.1`, `12.1` | [10](concepts/intelligent-lead-research/10-inbound-forms-and-conversations.md) |
+| `REQ-28` | Наша форма и оставленные посетителем контакты | Реальная форма передаёт сообщение в клиентский intake, создаёт/обновляет lead candidate с origin, контактами и содержимым. | `10.2`, `10.3`, `10.9`, `10.12` | [10](concepts/intelligent-lead-research/10-inbound-forms-and-conversations.md) |
+| `REQ-29` | Приём emails на наши рабочие адреса | Реальный mailbox connector, receiving aliases/Reply-To, durable receipt/cursor и MIME/attachments ingest; SMTP_FROM без приёма почты недостаточен. | `10.4`, `10.5`, `10.6`, `10.7`, `10.13` | [10](concepts/intelligent-lead-research/10-inbound-forms-and-conversations.md) |
+| `REQ-30` | Лиды из обратной связи и связанная переписка | Сохраняется источник; новое обращение создаёт lead candidate, ответ дополняет существующую conversation; конфликты и дубли разбираются явно. | `10.3`, `10.8`, `10.9`, `10.12`, `10.14` | [10](concepts/intelligent-lead-research/10-inbound-forms-and-conversations.md) |
+| `REQ-31` | Учитываем содержание ответа и следующий шаг | Human/OOO/bounce, вопрос/интерес/отказ/отписка/referral различимы; хранятся цитаты, intent versions и correction; связанная цепочка ждёт разбора/останавливается. | `9.4`, `10.10`, `10.11`, `10.14`, `11.4` | [10](concepts/intelligent-lead-research/10-inbound-forms-and-conversations.md); [06](concepts/intelligent-lead-research/06-outreach-and-feedback.md) |
+
+### F. Полнота, эксплуатация и применение исследования
+
+| ID | Что требуется | Что должно быть принято | Задачи | Решение |
+|---|---|---|---|---|
+| `REQ-32` | Видимость tenant и рабочие переходы интерфейса | Роли/области доступа, переходы заявки → лид → письмо → переписка и требуемые экраны консоли проходят приёмку без ложных 404/login redirect. | `4.6`, `10.12`, `12.2`, `12.4` | [01](concepts/intelligent-lead-research/01-vision-and-workflows.md); [07](concepts/intelligent-lead-research/07-architecture-and-delivery-plan.md) |
+| `REQ-33` | Долговечность, наблюдаемость и расход | Результат переживает рестарт; retries, partial, ошибки sources, расходы и in-flight/unknown effects объяснимы и не создают бесконечные платные циклы. | `4.3`, `4.4`, `4.7`, `4.8`, `4.10`, `7.4`, `11.2`, `2.3` | [03](concepts/intelligent-lead-research/03-agent-and-memory.md); [07](concepts/intelligent-lead-research/07-architecture-and-delivery-plan.md) |
+| `REQ-34` | Развёртывание и реальный сквозной путь | Compose/runbook описывают принятые роли/зависимости/миграции; реальные providers, mailbox и UI подтверждаются интеграционным прогоном. | `7.7`, `10.13`, `11.5`, `12.1`, `12.3` | [07](concepts/intelligent-lead-research/07-architecture-and-delivery-plan.md) |
+| `REQ-35` | Используем изученную информацию в реализации | Каждый материал привязан к применяемому механизму или обоснованному сравнению альтернатив; решение/проверка доступны вместе с задачами. | `2.5`, `7.1`, `8.6`, `12.5` | [08](concepts/intelligent-lead-research/08-research.md); [09](concepts/intelligent-lead-research/09-browser-ocr-and-tool-selection.md) |
+| `REQ-36` | Полный объём обязателен, этапы его не сокращают | R1–R4 — начальные срезы; программа закрывается по всем required требованиям с evidence и связью с apply tasks, перенос сохраняет требование открытым. | `2.5`, `12.5`, `2.4` | [07](concepts/intelligent-lead-research/07-architecture-and-delivery-plan.md) |
+
+## Как используем изученную информацию
+
+Для всех 66 материалов указано применение: механизм, обязательное сравнение или обоснованный выбор альтернативы. Названия проектов в исследовании не означают обязательную установку всех конкурирующих библиотек; обязательны нужная функция и проверенное решение по её реализации.
+
+| ID | Изученное направление и материалы | Обязательное применение | Задачи |
+|---|---|---|---|
+| `USE-01` | Firecrawl и совместимая граница приобретения: [S01](concepts/intelligent-lead-research/08-research.md#s01), [S03](concepts/intelligent-lead-research/08-research.md#s03), [S06](concepts/intelligent-lead-research/08-research.md#s06), `L01`, `L02` | Сохранить рабочий Firecrawl, развивать self-hosted acquisition, отделить extraction/model gateway; принять версии и возможности сравнением. | `7.1`, `7.2`, `7.7`, `1.4` |
+| `USE-02` | Адаптивный обход: [S04](concepts/intelligent-lead-research/08-research.md#s04) | Использовать полезность/насыщение для приоритета frontier и остановки, отдельно от доказательства идентичности. | `4.11`, `7.3` |
+| `USE-03` | Очереди, сессии и эксплуатация crawler runtime: [S27](concepts/intelligent-lead-research/08-research.md#s27), [S28](concepts/intelligent-lead-research/08-research.md#s28), [S29](concepts/intelligent-lead-research/08-research.md#s29), [S33](concepts/intelligent-lead-research/08-research.md#s33), [S49](concepts/intelligent-lead-research/08-research.md#s49), [S51](concepts/intelligent-lead-research/08-research.md#s51), [S52](concepts/intelligent-lead-research/08-research.md#s52) | Взять durable queue/resume, host throttle, HTTP/browser routing и session/proxy control; Crawlee/Crawl4AI сравнить, Scrapy оставить альтернативой по нагрузке. | `7.1`, `7.2`, `7.3`, `7.4`, `7.5` |
+| `USE-04` | Браузер и взаимодействия: [S05](concepts/intelligent-lead-research/08-research.md#s05), [S26](concepts/intelligent-lead-research/08-research.md#s26), [S34](concepts/intelligent-lead-research/08-research.md#s34), [S35](concepts/intelligent-lead-research/08-research.md#s35), [S50](concepts/intelligent-lead-research/08-research.md#s50), `L06`, `L07` | Применить изолированные contexts, реальные locators/постусловия и ограниченный agent mode; Browser Use/Stagehand выбирать испытанием. | `8.1`, `8.2`, `8.3`, `8.4` |
+| `USE-05` | Различение организаций и record linkage: [S07](concepts/intelligent-lead-research/08-research.md#s07), [S08](concepts/intelligent-lead-research/08-research.md#s08), [S14](concepts/intelligent-lead-research/08-research.md#s14), `L09` | Применить candidate blocking, юрисдикционные exact keys, противоречия, обратимые решения и калибровку вместо самооценки LLM. | `3.1`, `3.2`, `3.5`, `2.1` |
+| `USE-06` | Память, граф и долговечное исполнение: [S09](concepts/intelligent-lead-research/08-research.md#s09), [S10](concepts/intelligent-lead-research/08-research.md#s10), [S11](concepts/intelligent-lead-research/08-research.md#s11), [S12](concepts/intelligent-lead-research/08-research.md#s12), [S13](concepts/intelligent-lead-research/08-research.md#s13), [S30](concepts/intelligent-lead-research/08-research.md#s30), [S32](concepts/intelligent-lead-research/08-research.md#s32), `L08` | Использовать Temporal, временные факты/эпизоды и scoped hybrid retrieval; Graphiti/GraphRAG/Mem0/Letta/LangGraph рассматриваются как паттерны/альтернативы, без обязательной установки всех frameworks. | `4.3`, `4.5`, `4.6`, `4.8` |
+| `USE-07` | Структурированные данные и очистка HTML: [S15](concepts/intelligent-lead-research/08-research.md#s15), [S31](concepts/intelligent-lead-research/08-research.md#s31), [S42](concepts/intelligent-lead-research/08-research.md#s42) | Читать JSON-LD/DOM как утверждения источника, сохранять raw/contact scopes; main-text очистка не удаляет единственное доказательство реквизитов. | `3.3`, `8.5` |
+| `USE-08` | Национальные идентификаторы и registry lookup: [S16](concepts/intelligent-lead-research/08-research.md#s16), [S17](concepts/intelligent-lead-research/08-research.md#s17), [S18](concepts/intelligent-lead-research/08-research.md#s18) | Выделить типизированные adapters; сохранять prefix/zeros/jurisdiction, отличать VAT check от реестра и проверить реальную доступность данных. | `3.2`, `5.3`, `5.5` |
+| `USE-09` | Страны, локализация и телефоны: [S23](concepts/intelligent-lead-research/08-research.md#s23), [S24](concepts/intelligent-lead-research/08-research.md#s24), [S25](concepts/intelligent-lead-research/08-research.md#s25) | Country registry/CLDR labels и metadata-based phone normalization; язык UI, рынок и валидность/принадлежность контакта разделены. | `3.6`, `5.1`, `5.3` |
+| `USE-10` | Региональный API и собственный metasearch: [S19](concepts/intelligent-lead-research/08-research.md#s19), [S20](concepts/intelligent-lead-research/08-research.md#s20), [S21](concepts/intelligent-lead-research/08-research.md#s21), [S22](concepts/intelligent-lead-research/08-research.md#s22) | Реализовать gateway/SearXNG, проверить regional provider и параметры country/language/location; proxy маршрутизация учитывается отдельно. | `6.1`, `6.2`, `6.3`, `7.5` |
+| `USE-11` | Независимый корпус и search index: [S43](concepts/intelligent-lead-research/08-research.md#s43), [S44](concepts/intelligent-lead-research/08-research.md#s44), [S45](concepts/intelligent-lead-research/08-research.md#s45), [S46](concepts/intelligent-lead-research/08-research.md#s46), [S47](concepts/intelligent-lead-research/08-research.md#s47), [S48](concepts/intelligent-lead-research/08-research.md#s48) | Обязателен свой corpus/index/recrawl; PostgreSQL старт, OpenSearch следующий кандидат по измерениям; YaCy/Nutch/Vespa/Meilisearch/архивы имеют зафиксированные отдельные роли. | `6.4`, `6.5`, `6.6` |
+| `USE-12` | Документы, OCR и точность символов: [S36](concepts/intelligent-lead-research/08-research.md#s36), [S37](concepts/intelligent-lead-research/08-research.md#s37), [S38](concepts/intelligent-lead-research/08-research.md#s38), [S39](concepts/intelligent-lead-research/08-research.md#s39), [S40](concepts/intelligent-lead-research/08-research.md#s40), [S41](concepts/intelligent-lead-research/08-research.md#s41), `L03`, `L04`, `L05` | Реализовать document/OCR pipeline с page/bbox/crop lineage; Docling/PaddleOCR/Tesseract сравнить, Surya/Unstructured сохранить альтернативами с проверкой code/model licenses. | `8.5`, `8.6`, `8.7`, `8.8`, `8.9` |
+| `USE-13` | Почта, parsing и receiving infrastructure: [S53](concepts/intelligent-lead-research/08-research.md#s53), [S54](concepts/intelligent-lead-research/08-research.md#s54), [S55](concepts/intelligent-lead-research/08-research.md#s55), [S56](concepts/intelligent-lead-research/08-research.md#s56), [S57](concepts/intelligent-lead-research/08-research.md#s57) | Нужен реальный принимающий mailbox, durable cursor/MIME/qualification; go-imap/go-message кандидаты, Rspamd по нужному spam слою, Stalwart отдельный инфраструктурный выбор, Mailpit только dev. | `10.4`, `10.5`, `10.6`, `10.13` |
+| `USE-14` | Лицензии кода, весов и компонентов: [S02](concepts/intelligent-lead-research/08-research.md#s02), `L01`, `L02`, `L03`, `L04`, `L05`, `L06`, `L07`, `L08`, `L09` | Фиксировать выбранные versions/model artifacts и лицензионное решение при adoption, не переносить условия hosted service/кода на все веса и зависимости. | `7.1`, `7.7`, `8.6`, `2.5` |
+
+Исходный журнал источников сохраняется. Для каждого выбранного решения при реализации добавляются фактический компонент/версия, результат испытания, evidence и ссылка на apply-change; несовместимый/невыбранный кандидат получает объяснение. Запись «почитали README» не закрывает задачу рабочей интеграции.
+
+## Порядок и критерий полного завершения
+
+1. R1: один доказанный контакт на текущем Firecrawl.
+2. R2: целевая выборка, устойчивое сохранение, память и честный прогресс.
+3. R3: формы, настоящий mailbox, переписка и учёт ответов.
+4. R4: собственное acquisition, browser/OCR; испытания могут идти независимо от R1–R3.
+5. Оставшиеся обязательные требования: MarketStudy, расширение международных профилей, свои search backends/индекс, принятая коммуникация, эксплуатация и полный интегрированный UI. Порядок R1–R4 не снимает эти требования и не превращает их в необязательные идеи.
+
+Полная программа принимается, когда **каждый REQ-01…REQ-36** имеет связанную реализацию, пройденный критерий и evidence, каждое USE-01…USE-14 имеет применённое/проверенное решение, а требуемые проектные гейты и реальные end-to-end прогоны выполнены. Частичный этап получает свой статус; общая программа остаётся открытой.
+
+При переносе в небольшой apply-change сохраняются REQ/USE IDs и ссылки на исходные задачи; требование не исчезает и не отмечается выполненным от одного переноса. Изменить обязательность или исключить пункт можно только явным новым решением пользователя. Доступы/провайдеры, которых пока нет, фиксируются как открытая зависимость соответствующего пункта, а не как реализованная заглушка.

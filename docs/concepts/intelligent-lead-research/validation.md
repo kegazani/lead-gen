@@ -9,7 +9,7 @@
 - Проверены относительные Markdown links/anchors, закрытие code fences и JSON журнала источников.
 - Все 66 source receipts сверены по размеру/SHA-256 с реально прочитанными материалами; это не live integration benchmark.
 - Семь новых capability имеют по одному primary owner в каталоге и явно помечены как план в доменной модели/диаграмме.
-- Все 83 implementation tasks остаются открытыми; первичная поставка `72342aa` содержала 78 задач.
+- Все 86 implementation tasks остаются открытыми; первичная поставка `72342aa` содержала 78 задач, уточнение `bd1b6b3` — 83.
 - `git diff --check` / staged whitespace check — без ошибок.
 
 ## Архитектурный гейт
@@ -29,3 +29,9 @@ Runtime/Compose/данные demo не менялись. `make check` и пол�
 После `72342aa` уточнены критерии принятия/target unit, receipt-backed credit и пересчёт, lifecycle/приоритеты миссии, UI счётчиков и R1–R4. Для inbound добавлены conflicting correlation refs, pending-reply hold, new-body intents, исходы reply/send race и различие сообщений/уникальных лидов.
 
 Изменены только существующие документы и planning artifacts. Владение capability/контекстами осталось прежним. Новых внешних источников/платных проверок в этом уточнении нет; журнал 66 прочитанных материалов сохраняется. Strict validation, 46 scoped links/anchors, whitespace, source receipts и task IDs проверены повторно; 83 задачи открыты. Archlint повторно сообщил только известную ошибку `content-production`. Полный runtime gate относится к будущему apply.
+
+## Полный обязательный объём
+
+Добавлен единый реестр REQ-01…REQ-36 и USE-01…USE-14; он связывает пожелания, capability, задачи, критерии и все 66 исходных source IDs. Видимые ссылки добавлены в корневой README, BRD, дорожную карту, журнал и концепцию. Полный объём подтверждён пользователем как обязательный; начальные прототипы не закрывают оставшиеся требования. Машиночитаемое покрытие хранится в `implementation-coverage.json`; задачи приёмки остаются открытыми.
+
+Проверка полноты этого уточнения: 36/36 required требований имеют действующие task/capability/document refs; 66/66 материалов связаны с 14 решениями применения; все 86 открытых задач имеют связь с реестром. Ссылки и strict OpenSpec проверены. Archlint по-прежнему сообщает только исходную несогласованность `content-production`; runtime/full-program acceptance не выполнялась.

@@ -1,0 +1,1134 @@
+{
+  "schema_version": 1,
+  "program": "intelligent-lead-research",
+  "branch": "concept/intelligent-lead-research",
+  "user_scope_confirmation_date": "2026-10-15",
+  "full_scope_required": true,
+  "release_rule": "Все required требования приняты с реальными доказательствами; завершение этапа не закрывает программу.",
+  "status_semantics": "pending означает отсутствие приёмки в новой полной программе; существующие demo части не объявляются отсутствующими.",
+  "requirements": [
+    {
+      "id": "REQ-01",
+      "group": "A",
+      "user_requirement": "Заявки создают и одобряют люди",
+      "required": true,
+      "acceptance": "Оффер, аудитория, рынки, количество и единица цели фиксируются версией человеческого поручения; агент исполняет исследование.",
+      "capabilities": [
+        "adaptive-lead-research",
+        "client-request",
+        "request-validation"
+      ],
+      "task_ids": [
+        "1.1",
+        "4.1",
+        "4.2",
+        "12.1"
+      ],
+      "concept_documents": [
+        "01-vision-and-workflows.md",
+        "03-agent-and-memory.md"
+      ],
+      "implementation_acceptance": "pending"
+    },
+    {
+      "id": "REQ-02",
+      "group": "A",
+      "user_requirement": "LLM самостоятельно выбирает полезные шаги исследования",
+      "required": true,
+      "acceptance": "Планировщик закрывает конкретные пробелы, выбирает разрешённый инструмент, сохраняет краткое основание и останавливает бесполезные повторы.",
+      "capabilities": [
+        "adaptive-lead-research"
+      ],
+      "task_ids": [
+        "4.2",
+        "4.5",
+        "4.11"
+      ],
+      "concept_documents": [
+        "03-agent-and-memory.md"
+      ],
+      "implementation_acceptance": "pending"
+    },
+    {
+      "id": "REQ-03",
+      "group": "A",
+      "user_requirement": "Цепочки ИНН → название → сайт → контакт на другом сайте",
+      "required": true,
+      "acceptance": "Точные ID и предметный контекст связывают источники; контакт другого издателя не прикрепляется компании.",
+      "capabilities": [
+        "lead-entity-resolution",
+        "lead-research-memory"
+      ],
+      "task_ids": [
+        "3.2",
+        "3.3",
+        "3.5",
+        "3.7",
+        "12.1"
+      ],
+      "concept_documents": [
+        "01-vision-and-workflows.md",
+        "02-identity-and-evidence.md"
+      ],
+      "implementation_acceptance": "pending"
+    },
+    {
+      "id": "REQ-04",
+      "group": "A",
+      "user_requirement": "Другие интеллектуальные связки и установление отношений",
+      "required": true,
+      "acceptance": "Поддерживаются бренд, филиал, группа, переименование, несколько сайтов, внешние карточки и документы; неоднозначные связи проверяются.",
+      "capabilities": [
+        "lead-entity-resolution"
+      ],
+      "task_ids": [
+        "3.1",
+        "3.4",
+        "3.5",
+        "4.6"
+      ],
+      "concept_documents": [
+        "01-vision-and-workflows.md",
+        "02-identity-and-evidence.md"
+      ],
+      "implementation_acceptance": "pending"
+    },
+    {
+      "id": "REQ-05",
+      "group": "A",
+      "user_requirement": "Запись в память и последующий поиск в ней",
+      "required": true,
+      "acceptance": "Хранятся факты, evidence, история попыток, отрицательные результаты с TTL, временные версии; exact/graph/FTS/semantic retrieval соблюдает scope.",
+      "capabilities": [
+        "lead-research-memory"
+      ],
+      "task_ids": [
+        "4.5",
+        "4.6",
+        "11.3"
+      ],
+      "concept_documents": [
+        "02-identity-and-evidence.md",
+        "03-agent-and-memory.md"
+      ],
+      "implementation_acceptance": "pending"
+    },
+    {
+      "id": "REQ-06",
+      "group": "A",
+      "user_requirement": "Проверка данных и исправление ложных связей",
+      "required": true,
+      "acceptance": "Различаются гипотезы/подтверждения/конфликты; merge обратим, исправления пересматривают зависимые результаты и сохраняют допустимую историю.",
+      "capabilities": [
+        "lead-entity-resolution",
+        "lead-research-memory"
+      ],
+      "task_ids": [
+        "3.4",
+        "3.5",
+        "4.9",
+        "11.4"
+      ],
+      "concept_documents": [
+        "02-identity-and-evidence.md"
+      ],
+      "implementation_acceptance": "pending"
+    },
+    {
+      "id": "REQ-07",
+      "group": "A",
+      "user_requirement": "Контактные данные вместо случайных цифр",
+      "required": true,
+      "acceptance": "Телефон/email имеют проверяемые символы, назначение, субъект и источник; ID статьи, дата и счётчик не засчитываются как телефон.",
+      "capabilities": [
+        "lead-entity-resolution"
+      ],
+      "task_ids": [
+        "2.1",
+        "3.3",
+        "3.6",
+        "8.8"
+      ],
+      "concept_documents": [
+        "02-identity-and-evidence.md",
+        "09-browser-ocr-and-tool-selection.md"
+      ],
+      "implementation_acceptance": "pending"
+    },
+    {
+      "id": "REQ-08",
+      "group": "B",
+      "user_requirement": "Международный продукт, Россия и русский UI по умолчанию",
+      "required": true,
+      "acceptance": "RU задаёт начальный рынок; язык интерфейса не подменяет страну и язык поиска/переписки.",
+      "capabilities": [
+        "international-market-discovery"
+      ],
+      "task_ids": [
+        "5.1",
+        "5.3",
+        "5.5"
+      ],
+      "concept_documents": [
+        "04-markets-and-geography.md"
+      ],
+      "implementation_acceptance": "pending"
+    },
+    {
+      "id": "REQ-09",
+      "group": "B",
+      "user_requirement": "Кнопка «Исследовать международный рынок»",
+      "required": true,
+      "acceptance": "По офферу выполняется ограниченное исследование стран с источниками, неизвестностями, стоимостью и рекомендациями.",
+      "capabilities": [
+        "international-market-discovery"
+      ],
+      "task_ids": [
+        "5.2",
+        "5.3"
+      ],
+      "concept_documents": [
+        "04-markets-and-geography.md"
+      ],
+      "implementation_acceptance": "pending"
+    },
+    {
+      "id": "REQ-10",
+      "group": "B",
+      "user_requirement": "Выбор одной или нескольких стран из списка",
+      "required": true,
+      "acceptance": "Человек выбирает страны и квоты, может снять RU и добавить поддерживаемые рынки; выбор версионируется и не меняется агентом молча.",
+      "capabilities": [
+        "international-market-discovery"
+      ],
+      "task_ids": [
+        "5.1",
+        "5.4",
+        "12.1"
+      ],
+      "concept_documents": [
+        "04-markets-and-geography.md"
+      ],
+      "implementation_acceptance": "pending"
+    },
+    {
+      "id": "REQ-11",
+      "group": "B",
+      "user_requirement": "Локальные языки, реестры, идентификаторы и телефоны",
+      "required": true,
+      "acceptance": "Country profiles определяют local search terms, смысл регистрации/присутствия, источники и нормализацию контактов; покрытие проверяется по рынку.",
+      "capabilities": [
+        "international-market-discovery",
+        "lead-entity-resolution"
+      ],
+      "task_ids": [
+        "3.2",
+        "3.6",
+        "5.3",
+        "5.5"
+      ],
+      "concept_documents": [
+        "02-identity-and-evidence.md",
+        "04-markets-and-geography.md"
+      ],
+      "implementation_acceptance": "pending"
+    },
+    {
+      "id": "REQ-12",
+      "group": "B",
+      "user_requirement": "Прокси и региональный поиск/браузер",
+      "required": true,
+      "acceptance": "SERP country, язык, locale, IP egress и сессия разделены; фактическая география, расходы и недоступность наблюдаемы.",
+      "capabilities": [
+        "regional-web-acquisition"
+      ],
+      "task_ids": [
+        "6.1",
+        "7.5",
+        "7.6"
+      ],
+      "concept_documents": [
+        "04-markets-and-geography.md",
+        "05-acquisition-and-crawlers.md"
+      ],
+      "implementation_acceptance": "pending"
+    },
+    {
+      "id": "REQ-13",
+      "group": "C",
+      "user_requirement": "Firecrawl работает до готовности собственного контура",
+      "required": true,
+      "acceptance": "Рабочий путь сохраняется до сравнительной приёмки, совместимых receipts и управляемого cutover/rollback.",
+      "capabilities": [
+        "regional-web-acquisition"
+      ],
+      "task_ids": [
+        "7.1",
+        "7.2",
+        "7.7",
+        "11.5"
+      ],
+      "concept_documents": [
+        "05-acquisition-and-crawlers.md"
+      ],
+      "implementation_acceptance": "pending"
+    },
+    {
+      "id": "REQ-14",
+      "group": "C",
+      "user_requirement": "Развиваем собственный краулер на open-source основе",
+      "required": true,
+      "acceptance": "Обязательны реальный self-hosted runtime, наши profiles/frontier/evidence/session/budget механизмы и поддержка выбранной версии upstream/patches.",
+      "capabilities": [
+        "regional-web-acquisition"
+      ],
+      "task_ids": [
+        "7.1",
+        "7.2",
+        "7.3",
+        "7.4",
+        "7.7",
+        "1.3"
+      ],
+      "concept_documents": [
+        "05-acquisition-and-crawlers.md",
+        "09-browser-ocr-and-tool-selection.md"
+      ],
+      "implementation_acceptance": "pending"
+    },
+    {
+      "id": "REQ-15",
+      "group": "C",
+      "user_requirement": "Выбрать лучший движок и учесть несколько краулеров",
+      "required": true,
+      "acceptance": "Crawl4AI, Crawlee и Firecrawl сравниваются на одном corpus; общий router допускает дополнительный runtime по доказанной полезности.",
+      "capabilities": [
+        "regional-web-acquisition"
+      ],
+      "task_ids": [
+        "2.2",
+        "7.1",
+        "7.2"
+      ],
+      "concept_documents": [
+        "09-browser-ocr-and-tool-selection.md"
+      ],
+      "implementation_acceptance": "pending"
+    },
+    {
+      "id": "REQ-16",
+      "group": "C",
+      "user_requirement": "Поисковик на нашей платформе: метапоиск",
+      "required": true,
+      "acceptance": "Размещённый у нас backend SearXNG включён в gateway, с наблюдаемыми upstream engines/ограничениями и разрешёнными маршрутами.",
+      "capabilities": [
+        "regional-web-acquisition"
+      ],
+      "task_ids": [
+        "6.1",
+        "6.3"
+      ],
+      "concept_documents": [
+        "05-acquisition-and-crawlers.md",
+        "09-browser-ocr-and-tool-selection.md"
+      ],
+      "implementation_acceptance": "pending"
+    },
+    {
+      "id": "REQ-17",
+      "group": "C",
+      "user_requirement": "Собственный поиск по накопленному корпусу и вертикальный индекс",
+      "required": true,
+      "acceptance": "Нужны независимое накопление разрешённых документов/компаний, indexing/recrawl/dedup и поиск; старт PostgreSQL, масштабирование по измерениям.",
+      "capabilities": [
+        "regional-web-acquisition",
+        "lead-research-memory"
+      ],
+      "task_ids": [
+        "6.4",
+        "6.5",
+        "6.6"
+      ],
+      "concept_documents": [
+        "05-acquisition-and-crawlers.md",
+        "09-browser-ocr-and-tool-selection.md"
+      ],
+      "implementation_acceptance": "pending"
+    },
+    {
+      "id": "REQ-18",
+      "group": "C",
+      "user_requirement": "Интернет discovery по нужным странам",
+      "required": true,
+      "acceptance": "Gateway подключает принятый regional provider/API; внешний поиск, metasearch и наш корпус различимы в результатах и стоимости.",
+      "capabilities": [
+        "regional-web-acquisition"
+      ],
+      "task_ids": [
+        "6.1",
+        "6.2",
+        "5.5"
+      ],
+      "concept_documents": [
+        "05-acquisition-and-crawlers.md"
+      ],
+      "implementation_acceptance": "pending"
+    },
+    {
+      "id": "REQ-19",
+      "group": "C",
+      "user_requirement": "Поведение на сайтах и интеллектуальная навигация",
+      "required": true,
+      "acceptance": "Render, ожидания, scroll, pagination, public search, reveal contacts и ограниченный LLM browser mode принимаются по сценариям и версиям разрешённой политики.",
+      "capabilities": [
+        "regional-web-acquisition"
+      ],
+      "task_ids": [
+        "8.1",
+        "8.2",
+        "8.3",
+        "8.4"
+      ],
+      "concept_documents": [
+        "09-browser-ocr-and-tool-selection.md"
+      ],
+      "implementation_acceptance": "pending"
+    },
+    {
+      "id": "REQ-20",
+      "group": "C",
+      "user_requirement": "OCR изображений и разбор документов",
+      "required": true,
+      "acceptance": "HTML/DOM, structured data, text PDF, scanned PDF/images и OCR передают точные locators; неоднозначные символы не исправляются молча.",
+      "capabilities": [
+        "regional-web-acquisition",
+        "lead-entity-resolution"
+      ],
+      "task_ids": [
+        "8.5",
+        "8.6",
+        "8.7",
+        "8.8",
+        "8.9"
+      ],
+      "concept_documents": [
+        "09-browser-ocr-and-tool-selection.md"
+      ],
+      "implementation_acceptance": "pending"
+    },
+    {
+      "id": "REQ-21",
+      "group": "C",
+      "user_requirement": "Нужные вспомогательные компоненты платформы",
+      "required": true,
+      "acceptance": "Source registry, query planner, frontier, session pool, artifacts, model gateway, verification, memory, budgets, review и evaluation связаны контрактами владельцев.",
+      "capabilities": [
+        "adaptive-lead-research",
+        "regional-web-acquisition"
+      ],
+      "task_ids": [
+        "1.2",
+        "1.5",
+        "4.2",
+        "4.3",
+        "4.4",
+        "7.3",
+        "8.4"
+      ],
+      "concept_documents": [
+        "07-architecture-and-delivery-plan.md",
+        "09-browser-ocr-and-tool-selection.md"
+      ],
+      "implementation_acceptance": "pending"
+    },
+    {
+      "id": "REQ-22",
+      "group": "D",
+      "user_requirement": "Цель 25 и добор без дублей",
+      "required": true,
+      "acceptance": "Единица результата фиксируется; засчитываются сохранённые проверенные субъекты, доступен добор либо partial с объяснимым недобором.",
+      "capabilities": [
+        "adaptive-lead-research"
+      ],
+      "task_ids": [
+        "1.1",
+        "4.9",
+        "4.10",
+        "11.1"
+      ],
+      "concept_documents": [
+        "01-vision-and-workflows.md",
+        "02-identity-and-evidence.md"
+      ],
+      "implementation_acceptance": "pending"
+    },
+    {
+      "id": "REQ-23",
+      "group": "D",
+      "user_requirement": "Видимый процесс в «Заявки / Исполнение»",
+      "required": true,
+      "acceptance": "UI показывает шаг, вопрос, ожидание, источник, результат, расход, heartbeat и meaningful progress; конечный исход не остаётся бесконечным spinner.",
+      "capabilities": [
+        "adaptive-lead-research",
+        "request-fulfillment-execution"
+      ],
+      "task_ids": [
+        "4.7",
+        "4.12",
+        "11.2"
+      ],
+      "concept_documents": [
+        "01-vision-and-workflows.md",
+        "03-agent-and-memory.md"
+      ],
+      "implementation_acceptance": "pending"
+    },
+    {
+      "id": "REQ-24",
+      "group": "D",
+      "user_requirement": "Лиды сохраняются и видны с понятным качеством",
+      "required": true,
+      "acceptance": "Кандидаты и принятые записи доступны по фильтрам/источнику; есть объяснение проверок и оценки по заявке, глобальные «подходящие» не вводятся.",
+      "capabilities": [
+        "lead-entity-resolution",
+        "adaptive-lead-research",
+        "lead-cards-console"
+      ],
+      "task_ids": [
+        "3.7",
+        "4.9",
+        "4.12",
+        "11.4"
+      ],
+      "concept_documents": [
+        "01-vision-and-workflows.md",
+        "02-identity-and-evidence.md"
+      ],
+      "implementation_acceptance": "pending"
+    },
+    {
+      "id": "REQ-25",
+      "group": "D",
+      "user_requirement": "Сформированные emails видны на фронте",
+      "required": true,
+      "acceptance": "Версии персонализированного материала, адресат, язык, факты/источники, состояние утверждения и отправки доступны оператору.",
+      "capabilities": [
+        "research-to-outreach",
+        "email-generation"
+      ],
+      "task_ids": [
+        "9.1",
+        "9.2",
+        "9.3",
+        "9.6"
+      ],
+      "concept_documents": [
+        "06-outreach-and-feedback.md"
+      ],
+      "implementation_acceptance": "pending"
+    },
+    {
+      "id": "REQ-26",
+      "group": "D",
+      "user_requirement": "Анализ и управляемая отправка писем",
+      "required": true,
+      "acceptance": "Существующие владельцы генерируют/утверждают точные material/recipient versions; доставка учитывает запреты, идемпотентность и unknown outcome.",
+      "capabilities": [
+        "research-to-outreach",
+        "outreach-approval",
+        "outreach-channel-email"
+      ],
+      "task_ids": [
+        "9.1",
+        "9.2",
+        "9.3",
+        "9.4",
+        "12.1"
+      ],
+      "concept_documents": [
+        "06-outreach-and-feedback.md"
+      ],
+      "implementation_acceptance": "pending"
+    },
+    {
+      "id": "REQ-27",
+      "group": "E",
+      "user_requirement": "Обращения через формы на чужих сайтах",
+      "required": true,
+      "acceptance": "Находим форму, разбираем поля, готовим материал и реальные контакты отправителя; действующий порядок — ручная отправка оператором с явным подтверждением.",
+      "capabilities": [
+        "inbound-lead-conversations",
+        "research-to-outreach",
+        "outreach-channel-form"
+      ],
+      "task_ids": [
+        "8.1",
+        "9.5",
+        "10.1",
+        "12.1"
+      ],
+      "concept_documents": [
+        "10-inbound-forms-and-conversations.md"
+      ],
+      "implementation_acceptance": "pending"
+    },
+    {
+      "id": "REQ-28",
+      "group": "E",
+      "user_requirement": "Наша форма и оставленные посетителем контакты",
+      "required": true,
+      "acceptance": "Реальная форма передаёт сообщение в клиентский intake, создаёт/обновляет lead candidate с origin, контактами и содержимым.",
+      "capabilities": [
+        "inbound-lead-conversations"
+      ],
+      "task_ids": [
+        "10.2",
+        "10.3",
+        "10.9",
+        "10.12"
+      ],
+      "concept_documents": [
+        "10-inbound-forms-and-conversations.md"
+      ],
+      "implementation_acceptance": "pending"
+    },
+    {
+      "id": "REQ-29",
+      "group": "E",
+      "user_requirement": "Приём emails на наши рабочие адреса",
+      "required": true,
+      "acceptance": "Реальный mailbox connector, receiving aliases/Reply-To, durable receipt/cursor и MIME/attachments ingest; SMTP_FROM без приёма почты недостаточен.",
+      "capabilities": [
+        "inbound-lead-conversations"
+      ],
+      "task_ids": [
+        "10.4",
+        "10.5",
+        "10.6",
+        "10.7",
+        "10.13"
+      ],
+      "concept_documents": [
+        "10-inbound-forms-and-conversations.md"
+      ],
+      "implementation_acceptance": "pending"
+    },
+    {
+      "id": "REQ-30",
+      "group": "E",
+      "user_requirement": "Лиды из обратной связи и связанная переписка",
+      "required": true,
+      "acceptance": "Сохраняется источник; новое обращение создаёт lead candidate, ответ дополняет существующую conversation; конфликты и дубли разбираются явно.",
+      "capabilities": [
+        "inbound-lead-conversations"
+      ],
+      "task_ids": [
+        "10.3",
+        "10.8",
+        "10.9",
+        "10.12",
+        "10.14"
+      ],
+      "concept_documents": [
+        "10-inbound-forms-and-conversations.md"
+      ],
+      "implementation_acceptance": "pending"
+    },
+    {
+      "id": "REQ-31",
+      "group": "E",
+      "user_requirement": "Учитываем содержание ответа и следующий шаг",
+      "required": true,
+      "acceptance": "Human/OOO/bounce, вопрос/интерес/отказ/отписка/referral различимы; хранятся цитаты, intent versions и correction; связанная цепочка ждёт разбора/останавливается.",
+      "capabilities": [
+        "inbound-lead-conversations",
+        "research-to-outreach"
+      ],
+      "task_ids": [
+        "9.4",
+        "10.10",
+        "10.11",
+        "10.14",
+        "11.4"
+      ],
+      "concept_documents": [
+        "10-inbound-forms-and-conversations.md",
+        "06-outreach-and-feedback.md"
+      ],
+      "implementation_acceptance": "pending"
+    },
+    {
+      "id": "REQ-32",
+      "group": "F",
+      "user_requirement": "Видимость tenant и рабочие переходы интерфейса",
+      "required": true,
+      "acceptance": "Роли/области доступа, переходы заявки → лид → письмо → переписка и требуемые экраны консоли проходят приёмку без ложных 404/login redirect.",
+      "capabilities": [
+        "adaptive-lead-research",
+        "inbound-lead-conversations",
+        "platform-access",
+        "lead-cards-console"
+      ],
+      "task_ids": [
+        "4.6",
+        "10.12",
+        "12.2",
+        "12.4"
+      ],
+      "concept_documents": [
+        "01-vision-and-workflows.md",
+        "07-architecture-and-delivery-plan.md"
+      ],
+      "implementation_acceptance": "pending"
+    },
+    {
+      "id": "REQ-33",
+      "group": "F",
+      "user_requirement": "Долговечность, наблюдаемость и расход",
+      "required": true,
+      "acceptance": "Результат переживает рестарт; retries, partial, ошибки sources, расходы и in-flight/unknown effects объяснимы и не создают бесконечные платные циклы.",
+      "capabilities": [
+        "adaptive-lead-research",
+        "regional-web-acquisition"
+      ],
+      "task_ids": [
+        "4.3",
+        "4.4",
+        "4.7",
+        "4.8",
+        "4.10",
+        "7.4",
+        "11.2",
+        "2.3"
+      ],
+      "concept_documents": [
+        "03-agent-and-memory.md",
+        "07-architecture-and-delivery-plan.md"
+      ],
+      "implementation_acceptance": "pending"
+    },
+    {
+      "id": "REQ-34",
+      "group": "F",
+      "user_requirement": "Развёртывание и реальный сквозной путь",
+      "required": true,
+      "acceptance": "Compose/runbook описывают принятые роли/зависимости/миграции; реальные providers, mailbox и UI подтверждаются интеграционным прогоном.",
+      "capabilities": [
+        "regional-web-acquisition",
+        "inbound-lead-conversations"
+      ],
+      "task_ids": [
+        "7.7",
+        "10.13",
+        "11.5",
+        "12.1",
+        "12.3"
+      ],
+      "concept_documents": [
+        "07-architecture-and-delivery-plan.md"
+      ],
+      "implementation_acceptance": "pending"
+    },
+    {
+      "id": "REQ-35",
+      "group": "F",
+      "user_requirement": "Используем изученную информацию в реализации",
+      "required": true,
+      "acceptance": "Каждый материал привязан к применяемому механизму или обоснованному сравнению альтернатив; решение/проверка доступны вместе с задачами.",
+      "capabilities": [
+        "lead-entity-resolution",
+        "lead-research-memory",
+        "adaptive-lead-research",
+        "international-market-discovery",
+        "regional-web-acquisition",
+        "research-to-outreach",
+        "inbound-lead-conversations"
+      ],
+      "task_ids": [
+        "2.5",
+        "7.1",
+        "8.6",
+        "12.5"
+      ],
+      "concept_documents": [
+        "08-research.md",
+        "09-browser-ocr-and-tool-selection.md"
+      ],
+      "implementation_acceptance": "pending"
+    },
+    {
+      "id": "REQ-36",
+      "group": "F",
+      "user_requirement": "Полный объём обязателен, этапы его не сокращают",
+      "required": true,
+      "acceptance": "R1–R4 — начальные срезы; программа закрывается по всем required требованиям с evidence и связью с apply tasks, перенос сохраняет требование открытым.",
+      "capabilities": [
+        "lead-entity-resolution",
+        "lead-research-memory",
+        "adaptive-lead-research",
+        "international-market-discovery",
+        "regional-web-acquisition",
+        "research-to-outreach",
+        "inbound-lead-conversations"
+      ],
+      "task_ids": [
+        "2.5",
+        "12.5",
+        "2.4"
+      ],
+      "concept_documents": [
+        "07-architecture-and-delivery-plan.md"
+      ],
+      "implementation_acceptance": "pending"
+    }
+  ],
+  "research_applications": [
+    {
+      "id": "USE-01",
+      "topic": "Firecrawl и совместимая граница приобретения",
+      "source_ids": [
+        "S01",
+        "S03",
+        "S06",
+        "L01",
+        "L02"
+      ],
+      "decision_type": "apply-and-compare",
+      "required_application": "Сохранить рабочий Firecrawl, развивать self-hosted acquisition, отделить extraction/model gateway; принять версии и возможности сравнением.",
+      "task_ids": [
+        "7.1",
+        "7.2",
+        "7.7",
+        "1.4"
+      ],
+      "requirement_ids": [
+        "REQ-13",
+        "REQ-14",
+        "REQ-15"
+      ],
+      "implementation_acceptance": "pending"
+    },
+    {
+      "id": "USE-02",
+      "topic": "Адаптивный обход",
+      "source_ids": [
+        "S04"
+      ],
+      "decision_type": "apply",
+      "required_application": "Использовать полезность/насыщение для приоритета frontier и остановки, отдельно от доказательства идентичности.",
+      "task_ids": [
+        "4.11",
+        "7.3"
+      ],
+      "requirement_ids": [
+        "REQ-02",
+        "REQ-14"
+      ],
+      "implementation_acceptance": "pending"
+    },
+    {
+      "id": "USE-03",
+      "topic": "Очереди, сессии и эксплуатация crawler runtime",
+      "source_ids": [
+        "S27",
+        "S28",
+        "S29",
+        "S33",
+        "S49",
+        "S51",
+        "S52"
+      ],
+      "decision_type": "apply-and-compare",
+      "required_application": "Взять durable queue/resume, host throttle, HTTP/browser routing и session/proxy control; Crawlee/Crawl4AI сравнить, Scrapy оставить альтернативой по нагрузке.",
+      "task_ids": [
+        "7.1",
+        "7.2",
+        "7.3",
+        "7.4",
+        "7.5"
+      ],
+      "requirement_ids": [
+        "REQ-14",
+        "REQ-15",
+        "REQ-21"
+      ],
+      "implementation_acceptance": "pending"
+    },
+    {
+      "id": "USE-04",
+      "topic": "Браузер и взаимодействия",
+      "source_ids": [
+        "S05",
+        "S26",
+        "S34",
+        "S35",
+        "S50",
+        "L06",
+        "L07"
+      ],
+      "decision_type": "apply-and-compare",
+      "required_application": "Применить изолированные contexts, реальные locators/постусловия и ограниченный agent mode; Browser Use/Stagehand выбирать испытанием.",
+      "task_ids": [
+        "8.1",
+        "8.2",
+        "8.3",
+        "8.4"
+      ],
+      "requirement_ids": [
+        "REQ-12",
+        "REQ-19"
+      ],
+      "implementation_acceptance": "pending"
+    },
+    {
+      "id": "USE-05",
+      "topic": "Различение организаций и record linkage",
+      "source_ids": [
+        "S07",
+        "S08",
+        "S14",
+        "L09"
+      ],
+      "decision_type": "apply",
+      "required_application": "Применить candidate blocking, юрисдикционные exact keys, противоречия, обратимые решения и калибровку вместо самооценки LLM.",
+      "task_ids": [
+        "3.1",
+        "3.2",
+        "3.5",
+        "2.1"
+      ],
+      "requirement_ids": [
+        "REQ-03",
+        "REQ-04",
+        "REQ-06"
+      ],
+      "implementation_acceptance": "pending"
+    },
+    {
+      "id": "USE-06",
+      "topic": "Память, граф и долговечное исполнение",
+      "source_ids": [
+        "S09",
+        "S10",
+        "S11",
+        "S12",
+        "S13",
+        "S30",
+        "S32",
+        "L08"
+      ],
+      "decision_type": "apply-patterns",
+      "required_application": "Использовать Temporal, временные факты/эпизоды и scoped hybrid retrieval; Graphiti/GraphRAG/Mem0/Letta/LangGraph рассматриваются как паттерны/альтернативы, без обязательной установки всех frameworks.",
+      "task_ids": [
+        "4.3",
+        "4.5",
+        "4.6",
+        "4.8"
+      ],
+      "requirement_ids": [
+        "REQ-05",
+        "REQ-06",
+        "REQ-33"
+      ],
+      "implementation_acceptance": "pending"
+    },
+    {
+      "id": "USE-07",
+      "topic": "Структурированные данные и очистка HTML",
+      "source_ids": [
+        "S15",
+        "S31",
+        "S42"
+      ],
+      "decision_type": "apply",
+      "required_application": "Читать JSON-LD/DOM как утверждения источника, сохранять raw/contact scopes; main-text очистка не удаляет единственное доказательство реквизитов.",
+      "task_ids": [
+        "3.3",
+        "8.5"
+      ],
+      "requirement_ids": [
+        "REQ-03",
+        "REQ-07",
+        "REQ-20"
+      ],
+      "implementation_acceptance": "pending"
+    },
+    {
+      "id": "USE-08",
+      "topic": "Национальные идентификаторы и registry lookup",
+      "source_ids": [
+        "S16",
+        "S17",
+        "S18"
+      ],
+      "decision_type": "apply-and-verify",
+      "required_application": "Выделить типизированные adapters; сохранять prefix/zeros/jurisdiction, отличать VAT check от реестра и проверить реальную доступность данных.",
+      "task_ids": [
+        "3.2",
+        "5.3",
+        "5.5"
+      ],
+      "requirement_ids": [
+        "REQ-03",
+        "REQ-11"
+      ],
+      "implementation_acceptance": "pending"
+    },
+    {
+      "id": "USE-09",
+      "topic": "Страны, локализация и телефоны",
+      "source_ids": [
+        "S23",
+        "S24",
+        "S25"
+      ],
+      "decision_type": "apply",
+      "required_application": "Country registry/CLDR labels и metadata-based phone normalization; язык UI, рынок и валидность/принадлежность контакта разделены.",
+      "task_ids": [
+        "3.6",
+        "5.1",
+        "5.3"
+      ],
+      "requirement_ids": [
+        "REQ-07",
+        "REQ-08",
+        "REQ-10",
+        "REQ-11"
+      ],
+      "implementation_acceptance": "pending"
+    },
+    {
+      "id": "USE-10",
+      "topic": "Региональный API и собственный metasearch",
+      "source_ids": [
+        "S19",
+        "S20",
+        "S21",
+        "S22"
+      ],
+      "decision_type": "apply-and-compare",
+      "required_application": "Реализовать gateway/SearXNG, проверить regional provider и параметры country/language/location; proxy маршрутизация учитывается отдельно.",
+      "task_ids": [
+        "6.1",
+        "6.2",
+        "6.3",
+        "7.5"
+      ],
+      "requirement_ids": [
+        "REQ-12",
+        "REQ-16",
+        "REQ-18"
+      ],
+      "implementation_acceptance": "pending"
+    },
+    {
+      "id": "USE-11",
+      "topic": "Независимый корпус и search index",
+      "source_ids": [
+        "S43",
+        "S44",
+        "S45",
+        "S46",
+        "S47",
+        "S48"
+      ],
+      "decision_type": "apply-and-compare",
+      "required_application": "Обязателен свой corpus/index/recrawl; PostgreSQL старт, OpenSearch следующий кандидат по измерениям; YaCy/Nutch/Vespa/Meilisearch/архивы имеют зафиксированные отдельные роли.",
+      "task_ids": [
+        "6.4",
+        "6.5",
+        "6.6"
+      ],
+      "requirement_ids": [
+        "REQ-17",
+        "REQ-18"
+      ],
+      "implementation_acceptance": "pending"
+    },
+    {
+      "id": "USE-12",
+      "topic": "Документы, OCR и точность символов",
+      "source_ids": [
+        "S36",
+        "S37",
+        "S38",
+        "S39",
+        "S40",
+        "S41",
+        "L03",
+        "L04",
+        "L05"
+      ],
+      "decision_type": "apply-and-compare",
+      "required_application": "Реализовать document/OCR pipeline с page/bbox/crop lineage; Docling/PaddleOCR/Tesseract сравнить, Surya/Unstructured сохранить альтернативами с проверкой code/model licenses.",
+      "task_ids": [
+        "8.5",
+        "8.6",
+        "8.7",
+        "8.8",
+        "8.9"
+      ],
+      "requirement_ids": [
+        "REQ-07",
+        "REQ-20"
+      ],
+      "implementation_acceptance": "pending"
+    },
+    {
+      "id": "USE-13",
+      "topic": "Почта, parsing и receiving infrastructure",
+      "source_ids": [
+        "S53",
+        "S54",
+        "S55",
+        "S56",
+        "S57"
+      ],
+      "decision_type": "apply-and-verify",
+      "required_application": "Нужен реальный принимающий mailbox, durable cursor/MIME/qualification; go-imap/go-message кандидаты, Rspamd по нужному spam слою, Stalwart отдельный инфраструктурный выбор, Mailpit только dev.",
+      "task_ids": [
+        "10.4",
+        "10.5",
+        "10.6",
+        "10.13"
+      ],
+      "requirement_ids": [
+        "REQ-29",
+        "REQ-30",
+        "REQ-31"
+      ],
+      "implementation_acceptance": "pending"
+    },
+    {
+      "id": "USE-14",
+      "topic": "Лицензии кода, весов и компонентов",
+      "source_ids": [
+        "S02",
+        "L01",
+        "L02",
+        "L03",
+        "L04",
+        "L05",
+        "L06",
+        "L07",
+        "L08",
+        "L09"
+      ],
+      "decision_type": "apply",
+      "required_application": "Фиксировать выбранные versions/model artifacts и лицензионное решение при adoption, не переносить условия hosted service/кода на все веса и зависимости.",
+      "task_ids": [
+        "7.1",
+        "7.7",
+        "8.6",
+        "2.5"
+      ],
+      "requirement_ids": [
+        "REQ-14",
+        "REQ-19",
+        "REQ-20",
+        "REQ-35"
+      ],
+      "implementation_acceptance": "pending"
+    }
+  ]
+}

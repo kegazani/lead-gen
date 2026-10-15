@@ -2,6 +2,8 @@
 
 Это **план будущей реализации**, не отчёт об исполнении. Все задачи открыты. Приоритетный старт R1 → R2 → R3 и независимое исследование R4, полная карта P0–P8, владельцы и критерии — [документ 7](../../../docs/concepts/intelligent-lead-research/07-architecture-and-delivery-plan.md). Для каждого apply-среза перед отметкой выполненного обязательны проектные гейты из `AGENTS.md`; проверки в пунктах ниже дополняют их. Для параллельных продуктовых приоритетов допустим отдельный согласованный apply-change с сохранением контрактов/зависимостей.
 
+**Полный объём обязателен:** [REQ-01…REQ-36 и USE-01…USE-14](../../../docs/intelligent-lead-platform-roadmap.md). Начальный прототип не заменяет остальные требования. Перенос на другой этап/apply-change сохраняет связь и открытое состояние до реальной приёмки.
+
 ## 1. Зависимости требований и владение
 
 - [ ] 1.1 Зафиксировать единицу результата и criteria version: company / company-with-contact / email-ready-company, для R1–R2 выбрать company-with-contact; верификация: снимок 17 кандидатов / 8 различённых / 6 с каналом / 5 email-ready даёт дефицит 19 при цели 25 компаний с контактом и иной зачёт при иной версии цели.
@@ -16,6 +18,7 @@
 - [ ] 2.2 Подготовить acquisition/browser/OCR corpus 120 объектов с RU/GB и multilingual расширениями; верификация: явно размечены HTML/JS/recipe/text-PDF/scanned/image scopes, языки и locators.
 - [ ] 2.3 Реализовать расчёт field/link precision/recall, false merge, unique-result cost, latency/resource/manual-review metrics; верификация: отчёт воспроизводится по фиксированному manifest и различает upstream claims/наши измерения.
 - [ ] 2.4 Документировать критерии cutover и критические ошибки; верификация: ноль наблюдаемых cross-tenant/wrong-subject случаев на acceptance, размер выборки/неопределённость и per-country показатели не скрыты общей средней.
+- [ ] 2.5 Применить решения исследования USE-01…USE-14 и поддерживать implementation-coverage.json с фактическими apply refs/component versions/evidence; верификация: все 66 source IDs имеют проверенное применение/выбор, каждый REQ связан с реальной реализацией и отсутствуют потерянные требования или замена интеграции одним прочитанным README.
 
 ## 3. Entity identity и доказательства
 
@@ -123,7 +126,11 @@
 - [ ] 12.2 Пройти negative acceptance: footer traps, mixed identity, OCR ambiguity, wrong-country, injection, cross-tenant attempts, provider crash и unknown SMTP; верификация: блокирующие ошибки не обнаружены, ограничения/непокрытые рынки явно перечислены.
 - [ ] 12.3 Выполнить `make check`, `go -C tools/archlint run .`, `openspec validate intelligent-lead-research --strict` и требуемые реальные integration suites; верификация: зелёные результаты, отсутствие product-path заглушек, отчёт об объёме corpus/измерениях и обновлённая implementation matrix.
 
+- [ ] 12.4 Пройти tenant/role UI acceptance: заявка → кандидаты/лиды → email → conversation, а также требуемые переходы консоли в своей области; верификация: корректный tenant видит свои записи и разрешённые экраны, нет ложных 404/login redirect, чужие данные не открываются, ограничения ролей объяснимы.
+- [ ] 12.5 Принять всю программу по REQ-01…REQ-36 и USE-01…USE-14, включая международный MarketStudy, свой поиск/index, self-hosted acquisition, browser/OCR и inbound; верификация: по каждому required пункту есть связанная реализация/evidence и зелёные требуемые гейты, завершение R1–R4 или перенос задач не выдан за полноту программы.
+
 ## Workflow follow-up
+
 
 - Архивировать реализованные требования только после соответствующей проверки; при поставке по отдельным apply-changes не закрывать этим чужие pending tasks.
 - После архивации проверить согласованность main specs, каталога, доменной модели и фактической implementation matrix.
