@@ -102,12 +102,14 @@ Core-контексты выражают конкурентное преимущ
 | Запланированная capability | Primary owner | Предметная граница |
 |---|---|---|
 | `lead-entity-resolution` | `lead-management` | Юрлицо/бренд/сайт и типизированные доказательные связи; домен не универсальная юридическая идентичность |
-| `lead-research-memory` | `lead-management` | Источники, locators, временные утверждения и производная память в разрешённой области |
+| `lead-research-memory` | `lead-management` | Источники, временные утверждения, открытые потребности, сеть зависимостей и производная память в разрешённой области |
 | `inbound-lead-conversations` | `lead-management` | Клиентские входящие обращения, связь с лидом/контактом и переписка; qualification — у `engagement-observation` |
 | `adaptive-lead-research` | `agent-orchestration` | Миссия, допустимые действия LLM, долговечность и бюджет; факты принадлежат `lead-management` |
 | `international-market-discovery` | `audience` | Рекомендации рынков по офферу; человеческий выбор стран заявки — у `request-fulfillment` |
 | `regional-web-acquisition` | `integration-platform` | Search/fetch/registry/browser/document/OCR, capabilities и receipts без предметного вердикта |
 | `research-to-outreach` | `outreach-orchestration` | Передача исследования в существующие материал, точное решение и доставку; владельцы текста/адреса не меняются |
+
+В уточнении CL-14 `OpenNeed` и зависимости утверждений планируются у `lead-management`: компания без email сохраняется между запусками, поздний контакт дополняет прежнее досье. Статусы относятся к конкретному факту и методу проверки. Миссия и разрешение нового внешнего действия остаются у `agent-orchestration`; обновление знания не открывает бюджет и не переписывает завершённый run. Подробности — [сеть во времени](concepts/intelligent-lead-research/02-identity-and-evidence.md#213-сеть-отношений-и-зависимостей-во-времени).
 
 Диаграмма bounded contexts помечает эти назначения как план. Добавление entity/aggregate/event/relationship при реализации требует синхронного обновления каталога, этой модели и затронутых диаграмм; ни тело входящего письма, ни контактные данные не становятся общей зелёной памятью платформы.
 

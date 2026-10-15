@@ -54,6 +54,7 @@ flowchart TD
 |---|---|---|---|
 | lead-management | `lead-entity-resolution` / `research-entity` | entity, jurisdictional-id, alias, typed-relation, entity-version | `research-entity-established`, `entity-assertion-recorded` |
 | lead-management | `lead-research-memory` / `evidence-document` | document revision, locator, artifact-ref, observation time, purpose-scope | `evidence-recorded`, `evidence-invalidated` |
+| lead-management | `lead-research-memory` / предлагаемый `open-research-need` | entity-ref, required-relation, criteria/purpose scope, attempt-refs, need-state, dependency revisions | `research-need-recorded`, `research-need-reassessed` |
 | lead-management | `lead-entity-resolution` / `identity-decision` | participants, policy-version, decision-revision, contradiction-ref | `identity-link-confirmed`, `identity-link-reverted` |
 | agent-orchestration | `adaptive-lead-research` / `research-mission` | mission, research-action, target-unit, budget-reservation-ref, stop-reason | `research-mission-started`, `research-action-completed`, `research-mission-paused`, `research-mission-completed` |
 | audience | `international-market-discovery` / `market-study` | study, country-recommendation, demand-hypothesis, evidence-ref | `market-study-completed` |
@@ -67,6 +68,8 @@ flowchart TD
 `research-entity` владеет утверждениями и предметными контактными отношениями; `evidence-document` — неизменяемым свидетельством. `identity-decision` фиксирует решение, а materialized canonical projection строится с CAS по версиям участников и возможностью обратного построения. Нельзя держать весь tenant graph одним блокирующим агрегатом.
 
 Инфраструктурные adapters не владеют значением корпоративных фактов. `audience` владеет оценкой в контексте конкретного оффера; такая оценка не становится универсальной истиной компании. История действий/резервы принадлежат оркестратору, facts/evidence — `lead-management`.
+
+Сеть предметных отношений и индекс зависимостей выводов принадлежат `lead-management`. Новое знание может обновить досье и OpenNeed без внешнего поиска; `agent-orchestration` принимает решение об исполнении только в пределах действующей миссии. Межконтекстное событие содержит разрешённые refs/версии; данные источника и контакты не становятся общим platform storage. Aggregate boundaries и фактически вводимые domain events регистрируются при apply по задаче 1.2.
 
 ## 7.4. Предлагаемые контракты
 

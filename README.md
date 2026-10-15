@@ -7,7 +7,9 @@
 
 **Весь согласованный объём обязателен к реализации:** [36 требований и применение исследования](docs/intelligent-lead-platform-roadmap.md). Там собраны LLM-поиск и память, международные рынки, собственные поиск/краулер, browser/OCR, письма, формы, входящие лиды и ответы. Начальные этапы R1–R4 не сокращают итоговый объём.
 
-Программа ведётся в ветке `concept/intelligent-lead-research`: [концепция](docs/concepts/intelligent-lead-research/README.md), [OpenSpec и задачи](openspec/changes/intelligent-lead-research/tasks.md). Документы описывают план; фактическое выполнение подтверждается задачами и evidence.
+Программа ведётся в ветке `concept/intelligent-lead-research`: [единая концепция от общего к частному](docs/concepts/intelligent-lead-research/README.md), [OpenSpec и задачи](openspec/changes/intelligent-lead-research/tasks.md). Документы описывают план; фактическое выполнение подтверждается задачами и evidence.
+
+Компания без контакта сохраняется в памяти; поздние находки дополняют её досье с проверяемыми основаниями и историей зависимостей.
 
 [Уточнения пользователя из переписки](docs/intelligent-lead-platform-roadmap.md#ваши-уточнения-из-переписки) сохранены с цитатами; предложения по инструментам и стартовым настройкам отмечены отдельно.
 

@@ -24,6 +24,7 @@ package "Core" {
     capability: lead-workflow, lead-email
     План intelligent-lead-research:
     lead-entity-resolution, lead-research-memory
+    Открытые потребности и граф зависимостей (план)
     inbound-lead-conversations
   end note
   rectangle "Аудитория\n<<core>>" as Audience
@@ -42,6 +43,7 @@ package "Core" {
   note right of Agents
     План intelligent-lead-research:
     adaptive-lead-research
+    Позднее знание: пересмотр в пределах миссии (план)
   end note
 }
 package "Supporting" {
