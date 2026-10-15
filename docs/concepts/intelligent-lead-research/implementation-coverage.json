@@ -1,5 +1,5 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "program": "intelligent-lead-research",
   "branch": "concept/intelligent-lead-research",
   "user_scope_confirmation_date": "2026-10-15",
@@ -10,7 +10,6 @@
     {
       "id": "REQ-01",
       "group": "A",
-      "user_requirement": "Заявки создают и одобряют люди",
       "required": true,
       "acceptance": "Оффер, аудитория, рынки, количество и единица цели фиксируются версией человеческого поручения; агент исполняет исследование.",
       "capabilities": [
@@ -28,12 +27,18 @@
         "01-vision-and-workflows.md",
         "03-agent-and-memory.md"
       ],
-      "implementation_acceptance": "pending"
+      "implementation_acceptance": "pending",
+      "requirement": "Заявки создают и одобряют люди",
+      "provenance": {
+        "kind": "user-explicit",
+        "clarification_ids": [
+          "CL-01"
+        ]
+      }
     },
     {
       "id": "REQ-02",
       "group": "A",
-      "user_requirement": "LLM самостоятельно выбирает полезные шаги исследования",
       "required": true,
       "acceptance": "Планировщик закрывает конкретные пробелы, выбирает разрешённый инструмент, сохраняет краткое основание и останавливает бесполезные повторы.",
       "capabilities": [
@@ -47,12 +52,18 @@
       "concept_documents": [
         "03-agent-and-memory.md"
       ],
-      "implementation_acceptance": "pending"
+      "implementation_acceptance": "pending",
+      "requirement": "LLM самостоятельно выбирает полезные шаги исследования",
+      "provenance": {
+        "kind": "user-explicit",
+        "clarification_ids": [
+          "CL-00"
+        ]
+      }
     },
     {
       "id": "REQ-03",
       "group": "A",
-      "user_requirement": "Цепочки ИНН → название → сайт → контакт на другом сайте",
       "required": true,
       "acceptance": "Точные ID и предметный контекст связывают источники; контакт другого издателя не прикрепляется компании.",
       "capabilities": [
@@ -70,12 +81,18 @@
         "01-vision-and-workflows.md",
         "02-identity-and-evidence.md"
       ],
-      "implementation_acceptance": "pending"
+      "implementation_acceptance": "pending",
+      "requirement": "Цепочки ИНН → название → сайт → контакт на другом сайте",
+      "provenance": {
+        "kind": "user-explicit",
+        "clarification_ids": [
+          "CL-00"
+        ]
+      }
     },
     {
       "id": "REQ-04",
       "group": "A",
-      "user_requirement": "Другие интеллектуальные связки и установление отношений",
       "required": true,
       "acceptance": "Поддерживаются бренд, филиал, группа, переименование, несколько сайтов, внешние карточки и документы; неоднозначные связи проверяются.",
       "capabilities": [
@@ -91,12 +108,18 @@
         "01-vision-and-workflows.md",
         "02-identity-and-evidence.md"
       ],
-      "implementation_acceptance": "pending"
+      "implementation_acceptance": "pending",
+      "requirement": "Другие интеллектуальные связки и установление отношений",
+      "provenance": {
+        "kind": "user-derived",
+        "clarification_ids": [
+          "CL-00"
+        ]
+      }
     },
     {
       "id": "REQ-05",
       "group": "A",
-      "user_requirement": "Запись в память и последующий поиск в ней",
       "required": true,
       "acceptance": "Хранятся факты, evidence, история попыток, отрицательные результаты с TTL, временные версии; exact/graph/FTS/semantic retrieval соблюдает scope.",
       "capabilities": [
@@ -111,12 +134,18 @@
         "02-identity-and-evidence.md",
         "03-agent-and-memory.md"
       ],
-      "implementation_acceptance": "pending"
+      "implementation_acceptance": "pending",
+      "requirement": "Запись в память и последующий поиск в ней",
+      "provenance": {
+        "kind": "user-explicit",
+        "clarification_ids": [
+          "CL-00"
+        ]
+      }
     },
     {
       "id": "REQ-06",
       "group": "A",
-      "user_requirement": "Проверка данных и исправление ложных связей",
       "required": true,
       "acceptance": "Различаются гипотезы/подтверждения/конфликты; merge обратим, исправления пересматривают зависимые результаты и сохраняют допустимую историю.",
       "capabilities": [
@@ -132,12 +161,19 @@
       "concept_documents": [
         "02-identity-and-evidence.md"
       ],
-      "implementation_acceptance": "pending"
+      "implementation_acceptance": "pending",
+      "requirement": "Проверка данных и исправление ложных связей",
+      "provenance": {
+        "kind": "user-derived",
+        "clarification_ids": [
+          "CL-00",
+          "CL-12"
+        ]
+      }
     },
     {
       "id": "REQ-07",
       "group": "A",
-      "user_requirement": "Контактные данные вместо случайных цифр",
       "required": true,
       "acceptance": "Телефон/email имеют проверяемые символы, назначение, субъект и источник; ID статьи, дата и счётчик не засчитываются как телефон.",
       "capabilities": [
@@ -153,12 +189,18 @@
         "02-identity-and-evidence.md",
         "09-browser-ocr-and-tool-selection.md"
       ],
-      "implementation_acceptance": "pending"
+      "implementation_acceptance": "pending",
+      "requirement": "Контактные данные вместо случайных цифр",
+      "provenance": {
+        "kind": "user-explicit",
+        "clarification_ids": [
+          "CL-13"
+        ]
+      }
     },
     {
       "id": "REQ-08",
       "group": "B",
-      "user_requirement": "Международный продукт, Россия и русский UI по умолчанию",
       "required": true,
       "acceptance": "RU задаёт начальный рынок; язык интерфейса не подменяет страну и язык поиска/переписки.",
       "capabilities": [
@@ -172,12 +214,19 @@
       "concept_documents": [
         "04-markets-and-geography.md"
       ],
-      "implementation_acceptance": "pending"
+      "implementation_acceptance": "pending",
+      "requirement": "Международный продукт, Россия и русский UI по умолчанию",
+      "provenance": {
+        "kind": "user-explicit",
+        "clarification_ids": [
+          "CL-02"
+        ],
+        "interpretation": "RU default и русский UI — зафиксированная проектная интерпретация фразы «автоматически указывать русский», не выбор всех языков коммуникации."
+      }
     },
     {
       "id": "REQ-09",
       "group": "B",
-      "user_requirement": "Кнопка «Исследовать международный рынок»",
       "required": true,
       "acceptance": "По офферу выполняется ограниченное исследование стран с источниками, неизвестностями, стоимостью и рекомендациями.",
       "capabilities": [
@@ -190,12 +239,18 @@
       "concept_documents": [
         "04-markets-and-geography.md"
       ],
-      "implementation_acceptance": "pending"
+      "implementation_acceptance": "pending",
+      "requirement": "Кнопка «Исследовать международный рынок»",
+      "provenance": {
+        "kind": "user-explicit",
+        "clarification_ids": [
+          "CL-03"
+        ]
+      }
     },
     {
       "id": "REQ-10",
       "group": "B",
-      "user_requirement": "Выбор одной или нескольких стран из списка",
       "required": true,
       "acceptance": "Человек выбирает страны и квоты, может снять RU и добавить поддерживаемые рынки; выбор версионируется и не меняется агентом молча.",
       "capabilities": [
@@ -209,12 +264,18 @@
       "concept_documents": [
         "04-markets-and-geography.md"
       ],
-      "implementation_acceptance": "pending"
+      "implementation_acceptance": "pending",
+      "requirement": "Выбор одной или нескольких стран из списка",
+      "provenance": {
+        "kind": "user-explicit",
+        "clarification_ids": [
+          "CL-03"
+        ]
+      }
     },
     {
       "id": "REQ-11",
       "group": "B",
-      "user_requirement": "Локальные языки, реестры, идентификаторы и телефоны",
       "required": true,
       "acceptance": "Country profiles определяют local search terms, смысл регистрации/присутствия, источники и нормализацию контактов; покрытие проверяется по рынку.",
       "capabilities": [
@@ -231,12 +292,19 @@
         "02-identity-and-evidence.md",
         "04-markets-and-geography.md"
       ],
-      "implementation_acceptance": "pending"
+      "implementation_acceptance": "pending",
+      "requirement": "Локальные языки, реестры, идентификаторы и телефоны",
+      "provenance": {
+        "kind": "user-derived",
+        "clarification_ids": [
+          "CL-02",
+          "CL-04"
+        ]
+      }
     },
     {
       "id": "REQ-12",
       "group": "B",
-      "user_requirement": "Прокси и региональный поиск/браузер",
       "required": true,
       "acceptance": "SERP country, язык, locale, IP egress и сессия разделены; фактическая география, расходы и недоступность наблюдаемы.",
       "capabilities": [
@@ -251,12 +319,18 @@
         "04-markets-and-geography.md",
         "05-acquisition-and-crawlers.md"
       ],
-      "implementation_acceptance": "pending"
+      "implementation_acceptance": "pending",
+      "requirement": "Прокси и региональный поиск/браузер",
+      "provenance": {
+        "kind": "user-explicit",
+        "clarification_ids": [
+          "CL-04"
+        ]
+      }
     },
     {
       "id": "REQ-13",
       "group": "C",
-      "user_requirement": "Firecrawl работает до готовности собственного контура",
       "required": true,
       "acceptance": "Рабочий путь сохраняется до сравнительной приёмки, совместимых receipts и управляемого cutover/rollback.",
       "capabilities": [
@@ -271,12 +345,18 @@
       "concept_documents": [
         "05-acquisition-and-crawlers.md"
       ],
-      "implementation_acceptance": "pending"
+      "implementation_acceptance": "pending",
+      "requirement": "Firecrawl работает до готовности собственного контура",
+      "provenance": {
+        "kind": "user-explicit",
+        "clarification_ids": [
+          "CL-05"
+        ]
+      }
     },
     {
       "id": "REQ-14",
       "group": "C",
-      "user_requirement": "Развиваем собственный краулер на open-source основе",
       "required": true,
       "acceptance": "Обязательны реальный self-hosted runtime, наши profiles/frontier/evidence/session/budget механизмы и поддержка выбранной версии upstream/patches.",
       "capabilities": [
@@ -294,12 +374,19 @@
         "05-acquisition-and-crawlers.md",
         "09-browser-ocr-and-tool-selection.md"
       ],
-      "implementation_acceptance": "pending"
+      "implementation_acceptance": "pending",
+      "requirement": "Развиваем собственный краулер на open-source основе",
+      "provenance": {
+        "kind": "user-explicit",
+        "clarification_ids": [
+          "CL-05",
+          "CL-06"
+        ]
+      }
     },
     {
       "id": "REQ-15",
       "group": "C",
-      "user_requirement": "Выбрать лучший движок и учесть несколько краулеров",
       "required": true,
       "acceptance": "Crawl4AI, Crawlee и Firecrawl сравниваются на одном corpus; общий router допускает дополнительный runtime по доказанной полезности.",
       "capabilities": [
@@ -313,14 +400,21 @@
       "concept_documents": [
         "09-browser-ocr-and-tool-selection.md"
       ],
-      "implementation_acceptance": "pending"
+      "implementation_acceptance": "pending",
+      "requirement": "Выбрать лучший движок и учесть несколько краулеров",
+      "provenance": {
+        "kind": "user-explicit",
+        "clarification_ids": [
+          "CL-06"
+        ],
+        "interpretation": "Разрешена комбинация движков при пользе, не требуется постоянно запускать все изученные краулеры."
+      }
     },
     {
       "id": "REQ-16",
       "group": "C",
-      "user_requirement": "Поисковик на нашей платформе: метапоиск",
       "required": true,
-      "acceptance": "Размещённый у нас backend SearXNG включён в gateway, с наблюдаемыми upstream engines/ограничениями и разрешёнными маршрутами.",
+      "acceptance": "Собственный интерфейс/gateway поиска подключает принятые источники; self-hosted метапоиск исследуется, SearXNG — кандидат с возможностью обоснованной замены.",
       "capabilities": [
         "regional-web-acquisition"
       ],
@@ -332,12 +426,18 @@
         "05-acquisition-and-crawlers.md",
         "09-browser-ocr-and-tool-selection.md"
       ],
-      "implementation_acceptance": "pending"
+      "implementation_acceptance": "pending",
+      "requirement": "Поисковый контур на нашей платформе; метапоиск как предлагаемый backend",
+      "provenance": {
+        "kind": "proposed-design",
+        "clarification_ids": [
+          "CL-07"
+        ]
+      }
     },
     {
       "id": "REQ-17",
       "group": "C",
-      "user_requirement": "Собственный поиск по накопленному корпусу и вертикальный индекс",
       "required": true,
       "acceptance": "Нужны независимое накопление разрешённых документов/компаний, indexing/recrawl/dedup и поиск; старт PostgreSQL, масштабирование по измерениям.",
       "capabilities": [
@@ -353,12 +453,18 @@
         "05-acquisition-and-crawlers.md",
         "09-browser-ocr-and-tool-selection.md"
       ],
-      "implementation_acceptance": "pending"
+      "implementation_acceptance": "pending",
+      "requirement": "Собственный поиск по накопленному корпусу и вертикальный индекс",
+      "provenance": {
+        "kind": "proposed-design",
+        "clarification_ids": [
+          "CL-07"
+        ]
+      }
     },
     {
       "id": "REQ-18",
       "group": "C",
-      "user_requirement": "Интернет discovery по нужным странам",
       "required": true,
       "acceptance": "Gateway подключает принятый regional provider/API; внешний поиск, metasearch и наш корпус различимы в результатах и стоимости.",
       "capabilities": [
@@ -372,12 +478,19 @@
       "concept_documents": [
         "05-acquisition-and-crawlers.md"
       ],
-      "implementation_acceptance": "pending"
+      "implementation_acceptance": "pending",
+      "requirement": "Интернет discovery по нужным странам",
+      "provenance": {
+        "kind": "user-derived",
+        "clarification_ids": [
+          "CL-04",
+          "CL-07"
+        ]
+      }
     },
     {
       "id": "REQ-19",
       "group": "C",
-      "user_requirement": "Поведение на сайтах и интеллектуальная навигация",
       "required": true,
       "acceptance": "Render, ожидания, scroll, pagination, public search, reveal contacts и ограниченный LLM browser mode принимаются по сценариям и версиям разрешённой политики.",
       "capabilities": [
@@ -392,12 +505,18 @@
       "concept_documents": [
         "09-browser-ocr-and-tool-selection.md"
       ],
-      "implementation_acceptance": "pending"
+      "implementation_acceptance": "pending",
+      "requirement": "Поведение на сайтах и интеллектуальная навигация",
+      "provenance": {
+        "kind": "user-explicit",
+        "clarification_ids": [
+          "CL-08"
+        ]
+      }
     },
     {
       "id": "REQ-20",
       "group": "C",
-      "user_requirement": "OCR изображений и разбор документов",
       "required": true,
       "acceptance": "HTML/DOM, structured data, text PDF, scanned PDF/images и OCR передают точные locators; неоднозначные символы не исправляются молча.",
       "capabilities": [
@@ -414,12 +533,18 @@
       "concept_documents": [
         "09-browser-ocr-and-tool-selection.md"
       ],
-      "implementation_acceptance": "pending"
+      "implementation_acceptance": "pending",
+      "requirement": "OCR изображений и разбор документов",
+      "provenance": {
+        "kind": "user-explicit",
+        "clarification_ids": [
+          "CL-09"
+        ]
+      }
     },
     {
       "id": "REQ-21",
       "group": "C",
-      "user_requirement": "Нужные вспомогательные компоненты платформы",
       "required": true,
       "acceptance": "Source registry, query planner, frontier, session pool, artifacts, model gateway, verification, memory, budgets, review и evaluation связаны контрактами владельцев.",
       "capabilities": [
@@ -439,12 +564,18 @@
         "07-architecture-and-delivery-plan.md",
         "09-browser-ocr-and-tool-selection.md"
       ],
-      "implementation_acceptance": "pending"
+      "implementation_acceptance": "pending",
+      "requirement": "Нужные вспомогательные компоненты платформы",
+      "provenance": {
+        "kind": "proposed-design",
+        "clarification_ids": [
+          "CL-07"
+        ]
+      }
     },
     {
       "id": "REQ-22",
       "group": "D",
-      "user_requirement": "Цель 25 и добор без дублей",
       "required": true,
       "acceptance": "Единица результата фиксируется; засчитываются сохранённые проверенные субъекты, доступен добор либо partial с объяснимым недобором.",
       "capabilities": [
@@ -460,12 +591,18 @@
         "01-vision-and-workflows.md",
         "02-identity-and-evidence.md"
       ],
-      "implementation_acceptance": "pending"
+      "implementation_acceptance": "pending",
+      "requirement": "Цель 25 и добор без дублей",
+      "provenance": {
+        "kind": "user-explicit",
+        "clarification_ids": [
+          "CL-13"
+        ]
+      }
     },
     {
       "id": "REQ-23",
       "group": "D",
-      "user_requirement": "Видимый процесс в «Заявки / Исполнение»",
       "required": true,
       "acceptance": "UI показывает шаг, вопрос, ожидание, источник, результат, расход, heartbeat и meaningful progress; конечный исход не остаётся бесконечным spinner.",
       "capabilities": [
@@ -481,12 +618,18 @@
         "01-vision-and-workflows.md",
         "03-agent-and-memory.md"
       ],
-      "implementation_acceptance": "pending"
+      "implementation_acceptance": "pending",
+      "requirement": "Видимый процесс в «Заявки / Исполнение»",
+      "provenance": {
+        "kind": "user-explicit",
+        "clarification_ids": [
+          "CL-13"
+        ]
+      }
     },
     {
       "id": "REQ-24",
       "group": "D",
-      "user_requirement": "Лиды сохраняются и видны с понятным качеством",
       "required": true,
       "acceptance": "Кандидаты и принятые записи доступны по фильтрам/источнику; есть объяснение проверок и оценки по заявке, глобальные «подходящие» не вводятся.",
       "capabilities": [
@@ -504,12 +647,18 @@
         "01-vision-and-workflows.md",
         "02-identity-and-evidence.md"
       ],
-      "implementation_acceptance": "pending"
+      "implementation_acceptance": "pending",
+      "requirement": "Лиды сохраняются и видны с понятным качеством",
+      "provenance": {
+        "kind": "user-explicit",
+        "clarification_ids": [
+          "CL-13"
+        ]
+      }
     },
     {
       "id": "REQ-25",
       "group": "D",
-      "user_requirement": "Сформированные emails видны на фронте",
       "required": true,
       "acceptance": "Версии персонализированного материала, адресат, язык, факты/источники, состояние утверждения и отправки доступны оператору.",
       "capabilities": [
@@ -525,12 +674,18 @@
       "concept_documents": [
         "06-outreach-and-feedback.md"
       ],
-      "implementation_acceptance": "pending"
+      "implementation_acceptance": "pending",
+      "requirement": "Сформированные emails видны на фронте",
+      "provenance": {
+        "kind": "user-explicit",
+        "clarification_ids": [
+          "CL-13"
+        ]
+      }
     },
     {
       "id": "REQ-26",
       "group": "D",
-      "user_requirement": "Анализ и управляемая отправка писем",
       "required": true,
       "acceptance": "Существующие владельцы генерируют/утверждают точные material/recipient versions; доставка учитывает запреты, идемпотентность и unknown outcome.",
       "capabilities": [
@@ -548,14 +703,20 @@
       "concept_documents": [
         "06-outreach-and-feedback.md"
       ],
-      "implementation_acceptance": "pending"
+      "implementation_acceptance": "pending",
+      "requirement": "Анализ и управляемая отправка писем",
+      "provenance": {
+        "kind": "user-explicit",
+        "clarification_ids": [
+          "CL-00"
+        ]
+      }
     },
     {
       "id": "REQ-27",
       "group": "E",
-      "user_requirement": "Обращения через формы на чужих сайтах",
       "required": true,
-      "acceptance": "Находим форму, разбираем поля, готовим материал и реальные контакты отправителя; действующий порядок — ручная отправка оператором с явным подтверждением.",
+      "acceptance": "Находим форму, разбираем поля, готовим сообщение/реальные контакты и учитываем результат. Способ отправки в полной программе не выбран пользователем; прежний pending-план предлагал ручной путь.",
       "capabilities": [
         "inbound-lead-conversations",
         "research-to-outreach",
@@ -565,17 +726,24 @@
         "8.1",
         "9.5",
         "10.1",
-        "12.1"
+        "12.1",
+        "9.7"
       ],
       "concept_documents": [
         "10-inbound-forms-and-conversations.md"
       ],
-      "implementation_acceptance": "pending"
+      "implementation_acceptance": "pending",
+      "requirement": "Обращения через формы на чужих сайтах",
+      "provenance": {
+        "kind": "user-explicit",
+        "clarification_ids": [
+          "CL-10"
+        ]
+      }
     },
     {
       "id": "REQ-28",
       "group": "E",
-      "user_requirement": "Наша форма и оставленные посетителем контакты",
       "required": true,
       "acceptance": "Реальная форма передаёт сообщение в клиентский intake, создаёт/обновляет lead candidate с origin, контактами и содержимым.",
       "capabilities": [
@@ -590,12 +758,19 @@
       "concept_documents": [
         "10-inbound-forms-and-conversations.md"
       ],
-      "implementation_acceptance": "pending"
+      "implementation_acceptance": "pending",
+      "requirement": "Наша форма и оставленные посетителем контакты",
+      "provenance": {
+        "kind": "user-derived",
+        "clarification_ids": [
+          "CL-10"
+        ],
+        "interpretation": "Наша входящая форма — детализация общего требования обратной связи, а не дословный выбор конкретного UI."
+      }
     },
     {
       "id": "REQ-29",
       "group": "E",
-      "user_requirement": "Приём emails на наши рабочие адреса",
       "required": true,
       "acceptance": "Реальный mailbox connector, receiving aliases/Reply-To, durable receipt/cursor и MIME/attachments ingest; SMTP_FROM без приёма почты недостаточен.",
       "capabilities": [
@@ -611,12 +786,18 @@
       "concept_documents": [
         "10-inbound-forms-and-conversations.md"
       ],
-      "implementation_acceptance": "pending"
+      "implementation_acceptance": "pending",
+      "requirement": "Приём emails на наши рабочие адреса",
+      "provenance": {
+        "kind": "user-explicit",
+        "clarification_ids": [
+          "CL-11"
+        ]
+      }
     },
     {
       "id": "REQ-30",
       "group": "E",
-      "user_requirement": "Лиды из обратной связи и связанная переписка",
       "required": true,
       "acceptance": "Сохраняется источник; новое обращение создаёт lead candidate, ответ дополняет существующую conversation; конфликты и дубли разбираются явно.",
       "capabilities": [
@@ -632,12 +813,18 @@
       "concept_documents": [
         "10-inbound-forms-and-conversations.md"
       ],
-      "implementation_acceptance": "pending"
+      "implementation_acceptance": "pending",
+      "requirement": "Лиды из обратной связи и связанная переписка",
+      "provenance": {
+        "kind": "user-explicit",
+        "clarification_ids": [
+          "CL-11"
+        ]
+      }
     },
     {
       "id": "REQ-31",
       "group": "E",
-      "user_requirement": "Учитываем содержание ответа и следующий шаг",
       "required": true,
       "acceptance": "Human/OOO/bounce, вопрос/интерес/отказ/отписка/referral различимы; хранятся цитаты, intent versions и correction; связанная цепочка ждёт разбора/останавливается.",
       "capabilities": [
@@ -655,12 +842,18 @@
         "10-inbound-forms-and-conversations.md",
         "06-outreach-and-feedback.md"
       ],
-      "implementation_acceptance": "pending"
+      "implementation_acceptance": "pending",
+      "requirement": "Учитываем содержание ответа и следующий шаг",
+      "provenance": {
+        "kind": "user-explicit",
+        "clarification_ids": [
+          "CL-11"
+        ]
+      }
     },
     {
       "id": "REQ-32",
       "group": "F",
-      "user_requirement": "Видимость tenant и рабочие переходы интерфейса",
       "required": true,
       "acceptance": "Роли/области доступа, переходы заявки → лид → письмо → переписка и требуемые экраны консоли проходят приёмку без ложных 404/login redirect.",
       "capabilities": [
@@ -679,12 +872,18 @@
         "01-vision-and-workflows.md",
         "07-architecture-and-delivery-plan.md"
       ],
-      "implementation_acceptance": "pending"
+      "implementation_acceptance": "pending",
+      "requirement": "Видимость tenant и рабочие переходы интерфейса",
+      "provenance": {
+        "kind": "user-explicit",
+        "clarification_ids": [
+          "CL-13"
+        ]
+      }
     },
     {
       "id": "REQ-33",
       "group": "F",
-      "user_requirement": "Долговечность, наблюдаемость и расход",
       "required": true,
       "acceptance": "Результат переживает рестарт; retries, partial, ошибки sources, расходы и in-flight/unknown effects объяснимы и не создают бесконечные платные циклы.",
       "capabilities": [
@@ -705,12 +904,19 @@
         "03-agent-and-memory.md",
         "07-architecture-and-delivery-plan.md"
       ],
-      "implementation_acceptance": "pending"
+      "implementation_acceptance": "pending",
+      "requirement": "Долговечность, наблюдаемость и расход",
+      "provenance": {
+        "kind": "proposed-design",
+        "clarification_ids": [
+          "CL-00",
+          "CL-12"
+        ]
+      }
     },
     {
       "id": "REQ-34",
       "group": "F",
-      "user_requirement": "Развёртывание и реальный сквозной путь",
       "required": true,
       "acceptance": "Compose/runbook описывают принятые роли/зависимости/миграции; реальные providers, mailbox и UI подтверждаются интеграционным прогоном.",
       "capabilities": [
@@ -727,12 +933,18 @@
       "concept_documents": [
         "07-architecture-and-delivery-plan.md"
       ],
-      "implementation_acceptance": "pending"
+      "implementation_acceptance": "pending",
+      "requirement": "Развёртывание и реальный сквозной путь",
+      "provenance": {
+        "kind": "user-explicit",
+        "clarification_ids": [
+          "CL-13"
+        ]
+      }
     },
     {
       "id": "REQ-35",
       "group": "F",
-      "user_requirement": "Используем изученную информацию в реализации",
       "required": true,
       "acceptance": "Каждый материал привязан к применяемому механизму или обоснованному сравнению альтернатив; решение/проверка доступны вместе с задачами.",
       "capabilities": [
@@ -754,12 +966,19 @@
         "08-research.md",
         "09-browser-ocr-and-tool-selection.md"
       ],
-      "implementation_acceptance": "pending"
+      "implementation_acceptance": "pending",
+      "requirement": "Используем изученную информацию в реализации",
+      "provenance": {
+        "kind": "user-explicit",
+        "clarification_ids": [
+          "CL-12",
+          "CL-00"
+        ]
+      }
     },
     {
       "id": "REQ-36",
       "group": "F",
-      "user_requirement": "Полный объём обязателен, этапы его не сокращают",
       "required": true,
       "acceptance": "R1–R4 — начальные срезы; программа закрывается по всем required требованиям с evidence и связью с apply tasks, перенос сохраняет требование открытым.",
       "capabilities": [
@@ -779,7 +998,15 @@
       "concept_documents": [
         "07-architecture-and-delivery-plan.md"
       ],
-      "implementation_acceptance": "pending"
+      "implementation_acceptance": "pending",
+      "requirement": "Полный объём обязателен, этапы его не сокращают",
+      "provenance": {
+        "kind": "user-explicit",
+        "clarification_ids": [
+          "CL-12",
+          "CL-00"
+        ]
+      }
     }
   ],
   "research_applications": [
@@ -1007,7 +1234,7 @@
         "S22"
       ],
       "decision_type": "apply-and-compare",
-      "required_application": "Реализовать gateway/SearXNG, проверить regional provider и параметры country/language/location; proxy маршрутизация учитывается отдельно.",
+      "required_application": "Реализовать поисковый gateway и принятые backend sources; SearXNG сравнить как кандидат метапоиска, regional provider проверить по странам. Proxy и SERP country учитываются отдельно.",
       "task_ids": [
         "6.1",
         "6.2",
@@ -1129,6 +1356,301 @@
         "REQ-35"
       ],
       "implementation_acceptance": "pending"
+    }
+  ],
+  "user_clarifications": [
+    {
+      "id": "CL-00",
+      "topic": "Исходный интеллектуальный пайплайн",
+      "quotes": [
+        "нужно продумать интеллектуальное взаимодействие через LLM, поиск лидов, запись в память и поиск контактов на иных сайтов",
+        "нашли ИНН компании потом нашли название потом сайт потом контакты на другом сайте где указан был инн компании",
+        "поищи в интернете подумай сам",
+        "разрабатываем интеллектуальную систему в отдельной ветке"
+      ],
+      "retained_requirement": "LLM-исследование, память и доказуемые связи между источниками входят в полный объём. Концепция опирается на интернет-исследование; новый контур разрабатывается в отдельной ветке.",
+      "requirement_ids": [
+        "REQ-02",
+        "REQ-03",
+        "REQ-04",
+        "REQ-05",
+        "REQ-26",
+        "REQ-35",
+        "REQ-36"
+      ],
+      "source_description": "Исходный запрос концепции; повторён пользователем при сверке уточнений"
+    },
+    {
+      "id": "CL-01",
+      "topic": "Кто создаёт заявки",
+      "quotes": [
+        "все заявки создаются людьми. агент краулингом занимается и письма пишет. посмотри в спеке это где-то есть"
+      ],
+      "retained_requirement": "Формальные заявки создают люди; агент исследует, собирает данные и пишет материалы.",
+      "requirement_ids": [
+        "REQ-01"
+      ],
+      "source_description": "Ответ пользователя на вопрос о роли агента"
+    },
+    {
+      "id": "CL-02",
+      "topic": "Международность и начальный выбор",
+      "quotes": [
+        "да международный",
+        "автоматически указывать русский"
+      ],
+      "retained_requirement": "Международность обязательна. Фразу про русский в проекте истолковали как RU по умолчанию; язык UI/поиска/письма разделён.",
+      "requirement_ids": [
+        "REQ-08",
+        "REQ-11"
+      ],
+      "source_description": "Ответ пользователя на вопрос об основном рынке"
+    },
+    {
+      "id": "CL-03",
+      "topic": "Кнопка исследования и несколько стран",
+      "quotes": [
+        "есть кнопка которая может исследовать международный рынок и можно указать самому страну или страны из предложенного списка"
+      ],
+      "retained_requirement": "Нужны явное исследование рынков и самостоятельный выбор одной/нескольких стран.",
+      "requirement_ids": [
+        "REQ-09",
+        "REQ-10"
+      ],
+      "source_description": "Продолжение того же ответа о рынках"
+    },
+    {
+      "id": "CL-04",
+      "topic": "Поиск в странах и прокси",
+      "quotes": [
+        "нам видимо понадобятся прокси или тип того. оно нужно как минимум для собственного краулера но и для нашего поисковика тоже"
+      ],
+      "retained_requirement": "Изучить и обеспечить нужные региональные маршруты для crawler/search, сохраняя различие SERP country и IP egress.",
+      "requirement_ids": [
+        "REQ-11",
+        "REQ-12",
+        "REQ-18"
+      ],
+      "source_description": "Продолжение ответа о международных рынках"
+    },
+    {
+      "id": "CL-05",
+      "topic": "Свой open-source crawler, Firecrawl пока работает",
+      "quotes": [
+        "будем развивать свой собственный краулер. пока он не проработан и не реализован используем firecrawl"
+      ],
+      "retained_requirement": "Свой crawler обязателен; Firecrawl остаётся до его готовности. В старой документации найден Crawl4AI.",
+      "requirement_ids": [
+        "REQ-13",
+        "REQ-14"
+      ],
+      "source_description": "Уточнение после просьбы найти ранее выбранный crawler"
+    },
+    {
+      "id": "CL-06",
+      "topic": "Разрешены другие движки и несколько краулеров",
+      "quotes": [
+        "если есть другие более лучшие open source подходящие под нашу задачу можем использовать его. или может нам вообще стоит использовать какое-то множество краулеров."
+      ],
+      "retained_requirement": "Сравнить альтернативы/комбинации. Старый выбор Crawl4AI не является запретом сравнения; Crawlee пользователем окончательно не выбран.",
+      "requirement_ids": [
+        "REQ-14",
+        "REQ-15"
+      ],
+      "source_description": "Следующее уточнение после сообщения о своём open-source crawler",
+      "refines": [
+        "CL-05"
+      ]
+    },
+    {
+      "id": "CL-07",
+      "topic": "Собственные поисковики и остальные компоненты",
+      "quotes": [
+        "так же нам нужны поисковики на своей платформе, что еще нам нужно. кроме поисковиков краулеров."
+      ],
+      "retained_requirement": "Нужен поиск на нашей платформе и проработка остальных механизмов; SearXNG является предложением реализации.",
+      "requirement_ids": [
+        "REQ-16",
+        "REQ-17",
+        "REQ-18",
+        "REQ-21"
+      ],
+      "source_description": "То же сообщение с расширением списка инструментов"
+    },
+    {
+      "id": "CL-08",
+      "topic": "Поведение на сайтах",
+      "quotes": [
+        "надо еще эмулировать поведение на сайтах."
+      ],
+      "retained_requirement": "Проработать browser rendering, ожидания, переходы, раскрытие данных и ограниченную интеллектуальную навигацию.",
+      "requirement_ids": [
+        "REQ-19"
+      ],
+      "source_description": "То же сообщение о search/crawler/browser/OCR"
+    },
+    {
+      "id": "CL-09",
+      "topic": "OCR",
+      "quotes": [
+        "использовать ocr для извлечение информации с изображений"
+      ],
+      "retained_requirement": "OCR изображений и документный pipeline включены; нужны проверяемые символы/locators и исследование инструментов.",
+      "requirement_ids": [
+        "REQ-20"
+      ],
+      "source_description": "То же сообщение о search/crawler/browser/OCR"
+    },
+    {
+      "id": "CL-10",
+      "topic": "Формы и наши контакты",
+      "quotes": [
+        "формы обратной связи, оставлять свои контакты для связи с нами"
+      ],
+      "retained_requirement": "Работа с формами и реальные обратные контакты обязательны. Пользователь не задавал окончательный manual-only режим отправки.",
+      "requirement_ids": [
+        "REQ-27",
+        "REQ-28"
+      ],
+      "source_description": "Следующее уточнение пользователя про обратную связь"
+    },
+    {
+      "id": "CL-11",
+      "topic": "Входящая почта, лиды и ответы",
+      "quotes": [
+        "ловить emails которые к нам приходят",
+        "учитывать записывать как лиды",
+        "учитывать то что они ответили"
+      ],
+      "retained_requirement": "Нужны реальный приём писем, inbound leads с происхождением, переписка и учёт смысла ответа/следующего действия.",
+      "requirement_ids": [
+        "REQ-29",
+        "REQ-30",
+        "REQ-31"
+      ],
+      "source_description": "Продолжение сообщения про обратную связь"
+    },
+    {
+      "id": "CL-12",
+      "topic": "Полный объём и применение исследования",
+      "quotes": [
+        "нам это надо реализовать. 100% и использовать изученную информацию."
+      ],
+      "retained_requirement": "Все запрошенные функции обязательны. Изученная информация применяется/обосновывает выбор; этапы не сокращают полный объём.",
+      "requirement_ids": [
+        "REQ-35",
+        "REQ-36"
+      ],
+      "source_description": "Подтверждение пользователя после обсуждения прототипов"
+    },
+    {
+      "id": "CL-13",
+      "topic": "Ранее уточнённые требования demo",
+      "quotes": [
+        "сделай заявку на 25 лидов",
+        "давай пока просто сделаем чтобы в заявках можно было видеть порцесс парсинга",
+        "подходящие вообще убрать у нас могут быть разные компании.",
+        "чтобы были действительно контактная информация.",
+        "в лиды тоже не могу перекижывает на форму логина. отчеты 404.",
+        "Docker Compose"
+      ],
+      "retained_requirement": "Сохраняются цель 25, честный прогресс/сохранение, качество контактов, оценки по заявке, tenant/UI переходы и Compose deployment.",
+      "requirement_ids": [
+        "REQ-07",
+        "REQ-22",
+        "REQ-23",
+        "REQ-24",
+        "REQ-25",
+        "REQ-32",
+        "REQ-34"
+      ],
+      "source_description": "Несколько более ранних сообщений и ответ о способе деплоя; цитаты приведены отдельными фрагментами"
+    }
+  ],
+  "design_decisions": [
+    {
+      "id": "D-01",
+      "topic": "Crawler runtime",
+      "origin": "assistant-recommendation",
+      "status": "candidate-not-user-selected",
+      "proposal": "Прототип Crawlee Python + Playwright, сравнение с Crawl4AI/Firecrawl.",
+      "user_clarification_ids": [
+        "CL-05",
+        "CL-06"
+      ],
+      "requirement_ids": [
+        "REQ-14",
+        "REQ-15"
+      ]
+    },
+    {
+      "id": "D-02",
+      "topic": "SearXNG",
+      "origin": "assistant-recommendation",
+      "status": "candidate-not-user-selected",
+      "proposal": "Кандидат backend метапоиска; обязательна поисковая функция платформы, а не бренд.",
+      "user_clarification_ids": [
+        "CL-07"
+      ],
+      "requirement_ids": [
+        "REQ-16",
+        "REQ-18"
+      ]
+    },
+    {
+      "id": "D-03",
+      "topic": "Пилот RU/GB",
+      "origin": "assistant-recommendation",
+      "status": "proposed-start-not-market-limit",
+      "proposal": "RU/GB — предложенный старт испытаний; подтверждены международность и выбор стран. RU default — проектная трактовка фразы «автоматически указывать русский».",
+      "user_clarification_ids": [
+        "CL-02",
+        "CL-03"
+      ],
+      "requirement_ids": [
+        "REQ-08",
+        "REQ-10",
+        "REQ-11"
+      ]
+    },
+    {
+      "id": "D-04",
+      "topic": "company-with-contact",
+      "origin": "assistant-recommendation",
+      "status": "proposed-default-not-user-selection",
+      "proposal": "Предложенная единица первого прототипа; человек выбирает единицу конкретной заявки.",
+      "user_clarification_ids": [
+        "CL-13"
+      ],
+      "requirement_ids": [
+        "REQ-22"
+      ]
+    },
+    {
+      "id": "D-05",
+      "topic": "Отправка чужих форм",
+      "origin": "existing-pending-change",
+      "status": "future-mode-unresolved",
+      "proposal": "В прежнем outreach-channel-form запланирована ручная отправка; пользователь не ограничивал этим всю программу. Режим фиксируется до реализации соответствующего эффекта.",
+      "user_clarification_ids": [
+        "CL-10"
+      ],
+      "requirement_ids": [
+        "REQ-27"
+      ]
+    },
+    {
+      "id": "D-06",
+      "topic": "Docling/PaddleOCR/Tesseract",
+      "origin": "assistant-recommendation",
+      "status": "candidates-for-benchmark",
+      "proposal": "Инструменты-кандидаты; пользователь потребовал OCR и извлечение информации с изображений.",
+      "user_clarification_ids": [
+        "CL-09"
+      ],
+      "requirement_ids": [
+        "REQ-20"
+      ]
     }
   ]
 }

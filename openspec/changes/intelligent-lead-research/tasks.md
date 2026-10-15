@@ -6,7 +6,7 @@
 
 ## 1. Зависимости требований и владение
 
-- [ ] 1.1 Зафиксировать единицу результата и criteria version: company / company-with-contact / email-ready-company, для R1–R2 выбрать company-with-contact; верификация: снимок 17 кандидатов / 8 различённых / 6 с каналом / 5 email-ready даёт дефицит 19 при цели 25 компаний с контактом и иной зачёт при иной версии цели.
+- [ ] 1.1 Зафиксировать выбранные человеком единицу результата и criteria version: company / company-with-contact / email-ready-company; company-with-contact — предложенный ассистентом пилот; верификация: снимок 17/8/6/5 даёт дефицит 19 только при явно выбранной цели 25 компаний с контактом, а иная единица имеет свой зачёт.
 - [ ] 1.2 При вводе первой entity/evidence/mission дополнить уже зарегистрированные назначения capability агрегатами, VO, событиями, policies и relationships из design в `architecture/domain-catalog.yaml`, `docs/domain-model.md` и диаграммах; верификация: archlint/importlint и согласованная owner matrix без прямых чужих domain imports.
 - [ ] 1.3 Оформить явное согласование existing `osint-enrichment` и pending `self-hosted-crawler` по effective source/robots policy; верификация: отсутствуют несовместимые требования/defaults на активируемом маршруте, legacy demo default не изменён скрыто.
 - [ ] 1.4 Зафиксировать ADR единого model gateway/extractor против pending LLMExtractionStrategy в Crawl4AI; верификация: стоимость одного извлечения имеет один action lineage и не дублируется двумя неучтёнными LLM вызовами.
@@ -15,10 +15,10 @@
 ## 2. Независимый корпус и измерения
 
 - [ ] 2.1 Подготовить разрешённый размеченный корпус identity/contact/evidence с footer-trap, articles, multi-entity pages, shared domains/phones и временными конфликтами; верификация: manifest фиксирует ожидаемые субъект/значение/связь и separate holdout без source-family leakage.
-- [ ] 2.2 Подготовить acquisition/browser/OCR corpus 120 объектов с RU/GB и multilingual расширениями; верификация: явно размечены HTML/JS/recipe/text-PDF/scanned/image scopes, языки и locators.
+- [ ] 2.2 Подготовить acquisition/browser/OCR corpus 120 объектов с предложенными пилотными RU/GB и multilingual расширениями; верификация: явно размечены HTML/JS/recipe/text-PDF/scanned/image scopes, языки и locators.
 - [ ] 2.3 Реализовать расчёт field/link precision/recall, false merge, unique-result cost, latency/resource/manual-review metrics; верификация: отчёт воспроизводится по фиксированному manifest и различает upstream claims/наши измерения.
 - [ ] 2.4 Документировать критерии cutover и критические ошибки; верификация: ноль наблюдаемых cross-tenant/wrong-subject случаев на acceptance, размер выборки/неопределённость и per-country показатели не скрыты общей средней.
-- [ ] 2.5 Применить решения исследования USE-01…USE-14 и поддерживать implementation-coverage.json с фактическими apply refs/component versions/evidence; верификация: все 66 source IDs имеют проверенное применение/выбор, каждый REQ связан с реальной реализацией и отсутствуют потерянные требования или замена интеграции одним прочитанным README.
+- [ ] 2.5 Применить USE-01…USE-14 и поддерживать implementation-coverage.json с происхождением CL/D, apply refs/component versions/evidence; верификация: все 66 source IDs имеют проверенное применение/выбор, каждое требование связано с реализацией, рекомендации ассистента не выданы за решения пользователя.
 
 ## 3. Entity identity и доказательства
 
@@ -28,7 +28,7 @@
 - [ ] 3.4 Добавить assertion states/validity/history/source-family и conflict policy; верификация: копии одного источника не повышают независимость, новый телефон не стирает старое наблюдение.
 - [ ] 3.5 Реализовать candidate matching и reversible identity decision с revision checks; верификация: подтверждение/отмена связи восстанавливают projection и не переписывают историю отправленного действия.
 - [ ] 3.6 Ввести страновую нормализацию contacts и независимые измерения identity/link/format/reachability/freshness/action eligibility; верификация: формат не доказывает принадлежность/достижимость, даты/ID не дают телефон, допустимая национальная длина не отклоняется demo-порогом, неполная legal identity не становится registry-confirmed.
-- [ ] 3.7 Добавить persistence/contract tests и dossier evidence UI для этого среза; верификация: реальный RU/GB seed даёт один объяснимо связанный контакт, правила и новая owner model описаны рядом с реализацией.
+- [ ] 3.7 Добавить persistence/contract tests и dossier evidence UI для этого среза; верификация: реальный seed принятых пилотных стран (RU/GB предложены ассистентом) даёт один объяснимо связанный контакт, правила и новая owner model описаны рядом с реализацией.
 
 ## 4. ResearchMission, долговечность и память
 
@@ -52,13 +52,13 @@
 - [ ] 5.2 Реализовать MarketStudy с явным запуском/бюджетом и sourced recommendations; верификация: кнопка показывает стоимость/исход, SERP count не выдаётся за размер рынка, рекомендации не меняют утверждённый выбор автоматически.
 - [ ] 5.3 Реализовать country profiles, local synonyms и разделение registration/operating/served markets; верификация: developer в construction/software не смешивается без проверки контекста, совпавший TLD/IP не доказывает регистрацию.
 - [ ] 5.4 Реализовать quotas/common-pool/min-max и ready support levels; верификация: дефицит DE не закрывается RU без новой явной версии выбора, неподдержанный рынок виден до расхода бюджета.
-- [ ] 5.5 Проверить реальный discovery и registry lookup RU/GB с provider capabilities/стоимостью; верификация: опубликован per-country acceptance report, реальные ключи/доступ не заменены fixtures, доступные источники и ограничения описаны в runbook.
+- [ ] 5.5 Проверить реальный discovery и registry lookup принятых пилотных стран (предложены RU/GB) с provider capabilities/стоимостью; верификация: опубликован per-country acceptance report, реальные ключи/доступ не заменены fixtures, доступные источники и ограничения описаны в runbook.
 
 ## 6. Собственный поиск
 
 - [ ] 6.1 Добавить regional-search gateway с query/source/geography/cost receipts; верификация: различаются search_lang/ui_lang/SERP region и запрос через proxy без country параметра не выдаётся за региональную выдачу.
-- [ ] 6.2 Испытать один external regional API и документировать покрытие/тарифы/лимиты RU/GB; верификация: воспроизводимый разрешённый trial, empty/limited/unavailable не маскируются успехом.
-- [ ] 6.3 Подключить собственный SearXNG backend для разрешённых upstream engines; верификация: видны конкретный engine/лимиты, отказ upstream и fallback, public community instance не является production dependency.
+- [ ] 6.2 Испытать один external regional API и документировать покрытие/тарифы/лимиты принятых пилотных стран (предложены RU/GB); верификация: воспроизводимый разрешённый trial, empty/limited/unavailable не маскируются успехом.
+- [ ] 6.3 Выбрать и подключить принятый backend собственного поискового gateway, исследовав self-hosted metasearch (кандидат SearXNG); верификация: выбор/замена обоснованы, источники/лимиты/ошибки видны, принятая поисковая функция реально работает и не подменяется public community instance.
 - [ ] 6.4 Реализовать tenant-safe поиск в накопленном corpus через PostgreSQL exact/FTS/vector; верификация: локальный no-result не объявляет компанию несуществующей, deletion/ACL отражаются в выдаче и snippets.
 - [ ] 6.5 Добавить source/frontier/recrawl manifest вертикального индекса и обновляемые проекции; верификация: контролируемый набор источников пополняется/переиндексируется, freshness/duplicates видны в UI.
 - [ ] 6.6 По измеренному corpus выбрать необходимость OpenSearch либо сохранить PostgreSQL; верификация: решение опирается на latency/ranking/throughput и стоимость, documented load procedure воспроизводится, дополнительный cluster без доказанной нужды не вводится.
@@ -91,8 +91,9 @@
 - [ ] 9.2 Генерировать материал по разрешённым claims и сохранять связь персонализации с evidence; верификация: новость о расширении не становится выдуманной потребностью купить, неизвестное имя не подставляется.
 - [ ] 9.3 Провести existing exact-version approval через владельцев material/recipient; верификация: изменение текста/адресата и stale decision не разрешают действие, campaign-aware action ID сохраняется.
 - [ ] 9.4 Добавить pre-delivery freshness/suppression/pending-reply checks и unknown-send reconciliation; верификация: ответ/отписка блокирует не начавшийся follow-up, provider-accepted и unknown эффекты не объявляются отменёнными и не вызывают слепой дубль.
-- [ ] 9.5 Реализовать sender profile и task подготовки чужой формы с реальными контактами; верификация: отсутствующее обязательное поле требует данных, отправка остаётся ручной, manual-confirmed отличается от system-verified.
+- [ ] 9.5 Реализовать sender profile и подготовку чужой формы с реальными контактами; верификация: обязательные отсутствующие данные не выдуманы, manual-confirmed отличается от system-verified, режим исполнения указан явно и не приписан пользователю из старого pending change.
 - [ ] 9.6 Добавить видимый список материалов/адресатов/статусов и документацию канала; верификация: реальный разрешённый end-to-end даёт проверяемый материал, точное решение и наблюдаемый исход без подмены доставки capture-only сервисом.
+- [ ] 9.7 Зафиксировать продуктовый режим исполнения чужих форм и согласовать прежний pending план с новой программой; верификация: подготовка/обратный канал сохранены, выбранный ручной либо автоматизированный эффект имеет явные требования/утверждение/evidence, автоматизация не запускается из исследовательского browser режима и отсутствие выбора не выдано за manual-only пожелание пользователя.
 
 ## 10. Наши формы и входящая почта
 

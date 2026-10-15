@@ -9,6 +9,8 @@
 
 Программа ведётся в ветке `concept/intelligent-lead-research`: [концепция](docs/concepts/intelligent-lead-research/README.md), [OpenSpec и задачи](openspec/changes/intelligent-lead-research/tasks.md). Документы описывают план; фактическое выполнение подтверждается задачами и evidence.
 
+[Уточнения пользователя из переписки](docs/intelligent-lead-platform-roadmap.md#ваши-уточнения-из-переписки) сохранены с цитатами; предложения по инструментам и стартовым настройкам отмечены отдельно.
+
 ## Карта репозитория
 
 Корневого `go.mod` нет: модули связывает workspace `go.work` — `backend/cmd/lead-gen`,
