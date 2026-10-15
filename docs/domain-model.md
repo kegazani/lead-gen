@@ -95,6 +95,22 @@ Core-контексты выражают конкурентное преимущ
 
 Владение сущностью всегда у bounded context — не у сервиса и не у роли. Сервис собирает application services своего контекста; совмещённый первый деплой может собрать в одной группе несколько сервисов, но модель и владелец остаются за контекстами (`docs/system-map.md` §2.0, `docs/architecture.md` §8).
 
+### Планируемое исследование и входящие обращения
+
+Изменение [intelligent-lead-research](../openspec/changes/intelligent-lead-research/proposal.md) регистрирует **назначения primary owners**, а не реализованные функции. Runtime, текущий Firecrawl и demo не меняются; новые агрегаты/контракты ниже ещё не зарегистрированы как существующая модель. Полная [концепция](concepts/intelligent-lead-research/README.md), [предлагаемые агрегаты и события](concepts/intelligent-lead-research/07-architecture-and-delivery-plan.md) и [открытые задачи](../openspec/changes/intelligent-lead-research/tasks.md) определяют будущий apply.
+
+| Запланированная capability | Primary owner | Предметная граница |
+|---|---|---|
+| `lead-entity-resolution` | `lead-management` | Юрлицо/бренд/сайт и типизированные доказательные связи; домен не универсальная юридическая идентичность |
+| `lead-research-memory` | `lead-management` | Источники, locators, временные утверждения и производная память в разрешённой области |
+| `inbound-lead-conversations` | `lead-management` | Клиентские входящие обращения, связь с лидом/контактом и переписка; qualification — у `engagement-observation` |
+| `adaptive-lead-research` | `agent-orchestration` | Миссия, допустимые действия LLM, долговечность и бюджет; факты принадлежат `lead-management` |
+| `international-market-discovery` | `audience` | Рекомендации рынков по офферу; человеческий выбор стран заявки — у `request-fulfillment` |
+| `regional-web-acquisition` | `integration-platform` | Search/fetch/registry/browser/document/OCR, capabilities и receipts без предметного вердикта |
+| `research-to-outreach` | `outreach-orchestration` | Передача исследования в существующие материал, точное решение и доставку; владельцы текста/адреса не меняются |
+
+Диаграмма bounded contexts помечает эти назначения как план. Добавление entity/aggregate/event/relationship при реализации требует синхронного обновления каталога, этой модели и затронутых диаграмм; ни тело входящего письма, ни контактные данные не становятся общей зелёной памятью платформы.
+
 ### Capability matrix
 
 | Capability | Владелец | Сервис | Роли | Основной результат |

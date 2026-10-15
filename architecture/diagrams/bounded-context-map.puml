@@ -14,18 +14,35 @@ package "Generic" {
     primary owner: integration-platform
     lead-management consumes published LLM
     budget contract; no foreign domain import
+    План intelligent-lead-research:
+    regional-web-acquisition
   end note
 }
 package "Core" {
   rectangle "Управление лидами\n<<core>>" as Leads
   note right of Leads
     capability: lead-workflow, lead-email
+    План intelligent-lead-research:
+    lead-entity-resolution, lead-research-memory
+    inbound-lead-conversations
   end note
   rectangle "Аудитория\n<<core>>" as Audience
+  note right of Audience
+    План intelligent-lead-research:
+    international-market-discovery
+  end note
   rectangle "Оркестрация исходящих\nдействий\n<<core>>" as Outreach
+  note right of Outreach
+    План intelligent-lead-research:
+    research-to-outreach
+  end note
   rectangle "Доставка сообщений\n<<core>>" as Delivery
   rectangle "Исполнение заявок\nклиента\n<<core>>" as Requests
   rectangle "Оркестрация агентов\nкомпаний\n<<core>>" as Agents
+  note right of Agents
+    План intelligent-lead-research:
+    adaptive-lead-research
+  end note
 }
 package "Supporting" {
   rectangle "Производство контента\n<<supporting>>" as Content
@@ -68,6 +85,8 @@ legend bottom
   один контекст — один сервис (12 сервисов).
   Роли api / ingest / sender / worker / chains / schedule —
   режимы запуска внутри сервиса, а не единицы размещения.
+  Пометки «План intelligent-lead-research» назначают владельцев;
+  новые функции, агрегаты и связи исполнения пока не реализованы.
   Консоль топологии — эксплуатационная проекция роли api
   сервиса platform-governance, а не отдельный контекст или сервис:
   граф строится из объявлений каталога, метрики читаются
