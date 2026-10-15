@@ -9,7 +9,7 @@
 - Проверены относительные Markdown links/anchors, закрытие code fences и JSON журнала источников.
 - Все 66 source receipts сверены по размеру/SHA-256 с реально прочитанными материалами; это не live integration benchmark.
 - Семь новых capability имеют по одному primary owner в каталоге и явно помечены как план в доменной модели/диаграмме.
-- Все 78 implementation tasks остаются открытыми.
+- Все 83 implementation tasks остаются открытыми; первичная поставка `72342aa` содержала 78 задач.
 - `git diff --check` / staged whitespace check — без ошибок.
 
 ## Архитектурный гейт
@@ -23,3 +23,9 @@
 Runtime/Compose/данные demo не менялись. `make check` и полные runtime suites не запускались для этой поставки документов/назначений владельцев. Реальные crawler/OCR/proxy/registry/mailbox integrations и отправка не выполнялись. PlantUML/Mermaid здесь проверялись по структуре и ссылкам, без отдельного rendering benchmark.
 
 Реализация не объявляется завершённой; full project gates и реальные integrations нужны при apply согласно `AGENTS.md`. Тарифы, поддержка стран, лицензии конкретных release/model weights и победитель crawler benchmark должны проверяться перед соответствующим включением.
+
+## Продолжение проработки
+
+После `72342aa` уточнены критерии принятия/target unit, receipt-backed credit и пересчёт, lifecycle/приоритеты миссии, UI счётчиков и R1–R4. Для inbound добавлены conflicting correlation refs, pending-reply hold, new-body intents, исходы reply/send race и различие сообщений/уникальных лидов.
+
+Изменены только существующие документы и planning artifacts. Владение capability/контекстами осталось прежним. Новых внешних источников/платных проверок в этом уточнении нет; журнал 66 прочитанных материалов сохраняется. Strict validation, 46 scoped links/anchors, whitespace, source receipts и task IDs проверены повторно; 83 задачи открыты. Archlint повторно сообщил только известную ошибку `content-production`. Полный runtime gate относится к будущему apply.

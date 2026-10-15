@@ -1,10 +1,10 @@
 # Tasks
 
-Это **план будущей реализации**, не отчёт об исполнении. Все задачи открыты. Карта P0–P8, владельцы и критерии — [документ 7](../../../docs/concepts/intelligent-lead-research/07-architecture-and-delivery-plan.md). Для каждого apply-среза перед отметкой выполненного обязательны проектные гейты из `AGENTS.md`; проверки в пунктах ниже дополняют их. Для параллельных продуктовых приоритетов допустим отдельный согласованный apply-change с сохранением контрактов/зависимостей.
+Это **план будущей реализации**, не отчёт об исполнении. Все задачи открыты. Приоритетный старт R1 → R2 → R3 и независимое исследование R4, полная карта P0–P8, владельцы и критерии — [документ 7](../../../docs/concepts/intelligent-lead-research/07-architecture-and-delivery-plan.md). Для каждого apply-среза перед отметкой выполненного обязательны проектные гейты из `AGENTS.md`; проверки в пунктах ниже дополняют их. Для параллельных продуктовых приоритетов допустим отдельный согласованный apply-change с сохранением контрактов/зависимостей.
 
 ## 1. Зависимости требований и владение
 
-- [ ] 1.1 Зафиксировать единицу результата заявки: компании/контакты/email-ready и quota semantics; верификация: примеры 25 candidates, 8 confirmed, 5 email-ready имеют разные ожидаемые дефициты и UI labels.
+- [ ] 1.1 Зафиксировать единицу результата и criteria version: company / company-with-contact / email-ready-company, для R1–R2 выбрать company-with-contact; верификация: снимок 17 кандидатов / 8 различённых / 6 с каналом / 5 email-ready даёт дефицит 19 при цели 25 компаний с контактом и иной зачёт при иной версии цели.
 - [ ] 1.2 При вводе первой entity/evidence/mission дополнить уже зарегистрированные назначения capability агрегатами, VO, событиями, policies и relationships из design в `architecture/domain-catalog.yaml`, `docs/domain-model.md` и диаграммах; верификация: archlint/importlint и согласованная owner matrix без прямых чужих domain imports.
 - [ ] 1.3 Оформить явное согласование existing `osint-enrichment` и pending `self-hosted-crawler` по effective source/robots policy; верификация: отсутствуют несовместимые требования/defaults на активируемом маршруте, legacy demo default не изменён скрыто.
 - [ ] 1.4 Зафиксировать ADR единого model gateway/extractor против pending LLMExtractionStrategy в Crawl4AI; верификация: стоимость одного извлечения имеет один action lineage и не дублируется двумя неучтёнными LLM вызовами.
@@ -24,7 +24,7 @@
 - [ ] 3.3 Добавить evidence documents/revisions/artifact refs/locators и subject scopes; верификация: контакт можно восстановить до сохранённого фрагмента и версии источника, footer каталога не становится контактом каждой компании.
 - [ ] 3.4 Добавить assertion states/validity/history/source-family и conflict policy; верификация: копии одного источника не повышают независимость, новый телефон не стирает старое наблюдение.
 - [ ] 3.5 Реализовать candidate matching и reversible identity decision с revision checks; верификация: подтверждение/отмена связи восстанавливают projection и не переписывают историю отправленного действия.
-- [ ] 3.6 Ввести страновую нормализацию contacts и evidence-based readiness; верификация: нечисловые labels/даты/ID не дают телефоны, допустимая национальная длина не отклоняется универсальным demo-порогом, MX не доказывает ящик.
+- [ ] 3.6 Ввести страновую нормализацию contacts и независимые измерения identity/link/format/reachability/freshness/action eligibility; верификация: формат не доказывает принадлежность/достижимость, даты/ID не дают телефон, допустимая национальная длина не отклоняется demo-порогом, неполная legal identity не становится registry-confirmed.
 - [ ] 3.7 Добавить persistence/contract tests и dossier evidence UI для этого среза; верификация: реальный RU/GB seed даёт один объяснимо связанный контакт, правила и новая owner model описаны рядом с реализацией.
 
 ## 4. ResearchMission, долговечность и память
@@ -35,8 +35,13 @@
 - [ ] 4.4 Реализовать budget/time/attempt limits и actual cost ledger; верификация: search/proxy/browser/OCR/LLM измеряются своими единицами, неизвестный тариф не считается нулём и hard budget не расширяется моделью.
 - [ ] 4.5 Сохранять episodic/negative memory с TTL, scope и нормализованной целью; верификация: не повторяется та же бесполезная попытка, но разрешается другой язык/источник после конкретного negative result.
 - [ ] 4.6 Реализовать exact/typed-graph/lexical/semantic retrieval с проверкой полномочий; верификация: похожая запись чужого tenant и revoked evidence не попадают в prompt/summary/vector response.
-- [ ] 4.7 Добавить stop/pause/resume/cancel/partial причины и прогресс заявки; верификация: рестарт сохраняет счётчики/артефакты, UI показывает текущий шаг, last activity, дефицит и основание ожидания.
+- [ ] 4.7 Добавить отдельные execution state/phase/waiting reason/completion outcome и разрешённые stop/resume/cancel; верификация: рестарт сохраняет артефакты, heartbeat отличается от meaningful progress, resume не повышает бюджет, миссия сама не присваивает fulfilled всей заявке.
 - [ ] 4.8 Зафиксировать workflow/prompt/model versions и описать recovery; верификация: replay старой истории не вызывает новый LLM/платный запрос без разрешённого действия, документация совпадает с наблюдаемым recovery.
+
+- [ ] 4.9 Реализовать receipt-backed ResultMembership и canonical credit по mission/criteria/unit; верификация: persist failure, duplicate receipt, конкурентный последний слот, два домена одного субъекта и merge/revoke до завершения дают правильный зачёт/дефицит без потери evidence/cost.
+- [ ] 4.10 Реализовать completion snapshot и ограниченное согласование in-flight действий; верификация: deadline не держит миссию бесконечно, late receipt имеет происхождение без тихого изменения итога, unknown cost не считается нулём и резерв корректно reconciled.
+- [ ] 4.11 Реализовать policy приоритетов/нормализованных попыток и справедливую очередь субъектов; верификация: перестановка слов не обнуляет лимит, no-progress seed уступает другим с reason, разные языки/источники допускаются по обоснованному действию.
+- [ ] 4.12 Реализовать revisioned progress snapshot и фильтры списка сохранённых кандидатов/credit; верификация: reconnect/duplicate/out-of-order events не меняют зачёт, 17 кандидатов и 6 принятых видны со своими причинами, ETA не выдумывается.
 
 ## 5. Международные рынки
 
@@ -82,7 +87,7 @@
 - [ ] 9.1 Реализовать versioned research-handoff с offer/recipient/evidence/language refs; верификация: телефон-only company не закрывает email-ready, unavailable recipient/material различаются.
 - [ ] 9.2 Генерировать материал по разрешённым claims и сохранять связь персонализации с evidence; верификация: новость о расширении не становится выдуманной потребностью купить, неизвестное имя не подставляется.
 - [ ] 9.3 Провести existing exact-version approval через владельцев material/recipient; верификация: изменение текста/адресата и stale decision не разрешают действие, campaign-aware action ID сохраняется.
-- [ ] 9.4 Добавить pre-delivery freshness/suppression checks и unknown-send reconciliation; верификация: отписка после approval блокирует отправку, обрыв SMTP после возможного принятия не вызывает слепой дубль.
+- [ ] 9.4 Добавить pre-delivery freshness/suppression/pending-reply checks и unknown-send reconciliation; верификация: ответ/отписка блокирует не начавшийся follow-up, provider-accepted и unknown эффекты не объявляются отменёнными и не вызывают слепой дубль.
 - [ ] 9.5 Реализовать sender profile и task подготовки чужой формы с реальными контактами; верификация: отсутствующее обязательное поле требует данных, отправка остаётся ручной, manual-confirmed отличается от system-verified.
 - [ ] 9.6 Добавить видимый список материалов/адресатов/статусов и документацию канала; верификация: реальный разрешённый end-to-end даёт проверяемый материал, точное решение и наблюдаемый исход без подмены доставки capture-only сервисом.
 
@@ -95,16 +100,18 @@
 - [ ] 10.5 Реализовать transport dedup/cursor/ack/backfill; верификация: reconnect, duplicate webhook, UIDVALIDITY reset и missing/duplicate Message-ID не теряют и не дублируют message effects.
 - [ ] 10.6 Реализовать MIME/charset/attachments parsing в red storage и безопасный просмотр; верификация: raw message lineage, sanitized HTML, limits, отсутствие автозагрузки внешнего контента и повторное использование document/OCR refs.
 - [ ] 10.7 Проверить реальные receiving aliases/Reply-To и correlation token mapping; верификация: ответ приходит в наш mailbox, token opaque, неправильный binding не открывает чужую conversation, неподдержанное plus-addressing не заявлено рабочим.
-- [ ] 10.8 Добавить correlation по scoped headers/token/provider thread и ambiguity review; верификация: одинаковые темы, forwards, shared domain, missing refs не сливают чужих участников и допускают исправление связи.
+- [ ] 10.8 Добавить correlation по scoped headers/token/provider thread и ambiguity review; верификация: conflicting reply refs/References, одинаковые темы, forwards, общий endpoint двух компаний и missing refs не сливают участников и допускают аудируемое исправление.
 - [ ] 10.9 Реализовать создание/дополнение inbound lead и inquiry disposition; верификация: human business message даёт кандидат/обновление, reply не дублирует лид, spam/OOO/DSN остаются различимыми.
-- [ ] 10.10 Реализовать intent/type classification с цитатами/версиями и operator correction; верификация: OOO не interest, unsubscribe при положительном тоне сохраняется, подпись с номером не объявляется registry-confirmed.
+- [ ] 10.10 Реализовать intent/type classification с new-body quotes/версиями и operator correction; верификация: OOO не interest, новая просьба не писать не теряется в старой положительной цитате, подпись с номером не объявляется registry-confirmed.
 - [ ] 10.11 Связать qualified reply/отказ с engagement/outreach pause/stop; верификация: human reply ставит цепочку на паузу, отписка подавляет дальнейшее действие, green event не содержит MIME/body.
 - [ ] 10.12 Добавить общий inbox и conversation timeline в contact/company UI; верификация: источник/направление/связь/классификация/последнее действие/ответственный видны в tenant scope, исправление correlation имеет audit.
 - [ ] 10.13 Описать mailbox/form runbook и replay/recovery/retention; верификация: documented real acceptance выполняется с подключённым тестовым mailbox и клиентским form sink, а не только event endpoint или Mailpit.
 
+- [ ] 10.14 Подключить scope-safe conversation-signal от владельца переписки для pending-reply hold до глубокой квалификации, зарегистрировать relationship/contract при apply и переходы по outcome; верификация: classification timeout сохраняет видимую паузу, pending hold не выдаётся за qualified human reply, конфликт correlation требует review, human/OOO/bounce/отписка имеют разные исходы и origin/число уникальных лидов не подменяются числом сообщений.
+
 ## 11. Пакетная цель, feedback и эксплуатация
 
-- [ ] 11.1 Выполнить цель 25 различимых единиц с квотами/проверкой контактов/материалами; верификация: terminal fulfilled либо partial с объяснённым shortfall, каждый счётчик раскрывается объектами, чужие pool matches не маскируются новыми находками.
+- [ ] 11.1 Выполнить цель 25 различимых целевых единиц с квотами/контактами/материалами; верификация: mission completed с target-reached либо partial и объяснённым shortfall, terminal статус заявки устанавливает её владелец, каждый счётчик раскрывается объектами и источник найденных данных не маскируется.
 - [ ] 11.2 Добавить целевые metrics/alerts для stuck jobs, no-progress, budget, source health и inbound lag; верификация: провал источника или ingest виден до ложного статуса «готово», нет PII/secrets в telemetry.
 - [ ] 11.3 Реализовать отзыв evidence и удаление по purpose/retention во всех artifacts/crops/vector/summary/conversation projections; верификация: удалённое/запрещённое не возвращается через производный retrieval или cached prompt context.
 - [ ] 11.4 Проверить feedback адреса/компании/кампании и operator исправления; верификация: bounce одного адреса не удаляет компанию, оценка принадлежит заявке, исправление identity не повторяет доставку.

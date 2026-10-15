@@ -108,7 +108,33 @@ Versioned sender profile содержит реальные принимающи�
 
 Планируемые aggregate roots, entities/VO, события и контракты указаны в [матрице владельцев](../../../docs/concepts/intelligent-lead-research/07-architecture-and-delivery-plan.md#73-предлагаемая-регистрация-в-domain-catalog). Реальные дополнения регистрируются при apply в том же change с domain-model/диаграммами. Сейчас каталог получает только primary owners новых capability; доменная модель и диаграмма помечают их как план. Новые entities/aggregates/contracts ещё не вводятся.
 
-Сначала один RU/GB seed до подтверждённого контакта на Firecrawl, затем memory/progress и международные профили, собственный acquisition/OCR, batch 25/материалы, inbound/mail и controlled communication. Inbound можно вынести раньше batch по продуктовому приоритету. Каждая стадия имеет независимый real acceptance; детальный план P0–P8 и стоимость — в документе 7.
+Полный объём P0–P8 поставляется независимыми срезами. Рекомендуемый старт R1–R4 уточнён решением 17: доказанный контакт, затем цель/прогресс и входящая переписка; собственный acquisition исследуется отдельно. Каждая стадия имеет реальный acceptance; зависимости, стоимость и границы прототипа — в документе 7.
+
+### 14. Зачёт по версии цели и сохранённому membership
+
+`research-mission` владеет составом результатов и CriteriaSnapshot: target unit, критерии, goal и quota semantics. Варианты unit — company, company-with-contact, email-ready-company; первый прототип использует company-with-contact. `lead-management` предоставляет доказательства/идентичность, а eligibility действия разрешается владельцами outreach/channel policy.
+
+Membership записывается после устойчивого принятия результата; canonical entity/mission/unit/criteria revision дедуплицируют повтор. При merge/revoke до завершения зачёт объяснимо пересчитывается, после — исторический completion snapshot и текущая актуальность различаются. Альтернатива счётчика по числу URL/regex hits отклонена: он не доказывает сохранение или уникальность.
+
+### 15. Детерминированные приоритеты и отдельный lifecycle
+
+Начальная стратегия использует приоритеты: существенный конфликт → различить субъект → найти контакт → доказать принадлежность → закрыть конкретный пробел качества → зачесть. Information gain формула остаётся оптимизацией по измеренным исходам, не самостоятельной оценкой истинности. Попытки нормализованы по вопросу/источнику/географии; исчерпанная стратегия не начинается заново от перестановки слов.
+
+Execution state, phase, waiting reason и completion outcome раздельны. Heartbeat не предметный прогресс. Результат завершения миссии не присваивает сам terminal status клиентской заявке. Альтернатива единого «в работе/готово» скрывает сохранение, недобор, ожидание и другие фазы.
+
+### 16. Pending reply и конфликт correlation
+
+Уверенно связанный устойчивый inbound message создаёт ожидание разбора в применимой sequence до глубокой qualification. Ошибка модели сохраняет hold и видимую задачу; конфликт reply refs/headers у `conversation` требует review, не произвольного приоритета одного поля. Источник лида и количество сообщений остаются разными метриками.
+
+Для раннего hold `lead-management` публикует scope-safe `conversation-signal` и в outreach, и в engagement. Первый потребитель применяет временное ожидание, второй отдельно квалифицирует событие. Необработанное письмо не выдаётся за подтверждённый human reply; будущая прямая relationship и schema регистрируются при apply.
+
+`outreach-orchestration` владеет pause/eligibility revision; `message-delivery` повторно проверяет разрешённость перед внешним вызовом. Уже принятый/неопределённый SMTP эффект не отменяется задним числом. Альтернатива обещания атомарного stop между почтой, БД и провайдером не соответствует внешним системам.
+
+### 17. Последовательные прототипы R1–R4
+
+Уточнённый старт: R1 один seed RU/GB до доказанного контакта на Firecrawl → R2 durable target/counts/UI → R3 наша форма/реальный mailbox/conversation → R4 собственный acquisition/browser/OCR, который можно исследовать независимо. Это приоритетные срезы P0–P8; расширенные рынки/MarketStudy/индекс не являются условием первого end-to-end.
+
+Markdown-only adapter сохраняет именно Markdown evidence, без выдуманного DOM. Неактивный OCR честно отдаёт unsupported/review. Альтернатива одновременного переписывания движка, предметной модели, поиска и почты затрудняет установление причины ошибок. Контракт и критерии R1–R4 закреплены в документе 7; все реализации остаются открытыми задачами.
 
 ## Risks / Trade-offs
 
@@ -125,7 +151,7 @@ Versioned sender profile содержит реальные принимающи�
 
 ## Migration Plan
 
-1. P0: оформить зависимости effective policy/catalog и независимый acceptance corpus. Согласовать robots противоречие existing/pending, browser autonomy, прежнее исключение mail sync и разные смыслы form-submission. Это не изменение defaults текущего demo.
+1. P0: оформить владельцев, versioned contracts и независимый acceptance corpus. Перед R4 согласовать robots/browser противоречия existing/pending; перед R3 — прежнее исключение mail sync и разные смыслы form-submission. Эти зависимости относятся к активации нужного пути и не блокируют допустимый R1 на действующем Firecrawl.
 2. Additive research tables/contracts и legacy mapping под versioned tenant route, без замены старых company IDs/links. Сначала чтение snapshots/quality и ограниченный real seed.
 3. Включать memory/actions/markets и acquisition workers отдельно по cohort/source capabilities. Неактивные integrations явно недоступны и не закрывают задачи.
 4. Включить red inbound intake и один реальный mailbox после scope/transport acceptance; проверить replay/backfill/correlation и остановку follow-up.

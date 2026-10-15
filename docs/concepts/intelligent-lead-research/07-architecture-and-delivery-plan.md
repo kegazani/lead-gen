@@ -38,6 +38,7 @@ flowchart TD
     U --> M[message-delivery]
     F[Наши формы / mailbox] --> I
     I --> V[lead-management: входящее обращение и conversation]
+    V -. ожидание разбора связанного ответа .-> U
     V --> E[engagement-observation: квалификация ответа]
     E --> U
     E --> N[analytics]
@@ -80,10 +81,12 @@ flowchart TD
 | lead-management → agent-orchestration | `research-dossier`, `research-memory`, `identity-resolution` | Чтение разрешённого контекста, запись наблюдений, предложения/решения связей |
 | lead-management → outreach-orchestration | `research-handoff` | Снимок готовности контакта и фактов; без скрытой отправки |
 | integration-platform → lead-management | `inbound-message-receipt` | Нормализованный transport receipt + red artifact ref; стабильная dedup identity |
-| lead-management → engagement-observation | `conversation-signal` | Результат корреляции и квалификационные данные через scope-safe refs |
+| lead-management → engagement-observation / outreach-orchestration | `conversation-signal` | Устойчивое сообщение, результат корреляции и состояние ожидания qualification через scope-safe refs; outreach применяет pending hold, engagement квалифицирует отдельно |
 | engagement-observation → outreach-orchestration | существующий `engagement-event` | Остановить/поставить на паузу/предложить следующий шаг по правилам владельца |
 
 Existing `approved-action`, `content-version`, `delivery-target` и действующие владельцы адреса/материала сохраняются. Form relay и outbound form task получают однозначное направление/имя без несовместимого изменения текущего `form-submission`.
+
+Устойчивый `conversation-signal` с подтверждённой корреляцией позволяет временно удержать связанную sequence до глубокой классификации. Это контрольный сигнал, а не `engagement-event` с выдуманным human reply. Квалифицированное событие по-прежнему публикует только `engagement-observation`; причины hold и результат qualification различимы. Прямая подписка outreach и её published contract регистрируются при соответствующем apply вместе с каталогом/диаграммами.
 
 Схема каждого контракта включает tenant/purpose, request/action IDs, версии, deadlines, пределы и различимые outcomes. Payload события не содержит полного dossier, email body или proxy credentials. Разрешение artifact refs проверяет область доступа повторно, а не доверяет одному факту наличия ссылки.
 
@@ -172,3 +175,79 @@ P4 может исследоваться параллельно P1–P3 как �
 Перед отметкой реализации выполненной нужны `make check`, `go -C tools/archlint run .`, strict validation и требуемые real integration checks согласно `AGENTS.md`. Эта поставка содержит только план; implementation tasks остаются открытыми. Проверка Markdown/OpenSpec не доказывает готовность crawler/OCR/mailbox к production.
 
 Включение — versioned tenant/cohort/source profile; миграции additive. Старый demo читает прежние company refs. Rollback отключает новый route и сохраняет evidence/receipts/history для разбора; он не удаляет входящие письма и не повторяет уже отправленные сообщения. Firecrawl удаляется как постоянная зависимость только после отдельной приёмки собственного контура и согласованного периода наблюдения.
+
+## 7.11. Первый прототип: конкретная граница
+
+Назначение первого прототипа — подтвердить один исследовательский цикл на реальных источниках, затем расширить его до контролируемой цели и входящей переписки. Это уточнение приоритета существующих P0–P8, не новая реализация и не замена их критериев.
+
+| Поставка | Объём | Что показываем | Условие принятия |
+|---|---|---|---|
+| R1. Доказанный контакт | Один seed за запуск; RU или GB как отдельный country profile; name/registry ID; text/JSON/доступный Markdown | Различённый субъект, contact link, dossier/evidence, понятный исход | Реальный lookup/acquisition и сохранение; invalid/ambiguous данные не засчитаны |
+| R2. Управляемая цель | Несколько seed, сначала малый прогон, затем 25; unit company-with-contact; durable queue/budget | Текущий шаг, сохранённые кандидаты, зачёт, дефицит, pause/partial | Нет дублей/потерь при рестарте; каждый счётчик открывает соответствующие записи |
+| R3. Обратная связь | Одна наша форма, один рабочий mailbox, один sender profile, controlled outgoing reply | Inbound lead/conversation, цитаты/intent, пауза по ответу | Реальное поступление и ответ; повтор не создаёт дубль, конфликт correlation требует review |
+| R4. Расширенное acquisition | Crawlee/Crawl4AI benchmark, browser recipes, document/OCR и geo profiles | Те же dossier и locators на новых классах источников | Прирост правильных результатов/стоимости измерен, путь совместим с R1–R3 |
+
+R1 работает на существующем Firecrawl через совместимую обёртку. Raw DOM нельзя объявить полученным, если adapter вернул только Markdown: сохраняется именно это представление с hash/offset/нормализатором и честным capability receipt. Registry JSON и его field paths могут быть отдельными evidence. Страница с контактом только в изображении до R4 даёт понятный unsupported/review, а не фиктивное чтение OCR.
+
+RU/GB профили не предполагаются готовыми по одному справочнику: для каждого обязательна реальная проверка источника и доступа. Известный реестровый ID делает первый путь проверяемым; отсутствие публичного ID остаётся видимым пробелом/ручным случаем, не причиной выдумывать номер или терять обращение.
+
+Оператор запускает R1 в области человеческого поручения. Новый research path имеет отдельную версию и не стартует одновременно с legacy demo по одному execution intent. Миссия публикует результат/прогресс; финальный переход клиентской заявки остаётся у `request-fulfillment`. До отдельной проводки terminal fulfillment R1 не завершает всю заявку самостоятельно.
+
+## 7.12. Минимальный состав запуска
+
+Использовать существующие Go contexts, PostgreSQL, Temporal и object storage; выбирать только реально используемые роли топологии. Для R1 нужны рабочие source/acquisition access и text/structured модель, если подключается LLM. Embeddings не обязательны: exact/alias/FTS и корректные свидетельства полезнее неработающей vector memory.
+
+Кандидатная граница процессов:
+
+- Существующая HTTP-поверхность оператора и read models владельцев.
+- Один research worker на Temporal task queue с bounded concurrency.
+- Существующие persistence/outbox/инфраструктурные роли, нужные этому пути.
+- Firecrawl adapter сейчас; один собственный acquisition worker появляется только в R4.
+- Document/OCR worker запускается при наличии принятого профиля и ресурса; не загружается в каждый Go API process.
+- Один mailbox connector и red intake для R3; свой полноценный mail server в этот срез не входит.
+
+Это проект deployment-состава, не готовый новый Compose. Точные task queue/endpoint/env names фиксируются при apply вместе с runbook. Текущие контейнеры не перестраиваются ради этой документации.
+
+## 7.13. Обязательные данные и переходы прототипа
+
+| Владелец / существующий предложенный AR | Минимальное дополнение внутри модели | Инвариант |
+|---|---|---|
+| agent-orchestration / research-mission | CriteriaSnapshot, Action, ResultMembership, CompletionSnapshot | Один membership на canonical entity/target unit/criteria version; финальный снимок воспроизводим |
+| lead-management / research-entity | Identifiers, typed relations, quality dimensions | Не путать неполную legal identity с реестровым подтверждением |
+| lead-management / evidence-document | Представление, hash, subject scope, locator, normalization version | Значение восстановимо в том представлении, которое реально получено |
+| lead-management / identity-decision | Основание, participant versions, supersession | Merge/unmerge приводит к наблюдаемому пересчёту зависимых результатов |
+| lead-management / lead-inquiry, conversation | ReceiptRef, origin, correlation decision, new-body quotes, intent version | Повтор не создаёт новый лид; thread conflict не разрешается сходством темы |
+| outreach-orchestration / campaign | Pending-reply hold, eligibility revision, sender profile refs | Не начатый follow-up не продолжается после применимого ответа/отказа |
+
+Названия внутренних частей проектные, не готовые типы/таблицы. Нужные новые сущности/VO/policies и контракты регистрируются при apply в том же каталоге владельца. Отдельного универсального `AI brain` aggregate или общей бизнес-базы integration-platform не вводится.
+
+Проекция прогресса хранит `mission_ref`, `criteria_version`, `projection_revision`, target unit/target, сохранённые candidate refs, различённые subject refs, credit membership, current phase/question, heartbeat time, last meaningful result time, waiting reason, completion outcome и next eligible attempt time. Транспорт UI может быть polling/SSE; оба должны читать одну авторитетную проекцию, а не складывать клиентские callbacks.
+
+При gap/reconnect UI загружает snapshot с revision и затем последующие события. Дубли/порядок доставки не меняют зачёт. Клиент не уменьшает «осталось» по одному факту прихода нового URL.
+
+## 7.14. Контракт приёмки первой поставки
+
+Каждая строка — отдельный ожидаемый результат, а не обещание одинаковой успешности всех сайтов.
+
+| Проверка | Ожидаемый наблюдаемый исход |
+|---|---|
+| ID → реестр → сайт → контакт другого источника | Один устойчивый dossier с цепочкой; сайт необязателен, если связь доказана иначе |
+| Только похожее имя без сильного основания | Candidate/review с пробелом, без автоматического merge |
+| Email footer владельца каталога | Отдельный субъект/отклонённое основание, зачёт не вырос |
+| Контакт только на image до OCR capability | Unsupported/review с объяснением; распознанные символы не выдуманы |
+| Извлечение успешно, запись результата неуспешна | Видна ошибка persist, сохранённый зачёт не вырос |
+| Повтор одного receipt | Та же сущность/результат, без увеличения счётчика |
+| Два workers дали разные домены одного субъекта | Один зачёт по выбранной единице |
+| После merge подтверждены дубли | Наблюдаемый пересчёт и дефицит до закрытия; доказательства/стоимость сохранены |
+| Deadline/budget при частичном результате | Completed/partial с сохранёнными объектами и stop reason |
+| Живой worker давно не дал результата | Различимые heartbeat и last meaningful result, отсутствие выдуманного ETA |
+
+Для R2 добавляются concurrent last slot, terminal/in-flight race, resume без расширения бюджета и восстановление UI snapshot. Для R3 — реальный form/mailbox intake, conflicting reply refs, отсутствие компании, OOO/отписка/вопрос, classification timeout и три исхода reply/send race из документа 10.
+
+Перед R4 источник/формат/география входят в capability manifest только после собственного acceptance. Fixture tests обязательны для ошибок, но live source/mailbox путь не закрывается fixture или тестовым endpoint без фактического подключения.
+
+## 7.15. Порядок дальнейшей реализации
+
+Рекомендуемый старт: R1 evidence/entity/contact → R2 durable counts/progress → R3 inbound loop. Исследование собственного acquisition R4 можно вести независимо с тем же контрактом; Firecrawl даёт возможность проверить предметную логику до замены движка. Полная MarketStudy, новые страны, сложный ranking и массовая эксплуатация развиваются после качества основного цикла.
+
+Каждую поставку удобнее оформлять малым apply-change, ссылающимся на нужные требования этой концепции. Требования концепции и её незавершённые задачи при этом не объявляются реализованными автоматически. Перенос задачи имеет явную ссылку и критерий, чтобы не получить два несогласованных плана и два параллельных запуска одной заявки.
