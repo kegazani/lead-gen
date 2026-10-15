@@ -5,7 +5,7 @@
 
 ## Полная программа интеллектуальной лидогенерации
 
-**Весь согласованный объём обязателен к реализации:** [36 требований и применение исследования](docs/intelligent-lead-platform-roadmap.md). Там собраны LLM-поиск и память, международные рынки, собственные поиск/краулер, browser/OCR, письма, формы, входящие лиды и ответы. Начальные этапы R1–R4 не сокращают итоговый объём.
+**Весь согласованный объём обязателен к реализации:** [36 требований и применение исследования](docs/intelligent-lead-platform-roadmap.md). Там собраны LLM-поиск и память, международные рынки, собственные поиск/краулер, browser/OCR, письма, формы, входящие лиды и ответы. Этапы S0–S6 не сокращают итоговый объём.
 
 Программа ведётся в ветке `concept/intelligent-lead-research`: [единая концепция от общего к частному](docs/concepts/intelligent-lead-research/README.md), [OpenSpec и задачи](openspec/changes/intelligent-lead-research/tasks.md). Документы описывают план; фактическое выполнение подтверждается задачами и evidence.
 
@@ -118,3 +118,5 @@ make openspec  # openspec validate --all --strict
 Цели обходят модули по списку (`MODULES` в `Makefile`), потому что `go build ./...`
 из корня модули workspace не покрывает. Отдельные команды см. в `Makefile`.
 OpenSpec: `openspec validate <change> --strict`.
+
+Подробный план развития: [поиск и краулинг](docs/concepts/intelligent-lead-research/11-search-implementation-blueprint.md), [полный аудит](docs/concepts/intelligent-lead-research/12-change-audit.md), [94 задачи с зависимостями](docs/concepts/intelligent-lead-research/task-blueprints.json). Бюджет приложения — только Firecrawl; остальные инструменты используют существующий proxy.

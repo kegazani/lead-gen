@@ -1,0 +1,3970 @@
+{
+  "schema_version": 1,
+  "baseline": "bbe49f6c7e97ae3ba0cf6b21b55b45e7d5874407",
+  "status": "План; все задачи pending. Код и интеграции этим аудитом не реализованы.",
+  "financial_scope": "Только Firecrawl. integration-platform владеет единым credit ledger; agent хранит grant refs. Остальные инструменты через существующий proxy без app monetary budget.",
+  "dependency_semantics": "depends_on — готовность контракта/результата для приёмки задачи; параллельная работа по согласованным контрактам допустима. Этапы S0–S6 — продуктовые результаты, не замена DAG.",
+  "topological_layers": [
+    [
+      "1.1",
+      "1.3"
+    ],
+    [
+      "1.2",
+      "2.1",
+      "2.2",
+      "8.2",
+      "9.7"
+    ],
+    [
+      "1.5",
+      "3.1",
+      "5.1",
+      "10.1"
+    ],
+    [
+      "1.4",
+      "2.3",
+      "2.5",
+      "3.2",
+      "3.3",
+      "4.1",
+      "5.3"
+    ],
+    [
+      "2.4",
+      "3.4",
+      "4.3",
+      "4.16",
+      "5.4",
+      "7.1",
+      "8.4",
+      "8.6",
+      "10.2"
+    ],
+    [
+      "3.5",
+      "3.6",
+      "4.2",
+      "4.4",
+      "4.5",
+      "7.2",
+      "10.3",
+      "10.4"
+    ],
+    [
+      "3.8",
+      "4.6",
+      "4.7",
+      "4.9",
+      "4.13",
+      "6.1",
+      "7.6",
+      "8.5",
+      "10.5"
+    ],
+    [
+      "3.7",
+      "4.8",
+      "4.10",
+      "4.11",
+      "4.14",
+      "4.17",
+      "5.2",
+      "6.2",
+      "6.4",
+      "8.7",
+      "9.1",
+      "10.6"
+    ],
+    [
+      "4.12",
+      "4.18",
+      "5.5",
+      "6.3",
+      "6.5",
+      "7.3",
+      "8.8",
+      "9.2",
+      "9.5",
+      "10.10",
+      "11.3"
+    ],
+    [
+      "4.15",
+      "6.6",
+      "7.4",
+      "8.9",
+      "9.3",
+      "11.1",
+      "11.2"
+    ],
+    [
+      "7.5",
+      "8.1",
+      "10.7"
+    ],
+    [
+      "7.7",
+      "8.3",
+      "10.8",
+      "11.5"
+    ],
+    [
+      "10.9",
+      "10.14"
+    ],
+    [
+      "10.11"
+    ],
+    [
+      "9.4",
+      "10.12"
+    ],
+    [
+      "9.6",
+      "10.13",
+      "11.4"
+    ],
+    [
+      "12.1",
+      "12.2",
+      "12.4"
+    ],
+    [
+      "12.3"
+    ],
+    [
+      "12.5"
+    ]
+  ],
+  "tasks": [
+    {
+      "task_id": "1.1",
+      "depends_on": [],
+      "owner": "request-fulfillment с audience/lead-management",
+      "code_refs": [
+        "backend/contexts/request-fulfillment/internal/adapters/workflow/activities.go:124",
+        "docs/concepts/intelligent-lead-research/01-vision-and-workflows.md:155"
+      ],
+      "proposed_targets": [
+        "proposed contracts/agent-orchestration/researchmission/criteria.go",
+        "proposed request-fulfillment Offer/Target snapshot extension"
+      ],
+      "input": "Человеческий оффер/ICP, unit/target, countries/quotas; общий Firecrawl credits budget; отдельные технические deadline/attempt caps.",
+      "output": "CriteriaVersion: must/should/exclude, неизвестности, unit/quotas, request/intent version. BudgetConfig содержит Firecrawl credits; TechnicalLimits отдельно.",
+      "steps": [
+        "Разделить offer supplier capabilities и ICP target traits; LLM помечает inferred, но не дописывает hard restrictions.",
+        "Сохранить typed predicate evidence requirements и unknown handling; слово company не требует registry-confirmed, если явно это не запрошено.",
+        "Version snapshot создаётся при человеческом approved intent; изменения дают linked new run/version, недопустим тихий edit.",
+        "Определить common-pool/quotas и deterministic country attribution для multi-market entity."
+      ],
+      "failure_cases": [
+        "Предложенный LLM сегмент не согласован; empty target; company-with-contact случайно подменён email-ready; одна entity попала в две квоты."
+      ],
+      "acceptance": [
+        "Счётчики company/company-with-contact/email-ready отражают выбранную единицу и критерии заявки; failed ICP не credited, фиксированного общего количества нет.",
+        "Показать source user vs inference для каждого critical field."
+      ],
+      "hypothesis_ids": [
+        "ORCH-H01"
+      ],
+      "audit_lane": "orchestration",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "1.2",
+      "depends_on": [
+        "1.1"
+      ],
+      "owner": "lead-management / agent-orchestration / integration-platform; catalogue владельцы совместно",
+      "code_refs": [
+        "architecture/domain-catalog.yaml:29",
+        "architecture/domain-catalog.yaml:119",
+        "backend/contexts/agent-orchestration/internal/app/command/run_step.go:62"
+      ],
+      "proposed_targets": [
+        "architecture/domain-catalog.yaml (дополнение при apply)",
+        "docs/domain-model.md",
+        "architecture/diagrams/{bounded-context-map,context-relationships,data-ownership}.puml",
+        "backend/contexts/agent-orchestration/migrations/red/<next>_research_payload.sql (proposed)",
+        "backend/contexts/agent-orchestration/internal/adapters/research-executor (proposed)"
+      ],
+      "input": "Согласованные сущности первого среза, их scope и владельцы.",
+      "output": "Согласованная owner matrix, зарегистрированные roots/VO/events/contracts и места хранения.",
+      "steps": [
+        "Регистрировать по мере ввода: lead-management владеет entity/assertion/evidence/identity decision/OpenNeed/dependencies; agent-orchestration — mission/action/grant_ref/membership; integration-platform — invocation/frontier lease. Не запирать весь tenant graph одним агрегатом.",
+        "Добавить агентский red payload repository для SearchBrief, QueryFamily, raw query и prompt context. Green хранит scope, страны, budgets, версии policy и opaque refs. В lead-management red хранить evidence/содержимое источников. Добавить client research-executor role с DSN binding по образцу существующего lead green/red wiring.",
+        "Зарегистрировать команды и события у владельцев. Межконтекстные events содержат разрешённые refs/versions; технический receipt не подтверждает компанию. SQL транзакции ограничиваются одной owner database, межконтекстное согласование через inbox/outbox.",
+        "Обновить каталог, domain-model и диаграммы вместе с первым кодом; published Go contracts зависят от стандартной библиотеки. Чужие internal/domain пакеты не импортировать.",
+        "До итогового green gate устранить узкий baseline mismatch content-production через владельца канонической спецификации. Это не повод закрывать весь незавершённый content change."
+      ],
+      "failure_cases": [
+        "Импорт чужого internal/domain",
+        "Два владельца корпоративного факта",
+        "Raw query или email попал в общую green БД/Temporal history",
+        "Capability заявлена без рабочего контракта"
+      ],
+      "acceptance": [
+        "Owner matrix и storage zone согласованы для каждой таблицы/события",
+        "archlint/importlint без новых ошибок; baseline ошибка не выдана за зелёный gate"
+      ],
+      "hypothesis_ids": [],
+      "audit_lane": "architecture_delivery",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "1.3",
+      "depends_on": [],
+      "owner": "data-governance/integration-platform",
+      "code_refs": [
+        "openspec/specs/osint-enrichment/spec.md:38",
+        "openspec/changes/self-hosted-crawler/design.md:60"
+      ],
+      "proposed_targets": [
+        "ADR effective source policy (proposed)"
+      ],
+      "input": "Canonical+pending policies",
+      "output": "Одна версия rules на route",
+      "steps": [
+        "Defaults matrix",
+        "Robots TTL/error/redirect semantics",
+        "Versioned delta при смене canonical",
+        "Hash policy в attempt"
+      ],
+      "failure_cases": [
+        "Absent old field",
+        "Unknown robots",
+        "Libraryfalse скрыто активировался"
+      ],
+      "acceptance": [
+        "No incompatible active defaults",
+        "Legacy route regression"
+      ],
+      "hypothesis_ids": [],
+      "audit_lane": "acquisition",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "1.4",
+      "depends_on": [
+        "1.5"
+      ],
+      "owner": "integration-platform/agent-orchestration",
+      "code_refs": [
+        "openspec/changes/self-hosted-crawler/design.md:68",
+        "backend/contexts/integration-platform/internal/adapters/firecrawl/firecrawl.go:276"
+      ],
+      "proposed_targets": [
+        "structured-extraction contract (proposed)"
+      ],
+      "input": "Artifact+goal",
+      "output": "Single model/action lineage",
+      "steps": [
+        "Disable native LLM in new fetch profile",
+        "Extract-from-artifact schema via gateway/existing proxy",
+        "All inference calls retain technical action lineage/usage; no second monetary budget",
+        "Firecrawl legacy Extract alone participates in Firecrawl credit ledger"
+      ],
+      "failure_cases": [
+        "Hidden SDK LLM",
+        "Different snapshot",
+        "Unknown usage"
+      ],
+      "acceptance": [
+        "Все вызовы имеют action lineage/usage",
+        "Один snapshot и source family",
+        "Нет обязательной общей денежной резервации для LLM"
+      ],
+      "hypothesis_ids": [],
+      "audit_lane": "acquisition",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "1.5",
+      "depends_on": [
+        "1.2"
+      ],
+      "owner": "integration-platform technical contracts; lead-management subject/dossier contracts",
+      "code_refs": [
+        "contracts/integration-platform/crawl/crawl.go:67",
+        "contracts/integration-platform/search/search.go:25",
+        "contracts/integration-platform/documentparse/documentparse.go:46",
+        "contracts/integration-platform/vector/vector.go:52"
+      ],
+      "proposed_targets": [
+        "contracts/integration-platform/{regionalsearch,webacquisition,documentobservation,researchindex} (proposed)",
+        "contracts/lead-management/{researchobservation,researchdossier,identityresolution} (proposed)"
+      ],
+      "input": "CriteriaSnapshot, tenant/purpose, action ID, required capabilities, технические пределы; Firecrawl credit cap только для Firecrawl.",
+      "output": "Версионированные DTO, сериализация, capability manifests и contract tests.",
+      "steps": [
+        "SearchRequest включает scoped payload ref на query, query language, target market, provider region, cursor и max results. SearchHit — URL/snippet/rank в клиентском payload; технический receipt содержит output ref и фактически применённый profile.",
+        "AcquireCommand содержит action/task ID, profile revision, input ref, required output kinds, session ref и лимиты. Outcome возвращает artifacts, redirect chain, hash, requested/claimed/observed geography, provider job ID, cursor, время и cost units; чувствительные поля остаются в red payload.",
+        "DocumentObservation содержит immutable artifact ref, page/bbox/text offset/crop transform, engine/model revision и исходное извлечение. Принадлежность contact/entity подтверждает отдельная команда lead-management, которая возвращает сохранённую entity/assertion revision.",
+        "ResearchIndex v2: scope/purpose, object+revision, upsert/delete/tombstone, exact/lexical/optional semantic query. Tenant фильтруется до top-k, ref resolve повторно проверяет полномочия. Существующий v1 vector не подходит как общая память.",
+        "HTTP и in-process adapters проверяются одинаковыми контрактными cases. V1 Firecrawl wrapper объявляет Markdown-only и неизвестную географию; unsupported required capability отклоняется до платного вызова. Не путать declared capabilities с observed receipt.",
+        "Python runtime получает job ref + lease epoch + ограниченный input и возвращает receipt; raw credentials не появляются в payload. Единственный долговечный frontier управляет retries, runtime не запускает отдельный бесконечный scheduler.",
+        "Firecrawl имеет credit admission/reservation. Все остальные tools используют существующий proxy без нового денежного gate; проверяются только технические quotas/capabilities и scopes."
+      ],
+      "failure_cases": [
+        "Неподдерживаемый schema major",
+        "Выдуманные DOM/OCR locators",
+        "Ошибка провайдера замаскирована под отсутствие результатов",
+        "Повтор receipt с другим hash",
+        "Чужой scope у artifact ref"
+      ],
+      "acceptance": [
+        "Одинаковое поведение HTTP/in-process contracts",
+        "Manifest совпадает с реально возвращаемыми видами artifacts",
+        "Receipt не подменяет предметное подтверждение"
+      ],
+      "hypothesis_ids": [
+        "AD-H03"
+      ],
+      "audit_lane": "architecture_delivery",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "2.1",
+      "depends_on": [
+        "1.1"
+      ],
+      "owner": "evaluation владелец программы + lead-management quality",
+      "code_refs": [
+        "docs/concepts/intelligent-lead-research/02-identity-and-evidence.md",
+        "docs/concepts/intelligent-lead-research/07-architecture-and-delivery-plan.md:146"
+      ],
+      "proposed_targets": [
+        "evaluation/research/corpora/identity-v1/manifest.jsonl (proposed)",
+        "evaluation/research/labels/*.jsonl (proposed)"
+      ],
+      "input": "Разрешённые снимки источников и исследовательские задачи с размеченной истиной.",
+      "output": "Версионированный manifest, subject/contact labels, отдельный скрытый holdout.",
+      "steps": [
+        "Разметить subject span, identifier, contact string, belongs-to relation, temporal validity и ожидаемый статус. Различать отсутствие свидетельства, отрицательный результат и неизвестность.",
+        "Делить данные группами по организации, source family и шаблону сайта. Копии и варианты одной страницы не попадают по разные стороны; development fixtures отделены от скрытого holdout.",
+        "Спорные связи размечают независимо два человека; сохраняются disagreement и adjudication. Сильный номер юрлица не доказывает, что соседний footer email принадлежит этому юрлицу.",
+        "Включить статьи, каталоги с чужим footer, shared phones/domains, несколько юрлиц на сайте, leading zeros, отсутствие email, поздний контакт, отзыв/истечение evidence. Критерии заявки размечаются отдельно от существования компании."
+      ],
+      "failure_cases": [
+        "Утечка source family между split",
+        "Email без установленного владельца",
+        "Отсутствующая метка объявлена ложным фактом",
+        "Неполная компания выброшена из корпуса"
+      ],
+      "acceptance": [
+        "Manifest воспроизводим и права использования источников зафиксированы",
+        "Для каждого ожидаемого link есть subject evidence",
+        "T0–T4 включает неизменность исторического completion snapshot"
+      ],
+      "hypothesis_ids": [
+        "AD-H01",
+        "AD-H05"
+      ],
+      "audit_lane": "architecture_delivery",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "2.2",
+      "depends_on": [
+        "1.1"
+      ],
+      "owner": "integration-platform acquisition evaluation",
+      "code_refs": [
+        "docs/concepts/intelligent-lead-research/09-browser-ocr-and-tool-selection.md:182"
+      ],
+      "proposed_targets": [
+        "evaluation/research/corpora/acquisition-v1/manifest.jsonl (proposed)"
+      ],
+      "input": "120 разрешённых уникальных объектов с modality и ожидаемыми locators/subjects.",
+      "output": "Стартовый corpus для выбора acquisition/document инструментов.",
+      "steps": [
+        "Предложенная непересекающаяся primary-modality раскладка: 30 static HTML, 25 JS/render, 15 pagination/public-search recipes, 20 text PDF, 20 scanned PDF, 10 images. Footer traps, языки и временные конфликты — дополнительные пересекающиеся tags.",
+        "Страны выбираются для реального пилота. Пример 50 RU / 50 GB / 20 других — предложение, не выбор пользователя. Язык и регистрационная страна размечаются отдельно.",
+        "Отделить frozen extraction benchmark от live acquisition. Для выбора crawler downstream extraction общий; отдельная оценка native locator capabilities не смешивается с contact-link accuracy.",
+        "Зафиксировать hashes, время получения, изменения страниц, warm/cold cache, hardware/concurrency, бюджеты. Разработка recipes ведётся на другом наборе."
+      ],
+      "failure_cases": [
+        "Страница изменилась между сравнениями",
+        "BBox потерял связь с исходным изображением",
+        "Кэш или разные лимиты создают ложного победителя",
+        "Unknown price записана нулём"
+      ],
+      "acceptance": [
+        "Ровно 120 primary objects с expected evidence и scopes",
+        "Одинаковые лимиты и честные различия профилей",
+        "120 документов не объявлены доказательством precision ≥99%"
+      ],
+      "hypothesis_ids": [
+        "AD-H02",
+        "AD-H05"
+      ],
+      "audit_lane": "architecture_delivery",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "2.3",
+      "depends_on": [
+        "2.1",
+        "2.2",
+        "1.5"
+      ],
+      "owner": "evaluation tooling / analytics projections",
+      "code_refs": [
+        "Makefile:44",
+        "docs/concepts/intelligent-lead-research/07-architecture-and-delivery-plan.md:136"
+      ],
+      "proposed_targets": [
+        "tools/research-eval/ (proposed)",
+        "evaluation/research/reports/<run-id>/ (proposed)"
+      ],
+      "input": "Corpus/qrels, persisted entity/action versions, raw cost receipts и результаты сравнений.",
+      "output": "Воспроизводимый JSON и читаемый отчёт с раздельными quality/cost/latency показателями.",
+      "steps": [
+        "Считать field exact match (raw/normalized), precision/recall contact-to-entity links, false merge/split, abstention/review rate. OCR text average не заменяет точность email/ID/phone.",
+        "Для retrieval считать Recall@k/NDCG@k по qrels. Сохранять весь список intended queries, включая пустые выдачи/отказы; BEIR-подобный evaluator не должен незаметно выкинуть отсутствующие results.",
+        "Для миссий считать unique accepted entities/contacts, target reached/partial shortfall, time to first useful result, end-to-end p50/p95, CPU/RAM/browser seconds/bytes/tokens и ручные минуты. Не считать дубли как прирост.",
+        "Firecrawl отчёт отдельно хранит credit cap/reserved/used/unknown и связь с provider receipts. Для прочих инструментов через существующий proxy измерять usage/latency/resources и, если доступна, внешнюю наблюдаемую стоимость; не создавать app money reservation или дополнительный финансовый gate. Нулевой результат сохраняет технический расход в отчёте.",
+        "Для независимых решений показать exact binomial intervals; для clustered/paired сравнения использовать sampling/cluster bootstrap по entity/source family. Версии, seeds и hashes закреплены, strata не скрыты общим средним."
+      ],
+      "failure_cases": [
+        "Отказы исключены из знаменателя",
+        "Повторы увеличили yield",
+        "False merge скрыл неверный контакт",
+        "Unknown spend записан нулём",
+        "Слабая страна скрыта общей средней"
+      ],
+      "acceptance": [
+        "Повтор отчёта из сохранённых receipts без новых платных вызовов",
+        "Все знаменатели объяснены",
+        "Current demo, deterministic и LLM варианты сравниваются на одинаковых условиях"
+      ],
+      "hypothesis_ids": [
+        "AD-H01",
+        "AD-H02",
+        "AD-H03",
+        "AD-H05"
+      ],
+      "audit_lane": "architecture_delivery",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "2.4",
+      "depends_on": [
+        "2.3"
+      ],
+      "owner": "product+quality gate owner",
+      "code_refs": [
+        "docs/concepts/intelligent-lead-research/07-architecture-and-delivery-plan.md:150"
+      ],
+      "proposed_targets": [
+        "evaluation/research/acceptance-policy-v1.json (proposed)",
+        "docs/concepts/intelligent-lead-research/validation.md"
+      ],
+      "input": "Стратифицированные baseline измерения и интервалы неопределённости.",
+      "output": "Версионированные критерии cutover по источникам/странам/когортам.",
+      "steps": [
+        "Наблюдаемый wrong-subject confirmed link, wrong recipient или cross-scope exposure блокирует соответствующий cohort. Ноль наблюдаемых ошибок ограничен проверенной выборкой.",
+        "Разделить функциональный пилот и статистическую приёмку. При нуле ошибок минимум 299 независимых contact decisions нужен для односторонней 95% нижней границы ≥99%; для связанных шаблонов/семейств требуется иной sampling plan.",
+        "До финального holdout установить Firecrawl credit cap и технические latency/resource/attempt targets по trial. Для прочих вызовов используется имеющийся proxy; дополнительный финансовый approval не требуется.",
+        "Принимать поддержанные профили с явными ограничениями; review сохраняет полезность неполных данных. Полная программа остаётся открытой до выполнения всех required функций."
+      ],
+      "failure_cases": [
+        "Порог выбран задним числом",
+        "Десять успешных примеров выданы за мировое покрытие",
+        "Тихая замена неподдержанной страны"
+      ],
+      "acceptance": [
+        "Сохранены policy version, sample sizes, failed strata и область применимости",
+        "Критические ошибки не скрыты средним результатом"
+      ],
+      "hypothesis_ids": [
+        "AD-H05"
+      ],
+      "audit_lane": "architecture_delivery",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "2.5",
+      "depends_on": [
+        "1.2",
+        "1.5"
+      ],
+      "owner": "program traceability owner",
+      "code_refs": [
+        "docs/concepts/intelligent-lead-research/implementation-coverage.json",
+        "docs/concepts/intelligent-lead-research/research-sources.json"
+      ],
+      "proposed_targets": [
+        "docs/concepts/intelligent-lead-research/implementation-coverage.json (evolution)",
+        "evaluation/research/adoption-register.json (proposed)"
+      ],
+      "input": "CL/D provenance, baseline 66 источников, новые исследования и доказательства apply.",
+      "output": "Связи REQ → task → code/contracts/migrations → tests/live evidence, USE → принятое решение.",
+      "steps": [
+        "Сохранять различие пользовательского требования, вывода из него и инженерного предложения. Последний приоритет меняет порядок, но не выбирает библиотеку автоматически.",
+        "Для каждого источника указать: применённый механизм, сравнённая альтернатива, отклонение или замена; причина, версия и evidence. Установка всех конкурирующих frameworks не требуется.",
+        "Каждая обязательная функция связывается с реальной реализацией и критериями. Недоступный provider оставляет integration task открытой; документы закрывают только исследовательскую работу.",
+        "Связать immutable commit/report hashes; обновлять при новых источниках. Число 66 — стартовый реестр, а не запрет дальнейшего исследования.",
+        "CL-16 отменяет прежнюю гипотезу универсального бюджета: Firecrawl-only cap; остальные tools через существующий proxy. Это изменение scope должно быть видно в requirements/decisions."
+      ],
+      "failure_cases": [
+        "README назван работающей интеграцией",
+        "Task закрыта без требуемого провайдера",
+        "Новая информация не включена из-за старого количества sources",
+        "Предложение названо решением пользователя"
+      ],
+      "acceptance": [
+        "Все исходные source IDs учтены, новые добавлены",
+        "Все 36 REQ имеют implementation evidence либо явные оставшиеся шаги"
+      ],
+      "hypothesis_ids": [],
+      "audit_lane": "architecture_delivery",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "3.1",
+      "depends_on": [
+        "1.2"
+      ],
+      "owner": "lead-management",
+      "code_refs": [
+        "backend/contexts/lead-management/internal/domain/company.go:9",
+        "backend/contexts/lead-management/internal/adapters/persistence/postgres/lead_profile_repository.go:196",
+        "backend/contexts/lead-management/migrations/red/0001_init.sql:11"
+      ],
+      "proposed_targets": [
+        "backend/contexts/lead-management/internal/domain/research_entity.go (proposed)",
+        "backend/contexts/lead-management/internal/ports/research_repository.go (proposed)",
+        "backend/contexts/lead-management/migrations/{green,red}/NNNN_research_identity.sql (proposed)"
+      ],
+      "input": "Tenant authority, existing profile refs, new source business subject.",
+      "output": "Opaque entity IDs и разрешённые mapping links старых refs.",
+      "steps": [
+        "Добавить composite tenant/entity PK и FK; unresolved business subject до правомерной классификации.",
+        "Импорт legacy как наблюдение доменного профиля, map N:M с relation/decision revision; не объявлять legal entity по домену.",
+        "Новый read contract принимает tenant+entity; legacy route остаётся историческим и открывает выбор при нескольких entities.",
+        "Не dual-write через глобальный legacy upsert; отдельно сформировать legacy isolation remediation до его multi-tenant cutover."
+      ],
+      "failure_cases": [
+        "Одинаковый domain у двух tenants",
+        "Два юрлица на одном сайте",
+        "Один субъект с двумя доменами",
+        "Рестарт/повтор import command"
+      ],
+      "acceptance": [
+        "Два tenants независимо хранят один domain и не меняют владельца записи.",
+        "Старые ссылки читаются без автоматической перепривязки recipients; повтор import идемпотентен.",
+        "Реальная компания без domain/email допустима в research owner model."
+      ],
+      "hypothesis_ids": [],
+      "audit_lane": "identity_memory",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "3.2",
+      "depends_on": [
+        "3.1"
+      ],
+      "owner": "lead-management",
+      "code_refs": [
+        "docs/concepts/intelligent-lead-research/02-identity-and-evidence.md:28",
+        "backend/contexts/lead-management/internal/app/normalize.go:9"
+      ],
+      "proposed_targets": [
+        "backend/contexts/lead-management/internal/domain/registration_identifier.go (proposed)",
+        "backend/contexts/lead-management/internal/adapters/identifiers/* (proposed)"
+      ],
+      "input": "Original value, claimed jurisdiction/type/authority, source/subject refs.",
+      "output": "Typed normalization result с original/normalized/parser version и separate format/existence/link states.",
+      "steps": [
+        "Описать jurisdictional profiles RU ИНН/КПП, GB company prefixes/zeros, DE register/court, FR SIREN/SIRET и unknown.",
+        "Сохранять строку; не cast в integer, не терять leading zero; OCR alternatives остаются candidates.",
+        "Разделить identifier_claim и accepted binding; conflicts сохраняются.",
+        "Registry lookup за отдельным acquisition action, арифметическая проверка возвращает только format/checksum."
+      ],
+      "failure_cases": [
+        "Совпавшая строка в разных реестрах",
+        "КПП ошибочно принят за юрлицо",
+        "SIRET схлопнул все establishments",
+        "OCR О/0 без основания"
+      ],
+      "acceptance": [
+        "Предметные golden cases и explicit unknown для неподдержанного типа.",
+        "Неполная область DE не auto-matches.",
+        "Невозможность format-check выдать registry-confirmed."
+      ],
+      "hypothesis_ids": [
+        "IM-H01"
+      ],
+      "audit_lane": "identity_memory",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "3.3",
+      "depends_on": [
+        "3.1",
+        "1.5"
+      ],
+      "owner": "lead-management + integration-platform acquisition receipt",
+      "code_refs": [
+        "backend/contexts/lead-management/internal/domain/provenance.go:61",
+        "contracts/integration-platform/crawl/crawl.go:67",
+        "backend/contexts/lead-management/internal/app/run_search.go:799"
+      ],
+      "proposed_targets": [
+        "backend/contexts/lead-management/internal/domain/evidence_document.go (proposed)",
+        "backend/contexts/lead-management/internal/app/record_observation.go (proposed)",
+        "contracts/lead-management/researchobservation/* (proposed)"
+      ],
+      "input": "Artifact-ready receipt, representation/version/subject blocks, acquisition action lineage.",
+      "output": "Durable document revision, source captures, mentions и candidate assertions.",
+      "steps": [
+        "Сначала существующий Firecrawl Markdown capture сохранить как Markdown с hash/span; не обещать DOM.",
+        "Создать publisher/subject mention scopes; contacts из footer получают publisher scope.",
+        "Раздельно принять entity/evidence и проверить contact credit; article/news может дать mention/ID.",
+        "Upload staging вне DB transaction; ready reference + observation/inbox/outbox фиксировать локально атомарно.",
+        "Extractor принимает именно сохранённую representation; URL-refetch создаёт новый capture/revision."
+      ],
+      "failure_cases": [
+        "Контакт найден в другой версии страницы чем цитата",
+        "Сбой upload до DB",
+        "Hash совпал, observed_at изменился",
+        "Multi-card page и footer",
+        "Пустой email"
+      ],
+      "acceptance": [
+        "По accepted contact воспроизводится точный сохранённый fragment и его subject.",
+        "Компания без контакта сохранена; rejected source role не превращён в parse_error компании.",
+        "Crash не даёт accepted receipt на недоступный artifact."
+      ],
+      "hypothesis_ids": [
+        "IM-H05"
+      ],
+      "audit_lane": "identity_memory",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "3.4",
+      "depends_on": [
+        "3.2",
+        "3.3"
+      ],
+      "owner": "lead-management",
+      "code_refs": [
+        "backend/contexts/lead-management/internal/domain/contact.go:130",
+        "docs/concepts/intelligent-lead-research/02-identity-and-evidence.md:112"
+      ],
+      "proposed_targets": [
+        "backend/contexts/lead-management/internal/domain/research_assertion.go (proposed)",
+        "backend/contexts/lead-management/internal/domain/verification_evaluation.go (proposed)",
+        "backend/contexts/lead-management/internal/adapters/persistence/postgres/assertion_store.go (proposed)"
+      ],
+      "input": "Observations и identity/contact typed claims.",
+      "output": "Immutable revisions, independent knowledge/freshness/use states и versioned rules.",
+      "steps": [
+        "Append assertion revision с observed/recorded/known-valid times; unknown legal date остаётся null.",
+        "Сделать source profile predicate-specific, known/uncertain source family; duplicate copy не независимый голос.",
+        "Сохранить evaluation dimension/method/version/actor/time/input refs.",
+        "Relations строить projection; old phone остаётся historical, новый не автоматически refutes старый.",
+        "Определить support-set format и strong conflict policy без global numeric trust."
+      ],
+      "failure_cases": [
+        "Stale принят за refuted",
+        "LLM score повысил verification",
+        "У источников общая копия",
+        "Новый телефон сосуществует со старым"
+      ],
+      "acceptance": [
+        "История и раздельные axes восстанавливаются после restart.",
+        "Нет count-based independent подтверждения copies.",
+        "Policy revision и input versions нужны для любого confirmation."
+      ],
+      "hypothesis_ids": [
+        "IM-H04",
+        "IM-H06"
+      ],
+      "audit_lane": "identity_memory",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "3.5",
+      "depends_on": [
+        "3.4",
+        "2.1"
+      ],
+      "owner": "lead-management",
+      "code_refs": [
+        "backend/contexts/lead-management/internal/domain/company.go:43",
+        "docs/concepts/intelligent-lead-research/02-identity-and-evidence.md:137"
+      ],
+      "proposed_targets": [
+        "backend/contexts/lead-management/internal/app/resolve_candidates.go (proposed)",
+        "backend/contexts/lead-management/internal/domain/identity_decision.go (proposed)",
+        "backend/contexts/lead-management/internal/adapters/persistence/postgres/identity_decision_store.go (proposed)"
+      ],
+      "input": "Subject mentions, candidate keys, confirmed identifiers, expected revisions.",
+      "output": "Candidate ranked pairs, accepted/review/rejected identity decisions, current resolution group.",
+      "steps": [
+        "Union narrow blocking rules; exact scoped IDs первыми; ограничить fanout и измерять skipped candidates.",
+        "Rule-based scoring features и contradiction veto; LLM proposal не auto merge.",
+        "Проверять cluster-wide strong IDs при добавлении pair; не брать connected components как authority.",
+        "Decision+projection revision+outbox в одной owner transaction с deterministic lock order/CAS.",
+        "Отмена создаёт superseding decision, пересчитывает затронутую группу; source IDs и historical recipients неизменны."
+      ],
+      "failure_cases": [
+        "A~B~C с A!=C strong ID",
+        "Concurrent merge/split",
+        "Одноимённые компании",
+        "Общая АТС/сайт",
+        "Запоздалая merge command"
+      ],
+      "acceptance": [
+        "Reversal восстанавливает explainable memberships.",
+        "Нет false merge на labelled acceptance, size/uncertainty опубликованы.",
+        "Повтор decision key не пересылает письма и не дублирует entity."
+      ],
+      "hypothesis_ids": [
+        "IM-H01"
+      ],
+      "audit_lane": "identity_memory",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "3.6",
+      "depends_on": [
+        "3.4"
+      ],
+      "owner": "lead-management + address-verification owner",
+      "code_refs": [
+        "backend/contexts/lead-management/internal/app/contact_quality.go:89",
+        "backend/contexts/lead-management/internal/app/normalize.go:34",
+        "backend/contexts/lead-management/internal/domain/email_verification.go:10"
+      ],
+      "proposed_targets": [
+        "backend/contexts/lead-management/internal/domain/contact_endpoint.go (proposed)",
+        "backend/contexts/lead-management/internal/app/evaluate_contact.go (proposed)",
+        "backend/contexts/lead-management/internal/adapters/contactnormalization/* (proposed)"
+      ],
+      "input": "Source original endpoint, local subject/country context, selected channel criterion.",
+      "output": "Normalized endpoint + country/context alternatives + independent checks.",
+      "steps": [
+        "Phone parser с pinned metadata/version; retain original, extension, national/E.164 form when unambiguous.",
+        "Email preserve original local part, lowercase/IDNA domain; unsafe provider folding не делать без policy.",
+        "Endpoint может обслуживать несколько entities через contact-serves assertions.",
+        "Нормализация, link confirmation, DNS/SMTP result, freshness и action policy разделены.",
+        "Не принимать ID/date/URL fragments как phone; неопределённость страны не исправлять по proxy IP."
+      ],
+      "failure_cases": [
+        "Короткий допустимый национальный номер",
+        "Внутренний extension",
+        "Международный офис с чужим кодом",
+        "Catch-all accepted recipient",
+        "Email с внешним domain"
+      ],
+      "acceptance": [
+        "Format success не повышает identity/link/reachability.",
+        "Плохие цифры пользователя не становятся контактами.",
+        "Региональные числа проверены предметными cases; unknown не скрывается."
+      ],
+      "hypothesis_ids": [
+        "IM-H05"
+      ],
+      "audit_lane": "identity_memory",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "3.7",
+      "depends_on": [
+        "3.8",
+        "2.1",
+        "2.3"
+      ],
+      "owner": "lead-management + verification",
+      "code_refs": [
+        "backend/contexts/lead-management/internal/ports/contracttest/contact_repository.go",
+        "backend/contexts/lead-management/internal/adapters/http/templates/card.html"
+      ],
+      "proposed_targets": [
+        "backend/contexts/lead-management/internal/ports/contracttest/research_repository.go (proposed)",
+        "backend/contexts/lead-management/research_identity_integration_test.go (proposed)"
+      ],
+      "input": "Seed официально выбранной пилотной страны, source capture и expected subject/link labels.",
+      "output": "DB-backed acceptance отчёт и видимый evidence dossier.",
+      "steps": [
+        "Postgres contract cases для entity/claim/evidence/decision; concurrent updates и restart.",
+        "Run разрешённого реального seed через Firecrawl и сохранённый artifact/fragment до контактного evidence UI.",
+        "Описать какие country/source cases пройдены и что осталось unknown; RU/GB лишь предложение до выбора.",
+        "Включить old demo URL compatibility и negative corpus; обновить owner/catalog docs рядом с apply."
+      ],
+      "failure_cases": [
+        "UI не показывает компанию без email",
+        "Persistence failure",
+        "Fixture-only claim accepted as live",
+        "Source family holdout leakage"
+      ],
+      "acceptance": [
+        "Один реальный объяснимый cross-source контакт по accepted pilot и неизменные старые ссылки.",
+        "Реальные provider receipt/date и test reports сохранены без secrets; финансовые receipts/лимит относятся к Firecrawl, остальные инструменты используют proxy без app budget.",
+        "Runtime задачи не закрыты лишь unit fixtures."
+      ],
+      "hypothesis_ids": [
+        "IM-H01",
+        "IM-H05"
+      ],
+      "audit_lane": "identity_memory",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "3.8",
+      "depends_on": [
+        "3.5",
+        "3.6"
+      ],
+      "owner": "lead-management UI/read model",
+      "code_refs": [
+        "backend/contexts/lead-management/internal/adapters/http/templates/card.html:98"
+      ],
+      "proposed_targets": [
+        "backend/contexts/lead-management/internal/app/query/research_dossier.go (proposed)",
+        "backend/contexts/lead-management/internal/adapters/http/templates/research_evidence.html (proposed)"
+      ],
+      "input": "Current entity/assertion/evaluation revisions и caller authority.",
+      "output": "Поле/relationship status с evidence/method/date/reason и revisioned dossier.",
+      "steps": [
+        "Read model собирает dimension statuses и исторические изменения.",
+        "Показывать readable explanation: принадлежность подтверждена по ID/блоку, формат корректен, ящик не проверен.",
+        "Человеческая отметка содержит автора и область проверки; не выставляет все измерения.",
+        "Revoked raw не раскрывать через snippet, но допустимый tombstone объясняет недоступность основания."
+      ],
+      "failure_cases": [
+        "Старая UI проекция",
+        "Вручную подтверждён только link",
+        "OCR confidence без subject",
+        "Чужой evidence ref"
+      ],
+      "acceptance": [
+        "UI отображает conflict/stale/unknown раздельно.",
+        "Перейти от конкретного field к разрешённой revision/fragment возможно.",
+        "Ни одна global зелёная badge не маскирует unchecked reachability."
+      ],
+      "hypothesis_ids": [],
+      "audit_lane": "identity_memory",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "4.1",
+      "depends_on": [
+        "1.1",
+        "1.2",
+        "3.1"
+      ],
+      "owner": "agent-orchestration",
+      "code_refs": [
+        "backend/contexts/agent-orchestration/internal/domain/agent_run.go:20",
+        "backend/contexts/agent-orchestration/internal/adapters/blocks/search.go:76",
+        "contracts/lead-management/leadsearch/leadsearch.go:53"
+      ],
+      "proposed_targets": [
+        "proposed internal/domain/research_mission.go",
+        "proposed migrations/green/*_research_mission.sql",
+        "proposed contracts/agent-orchestration/researchmission"
+      ],
+      "input": "Approved intent + CriteriaVersion + FirecrawlBudgetRef + TechnicalLimits + optional seed name/registry ID/URL.",
+      "output": "MissionID без company requirement; collection refs/state; один FC budget scope per human intent; technical limits других tools.",
+      "steps": [
+        "research_missions PK tenant/mission, unique request_intent+criteria+generation, revision/status/checkpoint refs и opaque Firecrawl grant_ref; monetary ledger принадлежит integration-platform.",
+        "StartResearchMission/GetResearchMission/Cancel/Resume команды; duplicate start возвращает ту же миссию.",
+        "New feature routing на request execution intent выбирает один old/new path; existing company-agent не меняет обязательную CompanyID.",
+        "ResearchMission хранит opaque refs к candidate/entity collection, PII у владельца; после identity допускается company-agent с проверенным mapping."
+      ],
+      "failure_cases": [
+        "Параллельные Starts; seed без domain; одинаковые имена разных стран; retry fulfillment создаёт новую mission."
+      ],
+      "acceptance": [
+        "Name/number старт без фиктивного domain; N entities с устойчивыми refs; old path smoke compatibility."
+      ],
+      "hypothesis_ids": [],
+      "audit_lane": "orchestration",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "4.2",
+      "depends_on": [
+        "4.1",
+        "1.4",
+        "1.5",
+        "4.16"
+      ],
+      "owner": "agent-orchestration",
+      "code_refs": [
+        "backend/contexts/agent-orchestration/internal/app/registry/registry.go:25",
+        "backend/contexts/agent-orchestration/internal/app/command/run_step.go:122",
+        "backend/contexts/lead-management/internal/app/run_search.go:520"
+      ],
+      "proposed_targets": [
+        "proposed internal/adapters/blocks/research_planner.go",
+        "proposed internal/ports/research_planner.go",
+        "proposed versioned prompt/schema registry"
+      ],
+      "input": "Versioned Brief/context package, allowed actions, observations, remaining Firecrawl credits и TechnicalLimits.",
+      "output": "PlanProposal collection typed by discriminated tool/action kind, question_ref/input_refs/reason_short/expected_observation.",
+      "steps": [
+        "Один planner invoke возвращает bounded proposals; никаких внутренних HTTP/tools loops.",
+        "Tool schema rejects additional props, missing refs, wrong purpose/country, forged caps; runtime builds actual URL/query из approved slots.",
+        "Source text отдельные untrusted data; refs resolve scope before prompt and before execution; schema validity не factual approval.",
+        "Детерминированные recipes обходят LLM на известных шагах, invalid proposal получает нормализованный reject с bounded repair attempt.",
+        "Model capability profile + prompt/model/schema versions сохраняются; usage optional из существующего proxy. Planner — обычный journaled action без app monetary reserve/deny."
+      ],
+      "failure_cases": [
+        "Prompt injection via source; cross tenant ref; hallucinated tool/domain; incompatible model; endless repair; double hidden extractor cost."
+      ],
+      "acceptance": [
+        "Negative proposals не исполняются; real provider tool/text response roundtrip валидируется; recipe vs planner traces различимы."
+      ],
+      "hypothesis_ids": [
+        "ORCH-H01",
+        "ORCH-H06"
+      ],
+      "audit_lane": "orchestration",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "4.3",
+      "depends_on": [
+        "4.1",
+        "1.5"
+      ],
+      "owner": "agent-orchestration + integration-platform/lead-management",
+      "code_refs": [
+        "backend/contexts/agent-orchestration/internal/app/command/run_step.go:62",
+        "backend/contexts/agent-orchestration/internal/adapters/persistence/postgres/unit_of_work.go:38"
+      ],
+      "proposed_targets": [
+        "proposed research_actions/research_attempts/research_receipts tables",
+        "proposed app/command/authorize_research_action.go (Firecrawl reserve branch only)",
+        "proposed adapters/workflow/research_activities.go"
+      ],
+      "input": "Validated action+scope revision+capability+TechnicalLimits; Firecrawl credit reservation только если provider Firecrawl.",
+      "output": "Durable action/attempt/receipt with separate execution/ingest/accounting outcomes.",
+      "steps": [
+        "Короткая agent Tx сохраняет action/attempt/outbox и CAS. Firecrawl action получает awaiting_fc_reservation; через идемпотентный owner ReserveForAction(account/grant/action/attempt) создаётся одна reservation; receipt переводит action CAS в ready. Остальные tools сразу проходят TechnicalLimits без денежного gate.",
+        "Worker claim fencing generation → dispatching commit → external call; expired lease не доказывает отсутствие внешнего эффекта.",
+        "Provider idempotency/job lookup по capability; Firecrawl unknown credits удерживаются, повтор только в остатке общего FC cap. Proxy tools используют технические retry caps без второго денежного бюджета.",
+        "Сохранить provider receipt/artifact refs; owner ingest idempotency(action_id, artifact_revision) отдельно → owner persistence receipt.",
+        "Final agent Tx CAS result/membership/outbox, settlement команда к integration-platform идемпотентна по operation receipt. Владелец резервов записывает FC charge; mission получает projection. Proxy usage optional. Duplicate receipt hash mismatch quarantine."
+      ],
+      "failure_cases": [
+        "Crash before commit, after dispatch before provider receipt, after owner ingest before mission CAS; stale worker; same receipt different payload; DB outage.",
+        "Crash owner reserved FC но agent не сохранил receipt; recover GetReservation(action/attempt), не резервировать ещё раз и не dispatch без confirmed grant."
+      ],
+      "acceptance": [
+        "Нет открытой DB transaction во время network; crash matrix и duplicate effects различимы.",
+        "Firecrawl credits не теряются; вызов proxy LLM без usage/price receipt разрешён при допустимых технических параметрах."
+      ],
+      "hypothesis_ids": [],
+      "audit_lane": "orchestration",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "4.4",
+      "depends_on": [
+        "4.3"
+      ],
+      "owner": "integration-platform owns Firecrawl account/grant/operation ledger; agent-orchestration owns intent/grant refs and projection",
+      "code_refs": [
+        "backend/contexts/integration-platform/internal/adapters/firecrawl/budget.go:294",
+        "backend/contexts/lead-management/internal/app/run_search.go:194",
+        "backend/contexts/request-fulfillment/internal/adapters/workflow/activities.go:136"
+      ],
+      "proposed_targets": [
+        "proposed integration-platform Firecrawl durable account/grant/reservation/credit_entries schema",
+        "proposed contracts/integration-platform/firecrawlbudget ReserveForAction/GetReservation/Settle/MarkUnknown",
+        "proposed agent-orchestration action waiting-reservation/projection adapter"
+      ],
+      "input": "Human Firecrawl account policy/cap, optional mission/study allocation grant, operation identity/action/attempt, Search/Crawl/Extract receipts.",
+      "output": "Один authoritative FC ledger у provider owner, account+grant constraints и одна operation charge lineage; agent projection без второго debit. Proxy tools monetary enforcement отсутствует.",
+      "steps": [
+        "Выдать grant_ref approved execution intent либо human-button MarketStudy intent в существующем Firecrawl account policy; grants ограничивают доступ к общей кассе, не создают отдельное списание.",
+        "В integration-platform Tx atomically check account+grant remaining, unique reservation(account,action,attempt) и reserve bounded credits. Search/Crawl/Extract+refine используют тот же grant; новый query/worker не reset.",
+        "По unknown Firecrawl effect удержать reservation до точного provider evidence или аудируемого решения; общий balance delta недостаточен для attribution.",
+        "Agent intent awaiting reservation → owner ReserveForAction → receipt/CAS ready → dispatch. Повтор Reserve/GetReservation возвращает ту же запись; Settle/MarkUnknown по operation ID, account guard и grant не списывают дважды.",
+        "LLM/browser/OCR/search outside Firecrawl идут через proxy без app monetary reserve/deny и без обязательного price/usage receipt. Если proxy возвращает usage — optional diagnostics.",
+        "Разделить TechnicalLimits (deadline, retries, pages/depth, concurrency, bytes) и FirecrawlBudget. Timeout/attempt cap не маркируется исчерпанием денежного бюджета.",
+        "Исчерпание Firecrawl cap отключает только Firecrawl actions; допустимые memory/proxy/self-hosted действия продолжаются в TechnicalLimits. Partial бюджетная остановка только если полезные оставшиеся действия требуют Firecrawl."
+      ],
+      "failure_cases": [
+        "Два worker резервируют последние FC credits; unknown FC effect после рестарта; Extract не включён в общий FC scope; legacy top-up создаёт новый scope; proxy без price ошибочно запрещён.",
+        "Две mission/study grants одновременно исчерпывают общий account cap; owner reserve успех/agent ack потерян; один provider operation повторно settled через две проекции."
+      ],
+      "acceptance": [
+        "Search+Crawl+Extract+refine одного intent в одном FC ledger/grant, общий account cap проверяется и при двух разных missions/studies; одна операция списана один раз.",
+        "Для не-Firecrawl tool отсутствуют второй app monetary cap/deny/reservation.",
+        "Optional proxy usage отсутствие не препятствует выполнению; технические runaway limits работают отдельно."
+      ],
+      "hypothesis_ids": [],
+      "audit_lane": "orchestration",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "4.5",
+      "depends_on": [
+        "3.3",
+        "4.3"
+      ],
+      "owner": "agent-orchestration action history + lead-management reusable memory",
+      "code_refs": [
+        "backend/contexts/lead-management/internal/app/run_search.go:703",
+        "docs/concepts/intelligent-lead-research/03-agent-and-memory.md:194"
+      ],
+      "proposed_targets": [
+        "contracts/lead-management/researchmemory/* (proposed)",
+        "backend/contexts/lead-management/internal/app/record_attempt_memory.go (proposed)"
+      ],
+      "input": "Durable action receipt, typed question/subject/source/locale, extraction completeness.",
+      "output": "Attempt episode и scoped negative observation с reuse TTL.",
+      "steps": [
+        "Execution key содержит run/action; semantic reuse key независим от run но включает разрешённый purpose и versioned question/source/locale.",
+        "Outcomes new-fact/no-match-on-version/ambiguous/unavailable/error различены.",
+        "TTL по outcome и source; expired позволяет оценку полезности, но сам не запускает внешнее действие без разрешённого run. Firecrawl budget проверяется только для Firecrawl.",
+        "Повтор strategy normalization version сохранять; другой язык/источник явно другой полезный вопрос."
+      ],
+      "failure_cases": [
+        "Timeout записан как no email",
+        "Новая миссия повторяет тот же пустой source",
+        "Синоним обходит attempt cap",
+        "Новый source заблокирован старым negative"
+      ],
+      "acceptance": [
+        "Пустой поиск одной версии не глобален.",
+        "Перезапуск сохраняет outcomes и фактические receipts; финансовые данные Firecrawl отдельно от технических proxy metrics остальных инструментов; повтор event идемпотентен.",
+        "Новый язык/source разрешён по policy, отсутствие authority по-прежнему блокирует вызов."
+      ],
+      "hypothesis_ids": [
+        "IM-H03"
+      ],
+      "audit_lane": "identity_memory",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "4.6",
+      "depends_on": [
+        "3.4",
+        "3.5"
+      ],
+      "owner": "lead-management retrieval authority + integration-platform index adapter",
+      "code_refs": [
+        "backend/contexts/lead-management/internal/app/semantic.go:114",
+        "contracts/integration-platform/vector/vector.go:49",
+        "backend/contexts/integration-platform/internal/adapters/vector/postgres/store.go:193"
+      ],
+      "proposed_targets": [
+        "contracts/lead-management/researchcontext/* (proposed)",
+        "contracts/integration-platform/scopedindex/* (proposed)",
+        "backend/contexts/lead-management/internal/app/retrieve_research_context.go (proposed)"
+      ],
+      "input": "Authenticated scope, subject/question, desired dimensions, allowed revision/purpose policy.",
+      "output": "Bounded context package с permitted claims/unknown/conflicts/attempts/refs.",
+      "steps": [
+        "Exact typed ID, bounded typed graph, FTS по localized aliases/spans; затем optional semantic.",
+        "Создать versioned scoped index contract с tenant/purpose/model/dimensions/policy epoch/delete.",
+        "Store-side ACL/partition + owner recheck перед response; полный global candidate payload не отдавать caller.",
+        "Cache identity включает tenant/purpose/ACL epoch/source revisions; revoked refs исключены до prompt.",
+        "Начать с exact approved scope; ANN trial измеряет filtered recall и fallback."
+      ],
+      "failure_cases": [
+        "Похожая entity чужого tenant",
+        "Revoked source через summary",
+        "ANN top-k starvation",
+        "Delayed embed после deletion",
+        "Смена embedding model dimension"
+      ],
+      "acceptance": [
+        "Запрещённые данные отсутствуют в output/context/cache/snippets.",
+        "Exact/FTS path работает без optional embeddings.",
+        "Все summary statements имеют accepted refs и актуальный epoch."
+      ],
+      "hypothesis_ids": [
+        "IM-H02"
+      ],
+      "audit_lane": "identity_memory",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "4.7",
+      "depends_on": [
+        "4.1",
+        "4.3",
+        "4.4"
+      ],
+      "owner": "agent-orchestration + request-fulfillment",
+      "code_refs": [
+        "backend/contexts/agent-orchestration/internal/adapters/workflow/agent_run.go:96",
+        "backend/contexts/request-fulfillment/internal/adapters/workflow/fulfillment.go:292"
+      ],
+      "proposed_targets": [
+        "proposed internal/domain/research_status.go",
+        "proposed adapters/workflow/research_mission.go",
+        "proposed request-fulfillment research route adapter"
+      ],
+      "input": "Mission state, cancel/resume commands, timers, source availability, human reviews.",
+      "output": "Independent execution_state/phase/waiting_reason/outcome/stop_reason with revision.",
+      "steps": [
+        "queued/running/paused/completed/failed/cancelled; phase per active action and summary, waiting details source/deadline/next_attempt/owner.",
+        "Pause only global required blocker; source backoff uses running+waiting and bounded durable timer, alternatives continue.",
+        "Cancel закрывает admission; in-flight cancel/effects reconciled; artifacts и Firecrawl unknown credits сохраняются, proxy outcome unknown технический.",
+        "Resume не расширяет страны/критерии/Firecrawl budget и TechnicalLimits; terminal run не возобновляется, изменённый human scope создаёт linked generation.",
+        "StartMission один раз, общий FC cap, await результатов; status у request owner. No legacy top-up вокруг новой миссии и no budget reset.",
+        "Firecrawl exhausted — scoped waiting/reason, не global stop при наличии допустимых других источников; остановка partial, когда достижение цели требует недоступного FC остатка."
+      ],
+      "failure_cases": [
+        "Source down all or one; resume stale revision; terminal signal duplicate; deadline while paused; current actions finish after cancel."
+      ],
+      "acceptance": [
+        "Status stuck never hides waiting cause; terminal request remains owner controlled; criteria/caps unchanged by resume."
+      ],
+      "hypothesis_ids": [],
+      "audit_lane": "orchestration",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "4.8",
+      "depends_on": [
+        "4.2",
+        "4.3",
+        "4.7"
+      ],
+      "owner": "agent-orchestration",
+      "code_refs": [
+        "backend/contexts/agent-orchestration/internal/adapters/workflow/agent_run.go:50",
+        "backend/contexts/request-fulfillment/internal/adapters/workflow/fulfillment.go:223"
+      ],
+      "proposed_targets": [
+        "proposed research workflow version manifest/replay fixtures",
+        "proposed docs/runbooks/research-recovery.md"
+      ],
+      "input": "Persisted actions/decisions and workflow histories with workflow/prompt/model/schema/policy versions.",
+      "output": "Pinned replay/restart behavior and compatible workflow evolution runbook.",
+      "steps": [
+        "Workflow code only deterministic orchestration; LLM/search through activity with durable action IDs.",
+        "GetVersion patch markers or pinned worker deployment strategy chosen for installed SDK; replay fixtures from supported old/new histories.",
+        "Store prompt template/version/model identifier, input context refs/hash and structured output; provider model alias mutable acknowledged, do not claim deterministic model rerun.",
+        "ContinueAsNew on safe checkpoint retains missionID/ledger/versions; no pending actions lost; snapshots refs keep history bounded.",
+        "Recover unknown provider before retry; для Firecrawl reconciliation credits, для proxy только technical effect/attempt policy. Не ждать обязательных proxy monetary receipts."
+      ],
+      "failure_cases": [
+        "Old worker code removed before histories drain; model alias changed; replay invokes provider; late signal crossing ContinueAsNew; exhausted retry loop."
+      ],
+      "acceptance": [
+        "Replay no new external calls for recorded result; kill/restart actual workflow recovers ledger; unsupported histories rejected visibly."
+      ],
+      "hypothesis_ids": [
+        "ORCH-H05"
+      ],
+      "audit_lane": "orchestration",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "4.9",
+      "depends_on": [
+        "1.1",
+        "3.1",
+        "3.4",
+        "3.5",
+        "3.6",
+        "4.1",
+        "4.3"
+      ],
+      "owner": "agent-orchestration consumes lead-management acceptance receipts",
+      "code_refs": [
+        "backend/contexts/lead-management/internal/app/run_search.go:849",
+        "backend/contexts/lead-management/internal/app/run_search.go:624"
+      ],
+      "proposed_targets": [
+        "proposed research_result_memberships/credit_decisions tables",
+        "proposed contracts/lead-management/researchresult"
+      ],
+      "input": "Durable owner persistence receipt, canonical entity revision, per-criteria assessment, unit readiness checks.",
+      "output": "Current membership states seen/saved/pending-criteria/accepted/revoked with reasons and canonical credit.",
+      "steps": [
+        "Unique(tenant,mission,criteria_version,unit,canonical_entity_id) current credited row; receipt dedup unique(owner,receipt_id).",
+        "Keep candidate source discovery provenance per action separately, accepted row attaches criteria decision revision/evidence refs.",
+        "Lock mission credit revision while final slot assigned; extra saved entities retained as eligible surplus, no overshoot overwrite; quotas deterministic attribution.",
+        "Merge/split/revoke refresh canonical entity; credited aliases collapse с evidence histories; связанные Firecrawl charges сохранены, proxy usage optional.",
+        "Owner event revision watermarks; stale/out-of-order read current truth, unknown/failed persistence cannot count."
+      ],
+      "failure_cases": [
+        "Concurrent slot; same company 2domains; 2companies1domain; same receipt twice; merged accepted entities; save failed after extraction; criterion contradicted."
+      ],
+      "acceptance": [
+        "Counters recompute from membership rows; shortfall changes explainably pre-terminal; incomplete entity retained even without contact."
+      ],
+      "hypothesis_ids": [],
+      "audit_lane": "orchestration",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "4.10",
+      "depends_on": [
+        "4.4",
+        "4.7",
+        "4.9"
+      ],
+      "owner": "agent-orchestration",
+      "code_refs": [
+        "docs/concepts/intelligent-lead-research/03-agent-and-memory.md:219",
+        "docs/concepts/intelligent-lead-research/03-agent-and-memory.md:224"
+      ],
+      "proposed_targets": [
+        "proposed research_completion_snapshots/reconciliation_jobs tables"
+      ],
+      "input": "Stop trigger/accepted memberships/outstanding actions; Firecrawl grant projection и owner reservation receipts.",
+      "output": "Immutable accepted snapshot as-of + Firecrawl known/unknown credits; optional proxy usage отдельно без финансового gate.",
+      "steps": [
+        "Tx sets planning_closed at revision, no future dispatch; bounded drain waits completed receipts/owner ingest.",
+        "Freeze accepted composition+criteria+canonical/assessment revisions+event watermark after accepted pending results handled.",
+        "Unknown actions в reconciliation; integration-platform держит FC reservation, mission snapshot ссылается на held credits/grant projection. Proxy calls не имеют app monetary hold; технический outcome unknown сохраняется.",
+        "Late receipts always ingest permitted evidence with original lineage; attach late_update to UI, do not backdate credited result.",
+        "Later invalidation shows historic as-of vs current readiness; terminal completed evidence cannot silently authorize present outreach."
+      ],
+      "failure_cases": [
+        "Receipt after deadline/cancel; evidence revoke race; no provider job lookup; financial unknown never resolves; reconciliation retry."
+      ],
+      "acceptance": [
+        "Bounded terminal grace; Firecrawl unknown не ноль; proxy отсутствие usage не блокирует terminal.",
+        "Поздний текущий dossier update виден отдельно от immutable accepted composition."
+      ],
+      "hypothesis_ids": [
+        "ORCH-H07"
+      ],
+      "audit_lane": "orchestration",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "4.11",
+      "depends_on": [
+        "4.2",
+        "4.3",
+        "4.4",
+        "4.5",
+        "4.6"
+      ],
+      "owner": "agent-orchestration",
+      "code_refs": [
+        "backend/contexts/lead-management/internal/app/run_search.go:377",
+        "backend/contexts/lead-management/internal/app/run_search.go:630",
+        "docs/concepts/intelligent-lead-research/03-agent-and-memory.md:173"
+      ],
+      "proposed_targets": [
+        "proposed domain/research_strategy.go",
+        "proposed app/research_scheduler.go",
+        "proposed research_strategy_cells/query_families/attempts indexes"
+      ],
+      "input": "Brief/OpenNeeds/allowed sources/technical caps, Firecrawl remaining credits и измеренные stage outcomes.",
+      "output": "Deterministic feasible next action batch + ranked reasons/park reason + next reconsider condition.",
+      "steps": [
+        "Materialize discovery cells and entity-gap frontier, durable attempts keys independent of wording.",
+        "Hard gates scope/feature/source/TechnicalLimits/duplicate; Firecrawl credits gate только его operations; затем quota urgency/fairness/recipes.",
+        "Bootstrap source families; expected accepted-result или gap-reduction rank по measured outcomes. FC marginal credits учитываются для FC actions; для остальных latency/technical attempts, optional proxy price не gate.",
+        "Exploration — ограниченная доля dispatch opportunities/technical work после urgent cases, а не universal monetary allocation. FC cap остаётся единым; country quotas не переносятся скрыто.",
+        "Weighted deficit round-robin and one active action/entity as initial hypothesis; no-progress park with reason/evidence revision/TTL; replay choice pinned.",
+        "Сохранять stage yield без дублирования shared evidence, отдельно attributed Firecrawl credits и optional proxy usage; основная цель — целевые entity/contact outcomes."
+      ],
+      "failure_cases": [
+        "Synonym rotation; starvation; cold start; syndicated duplicates; no-contact discard; wrong country; Firecrawl unknown treated zero; proxy tool wrongly blocked for missing app tariff."
+      ],
+      "acceptance": [
+        "Equivalent query no free attempts; every queued seed eventually eligible or explicitly parked; discovery and enrichment both exercised on representative briefs.",
+        "При нулевом FC остатке proxy/model/local actions не блокируются; при полном отсутствии полезных допустимых действий — explained partial."
+      ],
+      "hypothesis_ids": [
+        "ORCH-H02",
+        "ORCH-H03",
+        "ORCH-H04",
+        "ORCH-H05"
+      ],
+      "audit_lane": "orchestration",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "4.12",
+      "depends_on": [
+        "4.7",
+        "4.9",
+        "4.10"
+      ],
+      "owner": "agent-orchestration query + request-fulfillment/lead-management UI",
+      "code_refs": [
+        "docs/concepts/intelligent-lead-research/01-vision-and-workflows.md:157"
+      ],
+      "proposed_targets": [
+        "proposed research progress snapshot/query endpoint",
+        "proposed existing validation queue/client UI projections"
+      ],
+      "input": "Revisioned mission state/membership/outbox.",
+      "output": "Consistent revisioned snapshot, drilldowns; Firecrawl-only monetary budget и отдельные technical/resource reasons.",
+      "steps": [
+        "Counters searched documents, discovered hits, saved candidates, identity-confirmed, criteria-accepted, owned-contact, email-ready, credited distinct; label scopes/time.",
+        "GET with revision/ETag; SSE or polling delivers revision hints then snapshot, duplicates/out-of-order cannot locally increment credit.",
+        "Отдельно heartbeat/meaningful progress, текущая гипотеза/source/wait; Firecrawl actual/reserved/unknown, optional proxy usage в diagnostics; без выдуманной ETA.",
+        "Filters map each count to exact owner resultset, candidate refs stable even no legacy domain mapping."
+      ],
+      "failure_cases": [
+        "Reconnect missed events; duplicate/out-of-order; deleted candidate; wrong tenant; provider200/no parsed facts; zero vs unknown count."
+      ],
+      "acceptance": [
+        "Все счётчики раскрываются до соответствующих сохранённых строк выбранного scope/unit; persisted save error distinguish extraction seen; completed partial shows missing reasons."
+      ],
+      "hypothesis_ids": [],
+      "audit_lane": "orchestration",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "4.13",
+      "depends_on": [
+        "3.4",
+        "3.6",
+        "4.5"
+      ],
+      "owner": "lead-management",
+      "code_refs": [
+        "docs/concepts/intelligent-lead-research/03-agent-and-memory.md:241",
+        "backend/contexts/lead-management/internal/app/run_search.go:843"
+      ],
+      "proposed_targets": [
+        "backend/contexts/lead-management/internal/domain/open_need.go (proposed)",
+        "backend/contexts/lead-management/internal/app/upsert_open_need.go (proposed)",
+        "backend/contexts/lead-management/internal/adapters/persistence/postgres/open_need_store.go (proposed)"
+      ],
+      "input": "Persisted entity, missing predicate, purpose, criteria/mission refs, scoped attempts.",
+      "output": "Persistent open need с independent knowledge_state/execution_state.",
+      "steps": [
+        "Active uniqueness по tenant/purpose/entity/predicate/constraints hash; incompatible requester criteria раздельны.",
+        "Open→satisfied только matching evaluation set; satisfied→open при утрате достаточности; obsolete при отмене области.",
+        "Mission completion отсоединяет execution; need open+dormant остаётся видимым.",
+        "Local due evaluation разрешено без acquisition; external continuation только через active authorized mission/action.",
+        "Entity/research adoption без контакта не зависит от credit gate."
+      ],
+      "failure_cases": [
+        "Новая компания без email удалена после completion",
+        "Need sales закрыт support email вопреки criteria",
+        "Истечение TTL повысило финансовый лимит Firecrawl или создало новый run без разрешения",
+        "Duplicate need после restart"
+      ],
+      "acceptance": [
+        "Entity и open need переживают restart/terminal run.",
+        "Потребность открыта с причиной/сроком/attempt refs и не запускает внешний поиск без разрешённого run; финансовый gate есть только у Firecrawl.",
+        "Две criteria могут ссылаться на entity без смешения credit."
+      ],
+      "hypothesis_ids": [
+        "IM-H03"
+      ],
+      "audit_lane": "identity_memory",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "4.14",
+      "depends_on": [
+        "3.5",
+        "3.8",
+        "4.13"
+      ],
+      "owner": "lead-management dependency owner; consumers retain own projections",
+      "code_refs": [
+        "docs/concepts/intelligent-lead-research/02-identity-and-evidence.md:248",
+        "openspec/changes/intelligent-lead-research/specs/lead-research-memory/spec.md#Альтернативные достаточные основания учитываются при отзыве"
+      ],
+      "proposed_targets": [
+        "backend/contexts/lead-management/internal/domain/assertion_dependency.go (proposed)",
+        "backend/contexts/lead-management/internal/app/reevaluate_dependencies.go (proposed)",
+        "backend/contexts/lead-management/internal/adapters/persistence/postgres/dependency_store.go (proposed)",
+        "contracts/lead-management/researchchanges/* (proposed)"
+      ],
+      "input": "Evidence/assertion/identity/policy changes with owner version/event id.",
+      "output": "Exactly-once-effective local re-evaluations and idempotent projection notifications.",
+      "steps": [
+        "Reverse index по dependency type/id/revision; OR sufficient sets с AND required members и contradiction veto.",
+        "No circular proof: derived inputs предшествующих accepted versions; subject graph cycles допустимы, proof cycles не authority.",
+        "Inbox dedupe + current state read + CAS update + outbox in same owner transaction.",
+        "Read latest revisions при old event, compare per aggregate watermark, retry CAS conflict bounded.",
+        "Recompute only affected relations/needs/summaries; mission owner receives current revisions, terminal snapshots immutable."
+      ],
+      "failure_cases": [
+        "Revoke единственного support",
+        "Revoke при alternative independent support",
+        "Out-of-order v3 после v5",
+        "Concurrent split и evidence",
+        "Цикл A доказывает B доказывает A"
+      ],
+      "acceptance": [
+        "Late evidence дополняет прежний entity один раз.",
+        "Допустимый alternative удерживает link, sole revoke открывает need.",
+        "Нет old event rollback или self-support confirmation.",
+        "Dependency lag observable, failed jobs retry/DLQ без тихой потери."
+      ],
+      "hypothesis_ids": [
+        "IM-H04",
+        "IM-H06"
+      ],
+      "audit_lane": "identity_memory",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "4.15",
+      "depends_on": [
+        "3.7",
+        "4.6",
+        "4.14",
+        "4.9",
+        "4.10",
+        "4.12"
+      ],
+      "owner": "lead-management + agent-orchestration + UI",
+      "code_refs": [
+        "docs/concepts/intelligent-lead-research/02-identity-and-evidence.md:248",
+        "docs/concepts/intelligent-lead-research/03-agent-and-memory.md:260"
+      ],
+      "proposed_targets": [
+        "backend/contexts/lead-management/research_temporal_integration_test.go (proposed)",
+        "docs/runbooks/research-late-enrichment.md (proposed)"
+      ],
+      "input": "T0 company+ID without email; T2 later B+contact; active/terminal missions and two tenants.",
+      "output": "Recorded T0–T4 integration report, historical/current UI proof and operational runbook.",
+      "steps": [
+        "T0 durable company/OpenNeed/negative; restart; T1 terminal partial snapshot.",
+        "T2 ingest B with exact scoped ID and subject email; duplicate receipt then delayed order.",
+        "T3 apply dependency, need satisfaction per criterion, active membership vs immutable terminal snapshot.",
+        "T4 revoke sole then alternate evidence, split identity after recorded send; verify no replay effect.",
+        "Repeat foreign purpose/tenant, deletion race and inaccessible artifact cases."
+      ],
+      "failure_cases": [
+        "Late contact creates duplicate entity",
+        "Old completion total silently rewritten",
+        "Correction repeats sending",
+        "Foreign data closes need",
+        "Restored DB resurrects tombstoned index"
+      ],
+      "acceptance": [
+        "Real DB/restart/worker and UI scenario survives all steps.",
+        "Новая пользовательская заявка или внешний вызов без разрешённого run не создаются; финансовый лимит Firecrawl не расширяется. Для LLM/собственного crawler/OCR не вводится второй app budget поверх proxy.",
+        "Current dossier updates while historical completion and sent recipient/content remain exact."
+      ],
+      "hypothesis_ids": [],
+      "audit_lane": "identity_memory",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "4.16",
+      "title": "SearchBrief и SearchStrategyPlan от оффера/ICP до источников/поисковых семейств",
+      "audit_lane": "orchestration",
+      "added_after_baseline": true,
+      "implementation_status": "pending",
+      "depends_on": [
+        "1.1",
+        "1.5",
+        "4.1",
+        "5.3"
+      ],
+      "owner": "agent-orchestration",
+      "input": [
+        "Версия человеческого поручения/оффера/ICP, catalog стран и capability manifest."
+      ],
+      "output": [
+        "Versioned SearchBrief, QueryFamily и SearchStrategyPlan; human vs inferred provenance."
+      ],
+      "steps": [
+        "Скомпилировать must/should/exclude/unknown отдельно от оффера поставщика.",
+        "Проверить страны, роли и источник каждого критерия; сохранить raw payload в red, refs в green.",
+        "Предложить локальные термины/шаблоны источников и валидировать schema, версии, допустимые операции."
+      ],
+      "failure_cases": [
+        "Поиск конкурентов вместо клиентов",
+        "LLM выдумывает обязательный критерий",
+        "Отсутствующий язык или источник выдан за поддержанный"
+      ],
+      "acceptance": [
+        "Один и тот же offer с разными ICP даёт разные целевые сегменты; source keywords не превращаются в asserted факты клиента; даты/имена/регион не выдумываются."
+      ],
+      "hypothesis_ids": [
+        "ORCH-H01"
+      ],
+      "proposed_targets": [
+        "backend/contexts/agent-orchestration/internal/domain/research (proposed)",
+        "backend/contexts/agent-orchestration/internal/app (proposed)",
+        "contracts/agent-orchestration/research (proposed)"
+      ]
+    },
+    {
+      "task_id": "4.17",
+      "title": "Discovery portfolio и двойная frontier новых кандидатов/пробелов",
+      "audit_lane": "orchestration",
+      "added_after_baseline": true,
+      "implementation_status": "pending",
+      "depends_on": [
+        "4.16",
+        "4.3",
+        "4.4",
+        "4.5",
+        "4.6",
+        "6.1"
+      ],
+      "owner": "agent-orchestration",
+      "input": [
+        "SearchBrief, source manifest, scoped retrieval и готовый intent/receipt protocol."
+      ],
+      "output": [
+        "Persistent StrategyCell, DiscoveryHit и две логические очереди discovery/enrichment с единым исполнителем."
+      ],
+      "steps": [
+        "Создавать портфель источников и query family lineage, а не одну строку поиска.",
+        "Сохранять обнаруженный субъект и evidence до проверки контактов; планировать пробелы отдельно.",
+        "Связывать accepted membership с источником/стратегией; повторная выдача и merge не увеличивают прирост.",
+        "Планировать bounded действия с техническими caps; Firecrawl ReserveForAction у integration-platform, proxy без денежного gate."
+      ],
+      "failure_cases": [
+        "Один трудный контакт вытесняет новые компании",
+        "Рестарт обнуляет queryattempts",
+        "Одинаковая компания зачтена нескольким источникам",
+        "FC exhausted ошибочно останавливает доступные proxy tools"
+      ],
+      "acceptance": [
+        "Старт без seed компании; article/name/registry/listing даёт сохраняемый кандидат даже без email; застрявший источник уступает новым; merge не размножает yield."
+      ],
+      "hypothesis_ids": [
+        "ORCH-H02",
+        "ORCH-H03"
+      ],
+      "proposed_targets": [
+        "backend/contexts/agent-orchestration/internal/domain/research (proposed)",
+        "backend/contexts/agent-orchestration/internal/app (proposed)",
+        "contracts/agent-orchestration/research (proposed)"
+      ]
+    },
+    {
+      "task_id": "4.18",
+      "title": "Сравнить measured-yield policy с rule-based поиском и принять числа caps/exploration",
+      "audit_lane": "orchestration",
+      "added_after_baseline": true,
+      "implementation_status": "pending",
+      "depends_on": [
+        "2.1",
+        "2.3",
+        "4.11",
+        "4.17"
+      ],
+      "owner": "agent-orchestration+research acceptance",
+      "input": [
+        "Frozen corpus, task traces, заранее принятые quality criteria и Firecrawl credit cap."
+      ],
+      "output": [
+        "Воспроизводимый отчёт fixed/adaptive policy, решение о числах caps/exploration и fallback."
+      ],
+      "steps": [
+        "Разделить tuning и holdout по source families/компаниям.",
+        "Сравнить rule baseline и measured-yield; включить неуспешные/нулевые queries в знаменатели.",
+        "Показать unique target outcomes, coverage, uncertainty, latency/attempts и Firecrawl credits по рынкам.",
+        "Не включать более сложную policy без измеримого преимущества; сохранить baseline."
+      ],
+      "failure_cases": [
+        "Скрытый выбор удачных кейсов",
+        "Bandit оценён на обучающем корпусе",
+        "Меньший расход достигнут провалом качества",
+        "Proxy price стал обязательным входом/финансовым запретом"
+      ],
+      "acceptance": [
+        "Quality/unique target outcomes, Firecrawl credits и техническая latency/attempts по странам/сегментам, uncertainty; proxy cost optional. Bandit без преимущества не принимается."
+      ],
+      "hypothesis_ids": [
+        "ORCH-H02",
+        "ORCH-H03",
+        "ORCH-H04"
+      ],
+      "proposed_targets": [
+        "backend/contexts/agent-orchestration/internal/domain/research (proposed)",
+        "backend/contexts/agent-orchestration/internal/app (proposed)",
+        "contracts/agent-orchestration/research (proposed)"
+      ]
+    },
+    {
+      "task_id": "5.1",
+      "depends_on": [
+        "1.1",
+        "1.2"
+      ],
+      "owner": "request-fulfillment; справочник profiles audience",
+      "code_refs": [
+        "backend/contexts/request-fulfillment/internal/domain/request.go:80"
+      ],
+      "proposed_targets": [
+        "PROPOSED backend/contexts/request-fulfillment/internal/domain/market_selection.go",
+        "PROPOSED contracts/audience/countrycatalog/",
+        "PROPOSED versioned country catalogue under audience configuration"
+      ],
+      "input": "Новая заявка/редактируемая версия, пользователь, catalog revision, UI locale",
+      "output": "MarketSelectionSnapshot с countries[], origin user/default, presence semantics, catalog_version; RU+ru defaults только для новых заявок",
+      "steps": [
+        "Загрузить закреплённый ISO country dataset; добавить CLDR labels отдельно; поддержать alias search (GB/UK как отображение, canonical GB). Проверять valid country set; EU/GCC разворачивать в frozen members[] и сохранять group revision.",
+        "Сохранить выбор в транзакции request с expected_version; изменение после approval создаёт явную ревизию/новое решение по existing lifecycle. Constraints unique(request_revision,country), >=1 country. Нельзя записывать страны из UI language.",
+        "Для старых заявок определить legacy_unknown scope, либо документированный backfill с provenance; не превращать неизвестную прежнюю географию в доказанное RU.",
+        "Показать availability каждой capability и данные профиля без платного поиска. Повтор команды idempotent command_id, concurrent edit CAS."
+      ],
+      "failure_cases": [
+        "неизвестный код/устаревшая группа",
+        "удалённая страна в новой версии каталога",
+        "UI ru и DE selection",
+        "concurrent changes",
+        "legacy request без countries"
+      ],
+      "acceptance": [
+        "fixtures RU default/new only; multiselect DE+GB; EU expanded; no paid calls on render; persisted snapshot survives rename",
+        "legacy links/UI не требуют несуществующего нового поля"
+      ],
+      "hypothesis_ids": [],
+      "audit_lane": "markets_search",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "5.2",
+      "depends_on": [
+        "1.2",
+        "4.3",
+        "4.4",
+        "5.1",
+        "5.3",
+        "6.1"
+      ],
+      "owner": "audience — MarketStudy; agent-orchestration — execution",
+      "code_refs": [
+        "backend/contexts/audience/contract.go:25"
+      ],
+      "proposed_targets": [
+        "PROPOSED backend/contexts/audience/internal/domain/market_study.go",
+        "PROPOSED backend/contexts/audience/internal/app/command/start_market_study.go",
+        "PROPOSED contracts/audience/marketstudy/",
+        "PROPOSED audience migration market_study/market_observation"
+      ],
+      "input": "OfferVersion/ICP, shortlist/rules, human study intent, technical time/attempt/work caps. Firecrawl request binding либо явный study grant того же ledger/account policy; существующая заявка для самостоятельного исследования не обязательна. Other tools existing service proxy.",
+      "output": "Immutable StudyResultVersion: country observations, sources/time/sample counts/cost/unknowns; recommendation hypotheses; request choice unchanged",
+      "steps": [
+        "Create study через command_id и tenant с human intent и CAS; grant/link фиксируется в той же авторитетной Firecrawl account policy при использовании Firecrawl. Самостоятельный pre-request MarketStudy не требует клиентской заявки и не создаёт второй денежный бюджет приложения.",
+        "Согласовать strata: country×segment×source family; одинаковый bounded protocol и cost reporting. Не оценивать market size числом результатов SERP. Отделить demand signals от contact discoverability.",
+        "Вызовы вне DB transaction через action lifecycle. Firecrawl Search/Crawl/Extract учитываются в одном ledger/account policy с request binding или явным study grant. Non-Firecrawl через existing service proxy без app money reservation; usage/rejection receipt сохраняется. Observations red; audience получает разрешённые refs/aggregates.",
+        "Сохранить study version+result в owner transaction и outbox study-completed; request owner применяет только по human command c expected study/request revision.",
+        "UI показывает work/time, proxy-reported cost при наличии и Firecrawl credits отдельно. Retry read безопасен, повтор command_id не запускает calls. Firecrawl cap/grant exhaustion блокирует только Firecrawl; остальные разрешённые инструменты могут продолжать работу в пределах human intent и technical limits."
+      ],
+      "failure_cases": [
+        "источник недоступен лишь в одной стране",
+        "одинаковая статья перепечатана пять раз",
+        "неверный язык",
+        "достигнут technical cap, proxy отказал или request Firecrawl cap исчерпан",
+        "recommendation устарела между study и apply"
+      ],
+      "acceptance": [
+        "Opening form без внешних calls; explicit human study bounded техническими limits. Pre-request Firecrawl принят при явном study grant того же ledger/account policy; client request не обязателен. Non-Firecrawl без второго app monetary cap; FC exhaustion не останавливает доступные разрешённые proxy tools.",
+        "недоступные страны не получают нулевой спрос",
+        "ни один study автоматически не меняет approved country selection",
+        "report содержит sampled n/time/country/source limitations"
+      ],
+      "hypothesis_ids": [
+        "MS-H01",
+        "MS-H02"
+      ],
+      "audit_lane": "markets_search",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "5.3",
+      "depends_on": [
+        "1.2",
+        "1.5",
+        "5.1"
+      ],
+      "owner": "audience — market/industry semantics; integration-platform — source capabilities; lead-management — утверждения",
+      "code_refs": [
+        "contracts/integration-platform/search/search.go:25",
+        "backend/contexts/lead-management/internal/app/search_leads.go:550"
+      ],
+      "proposed_targets": [
+        "PROPOSED contracts/audience/countryprofile/",
+        "PROPOSED backend/contexts/audience/internal/domain/country_profile.go",
+        "PROPOSED integration-platform SourceProfileRevision registry",
+        "PROPOSED agent-orchestration SearchBrief/QueryFamily mapping"
+      ],
+      "input": "Страна/язык, OfferVersion+ICP must/should/exclude, profile/source revisions",
+      "output": "Версия CountryProfile, query families/local aliases, source-addressable predicates и unknown predicates",
+      "steps": [
+        "Внести country profile: accepted identifiers/reg_scope refs, languages, industry vocabulary/local terms/legal forms, source family priorities, provider mappings. Country code/locale/provider код хранятся раздельно.",
+        "Разделить registration_jurisdiction, operating_presence, served_market как разные assertions; TLD/IP/язык — только discovery hints. Jurisdiction может быть subnational, поэтому US state и GB subdivisions не уместить в один country field.",
+        "LLM предлагает local expansions с причиной/meaning/negative examples; валидатор оставляет утверждённые ICP границы. Не объединять software developer и construction developer. Сопоставление классификаторов many-to-many/versioned hypotheses, не точная замена.",
+        "Build SearchBrief: факты ищутся по доступным predicates; неизвестные company-size или buy-intent остаются unknown. Generate bounded StrategyCells/QueryFamilies, profile version pinned per mission; новых полномочий/planned markets модель не добавляет.",
+        "Country profile revisions immutable; source/operator changes публикуют change event, active missions сохраняют snapshot и получают known limitation отдельно."
+      ],
+      "failure_cases": [
+        "unsupported language code",
+        "brand translation заменяет original name",
+        "company office ошибочно registration",
+        "registry unavailable",
+        "разные юрлица с похожим названием",
+        "LLM расширил ICP на агентства"
+      ],
+      "acceptance": [
+        "семантические adversarial cases и локальные fixtures проходят",
+        "source/profile version видны в каждом search attempt",
+        "регистр/офис/обслуживание показываются отдельными evidence claims",
+        "no known seed brief даёт несколько source-backed search actions"
+      ],
+      "hypothesis_ids": [
+        "MS-H01"
+      ],
+      "audit_lane": "markets_search",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "5.4",
+      "depends_on": [
+        "1.1",
+        "5.1",
+        "5.3"
+      ],
+      "owner": "request-fulfillment — quota policy; agent-orchestration — credits/counters",
+      "code_refs": [
+        "backend/contexts/request-fulfillment/internal/domain/request.go:80",
+        "backend/contexts/lead-management/internal/app/search_leads.go:301"
+      ],
+      "proposed_targets": [
+        "PROPOSED request-fulfillment MarketQuotaPolicy value object",
+        "PROPOSED agent-orchestration quota evaluation integrated ResultMembership (4.9)"
+      ],
+      "input": "Approved goal/unit/markets and chosen quota semantics",
+      "output": "QuotaSnapshot+per-country target/credit/shortfall+support blocking reasons",
+      "steps": [
+        "Валидировать fixed sum=total либо common pool 0<=min<=max и sum(min)<=total<=sum(max) там, где max finite; проверять eligible countries/support. Ambiguous multi-country attribution требует versioned rule.",
+        "Canonical entity/unit получает global credit один раз в mission/criteria version. Все matched markets остаются evidence; отдельная primary credit country или иной явно выбранный счётчик квот.",
+        "Резервирование last slot/квоты в той же owner transaction, что ResultMembership CAS; country transfer может выполнить лишь заранее разрешённая policy либо новая human selection version.",
+        "Показывать search/acquisition/registry готовность отдельно; degraded provider может сделать run partial, не изменить рынки. In-flight receipts обновляют факты, completion snapshot неизменен.",
+        "Переоценка identity/market evidence инициирует 4.14 dependency reevaluation, а не прямую правку чужой таблицы."
+      ],
+      "failure_cases": [
+        "одна company попала в DE/GB",
+        "недобор страны",
+        "два worker занимают последний слот",
+        "market evidence revoked",
+        "невыполнимая сумма min/max"
+      ],
+      "acceptance": [
+        "global unique count и country count раскрываются объектами",
+        "нет скрытого переноса квоты",
+        "concurrency/revision/revocation сценарии совместно с4.9",
+        "support_state unknown не интерпретируется как ready"
+      ],
+      "hypothesis_ids": [
+        "MS-H05"
+      ],
+      "audit_lane": "markets_search",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "5.5",
+      "depends_on": [
+        "2.1",
+        "2.3",
+        "5.3",
+        "6.1",
+        "6.2"
+      ],
+      "owner": "audience+integration-platform; ответственный acceptance reviewer",
+      "code_refs": [
+        "backend/contexts/integration-platform/internal/adapters/firecrawl/firecrawl.go:118"
+      ],
+      "proposed_targets": [
+        "PROPOSED docs/runbooks/research-country-acceptance.md",
+        "PROPOSED versioned country acceptance manifests"
+      ],
+      "input": "Выбранные пилотные страны/сегменты; реальные разрешённые provider access; pinned profiles",
+      "output": "Per-country report discovery/registry/acquisition/identity/contact quality/cost и supported/limited/unavailable flags",
+      "steps": [
+        "Выбрать пилот по demand/access/языковому контрасту; RU default обязателен как пользовательское правило, RU/GB пилот — рекомендация. Если RU registry access неизвестен, отчёт оставляет registry unknown/limited.",
+        "Составить judged briefs без известных seed, cohort known entities для exact lookup, source-family holdout. Separate discovery coverage по pooled judged universe от истинного неизвестного web recall.",
+        "Выполнить реальные calls через recorded actions: Firecrawl request credit receipts; прочие через existing service proxy, без новой app money reservation. Fixtures проверяют parser, не connectivity/cost/geography. Provider plan/proxy capabilities/time/terms фиксируются.",
+        "Публиковать отчёт с количеством попыток/empty/throttled/unavailable, applied geography, unique entities and linked contacts; ручная проверка subject и local semantics.",
+        "Поддержка с owner+tested_at+expires_at и freshness scope, не вечный green badge. Provider/version change переводит требуемые capabilities в revalidation."
+      ],
+      "failure_cases": [
+        "заблокированный реестр",
+        "429/quota",
+        "foreign-only website",
+        "редирект на другую страну",
+        "локальный registry number не глобально уникален"
+      ],
+      "acceptance": [
+        "реальные trace/receipt evidence и воспроизводимый manifest",
+        "no stub/provider unavailable masked success",
+        "в каждой стране ограничения и стоимость видны",
+        "country badge не утверждает контактную полноту по успешному registry lookup"
+      ],
+      "hypothesis_ids": [
+        "MS-H01",
+        "MS-H02"
+      ],
+      "audit_lane": "markets_search",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "6.1",
+      "depends_on": [
+        "1.5",
+        "4.3",
+        "4.4"
+      ],
+      "owner": "integration-platform — technical gateway; agent-orchestration — action choice; lead-management — result evidence",
+      "code_refs": [
+        "contracts/integration-platform/search/search.go:19",
+        "backend/contexts/integration-platform/internal/adapters/firecrawl/firecrawl.go:120"
+      ],
+      "proposed_targets": [
+        "PROPOSED contracts/integration-platform/regionalsearch/",
+        "PROPOSED backend/contexts/integration-platform/internal/adapters/regionalsearch/",
+        "PROPOSED search receipt/action tables under permitted owner data boundary"
+      ],
+      "input": "action_id/scope/QueryFamily/query/cursor/geography/provider profile/technical caps; Firecrawl-only reservation_ref в одном ledger/account policy по request binding либо явному study grant; existing service proxy для остальных.",
+      "output": "SearchReceipt with status, capabilities requested/applied, observed time, result refs/next cursor, costs known/unknown, errors",
+      "steps": [
+        "Добавить новый контракт рядом с legacy Search; request = query intent/type, text or source filter, target country vs requested SERP country, search language/UI language, requirement mode, limit/page/cursor. Не вводить универсальный country parameter mapping без adapter manifest.",
+        "Legacy Firecrawl wrapper объявляет text+maxResults, unsupported country/typed registry/cursor. Не выдумывает applied region. New providers map parameters; raw query/response red, технические refs/metrics без текста клиента.",
+        "Persist action intent до network; monetary reservation только Firecrawl в одном ledger/account policy с request binding либо явным study grant. Остальные adapters через existing service proxy без денежной app reservation. Provider pages имеют дочерние receipts/technical caps; unique(action_id,attempt_no), duplicate receipt idempotent. Lost response сохраняет uncertainty. Исчерпание FC cap/grant блокирует только FC, разрешённые другие tools продолжаются.",
+        "Normalize outcomes success/empty/partial/throttled/unavailable/invalid/unsupported/cancelled/cost_unknown; partial results persist before retry. Retry-After/backoff+shared source limiter, bounded attempts/time; circuit state per provider+engine+country где уместно.",
+        "Keep provider rank/original URL/source discovery ref; dedup URLs для acquisition отдельно от candidate entities. Gateway не считает лиды. Cache key включает scope/query profile/geography/language/source version, TTL и provider freshness receipts."
+      ],
+      "failure_cases": [
+        "provider silently ignores country",
+        "429+Retry-After",
+        "200 with no results vs malformed response",
+        "pagination loop/duplicate cursor",
+        "timeout after billing",
+        "one subengine failed",
+        "cancel after partial pages"
+      ],
+      "acceptance": [
+        "contract tests applied geography/unsupported",
+        "receipt-backed replay no double count; cost ambiguity exposed",
+        "legacy demo contract stable",
+        "реальный provider acceptance через6.2/6.3"
+      ],
+      "hypothesis_ids": [
+        "MS-H02",
+        "MS-H03"
+      ],
+      "audit_lane": "markets_search",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "6.2",
+      "depends_on": [
+        "2.3",
+        "5.3",
+        "6.1"
+      ],
+      "owner": "integration-platform",
+      "code_refs": [
+        "backend/contexts/integration-platform/internal/adapters/firecrawl/firecrawl.go:134"
+      ],
+      "proposed_targets": [
+        "PROPOSED regional API adapter Brave or accepted alternative",
+        "PROPOSED per-provider capability/cost profiles and trial manifest"
+      ],
+      "input": "regional query portfolio; access/plan; costs quoted with date",
+      "output": "Accepted external adapter + per-country capability/coverage/limits report or explicit failure",
+      "steps": [
+        "Brave как первый кандидат: reviewed schema country/search_lang/ui_lang split, ограниченная pagination. Проверить actual API docs и plan; schema missing AE не объявляет unsupported backend без проверки. SerpAPI — альтернатива по engine/coverage; legacy SDK docs не тарифный источник.",
+        "Реально проверить supported country values, exact ID query без unwanted spell correction, page overlap, site operators если нужны, response error classes, allowed snippets/storage.",
+        "Измерить time/work/unique entity/contact yield; monetary cost только из доступного proxy/provider usage. Для non-Firecrawl нет app cap/reservation, действуют existing proxy и technical limits. Unknown cost не представлять нулём и не блокировать путь требованием дополнительного денежного budget.",
+        "Запускать одинаковые briefs в сравнимых окнах; transient failures отдельно от relevance. Provider upgrade/plan change пересматривает manifest.",
+        "Отклонённый кандидат сохраняет rejection evidence; принятый подключается gateway, а не напрямую planner."
+      ],
+      "failure_cases": [
+        "unsupported country",
+        "silent default US",
+        "query length >schema",
+        "offset exhausted",
+        "service quote недоступен",
+        "ключ без нужного endpoint"
+      ],
+      "acceptance": [
+        "live trial + receipts; truthful unknowns",
+        "получение search result не объявляется подходящей компанией",
+        "тарифы не захардкожены из устаревшего README"
+      ],
+      "hypothesis_ids": [
+        "MS-H02"
+      ],
+      "audit_lane": "markets_search",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "6.3",
+      "depends_on": [
+        "6.1",
+        "6.2"
+      ],
+      "owner": "integration-platform",
+      "code_refs": [
+        "contracts/integration-platform/search/search.go:19"
+      ],
+      "proposed_targets": [
+        "PROPOSED deploy self-hosted metasearch profile if accepted",
+        "PROPOSED SearXNG adapter + engine capability manifests"
+      ],
+      "input": "Задачи discovery, source terms/access, measured external baseline",
+      "output": "Выбранный реально работающий backend собственного gateway; decision record for SearXNG",
+      "steps": [
+        "Запустить наш pinned экземпляр с JSON форматом, явно enabled engines, timeouts/outgoing settings. Не использовать public community instance как production provider.",
+        "Для каждого engine проверить supported syntax/languages/region mapping, source identity в ответах, disabled/unresponsive/throttled handling. HTTP200 всего metasearch не означает success всех engines.",
+        "Обнаружить duplicate/syndicated results, сохранять contributing engine refs для discovery diagnostics, но не считать три SERP copies тремя независимыми assertions.",
+        "Оценить эксплуатацию+proxy traffic+manual maintenance и реальную добавочную unique yield; SearXNG не own global index и не автоматически бесплатный поиск.",
+        "Если решение отрицательное, собственный gateway остаётся external API+corpus; фиксируется альтернатива и выполнение функции. Если положительное, bounded rollout/source circuit breakers/health runbook.",
+        "SearXNG/external engine calls используют existing service proxy; не разворачивать параллельный денежный шлюз. Geo/session support proxy — отдельная проверка, default route не country proof."
+      ],
+      "failure_cases": [
+        "JSON disabled403",
+        "upstream captcha/throttle",
+        "engine removed",
+        "proxy round-robin нарушил geo policy",
+        "engine stale response"
+      ],
+      "acceptance": [
+        "self-hosted endpoint реально отвечает accepted engines",
+        "applied vs requested params honest",
+        "принятый backend даёт достаточную measured функцию; отклонение кандидата обосновано"
+      ],
+      "hypothesis_ids": [
+        "MS-H03"
+      ],
+      "audit_lane": "markets_search",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "6.4",
+      "depends_on": [
+        "3.1",
+        "3.3",
+        "3.4",
+        "4.6"
+      ],
+      "owner": "lead-management — red corpus/search; integration-platform — scoped embedding transport",
+      "code_refs": [
+        "backend/contexts/integration-platform/internal/adapters/vector/postgres/store.go:92",
+        "contracts/integration-platform/vector/vector.go:34"
+      ],
+      "proposed_targets": [
+        "PROPOSED backend/contexts/lead-management/internal/adapters/persistence/postgres/research_index.go",
+        "PROPOSED lead-management research_search_document migration",
+        "PROPOSED scoped vector contract separate from legacy port"
+      ],
+      "input": "authorized SearchBrief/query+tenant/purpose+required current/as-of scope",
+      "output": "Ranked document/entity refs with evidence revisions, language, freshness; authorized snippets",
+      "steps": [
+        "Создать research_search_document(tenant_id,purpose_id,document_id,revision,entity_ref,language,ts_config,search_vector,validity,acl_revision,deleted_at,updated_at). PK includes scope/document/version; partial current index и B-tree subject/identifier filters, GIN tsvector. Source-of-truth evidence отдельно.",
+        "Exact identifier/alias lookup до lexical/semantic; canonical jurisdiction+number indexed отдельно, не LLM string matching. FTS per doc language/known regconfig, unknown languages explicit simple fallback либо unsupported tokenizer, не молча English.",
+        "Owner транзакция evidence+outbox; projector updates only newer revision. Retrieval ACL/revocation check до ranking/snippet и перед prompt. Deleted/tombstone refs immediately filtered source-of-truth даже при index lag.",
+        "Не reuse общий existing vector index. Scoped vector query принимает tenant/purpose/allowed set/model_version/dimensions; index partitions/models не смешиваются; bounded exact baseline first, embed call через recorded action, failure retains lexical search.",
+        "Index checkpoint/lag shown; replay idempotent unique(document_version,projection_version). Existing legacy records мигрируются только после mapping+scope validation; нет uncontrolled green PII backfill."
+      ],
+      "failure_cases": [
+        "tenant A query возвращает B ID",
+        "revocation while index stale",
+        "model dim change",
+        "mismatched FTS config",
+        "полная таблица rescanned на каждом запросе",
+        "empty corpus",
+        "non-Latin unsupported tokenization"
+      ],
+      "acceptance": [
+        "tenant/deletion/revoked snippets tests with real DB",
+        "exact ID found regardless language",
+        "внешний API outage не ломает local corpus search",
+        "measured recall baseline и scope before top-k",
+        "empty local result does not mean entity nonexistent"
+      ],
+      "hypothesis_ids": [
+        "MS-H04"
+      ],
+      "audit_lane": "markets_search",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "6.5",
+      "depends_on": [
+        "3.3",
+        "3.4",
+        "4.3",
+        "4.13",
+        "6.1",
+        "6.4"
+      ],
+      "owner": "agent-orchestration — frontier intents; integration-platform — source capabilities; lead-management — evidence/index projections",
+      "code_refs": [
+        "backend/contexts/lead-management/internal/app/run_search.go:699"
+      ],
+      "proposed_targets": [
+        "PROPOSED SourceProfileRevision metadata registry",
+        "PROPOSED agent-orchestration frontier/source-run manifests",
+        "PROPOSED evidence-index refresh projector in lead-management"
+      ],
+      "input": "SourceProfileRevision+scope+goals/OpenNeed+explicit permission/run technical limits; Firecrawl uses shared request credit cap, other tools existing service proxy.",
+      "output": "New/updated evidence versions and index entries; source freshness/coverage manifest",
+      "steps": [
+        "Определить SourceProfileRevision: kind/regional coverage/languages/subjects/field suitability, discovery/filter/pagination methods, access/cost/limits, parser/adapter version, content retention and source-family lineage. Profiles references no provider secrets.",
+        "Authoritative frontier key(scope,mission/source_run,normalized URL or registry query,representation/profile version,purpose); URL normalization preserves record IDs and locale params. Provider host != entity identity, one directory host has many companies.",
+        "Claim intent/lease via action lifecycle; crawler queue only executor. Firecrawl request money authority единственная в app, other calls через existing proxy без нового денежного cap. Shared source rate/concurrency/timeout/attempt limits and receipt reconciliation обязательны.",
+        "Adaptive recrawl по OpenNeed/freshness/change rate/cost telemetry в пределах authorized run+technical limits. Firecrawl cap общий request, non-Firecrawl через existing proxy. Store ETag/Last-Modified/content hash/final URL/status.304 обновляет время/метод наблюдения прежнего содержимого, не независимое подтверждение.",
+        "Content revision -> evidence assertion recompute -> versioned index event; 404/robots/access revoked distinct from company dissolution. Error backoff bounded; disappearance alerts may reopen need. Late source B links through entity resolver and dependency index4.14; terminal mission snapshot untouched.",
+        "UI source manifest: attempted/completed/empty/limited/error, last_seen/changed/indexed_at, duplicate rate and unresolved gaps; coverage means measured source sampling, not universe completeness."
+      ],
+      "failure_cases": [
+        "crawl loop",
+        "duplicate URL with different locales/record query IDs",
+        "worker crash/lease expiry",
+        "404 mistaken closure",
+        "out-of-order index event",
+        "revoked access after fetch",
+        "scheduler запускает неразрешённый run или превысил technical limits/Firecrawl request cap"
+      ],
+      "acceptance": [
+        "replay source manifest durable and idempotent",
+        "late contact fills prior entity/OpenNeed, no new formal request",
+        "renewed source version searchable; withdrawn refs disappear",
+        "no URL queue duplicated control authority",
+        "quota/cost preserved across retries"
+      ],
+      "hypothesis_ids": [
+        "MS-H05",
+        "MS-H06"
+      ],
+      "audit_lane": "markets_search",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "6.6",
+      "depends_on": [
+        "2.3",
+        "6.4",
+        "6.5"
+      ],
+      "owner": "lead-management + infrastructure performance owner",
+      "code_refs": [
+        "backend/contexts/integration-platform/internal/adapters/vector/postgres/store.go:100"
+      ],
+      "proposed_targets": [
+        "PROPOSED docs/adr/research-search-storage-choice.md",
+        "PROPOSED reproducible corpus/load benchmark scripts"
+      ],
+      "input": "Measured authorized corpus/query distribution/ingestion rate/SLO",
+      "output": "ADR keep PostgreSQL or justified OpenSearch proof with migration/cost plan",
+      "steps": [
+        "Профилировать representative scoped dataset и query families при ingestion+recrawl+delete; отдельные exact identifier/lexical/semantic запросы, language-specific judge set. Не сравнивать provider live SERP с внутренним retrieval как одну задачу.",
+        "Измерить p50/p95/p99 latency, QPS, memory/disk, index lag, revoke latency, ranking judgments, ingest cost и burden эксплуатации. Зафиксировать workload и ограничения оборудования.",
+        "Сначала исправить schema/index/query issues и bounded vector scans; построить EXPLAIN baseline. OpenSearch эксперимент только если оправдан bottleneck; schema/ACL/model projection semantics сохраняются.",
+        "При OpenSearch результаты проходят source-of-truth permission/freshness check; compare ranking+failure under index outage, dual-write через outbox, reindex checkpoint and rollback. До доказанной надобности cluster не вводится.",
+        "ADR решение и воспроизводимый report с version/corpus hash; пересмотр по thresholds роста/нагрузки."
+      ],
+      "failure_cases": [
+        "маленькая demo sample даёт ложное решение",
+        "ANN filter loses tenant recall",
+        "асинхронное удаление возвращает snippet",
+        "index outage нарушает exact lookup",
+        "неучтённая эксплуатационная стоимость"
+      ],
+      "acceptance": [
+        "повторяемый load report и SLO preregistration",
+        "неизменные permissions/meaning",
+        "PG retention decision полноценный acceptance, OpenSearch не обязательная установка"
+      ],
+      "hypothesis_ids": [
+        "MS-H04"
+      ],
+      "audit_lane": "markets_search",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "7.1",
+      "depends_on": [
+        "1.5",
+        "2.2",
+        "2.3"
+      ],
+      "owner": "integration-platform evaluation",
+      "code_refs": [
+        "backend/contexts/integration-platform/internal/adapters/firecrawl/firecrawl.go:174"
+      ],
+      "proposed_targets": [
+        "tools/acquisition-eval (proposed)"
+      ],
+      "input": "Frozen corpus/technical limits; одинаковый Firecrawl credit cap для Firecrawl trials",
+      "output": "Runtime selection report",
+      "steps": [
+        "Pin releases/browser/licenses",
+        "Controlled conformance fixtures",
+        "Common extractor comparison",
+        "Allowed live trial",
+        "Metrics/uncertainty/maintenance"
+      ],
+      "failure_cases": [
+        "Overshoot",
+        "Lost footer",
+        "Unsupported geo",
+        "Provider unavailable"
+      ],
+      "acceptance": [
+        "Trace/version for every measured claim",
+        "No pagecount-as-lead quality"
+      ],
+      "hypothesis_ids": [
+        "ACQ-H01",
+        "ACQ-H02"
+      ],
+      "audit_lane": "acquisition",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "7.2",
+      "depends_on": [
+        "1.3",
+        "1.4",
+        "1.5",
+        "3.3",
+        "4.3",
+        "7.1"
+      ],
+      "owner": "integration-platform",
+      "code_refs": [
+        "contracts/integration-platform/crawl/crawl.go:34",
+        "contracts/integration-platform/documentparse/documentparse.go:35"
+      ],
+      "proposed_targets": [
+        "contracts/integration-platform/acquisition (proposed)",
+        "internal/adapters/acquisition (proposed)",
+        "Python acquisition worker (proposed)"
+      ],
+      "input": "AcquisitionCommand described in MD",
+      "output": "Receipt/artifacts/subject/link candidates",
+      "steps": [
+        "Idempotent start/status/cancel",
+        "Store commandhash/runtime/handle",
+        "MIME/profile routing HTTP/JS",
+        "Preserve bytes/DOM/locators",
+        "No-contact useful page accepted",
+        "Atomic receipt+outbox"
+      ],
+      "failure_cases": [
+        "MIME mismatch",
+        "Oversize",
+        "Partial timeout",
+        "Missing contact",
+        "Redirect unknown"
+      ],
+      "acceptance": [
+        "Contract unavailable capabilities truthful",
+        "Locators resolve snapshot",
+        "Legacy compatible"
+      ],
+      "hypothesis_ids": [
+        "ACQ-H01",
+        "ACQ-H05"
+      ],
+      "audit_lane": "acquisition",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "7.3",
+      "depends_on": [
+        "4.3",
+        "4.11",
+        "7.2"
+      ],
+      "owner": "integration-platform frontier, orchestration goals",
+      "code_refs": [
+        "contracts/integration-platform/crawl/crawl.go:88"
+      ],
+      "proposed_targets": [
+        "acquisition_attempt/frontier tables (proposed)",
+        "ephemeral runtime queue adapter (proposed)"
+      ],
+      "input": "Committed bounded action/technical lease; optional Firecrawl credit reservation",
+      "output": "One durable attempt lifecycle",
+      "steps": [
+        "Unique command/action/attempt",
+        "Fence result CAS",
+        "Runtime only committed URLs/approved steps",
+        "Discovery candidates returned",
+        "Heartbeat expiry не расширяет technical caps/Firecrawl credits",
+        "Reconcile unknown effects"
+      ],
+      "failure_cases": [
+        "Crash after submit",
+        "Duplicate dispatch",
+        "Zombie result",
+        "Receipt write fail",
+        "Queue replay"
+      ],
+      "acceptance": [
+        "Bounded repeat+explicit unknown",
+        "No independent deepcrawl",
+        "Terminal snapshot stable"
+      ],
+      "hypothesis_ids": [
+        "ACQ-H02"
+      ],
+      "audit_lane": "acquisition",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "7.4",
+      "depends_on": [
+        "4.4",
+        "7.2",
+        "7.3"
+      ],
+      "owner": "integration-platform/orchestration",
+      "code_refs": [
+        "backend/contexts/integration-platform/internal/adapters/firecrawl/firecrawl.go:544"
+      ],
+      "proposed_targets": [
+        "source_host_state/attemptslot ledger (proposed)",
+        "watchdog (proposed)"
+      ],
+      "input": "Technical source/action policy; Firecrawl credit cap только Firecrawl route",
+      "output": "Distributed technical limits; Firecrawl-only credit enforcement",
+      "steps": [
+        "Атомарные технические slots по общему host/source key для всех workers и tenant; fairness tenant отдельно, profile не обходит общий лимит",
+        "Bounded flow page/nav/subrequest/byte/time caps",
+        "Absolute attempts counts retries+rotations",
+        "429/5xx retry matrix, challenge stop",
+        "Cancel closes worker; partial receipt retained",
+        "Firecrawl-only credit reservation; other provider usage via existing proxy, optional cost observation"
+      ],
+      "failure_cases": [
+        "Concurrent overshoot",
+        "Decompression bomb",
+        "HugeRetryAfter",
+        "Hung browser",
+        "Unknown Firecrawl bill / missing optional proxy stats",
+        "Смена tenant/profile не создаёт независимый host bucket"
+      ],
+      "acceptance": [
+        "Pool obeys shared cap",
+        "Bounded retries",
+        "Resources freed/partial evidence retained",
+        "Одновременные разные tenant/profile суммарно соблюдают предел источника"
+      ],
+      "hypothesis_ids": [],
+      "audit_lane": "acquisition",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "7.5",
+      "depends_on": [
+        "7.2",
+        "7.4"
+      ],
+      "owner": "integration-platform",
+      "code_refs": [
+        "contracts/integration-platform/search/search.go:25"
+      ],
+      "proposed_targets": [
+        "geo_profile/session_binding/receipt (proposed)"
+      ],
+      "input": "Country mode+locale+tenant/source/purpose",
+      "output": "Requested/claimed/observed geo",
+      "steps": [
+        "Opaque credentials",
+        "Sticky context profile",
+        "Route canary IP/time/country-method",
+        "Required mismatch fails",
+        "Preferred fallback explicit",
+        "Rotation retires session/counts"
+      ],
+      "failure_cases": [
+        "Changing egress IP",
+        "Proxy auth",
+        "Cross-tenant context",
+        "Stale observation"
+      ],
+      "acceptance": [
+        "Real geo tested",
+        "No silent direct fallback",
+        "No secrets in receipt"
+      ],
+      "hypothesis_ids": [
+        "ACQ-H06"
+      ],
+      "audit_lane": "acquisition",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "7.6",
+      "depends_on": [
+        "7.2"
+      ],
+      "owner": "integration-platform/deployment",
+      "code_refs": [
+        "contracts/integration-platform/crawl/crawl.go:34"
+      ],
+      "proposed_targets": [
+        "egress enforcement+network fixture suite (proposed)"
+      ],
+      "input": "Untrusted URLs/redirects/resources",
+      "output": "Verified network isolation",
+      "steps": [
+        "URLscheme/ports validation",
+        "At-connect A/AAAA private deny",
+        "Mandatory proxy no bypass",
+        "Redirect/SW/websocket/download tests",
+        "Tenant cookies isolation",
+        "Scrub sensitive headers/userinfo"
+      ],
+      "failure_cases": [
+        "DNS rebinding",
+        "IPv4mappedIPv6",
+        "Public-private redirect",
+        "SW fetch",
+        "Other tenant cookie"
+      ],
+      "acceptance": [
+        "Browser cannot reach internal canary",
+        "Explicit outcomes",
+        "page.route not sole gate"
+      ],
+      "hypothesis_ids": [],
+      "audit_lane": "acquisition",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "7.7",
+      "depends_on": [
+        "2.4",
+        "7.1",
+        "7.2",
+        "7.3",
+        "7.4",
+        "7.5",
+        "7.6"
+      ],
+      "owner": "integration-platform/deploy",
+      "code_refs": [
+        "deploy/services.yaml"
+      ],
+      "proposed_targets": [
+        "Pinned worker image/SBOM/rollout runbook (proposed)"
+      ],
+      "input": "Chosen runtime measured envelope",
+      "output": "Cohort release+rollback",
+      "steps": [
+        "Limits CPU/RAM/tmp/workers",
+        "Full licence/weights manifest",
+        "Shadow+canary с техническими пределами; Firecrawl credit cap если выбран Firecrawl",
+        "Bind inflight route version",
+        "Rollback keep handles/receipts"
+      ],
+      "failure_cases": [
+        "OOM",
+        "Locator upgrade",
+        "Rollbackmidattempt",
+        "Licence mismatch"
+      ],
+      "acceptance": [
+        "Real acceptance report",
+        "Firecrawl compatible",
+        "No replay unknown effect"
+      ],
+      "hypothesis_ids": [],
+      "audit_lane": "acquisition",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "8.1",
+      "depends_on": [
+        "7.2",
+        "7.4",
+        "7.6",
+        "8.5"
+      ],
+      "owner": "integration-platform",
+      "code_refs": [
+        "openspec/specs/osint-enrichment/spec.md:34"
+      ],
+      "proposed_targets": [
+        "site_recipe registry/Playwright executor (proposed)"
+      ],
+      "input": "Versioned read-only source plan",
+      "output": "Action trace+postcondition artifacts",
+      "steps": [
+        "Contact tabs/reveal/pagination/public search",
+        "Semantic locator+endpoint allowlist",
+        "Bounded waits",
+        "Before/after hashes",
+        "Stop on redesign"
+      ],
+      "failure_cases": [
+        "GETsideeffect",
+        "POSTsearch",
+        "Wrong card selector",
+        "Infinite pagination",
+        "Submit button"
+      ],
+      "acceptance": [
+        "Fixture mutations preserve subject",
+        "No communication",
+        "Real expected block"
+      ],
+      "hypothesis_ids": [
+        "ACQ-H03"
+      ],
+      "audit_lane": "acquisition",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "8.2",
+      "depends_on": [
+        "1.3"
+      ],
+      "owner": "data-governance/orchestration",
+      "code_refs": [
+        "openspec/specs/osint-enrichment/spec.md:34"
+      ],
+      "proposed_targets": [
+        "MODIFIED B3 policy delta (proposed)"
+      ],
+      "input": "Active ban+future request",
+      "output": "Explicit allowed mode",
+      "steps": [
+        "Define tools/source/time limits",
+        "Keep outreach separate",
+        "Version cohort policy",
+        "Unsupported until activated"
+      ],
+      "failure_cases": [
+        "Experimentflag production",
+        "Source text grants powers"
+      ],
+      "acceptance": [
+        "Canonical+activation agree",
+        "Demo unchanged"
+      ],
+      "hypothesis_ids": [],
+      "audit_lane": "acquisition",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "8.3",
+      "depends_on": [
+        "8.1",
+        "8.2",
+        "8.4"
+      ],
+      "owner": "orchestration/integration-platform",
+      "code_refs": [
+        "docs/concepts/intelligent-lead-research/09-browser-ocr-and-tool-selection.md#9.5"
+      ],
+      "proposed_targets": [
+        "bounded BrowserUse trial (proposed)"
+      ],
+      "input": "Unfamiliar holdout pages",
+      "output": "Added value/adopt report",
+      "steps": [
+        "Narrow registry no broad execute/send",
+        "Technical action/time/context limits, без второго monetary budget",
+        "Injection/semantic effect checks",
+        "Compare direct recipes; Stagehand only needed gap"
+      ],
+      "failure_cases": [
+        "Tool injection",
+        "Model loop",
+        "Silent vision downgrade",
+        "No useful evidence"
+      ],
+      "acceptance": [
+        "Incremental grounded contacts/cost",
+        "No sideeffect",
+        "Explicit unsupported"
+      ],
+      "hypothesis_ids": [
+        "ACQ-H03"
+      ],
+      "audit_lane": "acquisition",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "8.4",
+      "depends_on": [
+        "1.4"
+      ],
+      "owner": "integration-platform gateway",
+      "code_refs": [
+        "contracts/integration-platform/llm/llm.go"
+      ],
+      "proposed_targets": [
+        "ModelCapabilityProfile/probes (proposed)"
+      ],
+      "input": "Exact endpoint/model",
+      "output": "Text/tool/vision accepted profiles",
+      "steps": [
+        "Probe exact model schema/tools/images/context",
+        "Image size/hash and capability receipt",
+        "No image-as-text substitution",
+        "Inference through existing proxy without second application monetary budget; optional usage observations"
+      ],
+      "failure_cases": [
+        "Droppedimage",
+        "Unsupportedtool",
+        "Silentfallback",
+        "Oversizetokens"
+      ],
+      "acceptance": [
+        "Known vision/tool fixtures exact model",
+        "Missing required capability fails"
+      ],
+      "hypothesis_ids": [],
+      "audit_lane": "acquisition",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "8.5",
+      "depends_on": [
+        "3.3",
+        "7.2"
+      ],
+      "owner": "lead-management subjects/integration parsing",
+      "code_refs": [
+        "backend/contexts/lead-management/internal/app/extract_layers.go:210",
+        "contracts/integration-platform/documentparse/documentparse.go:49"
+      ],
+      "proposed_targets": [
+        "subject-block/DOM/JSONLD/textPDF extractors (proposed)"
+      ],
+      "input": "Saved artifact/profile",
+      "output": "Raw candidates/scopes/needs",
+      "steps": [
+        "Preserve legal/footer apart maintext",
+        "Read mailto/tel/structuredblocks",
+        "Directory card vs publisher",
+        "TextPDF glyph/column test",
+        "Save incomplete company+OpenNeed"
+      ],
+      "failure_cases": [
+        "PublisherJSONLD",
+        "Multicompanyarticle",
+        "Badfont",
+        "Columnmix",
+        "Numericarticlephone"
+      ],
+      "acceptance": [
+        "No wrong ownership",
+        "Exact locator",
+        "No-contact useful page survives"
+      ],
+      "hypothesis_ids": [],
+      "audit_lane": "acquisition",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "8.6",
+      "depends_on": [
+        "2.2",
+        "2.3"
+      ],
+      "owner": "document evaluation",
+      "code_refs": [
+        "docs/concepts/intelligent-lead-research/09-browser-ocr-and-tool-selection.md#9.7"
+      ],
+      "proposed_targets": [
+        "tools/document-eval/models manifest (proposed)"
+      ],
+      "input": "Multilingual frozen corpus",
+      "output": "Backend/weights composition choice",
+      "steps": [
+        "Pin code/weights/licence",
+        "Compare native Docling/Tesseract/Paddle",
+        "Exact fields+geometry+links",
+        "CPU/RAM/coldstart/manual cost",
+        "Native/custom connector explicit"
+      ],
+      "failure_cases": [
+        "Unknownweightslicense",
+        "Unsupportedlanguage",
+        "Wrongrotation",
+        "Confidentwrongemail"
+      ],
+      "acceptance": [
+        "Reproducible artifacts/metrics",
+        "Scoped languages",
+        "No unmeasured claim"
+      ],
+      "hypothesis_ids": [
+        "ACQ-H04"
+      ],
+      "audit_lane": "acquisition",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "8.7",
+      "depends_on": [
+        "4.4",
+        "8.5",
+        "8.6"
+      ],
+      "owner": "integration-platform",
+      "code_refs": [
+        "contracts/integration-platform/documentparse/documentparse.go:49"
+      ],
+      "proposed_targets": [
+        "document-evidence contract/OCR worker (proposed)"
+      ],
+      "input": "Artifact/page/crop/language",
+      "output": "Raw layout+model receipt",
+      "steps": [
+        "Technical size/type/pages/pixels/time caps; no monetary OCR reservation",
+        "Text-first/cropOCR",
+        "Raw vs normalized separate",
+        "Inverse transform original coordinates",
+        "Scoped cache key artifact/model/preprocess/lang"
+      ],
+      "failure_cases": [
+        "MalformedPDF",
+        "Hugeimage",
+        "Rotation",
+        "Missingglyph",
+        "Workerdeath"
+      ],
+      "acceptance": [
+        "Locator resolves original",
+        "Partial bounded outcome",
+        "Explicit unsupported"
+      ],
+      "hypothesis_ids": [
+        "ACQ-H04"
+      ],
+      "audit_lane": "acquisition",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "8.8",
+      "depends_on": [
+        "3.6",
+        "8.7"
+      ],
+      "owner": "lead-management verification",
+      "code_refs": [
+        "backend/contexts/lead-management/internal/app/extract_layers.go:118"
+      ],
+      "proposed_targets": [
+        "OCR ambiguity/review policy (proposed)"
+      ],
+      "input": "Variants+subject scopes",
+      "output": "Ambiguous/confirmed/review assertion",
+      "steps": [
+        "Preserve rn/m,O0,script variants",
+        "No silent repair",
+        "Checksums typed evidence not wholetrust",
+        "Sameimage same sourcefamily",
+        "Version review reason"
+      ],
+      "failure_cases": [
+        "Wrong card",
+        "Two valid readings",
+        "Wrongcompany checksum",
+        "TwoOCRfalseindependence"
+      ],
+      "acceptance": [
+        "Ready excludes unresolved",
+        "Original+alternatives visible"
+      ],
+      "hypothesis_ids": [
+        "ACQ-H04"
+      ],
+      "audit_lane": "acquisition",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "8.9",
+      "depends_on": [
+        "3.8",
+        "8.8"
+      ],
+      "owner": "lead-management UI/evaluation",
+      "code_refs": [
+        "backend/contexts/lead-management/internal/adapters/http"
+      ],
+      "proposed_targets": [
+        "Evidence overlay/regression runbook (proposed)"
+      ],
+      "input": "Coordinates/artifact/assertions",
+      "output": "Usable provenance viewer",
+      "steps": [
+        "Scoped artifact access",
+        "Original/crop/text/normalized overlays",
+        "Parser/model/browser regressions",
+        "Missing/expired/revoked evidence states"
+      ],
+      "failure_cases": [
+        "ACLcacheleak",
+        "Cropwrong",
+        "Upgrade drift",
+        "Deleted preview"
+      ],
+      "acceptance": [
+        "Correct original shown",
+        "Fixtures reproduce",
+        "Critical regression blocks upgrade"
+      ],
+      "hypothesis_ids": [],
+      "audit_lane": "acquisition",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "9.1",
+      "depends_on": [
+        "1.2",
+        "1.5",
+        "3.4",
+        "3.6",
+        "4.9"
+      ],
+      "owner": "lead-management → outreach-orchestration",
+      "code_refs": [
+        "contracts/lead-management/deliverytarget/deliverytarget.go:50",
+        "backend/contexts/outreach-orchestration/internal/app/command/submit_handoff.go:156"
+      ],
+      "proposed_targets": [
+        "proposed contracts/lead-management/researchhandoff/",
+        "proposed lead-management red recipient_snapshot/research_handoff tables"
+      ],
+      "input": "Entity+dossier/assertion versions, criteria, offer, language, purpose и channel",
+      "output": "Immutable handoff(version) и recipient snapshot либо объяснимый no-recipient/needs-verification",
+      "steps": [
+        "Определить ResearchHandoffV1{tenant,purpose,request+criteria version,entity,dossier,assessment,recipient_snapshot_ref,offer_version,language,allowed_claim_refs,evidence_snapshot_ref}.",
+        "Recipient snapshot фиксирует endpoint и subject-link revision; unique(tenant,snapshot_id), unique(tenant,handoff_id,version), payload digest запрещает конфликтующий replay.",
+        "Создать handoff+outbox в одной owner transaction; потребитель хранит inbox receipt и создаёт свой draft ID независимо от RecipientRef.",
+        "Legacy handoff оставлять читаемым; новые snapshots не обновляют старый approved draft автоматически."
+      ],
+      "failure_cases": [
+        "Телефон-only/форма-only",
+        "Владелец контакта недоступен",
+        "Повтор с тем же ID/другим payload",
+        "CompanyID fallback после approval"
+      ],
+      "acceptance": [
+        "Раздельные company/contact/email-ready counters",
+        "Recipient и material rejection отличны от unavailable",
+        "Snapshot воспроизводит конкретный endpoint и evidence"
+      ],
+      "hypothesis_ids": [],
+      "audit_lane": "communications",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "9.2",
+      "depends_on": [
+        "9.1"
+      ],
+      "owner": "content-production при предоставлении фактов lead-management",
+      "code_refs": [
+        "backend/contexts/lead-management/internal/app/draft_email.go:87"
+      ],
+      "proposed_targets": [
+        "proposed research-backed generation adapter",
+        "proposed claim_usage table/material metadata"
+      ],
+      "input": "Handoff snapshot, offer/style/language и разрешённые claims",
+      "output": "Material version + factual span→claim usage + prompt/model versions",
+      "steps": [
+        "Генерировать structured draft{subject,body,claim_usages[span,claim_ref]} через единый model gateway.",
+        "Проверить существование refs, subject scope и доступность; factual spans без основания возвращать на review.",
+        "Сохранить exact text digest, evidence bundle и lineage; LLM judge служит проверкой, не независимым свидетельством.",
+        "Для withdrawn evidence создать dependency invalidation, не переписывать отправленные historical материалы."
+      ],
+      "failure_cases": [
+        "Новость превращена в намерение купить",
+        "Неизвестное имя",
+        "Ссылка на чужой tenant/другую компанию",
+        "Старый source revoked после generation"
+      ],
+      "acceptance": [
+        "Неизвестные сведения не подставлены",
+        "UI может раскрыть основание каждой существенной персонализации",
+        "Текст и refs версионны"
+      ],
+      "hypothesis_ids": [],
+      "audit_lane": "communications",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "9.3",
+      "depends_on": [
+        "9.2",
+        "10.2"
+      ],
+      "owner": "outreach-orchestration, lead-management, message-delivery",
+      "code_refs": [
+        "backend/contexts/outreach-orchestration/internal/domain/action_draft.go:229",
+        "backend/contexts/outreach-orchestration/internal/ports/contracts/approved_action.go:84",
+        "contracts/lead-management/deliverytarget/deliverytarget.go:50",
+        "backend/contexts/message-delivery/internal/adapters/persistence/postgres/message_repository.go:228"
+      ],
+      "proposed_targets": [
+        "proposed delivery-target v2 resolver",
+        "proposed approved-action envelope extension/version",
+        "proposed red delivery_payload and green payload_ref"
+      ],
+      "input": "Exact material, recipient snapshot, sender/channel profile",
+      "output": "Approval exact fingerprint и immutable dispatch payload",
+      "steps": [
+        "Определить approval fingerprint material_version+recipient_snapshot+sender_profile+channel+purpose; existing campaign/draft/version action identity сохранить.",
+        "v2 resolver принимает snapshot ref и expected version, возвращает именно pinned address и current eligibility ref; измененный endpoint требует нового draft/approval.",
+        "Передавать body/address через red payload ref; topology/migration gate из10.2 закрывает существующий green snapshot reuse.",
+        "Историю legacy approvals оставить с семантикой legacy-unpinned, не объявлять автоматически достаточной новым правилам."
+      ],
+      "failure_cases": [
+        "Stale decision",
+        "Recipient меняется после approve",
+        "Ссылка material unavailable",
+        "Повтор action одного campaign и совпадение draft ID другого"
+      ],
+      "acceptance": [
+        "Нет подмены адреса",
+        "Точный текст/состав совпадают с approval",
+        "Новый endpoint требует нового решения"
+      ],
+      "hypothesis_ids": [],
+      "audit_lane": "communications",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "9.4",
+      "depends_on": [
+        "9.3",
+        "10.14",
+        "10.11"
+      ],
+      "owner": "message-delivery + outreach-orchestration",
+      "code_refs": [
+        "backend/contexts/message-delivery/internal/app/command/deliver_message.go:99",
+        "backend/contexts/message-delivery/internal/adapters/mailer/provider/provider.go:80",
+        "backend/contexts/message-delivery/internal/domain/message.go:194"
+      ],
+      "proposed_targets": [
+        "proposed DeliveryEligibilityCheck contract",
+        "proposed delivery_reconciliation journal",
+        "proposed dispatch_gate epoch"
+      ],
+      "input": "Approved dispatch+current eligibility и receipts входящих",
+      "output": "accepted/failed/unknown/held с объяснением и replay-safe reconciliation",
+      "steps": [
+        "Разделить pending/reserved/dispatch-started/provider-accepted/unknown/reconciled; дописать staging status при совместимой domain migration.",
+        "Перед внешним вызовом прочитать owner eligibility revision: suppression, pending reply, evidence validity, approval fingerprint, sender limits. Не держать сетевой SMTP в DB transaction.",
+        "Сохранить provider attempt+wire message ID до эффекта; reservation replay не шлёт повторно.",
+        "Unknown/stale sending проверяет provider logs/Sent/API при поддержке; positive evidence связывается с attempt. Отсутствие evidence не равно not-sent. Решение reissue отдельное с оператором и учётом duplicate risk.",
+        "Outbox публикует статус unknown отдельно от delivered; metrics age/lag/reconciliation backlog."
+      ],
+      "failure_cases": [
+        "Reply после reserve до gate",
+        "Reply после gate/provider accepted",
+        "DATA ack lost",
+        "Crash до/после external send",
+        "Mailbox/Sent eventual consistency"
+      ],
+      "acceptance": [
+        "Не начавшийся и наблюдаемо blocked follow-up не отправлен",
+        "Unknown не retryable",
+        "Никакого обещания exactly-once SMTP или отмены прошлого эффекта"
+      ],
+      "hypothesis_ids": [],
+      "audit_lane": "communications",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "9.5",
+      "depends_on": [
+        "9.1",
+        "10.2"
+      ],
+      "owner": "outreach-orchestration с sender profile owner",
+      "code_refs": [
+        "contracts/integration-platform/mail/mail.go:30"
+      ],
+      "proposed_targets": [
+        "proposed sender_profile versioned red storage",
+        "proposed outbound_form_task contract"
+      ],
+      "input": "Обнаруженная форма+schema/source snapshot, material, реальные sender contacts",
+      "output": "Prepared task/needs-data/needs-review, без неразрешённого эффекта",
+      "steps": [
+        "Профиль задаёт подтверждённые реальный receiving channel/email/name/company и optional phone/site; хранить version/binding refs.",
+        "Field map хранит label/type/required/value origin и форму version/action endpoint; CSRF tokens не долговременная identity.",
+        "Разделить readable browser исследование и действие заполнения/отправки; перед выбранным execution проверить актуальность формы/обязательных полей.",
+        "Manual confirmation хранит actor/time/evidence; автоматическое подтверждение,если выбрано9.7,имеет отдельный provenance и uncertain outcome."
+      ],
+      "failure_cases": [
+        "Обязательный телефон отсутствует",
+        "Форма изменилась",
+        "Контактный адрес не принимает ответы",
+        "Support/job form не подходит выбранному purpose"
+      ],
+      "acceptance": [
+        "Не выдуманы реквизиты",
+        "Prepared task виден пользователю",
+        "Подтверждение отправки не выдано за прочтение"
+      ],
+      "hypothesis_ids": [],
+      "audit_lane": "communications",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "9.6",
+      "depends_on": [
+        "9.4",
+        "9.5",
+        "9.7"
+      ],
+      "owner": "outreach-orchestration UI и request-fulfillment projection",
+      "code_refs": [
+        "backend/contexts/outreach-orchestration/internal/ports/contracts/approved_action.go:84"
+      ],
+      "proposed_targets": [
+        "proposed existing console materials/recipient/evidence views"
+      ],
+      "input": "События material/decision/delivery/form outcome",
+      "output": "Наблюдаемая timeline и channel runbook",
+      "steps": [
+        "Добавить статусы prepared/awaiting-approval/held/accepted/unknown/failed/manual-confirmed; имена delivered существующего domain показывать как «принято провайдером» до более сильного evidence.",
+        "Отобразить pinned recipient/material versions, source claims, причины ожидания; показывать реальную доступность канала.",
+        "Проверить разрешённый real-mailbox end-to-end и выбранный form-mode acceptance; capture-only acceptance маркировать отдельно."
+      ],
+      "failure_cases": [
+        "Зависший unknown не виден",
+        "Green projection показывает body",
+        "Tenant navigation теряет scope"
+      ],
+      "acceptance": [
+        "Пользователь раскрывает каждый этап",
+        "Реальный канал и исход подтверждены",
+        "UI не утверждает прочтение по SMTP250"
+      ],
+      "hypothesis_ids": [],
+      "audit_lane": "communications",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "9.7",
+      "depends_on": [
+        "1.3"
+      ],
+      "owner": "outreach-orchestration product/spec owner",
+      "code_refs": [],
+      "proposed_targets": [
+        "proposed MODIFIED delta existing/pending outreach-channel-form"
+      ],
+      "input": "Обязательная работа с формами и разрешение/режим конкретного канала",
+      "output": "Явное решение режима,спецификация эффекта,acceptance route",
+      "steps": [
+        "Сопоставить pending manual план и новую программу; не объявлять историческое предложение пользовательским выбором.",
+        "Выбрать manual/assisted/automated mode per channel version с reviewable UX и exact payload authority; подготовка не блокируется отсутствием execution mode.",
+        "Для automated режима добавить отдельный executor с preflight schema checks, эффекты submit и observability; research browser не получает этот порт.",
+        "Согласовать переходы при CAPTCHA, duplicate submission, server confirmation и unknown response; записать результат режима,не обещать гарантированную delivery."
+      ],
+      "failure_cases": [
+        "Пустой mode трактуется manual-only",
+        "Research browser нажимает Send",
+        "Повтор после неизвестного результата"
+      ],
+      "acceptance": [
+        "Нет скрытой автономной отправки",
+        "Полный form scope сохранён",
+        "Acceptance соответствует выбранному,а не заранее ручному режиму"
+      ],
+      "hypothesis_ids": [],
+      "audit_lane": "communications",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "10.1",
+      "depends_on": [
+        "1.2"
+      ],
+      "owner": "lead-management/outreach/integration architectural owners",
+      "code_refs": [
+        "contracts/outreach-orchestration/formsubmission/formsubmission.go:52",
+        "backend/contexts/message-delivery/migrations/green/0001_message.sql:18"
+      ],
+      "proposed_targets": [
+        "proposed explicit canonical deltas for mailbox and forms"
+      ],
+      "input": "Новые требования и существующая рамка",
+      "output": "Согласованные names/direction/storage/compatibility",
+      "steps": [
+        "Развести inbound-form-intake от outbound-form-task в published contracts; v1 form-submission остаётся relay adapter.",
+        "Проверить canonical/pending mail-sync exclusions; отражать уже сделанную BRD ревизию как требования,не runtime.",
+        "Зафиксировать red mailbox payload boundary и обнаруженное green delivery расхождение; подготовить migration target до включения reply content."
+      ],
+      "failure_cases": [
+        "Один API одновременно принимает посетителей и отправляет чужую форму",
+        "Старые consumers сломаны",
+        "UI показывает функцию implemented по одному BRD"
+      ],
+      "acceptance": [
+        "Specs/catalog/domain model согласованы",
+        "Старый relay работает по прежнему контракту"
+      ],
+      "hypothesis_ids": [],
+      "audit_lane": "communications",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "10.2",
+      "depends_on": [
+        "10.1",
+        "3.1",
+        "3.3"
+      ],
+      "owner": "lead-management red roots;integration-platform transport;governance bindings",
+      "code_refs": [
+        "architecture/domain-catalog.yaml:153",
+        "contracts/outreach-orchestration/formsubmission/formsubmission.go:52"
+      ],
+      "proposed_targets": [
+        "proposed red mailbox_binding/form_binding/inquiry/conversation/message_receipt tables",
+        "proposed published message-intake/conversation-signal contracts"
+      ],
+      "input": "Зарегистрированный tenant/purpose mailbox/form authority",
+      "output": "Проверяемые bindings,owner boundaries и migrations",
+      "steps": [
+        "Mailbox binding: opaque ID,tenant,purpose,provider account ref,allowed folders/aliases,credential ref,scope,retention,status; секрет не в green registration.",
+        "Red inquiry/conversation roots не требуют CompanyID; связь entity/contact optional. Технический adapter передаёт authority из binding,не из To/body.",
+        "Создать schema/index/constraints,red object-store namespace; raw payload store transaction uses preuploaded durable immutable blob plus receipt commit и orphan GC.",
+        "Для существующего green delivery payload предусмотреть versioned ref migration и dual-read cutover до reply integration; не переносить исторические данные без audit."
+      ],
+      "failure_cases": [
+        "Forged tenant header",
+        "Несуществующий alias binding",
+        "Сбой blob upload до receipt",
+        "Green fallback при недоступном red"
+      ],
+      "acceptance": [
+        "Archlint/importlint",
+        "Cross-tenant rejected",
+        "Нет green MIME/body/addresses в новых контрактах"
+      ],
+      "hypothesis_ids": [],
+      "audit_lane": "communications",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "10.3",
+      "depends_on": [
+        "10.2"
+      ],
+      "owner": "lead-management client intake;frontend public relay",
+      "code_refs": [
+        "contracts/outreach-orchestration/formsubmission/formsubmission.go:52",
+        "frontend/public/internal/adapters/forwarder/forwarder.go:129"
+      ],
+      "proposed_targets": [
+        "proposed inboundformintake v2",
+        "proposed red form_receipt table",
+        "proposed frontend/public submission_id forwarding"
+      ],
+      "input": "Binding-scoped SubmissionID,contact/message,form version,attribution",
+      "output": "Durable inquiry receipt либо объяснимая недоступность",
+      "steps": [
+        "Public FormRef определяет binding; caller tenant_id игнорировать/отклонять. Server-signed form instance или эквивалент scoped token задаёт submission ID, сохраняющийся при retry.",
+        "UNIQUE(binding_id,submission_id),payload hash compare; SAME→same receipt,DIFFERENT→409.",
+        "В red transaction сохранить receipt+inquiry+outbox;2xx только после durable accept. Front relay не хранит payload; failure не обещает успех.",
+        "Consent/notice policy версионировать отдельно от универсального bool,старый v1 сохраняет свою обязательность до explicit migration."
+      ],
+      "failure_cases": [
+        "Retry после commit/ответ потерян",
+        "Duplicate button press",
+        "Gmail contact без company",
+        "Client intake недоступен"
+      ],
+      "acceptance": [
+        "Один inquiry и один последующий effect",
+        "Не создана компания gmail.com",
+        "Посетитель видит достоверный исход"
+      ],
+      "hypothesis_ids": [],
+      "audit_lane": "communications",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "10.4",
+      "depends_on": [
+        "10.2"
+      ],
+      "owner": "integration-platform adapter исполняется в разрешённой client/red роли",
+      "code_refs": [],
+      "proposed_targets": [
+        "proposed mailbox adapter provider-specific package",
+        "proposed mailbox checkpoint port"
+      ],
+      "input": "Реальный рабочий mailbox и scope из binding",
+      "output": "Authenticated receipt+raw MIME reference",
+      "steps": [
+        "Выбрать один доступный provider/IMAP adapter,зафиксировать supported release/scopes/folders. Subscription notifications считать сигналом чтения источника,не само письмо.",
+        "API adapter использует raw/metadata endpoints;IMAP ReadOnly EXAMINE+UID fetch,не sequence numbers. Не менять флаги личного mailbox без необходимости.",
+        "Auth renewal/subscription expiration/status показывать оператору; adapter capability заявляет supported backfill/alias/raw/immutable-id semantics.",
+        "Real acceptance подключает согласованный test mailbox;этот этап не требуется первому crawl seed."
+      ],
+      "failure_cases": [
+        "OAuth revoked",
+        "Watch expired",
+        "Quota429",
+        "UIDVALIDITY изменился",
+        "Raw MIME unavailable"
+      ],
+      "acceptance": [
+        "Настоящее письмо принято устойчиво",
+        "Технические ошибки различимы",
+        "Не fixture-only mail acceptance"
+      ],
+      "hypothesis_ids": [
+        "COMM-H03"
+      ],
+      "audit_lane": "communications",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "10.5",
+      "depends_on": [
+        "10.4"
+      ],
+      "owner": "integration-platform checkpoints + lead-management red receipt",
+      "code_refs": [
+        "frontend/public/internal/adapters/forwarder/forwarder.go:129"
+      ],
+      "proposed_targets": [
+        "proposed transport_receipt unique indexes",
+        "proposed mailbox_sync_state epoch/checkpoint"
+      ],
+      "input": "Provider notifications/fetch results+checkpoint",
+      "output": "Replay-safe durable receipt и монотонный checkpoint within epoch",
+      "steps": [
+        "Transport key: binding+provider immutable ID;IMAP binding+folder+UIDVALIDITY+UID. Дубликат receipt найден до parser. Webhook notification ID и logical message ID хранить раздельно.",
+        "Сначала durable raw blob,потом transaction receipt/inbox+parser job+checkpoint progress;ack после commit. Crash between blob and commit даёт orphan cleanup,не loss.",
+        "При parallel batches advance только contiguous completed page/UID range с учётом holes;новая эпоха UIDVALIDITY делает scoped backfill,не resets old business IDs.",
+        "Gmail404 history→full scoped sync;Graph per-folder opaque delta+ImmutableId on every call;overlap rounds dedup by stable transport ID.",
+        "Message-ID/hash не глобальный UNIQUE; semantic duplicates связывать review/aliases,два одинаковых намеренных сообщения сохранять."
+      ],
+      "failure_cases": [
+        "Ack потерян",
+        "Notification duplicate",
+        "Provider IDs меняются при folder move",
+        "Poison parse",
+        "Cursor advance раньше blobs commit"
+      ],
+      "acceptance": [
+        "Нет lost messages/effect duplicates в fault matrix",
+        "Gaps/recovery visible",
+        "Missing Message-ID не теряет письмо"
+      ],
+      "hypothesis_ids": [
+        "COMM-H03"
+      ],
+      "audit_lane": "communications",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "10.6",
+      "depends_on": [
+        "10.5",
+        "3.3"
+      ],
+      "owner": "lead-management parsing и document/OCR adapter по потребности",
+      "code_refs": [],
+      "proposed_targets": [
+        "proposed bounded MIME parser package",
+        "proposed red message_part/artifact refs"
+      ],
+      "input": "Durable raw MIME",
+      "output": "Версионный parsed message/parts/text spans либо quarantine с raw lineage",
+      "steps": [
+        "Закрепить go-message release+charset support после fixture check;прочитать parts streaming до NextPart,сохранять unknown charset/encoding partial result flags.",
+        "Лимиты raw bytes,decoded bytes,headers,part count,nesting,attachments,archive ratio+CPU timeout;parser worker отдельно от connector ack.",
+        "Сохранять raw artifact hash,part ordinal/content ID/media type,decoded hash,source range;HTML sanitizer+sandbox,no remote loads.",
+        "Разделить header/body/new text/quoted text/signature как versioned spans с uncertain segmentation;OCR вложений подключает общий evidence adapter8.7 позднее,ядро приёма не зависит от OCR."
+      ],
+      "failure_cases": [
+        "Zip bomb",
+        "Malformed MIME",
+        "Неизвестная кодировка",
+        "HTML remote image/XSS",
+        "Image-only attachment"
+      ],
+      "acceptance": [
+        "Raw можно повторно разобрать",
+        "UI безопасно отображает unknown",
+        "Все извлечённые факты имеют message part locator"
+      ],
+      "hypothesis_ids": [
+        "COMM-H01"
+      ],
+      "audit_lane": "communications",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "10.7",
+      "depends_on": [
+        "10.4",
+        "9.3"
+      ],
+      "owner": "message-delivery envelope + lead-management correlation map",
+      "code_refs": [
+        "backend/contexts/integration-platform/internal/adapters/smtp/smtp.go:196",
+        "contracts/integration-platform/mail/mail.go:30"
+      ],
+      "proposed_targets": [
+        "proposed mail envelope v2",
+        "proposed reply_token/wire_message mapping"
+      ],
+      "input": "Confirmed mailbox/alias + pinned outbound action",
+      "output": "Реально работающий Reply-To и persisted exact wire headers",
+      "steps": [
+        "Стабильный RFC Message-ID генерировать один раз на message envelope и хранить дословно;реальный tenant-controlled ID domain,случайный уникальный opaque ID. Header injection validation.",
+        "Добавить Reply-To,In-Reply-To,References,Date;для reply соблюсти provider threading requirements,не приравнивая provider thread к business conversation.",
+        "Token opaque random,scope tenant/binding/conversation,hash/token-ref mapping с retention;token не предоставляет access.",
+        "Провести реальную отправку/ответ через фактический alias/plus route;неподдержанный route→обычный mailbox+headers,сниженная автоматическая корреляция."
+      ],
+      "failure_cases": [
+        "Provider переписывает address",
+        "Plus address не принимается",
+        "Переадресованный token",
+        "ID collision при sanitization",
+        "Токен от другого binding"
+      ],
+      "acceptance": [
+        "Пришедший ответ находится по persisted headers/token",
+        "Несовпадение scope не открывает чужие данные",
+        "Не заявлен неподдержанный alias"
+      ],
+      "hypothesis_ids": [
+        "COMM-H02"
+      ],
+      "audit_lane": "communications",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "10.8",
+      "depends_on": [
+        "10.6",
+        "10.7"
+      ],
+      "owner": "lead-management conversation owner",
+      "code_refs": [],
+      "proposed_targets": [
+        "proposed CorrelateMessage command",
+        "proposed correlation_decision revision/history table"
+      ],
+      "input": "Parsed headers+binding+local outbound refs+known participants",
+      "output": "Matched/unmatched/conflict decision с scoped candidates",
+      "steps": [
+        "Собрать все candidate evidence,не остановиться слепо на первом приоритете; конфликт tokenA/headerB→review. Header/provider thread keys scoped account и tenant.",
+        "Точный message ID хранить как parsed opaque identifier;не переписывать регистр/пунктуацию произвольно. Дубликаты header refs дадут множество кандидатов.",
+        "Strong match может связать conversation,но не доказывает sender identity/role/company;shared endpoint держит unknown entity.",
+        "Manual relink command содержит expected decision version,actor,reason;обновляет projections/idempotent outbox,не переносит tenant и не удаляет receipt."
+      ],
+      "failure_cases": [
+        "Same subject",
+        "Forward/new sender",
+        "Shared endpoint у двух компаний",
+        "Duplicate Message-ID",
+        "Conflicting refs"
+      ],
+      "acceptance": [
+        "Нет wrong merge на acceptance",
+        "Виден chain of correlation reasons",
+        "Неуверенная связь не генерирует engagement другой кампании"
+      ],
+      "hypothesis_ids": [
+        "COMM-H02"
+      ],
+      "audit_lane": "communications",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "10.9",
+      "depends_on": [
+        "10.8",
+        "10.10",
+        "4.13",
+        "4.14"
+      ],
+      "owner": "lead-management inquiry/entity evidence owner",
+      "code_refs": [],
+      "proposed_targets": [
+        "proposed ApplyInquiryDisposition command",
+        "proposed message-origin/lead-link ledger"
+      ],
+      "input": "Parsed+classified business message и correlation decision",
+      "output": "Новый inquiry/contact candidate либо обновление прежней entity с provenance",
+      "steps": [
+        "Receipt/inquiry существует до LLM;qualified human business message создаёт lead candidate по UNIQUE(tenant,inquiry acquisition identity),а reply добавляет touch существующей истории.",
+        "Не создавать synthetic CompanyID из consumer mailbox;entity relation optional. ID из подписи/email creates assertion наблюдение,через shared verifier3.4/3.6 проверяется.",
+        "Late confirmed contact из message дополняет старую entity и closed matching OpenNeed с evidence dependency;referral остается candidate до проверки.",
+        "Сохранить first_origin отдельно от acquisition/touch history;projection updates idempotent по message+decision revision;terminal mission snapshots immutable."
+      ],
+      "failure_cases": [
+        "OOO/DSN/spam",
+        "Смена correlation после create",
+        "Реальный business inquiry без company",
+        "Confirmed ID против конфликтующего имени"
+      ],
+      "acceptance": [
+        "Не дублируются уникальные leads",
+        "Late email закрыл нужный пробел",
+        "History/завершённая заявка не переписаны"
+      ],
+      "hypothesis_ids": [
+        "COMM-H04"
+      ],
+      "audit_lane": "communications",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "10.10",
+      "depends_on": [
+        "10.6"
+      ],
+      "owner": "lead-management semantic parse;engagement-observation qualified outcome",
+      "code_refs": [],
+      "proposed_targets": [
+        "proposed ClassifyMessage versioned result contract",
+        "proposed red classification/correction tables"
+      ],
+      "input": "New-body spans,headers,provider-auth metadata в trust boundary",
+      "output": "Type+multi-intents+quotes+operational suggestion с review flag",
+      "steps": [
+        "Формальные parser rules DSN/auto-submitted/trusted provider signals идут до LLM;header сам по себе не доказывает человека.",
+        "LLM structured output хранит message version,prompt/model version,тип,intents[],quote spans,confidence отдельно по полям;missing evidence→unknown.",
+        "Stop signal имеет precedence над positive tone,quote history и signature не смешивать с новым намерением.",
+        "Operator correction expected-version CAS с audit;новая квалификация пересчитывает downstream effects без повторного lead creation."
+      ],
+      "failure_cases": [
+        "Old positive quote/new unsubscribe",
+        "OOO with return date",
+        "Model timeout",
+        "Forged Authentication-Results",
+        "Номер в подписи"
+      ],
+      "acceptance": [
+        "OOO не interest",
+        "Отказ не потерян",
+        "Подпись не registry-confirmed",
+        "Raw text доступен для исправления"
+      ],
+      "hypothesis_ids": [
+        "COMM-H01"
+      ],
+      "audit_lane": "communications",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "10.11",
+      "depends_on": [
+        "10.10",
+        "10.14"
+      ],
+      "owner": "engagement-observation → outreach/data-governance",
+      "code_refs": [
+        "backend/contexts/outreach-orchestration/internal/domain/campaign_sequences.go:174",
+        "backend/contexts/engagement-observation/internal/domain/engagement_kind.go:13"
+      ],
+      "proposed_targets": [
+        "proposed qualified-conversation outcome contract extension",
+        "proposed suppression source linkage"
+      ],
+      "input": "Qualified outcome+conversation binding+revision",
+      "output": "Paused/stopped/remains-held/unqualified outcomes и endpoint feedback",
+      "steps": [
+        "Human reply→suspended/needs-response;unsubscribe→scope-qualified suppression+stopped;rejection→current sequence stop;OOO/DSN отдельные outcomes по policy.",
+        "Outbox qualified event carries opaque refs/revision/kind;body и quotes остаются red. Idempotency по message/decision version и downstream event ledger.",
+        "Hard bounce обновляет endpoint validity как observation,не удаляет компанию;referral не разрешает новую отправку.",
+        "Не снимать hold если другая pending message/супрессия ещё действуют;operator resume requires current eligibility revision."
+      ],
+      "failure_cases": [
+        "Classifications out of order",
+        "Reply исправлен на OOO",
+        "Более поздняя отписка после resume",
+        "Один bounced адрес у компании"
+      ],
+      "acceptance": [
+        "Разные effects для human/OOO/DSN/stop",
+        "Нет повторных событий/новых лидов",
+        "Область suppression объяснима"
+      ],
+      "hypothesis_ids": [
+        "COMM-H01"
+      ],
+      "audit_lane": "communications",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "10.12",
+      "depends_on": [
+        "10.9",
+        "10.11"
+      ],
+      "owner": "lead-management console + scoped views",
+      "code_refs": [],
+      "proposed_targets": [
+        "proposed inbox queries/UI",
+        "proposed conversation timeline projection"
+      ],
+      "input": "Receipt/inquiry/correlation/classification/action refs",
+      "output": "Inbox и timeline со ссылками на company/contact и evidence",
+      "steps": [
+        "Фильтры owner/channel/state/unmatched/needs-review;раздельно ingress time/header Date/sent time и source.",
+        "Timeline показывает raw-derived safe view,new-body,attachments,trust dimensions,correlation reasons,current owner,next action.",
+        "Mutations relink/correction/reply-draft audit и tenant authorization;PII не в общей telemetry.",
+        "Late contact visible в старой карточке с датой появления и источником;no-email карточки остаются."
+      ],
+      "failure_cases": [
+        "404/login tenant mismatch",
+        "Green list leak",
+        "Временная ошибка classification скрыта",
+        "Многократные messages увеличили count"
+      ],
+      "acceptance": [
+        "Объекты за каждым счётчиком доступны",
+        "Оператор исправляет ошибку связи",
+        "Последний meaningful state и возраст ожидания видны"
+      ],
+      "hypothesis_ids": [],
+      "audit_lane": "communications",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "10.13",
+      "depends_on": [
+        "10.3",
+        "10.5",
+        "10.6",
+        "10.7",
+        "10.8",
+        "10.12"
+      ],
+      "owner": "integration-platform/lead-management operations",
+      "code_refs": [],
+      "proposed_targets": [
+        "proposed mailbox-and-form-runbook.md",
+        "proposed fault matrix + real acceptance evidence"
+      ],
+      "input": "Реальные mailbox/form bindings и instrumented pipeline",
+      "output": "Описанное восстановление,retention,rotation и acceptance report",
+      "steps": [
+        "Документировать scopes/folders/oauth renewal/subscription expiry/backfill,права operator и red storage topology.",
+        "Проверить restarts в каждой boundary,expired cursor,duplicate callback,UIDVALIDITY reset,malformed MIME;record reconciled IDs без PII в общих логах.",
+        "Retention удаляет raw/parts/quotes/summaries/vectors/correlation data по scope;операционный tombstone минимален и не воскрешает revoked content при replay.",
+        "Метрики ingress lag,unparsed age,unmatched age,pending hold age,sync gaps,dead letters,real receiving probe;не использовать отправки людям как healthcheck."
+      ],
+      "failure_cases": [
+        "Credential rotation",
+        "Provider outage",
+        "Забытый quarantine",
+        "Retention replay resurrection"
+      ],
+      "acceptance": [
+        "Реальный connected mailbox и red form sink",
+        "Recovery воспроизводим",
+        "Запрошенный scope ограничен и состояние доступно"
+      ],
+      "hypothesis_ids": [
+        "COMM-H03"
+      ],
+      "audit_lane": "communications",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "10.14",
+      "depends_on": [
+        "10.2",
+        "10.8"
+      ],
+      "owner": "lead-management → outreach-orchestration,parallel engagement",
+      "code_refs": [
+        "backend/contexts/outreach-orchestration/internal/domain/campaign_sequences.go:174"
+      ],
+      "proposed_targets": [
+        "proposed contracts/lead-management/conversationsignal/",
+        "proposed conversation_hold table and eligibility epoch"
+      ],
+      "input": "Устойчивый matched message receipt,correlation decision и revision",
+      "output": "Pending-reply hold до classification,затем контролируемый outcome transition",
+      "steps": [
+        "В red owner transaction correlated receipt+pending hold+outbox;contract carries tenant,conversation,execution refs,message ref,decision version,event ID,hold reason без body.",
+        "Outreach inbox idempotent применяет hold и увеличивает eligibility epoch. Для gate9.4 читать authoritative pending state/compatible owner port,не полагаться только на eventual signal.",
+        "Hold keyed message/correlation version;multiple unresolved messages→multiple hold reasons. Квалификация снимает лишь свой hold после durable outcome,не любой общий boolean.",
+        "Relink conflict отменяет прежнюю кандидатную причинность через versioned compensation;terminal accepted send не меняется. Timeout не auto-resume;UI age/reason."
+      ],
+      "failure_cases": [
+        "Classification timeout",
+        "Out-of-order matched/relinked/qualified events",
+        "Event delivery lag",
+        "Другой pending reply при resolved первом"
+      ],
+      "acceptance": [
+        "Follow-up held до устойчивой qualification",
+        "Pending не counted human reply",
+        "Нет false resume по устаревшему событию"
+      ],
+      "hypothesis_ids": [],
+      "audit_lane": "communications",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "11.1",
+      "depends_on": [
+        "4.8",
+        "4.10",
+        "4.11",
+        "4.12",
+        "5.4",
+        "6.1",
+        "4.17"
+      ],
+      "owner": "request-fulfillment integration with agent-orchestration/lead-management",
+      "code_refs": [
+        "backend/contexts/request-fulfillment/internal/adapters/workflow/fulfillment.go:292",
+        "backend/contexts/request-fulfillment/internal/adapters/workflow/activities.go:136"
+      ],
+      "proposed_targets": [
+        "proposed real acceptance scenario manifests",
+        "proposed search-first cohort route config/runbook"
+      ],
+      "input": "Human realistic brief с выбранным количеством, selected country quotas, общий Firecrawl credits cap и TechnicalLimits; материал отдельная phase policy.",
+      "output": "Real persisted search run with accepted unique target unit snapshot or explained partial; material/draft phase проверяется отдельно при её включении.",
+      "steps": [
+        "Run search-first single cohort through full brief→discover→save incomplete→cross-source link→accept, record provenance and cost.",
+        "Повтор intent не запускает old top-up+new mission и не создаёт новый FC budget. Proxy monetary budgeting не добавляется.",
+        "Separate full/search-only/material phase outcomes, request completion decided by owner versioned business policy.",
+        "Configured target success only when criteria/unit actually reached; partial accepted as honest run outcome but not evidence all capabilities complete.",
+        "Test restart after unknown call, duplicate canonical entity, inadequate country quota, unavailable source, late contact across run."
+      ],
+      "failure_cases": [
+        "17hits but6accepted; целевой объём нерелевантных; несколько доменов тех же компаний; phone-only for email; aggregate parent fulfilled prematurely."
+      ],
+      "acceptance": [
+        "UI counts/list и provider real receipts; один intent один общий Firecrawl budget для Search/Crawl/Extract.",
+        "Ни monetary reserve, ни denial не добавлены proxy LLM/прочим tools; технические ограничения отдельно.",
+        "Full mandatory scope независимо проходит свои acceptance gates."
+      ],
+      "hypothesis_ids": [
+        "ORCH-H08"
+      ],
+      "audit_lane": "orchestration",
+      "implementation_status": "pending",
+      "conditional_dependencies": [
+        {
+          "when": "Приёмка версии с собственным runtime",
+          "task_ids": [
+            "7.2"
+          ]
+        },
+        {
+          "when": "Приёмка цели с передачей материалов, не search-only",
+          "task_ids": [
+            "9.1"
+          ]
+        }
+      ]
+    },
+    {
+      "task_id": "11.2",
+      "depends_on": [
+        "4.4",
+        "4.7",
+        "4.12"
+      ],
+      "owner": "agent-orchestration observability, source/inbound owners",
+      "code_refs": [
+        "backend/contexts/lead-management/internal/app/run_search.go:263",
+        "backend/contexts/agent-orchestration/internal/adapters/workflow/agent_run.go:83"
+      ],
+      "proposed_targets": [
+        "proposed research metrics/alerts dashboards and runbook"
+      ],
+      "input": "State transition/time/action/receipt/ingest events, source health, inbound owner lag events.",
+      "output": "Operational detection with low-cardinality telemetry and drilldown by authorized IDs.",
+      "steps": [
+        "Metrics: accepted units, discovery yield, stage conversion, latency, no-progress/queue age, Firecrawl credits/unit и unknown hold, ingestion/source failures; proxy usage optional.",
+        "Use mission IDs only trace/log fields not high-cardinality metric label; raw emails/phones/query docs omitted from telemetry.",
+        "Alert no-meaningful-progress, receipt ingest lag, Firecrawl unknown backlog, source failure; technical failures не маскировать monetary cap.",
+        "Inbound lag integrates owner signal later; search-first alerts ship with search.",
+        "Each alert has diagnostic link and action: retry allowed? unknown effect? change source? review? no blind restart all."
+      ],
+      "failure_cases": [
+        "Healthy heartbeat masks zero results; provider200 but empty docs; DB save lag; all source successes duplicate same entity; source scheduled cooldown false alert."
+      ],
+      "acceptance": [
+        "Fault injection produces actionable alert before false ready; no PII/secrets; cost/yield and per-country source failure visible."
+      ],
+      "hypothesis_ids": [],
+      "audit_lane": "orchestration",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "11.3",
+      "depends_on": [
+        "3.3",
+        "4.6",
+        "4.14"
+      ],
+      "owner": "data-governance — policy; lead-management — предметные данные; integration-platform — artifacts/index",
+      "code_refs": [
+        "backend/contexts/integration-platform/internal/adapters/vector/postgres/store.go:193",
+        "contracts/integration-platform/vector/vector.go:49"
+      ],
+      "proposed_targets": [
+        "backend/contexts/lead-management/internal/app/revoke_research_evidence.go (proposed)",
+        "contracts/integration-platform/scopedindex/* (proposed)",
+        "contracts/lead-management/researchretention/* (proposed)"
+      ],
+      "input": "Авторизованный запрос отзыва/исправления/retention с областью и effective time.",
+      "output": "Немедленный запрет чтения, пересмотр производных данных и подтверждения физического удаления.",
+      "steps": [
+        "Owner transaction фиксирует tombstone/policy epoch и outbox; чтение немедленно отклоняет старый epoch.",
+        "Обойти точные зависимости raw/DOM/PDF/crops/embeddings/summaries/context caches/conversation projections; команды удаления адресуются каждому владельцу.",
+        "Асинхронное удаление с детерминированными ключами и повторяемыми receipts; поздний indexer проверяет tombstone/input epoch перед записью.",
+        "Определить восстановление tombstones из backup/replay и retention deadline; допустимый минимальный audit не содержит запрещённых данных.",
+        "Различать недоступный, ошибочный и запрещённый источник; HTTP 404 не опровержение предметного факта."
+      ],
+      "failure_cases": [
+        "Удаление зависло/таймаут",
+        "Кэш prompt возвращён после отзыва",
+        "Запоздалый embedding воскресил запись",
+        "Один physical blob используется несколькими разрешёнными областями",
+        "Восстановление backup предшествует delete"
+      ],
+      "acceptance": [
+        "После барьера отзыва запрещённые данные отсутствуют во всех производных чтениях.",
+        "Ожидание физического удаления видно с владельцем/receipt/deadline; задача открыта до проверки каждого реально подключённого владельца проекций.",
+        "Удаление по purpose не раскрывает другую область и не оставляет запрещённую копию незаметно."
+      ],
+      "hypothesis_ids": [],
+      "audit_lane": "identity_memory",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "11.4",
+      "depends_on": [
+        "3.8",
+        "4.14",
+        "9.4",
+        "10.10",
+        "10.11"
+      ],
+      "owner": "lead-management — feedback; engagement/outreach — свои реакции",
+      "code_refs": [
+        "backend/contexts/lead-management/internal/domain/email_verification.go:10",
+        "backend/contexts/lead-management/internal/domain/contact.go:42"
+      ],
+      "proposed_targets": [
+        "backend/contexts/lead-management/internal/app/apply_research_feedback.go (proposed)",
+        "contracts/lead-management/researchfeedback/* (proposed)"
+      ],
+      "input": "Bounce адреса, оценка компании по критериям кампании, исправление оператора и immutable refs отправленного действия.",
+      "output": "Версии проверок/связей/пригодности канала с audit и без повторения исходящего эффекта.",
+      "steps": [
+        "Dedup feedback по producer/message/event/recipient; проверить точную endpoint revision.",
+        "Bounce влияет на endpoint/метод/актуальность и допуск; компания не удаляется и не становится глобально неподходящей.",
+        "Оценка оффера относится к request criteria revision; исправление identity создаёт superseding decision.",
+        "Передать изменение текущего допуска владельцу канала; сохранить исторический snapshot и прежний action ledger key."
+      ],
+      "failure_cases": [
+        "Повторный bounce",
+        "Общий email обслуживает несколько компаний",
+        "Split identity после отправленного письма",
+        "Отказ по кампании трактуется глобально"
+      ],
+      "acceptance": [
+        "Компания переживает bounce одного адреса; поиск другого канала возможен.",
+        "Оценка ограничена оффером/критериями, исправление оператора объяснимо.",
+        "Merge/split/replay feedback не вызывает повторной отправки."
+      ],
+      "hypothesis_ids": [],
+      "audit_lane": "identity_memory",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "11.5",
+      "depends_on": [
+        "2.4",
+        "3.7",
+        "4.3",
+        "4.8",
+        "4.15",
+        "7.2",
+        "7.3",
+        "7.4",
+        "7.5"
+      ],
+      "owner": "agent-orchestration + integration-platform release + lead-management migrations",
+      "code_refs": [
+        "backend/platform/migrate/migrate.go:43",
+        "compose.demo.yaml:2",
+        "compose.yaml:226",
+        "backend/contexts/agent-orchestration/internal/adapters/workflow/agent_run.go:14"
+      ],
+      "proposed_targets": [
+        "backend/contexts/{lead-management,agent-orchestration}/migrations/... (additive proposed)",
+        "research-route/profile registry (proposed)",
+        "deploy/research/rollout-runbook.md (proposed)"
+      ],
+      "input": "Принятый source cohort, закреплённые images/contracts/models, scoped mapping и action receipts.",
+      "output": "Canary route и доказанный откат без потери результатов/повторного эффекта.",
+      "steps": [
+        "Применить additive migrations без переписывания legacy IDs. Scoped bridge требует теста двух tenant с одним domain; старые записи без доказанного tenant не присваиваются автоматически.",
+        "Закрепить route/profile/schema/workflow revision у mission/action. Shadow выполнять по сохранённым artifacts. Два live Firecrawl вызова должны укладываться в общий credit cap; прочие сравнения через существующий proxy имеют технические лимиты без нового денежного reserve.",
+        "Переключать по tenant/source/country. Старые workers обслуживают свою history до drain; новый workflow name или version marker позволяет replay. Поздние receipts принимаются по исходной версии.",
+        "Rollback меняет новые dispatch. In-flight unknown actions reconciled; evidence/новые компании/inbound/исторические completion snapshots сохраняются. Не выполнять destructive down-migration.",
+        "Использовать выбранный deploy path: demo через явный compose.demo.yaml, production через существующий release manifest. Новый client executor получает red binding, а shared controller — только refs."
+      ],
+      "failure_cases": [
+        "Старый worker читает несовместимую схему",
+        "После route flip повторно оплачен тот же unknown action",
+        "Поздний receipt потерян",
+        "Red payload попал в green storage",
+        "Rollback удалил новые знания"
+      ],
+      "acceptance": [
+        "Реальные PG/Temporal crash и mixed-version проверки",
+        "Старые ссылки доступны, две компании одинакового domain в разных tenant независимы",
+        "Нет тихих потерь/re-send; пределы восстановления отражены в runbook"
+      ],
+      "hypothesis_ids": [
+        "AD-H04"
+      ],
+      "audit_lane": "architecture_delivery",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "12.1",
+      "depends_on": [
+        "11.1",
+        "4.15",
+        "5.5",
+        "9.6",
+        "10.12"
+      ],
+      "owner": "cross-context acceptance; request-fulfillment final request outcome",
+      "code_refs": [
+        "backend/contexts/agent-orchestration/internal/adapters/blocks/search.go:76",
+        "docs/concepts/intelligent-lead-research/07-architecture-and-delivery-plan.md:123"
+      ],
+      "proposed_targets": [
+        "evaluation/research/scenarios/end-to-end.yaml (proposed)",
+        "docs/evidence/research-e2e-<date>.md (proposed)"
+      ],
+      "input": "Человеческая заявка со странами и целью, Firecrawl credit cap, существующий proxy для прочих инструментов и разрешённый тестовый адресат.",
+      "output": "Воспроизводимая сквозная цепочка с evidence/trace IDs.",
+      "steps": [
+        "Первый поисковый checkpoint: request → bounded search → сохранённая компания без контакта → OpenNeed → поздний источник → принадлежность контакта → membership → видимый UI.",
+        "Для окончательной программы добавить material version → exact approval → фактическая доставка → реальный ответ → conversation/lead update. Промежуточный checkpoint не закрывает всю задачу.",
+        "Использовать выбранный реальный seed через Firecrawl/search, затем принятый self-hosted profile. Отдельно пройти partial и unavailable исходы.",
+        "Сохранить action/receipt/evidence/version/trace refs и состояние после restart; публичный отчёт не включает ключи или сырые контактные данные."
+      ],
+      "failure_cases": [
+        "Получено, но не сохранено",
+        "Компания исчезла из-за отсутствия email",
+        "Счётчики не объясняются списками",
+        "Ответ связан с чужой компанией"
+      ],
+      "acceptance": [
+        "Каждый счётчик раскрывается сохранёнными объектами",
+        "Request terminal status устанавливает его владелец",
+        "Для заявленной communication приёмки действительно получен ответ; draft не назван доставкой"
+      ],
+      "hypothesis_ids": [
+        "AD-H01"
+      ],
+      "audit_lane": "architecture_delivery",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "12.2",
+      "depends_on": [
+        "2.4",
+        "3.7",
+        "4.15",
+        "7.6",
+        "8.9",
+        "9.4",
+        "10.13"
+      ],
+      "owner": "quality and respective owner teams",
+      "code_refs": [
+        "backend/contexts/lead-management/internal/adapters/persistence/postgres/lead_profile_repository.go:195",
+        "backend/contexts/agent-orchestration/internal/app/command/run_step.go:62"
+      ],
+      "proposed_targets": [
+        "evaluation/research/scenarios/negative.yaml (proposed)"
+      ],
+      "input": "Закреплённый negative corpus и контролируемые отказы в тестовом окружении.",
+      "output": "Таблица ожидаемого/реального исхода каждого отказа с traces.",
+      "steps": [
+        "Проверить search failures: footer/article/multi-entity/numeric noise, wrong country, чужой scope, private URL, unsupported OCR, stale/conflicted evidence и отсутствие email.",
+        "Внести persist failure, worker crash до/после эффекта, duplicate receipt, lease expiry, out-of-order revision, concurrent last slot и unknown cost.",
+        "В более позднем communication срезе проверить unknown SMTP, late inbound, classification timeout и correlation conflict без неразрешённой отправки.",
+        "После каждого отказа проверить entity/OpenNeed/membership/attempt ledger, записи двух tenant, API/UI projection и неизменность terminal snapshot."
+      ],
+      "failure_cases": [
+        "Проверен только happy path",
+        "Ошибка стала пустым успешным результатом",
+        "Fixture выдан за провайдера",
+        "Green controller сохранил raw prompt"
+      ],
+      "acceptance": [
+        "Ноль наблюдаемых блокирующих ошибок в выпускаемой когорте",
+        "Размер выборки, неподдержанные случаи и baseline blockers перечислены",
+        "Неисправленные дефекты блокируют соответствующую область выпуска"
+      ],
+      "hypothesis_ids": [
+        "AD-H04",
+        "AD-H05"
+      ],
+      "audit_lane": "architecture_delivery",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "12.3",
+      "depends_on": [
+        "12.1",
+        "12.2",
+        "12.4",
+        "11.5",
+        "6.6"
+      ],
+      "owner": "release acceptance owner",
+      "code_refs": [
+        "Makefile:44",
+        "Makefile:52",
+        "architecture/domain-catalog.yaml:49"
+      ],
+      "proposed_targets": [
+        "docs/evidence/research-validation-<revision>.md (proposed)",
+        "docs/implementation-matrix.md"
+      ],
+      "input": "Точная candidate revision, pinned зависимости, тестовая БД и требуемые реальные integrations.",
+      "output": "Сохранённые команды/коды выхода, coverage и implementation matrix.",
+      "steps": [
+        "Устранить canonical content-production baseline mismatch через правильного владельца. Не подавлять archlint или подменять отсутствующую спецификацию заглушкой.",
+        "Выполнить make check, archlint и strict validate change. Отдельно выполнить реальные PostgreSQL suites и требуемые provider integrations: make check сам не поднимает БД.",
+        "Проверить фактическую runtime конфигурацию и отсутствие fake/noop на поставляемом пути. Неподдержанная функция остаётся явно недоступной и открытой.",
+        "Связать corpus/real acceptance/rollback отчёты с точным commit. Skipped checks и недоступные окружения отражать явно, не объявлять всё зелёным."
+      ],
+      "failure_cases": [
+        "DB тесты пропущены незаметно",
+        "Runtime flag выбрал заглушку",
+        "Provider test skipped выдан за pass",
+        "Отчёт относится к старому commit"
+      ],
+      "acceptance": [
+        "Все требуемые gates зелёные на точной candidate revision",
+        "Реальная интеграция подтверждена отдельно от unit/fixture теста"
+      ],
+      "hypothesis_ids": [],
+      "audit_lane": "architecture_delivery",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "12.4",
+      "depends_on": [
+        "3.8",
+        "4.12",
+        "5.4",
+        "9.6",
+        "10.12"
+      ],
+      "owner": "request-fulfillment/lead-management frontend + platform-governance auth",
+      "code_refs": [
+        "backend/contexts/lead-management/internal/adapters/persistence/postgres/lead_profile_repository.go:69",
+        "backend/contexts/lead-management/internal/adapters/persistence/postgres/lead_profile_repository.go:195",
+        "compose.demo.yaml:2"
+      ],
+      "proposed_targets": [
+        "evaluation/research/scenarios/tenant-ui.yaml (proposed)"
+      ],
+      "input": "Два tenant с одинаковым company domain, разные роли и все состояния результатов.",
+      "output": "Проверенная UI/route/role матрица и объяснимое отображение данных.",
+      "steps": [
+        "Пройти request → progress → candidates/OpenNeeds/credited → dossier → draft → conversation с сохранением actor/tenant context.",
+        "Сохранение domain в tenant B не меняет tenant A. Direct IDs и legacy URLs не открывают чужие записи; старый неизвестный scope не присваивается автоматически.",
+        "Проверить разрешённые переходы без ложного 404/login redirect; role denial объясним, настоящий expired session требует входа. После reconnect цифры соответствуют одной progress revision.",
+        "Показать компанию без email, пробел и причину незачёта. У каждого поля/отношения видны source/method/date/conflict и отдельная неизвестная reachability."
+      ],
+      "failure_cases": [
+        "Tenant потерян в ссылке",
+        "Запись domain перенесена другому tenant",
+        "Разрешённый route вернул 404",
+        "Счётчики и списки разных revisions"
+      ],
+      "acceptance": [
+        "Browser/API/DB evidence для двух tenant и разрешённых ролей",
+        "Проверенность принадлежности не выдаётся за проверенную доставляемость"
+      ],
+      "hypothesis_ids": [],
+      "audit_lane": "architecture_delivery",
+      "implementation_status": "pending"
+    },
+    {
+      "task_id": "12.5",
+      "depends_on": [
+        "2.5",
+        "12.3",
+        "4.18",
+        "5.2",
+        "6.3",
+        "7.7",
+        "8.3",
+        "11.2",
+        "11.3",
+        "11.4"
+      ],
+      "owner": "program/product acceptance owner",
+      "code_refs": [
+        "docs/concepts/intelligent-lead-research/implementation-coverage.json",
+        "openspec/changes/intelligent-lead-research/tasks.md:137"
+      ],
+      "proposed_targets": [
+        "docs/intelligent-lead-platform-roadmap.md",
+        "docs/concepts/intelligent-lead-research/implementation-coverage.json"
+      ],
+      "input": "Результаты всех REQ/USE, task evidence и открытые ограничения.",
+      "output": "Версионированная приёмка всей программы или точный остаток работ.",
+      "steps": [
+        "Пройти все 36 функций: приоритет поиска/краулинга не отменяет международный MarketStudy, собственный index, browser/OCR, forms/inbound/outreach.",
+        "Каждый USE подтверждается применённым механизмом либо обоснованным выбором; все competing products одновременно устанавливать не требуется.",
+        "Для каждого результата проверить code/contract/migration/UI/test/live evidence на согласованной версии и связь с пользовательскими уточнениями.",
+        "Архивировать только реально принятые требования с правильным порядком зависимых changes. R1 или новый поисковый срез не считать завершением всей программы."
+      ],
+      "failure_cases": [
+        "Прототип назван всей программой",
+        "Отложенная required функция исчезла",
+        "Страна объявлена поддержанной без источников",
+        "Цитата подменила реализацию"
+      ],
+      "acceptance": [
+        "Все обязательные функции имеют реальные evidence и зелёные gates",
+        "Незавершённая внешняя зависимость сохраняет соответствующую задачу открытой"
+      ],
+      "hypothesis_ids": [],
+      "audit_lane": "architecture_delivery",
+      "implementation_status": "pending"
+    }
+  ],
+  "synthesis_corrections": [
+    "11.1 search-only принимается на Firecrawl;7.2/9.1 conditional phase prerequisites, не обязательные блокеры поиска.",
+    "12.5 зависит от всех terminal task tips; transitive closure включает остальные93задачи.",
+    "MarketStudy до заявки разрешён по human study intent с grant того же единого Firecrawl ledger."
+  ],
+  "goal_policy": "Фиксированной цели нет (CL-17); количество и единица результата выбираются для конкретной заявки."
+}

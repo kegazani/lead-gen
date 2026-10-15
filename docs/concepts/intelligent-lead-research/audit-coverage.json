@@ -1,0 +1,3616 @@
+{
+  "schema_version": 1,
+  "baseline": "bbe49f6c7e97ae3ba0cf6b21b55b45e7d5874407",
+  "scope": "Весь исходный change: 66 Requirement blocks с 93 Scenarios, 20 design decisions, 29 proposal list items и 91 implementation task. Не заявляется независимый аудит каждого предложения естественного языка; единица проверки явно указана. Why/прочие вводные также рассмотрены в clause_reviews.",
+  "counts": {
+    "normative-requirement": 66,
+    "design-decision": 20,
+    "proposal-item": 29,
+    "implementation-task": 91
+  },
+  "baseline_records": [
+    {
+      "kind": "normative-requirement",
+      "path": "openspec/changes/intelligent-lead-research/specs/adaptive-lead-research/spec.md",
+      "title": "Миссия возникает из человеческого поручения",
+      "line": 7,
+      "sha256": "1cad5f407c5b9564cee3382aa9b4443a8ba168ae0914fdf06e538bc81cb4177b",
+      "scenarios": [
+        "Нужен поиск в дополнительной стране"
+      ],
+      "unit_id": "BASE-001",
+      "review_ids": [
+        "orchestration:1"
+      ],
+      "task_ids": [
+        "1.1",
+        "4.1",
+        "4.4"
+      ],
+      "disposition": [
+        "refine"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "normative-requirement",
+      "path": "openspec/changes/intelligent-lead-research/specs/adaptive-lead-research/spec.md",
+      "title": "Структурированное действие с проверяемым результатом",
+      "line": 15,
+      "sha256": "4dc5e04bff45e8d825132f96b466f6fd7bba49413f59139b76d72ceaa5b5242c",
+      "scenarios": [
+        "Из названия нужно найти регистрационный номер"
+      ],
+      "unit_id": "BASE-002",
+      "review_ids": [
+        "orchestration:2"
+      ],
+      "task_ids": [
+        "4.2",
+        "4.3"
+      ],
+      "disposition": [
+        "refine"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "normative-requirement",
+      "path": "openspec/changes/intelligent-lead-research/specs/adaptive-lead-research/spec.md",
+      "title": "Долговечность и ограниченное повторение",
+      "line": 23,
+      "sha256": "52c656a6ab8071fcdf7fc0203e897d3d14aadd5eb5bce0d51dba3e8587baa4dd",
+      "scenarios": [
+        "Перезапуск после платного поиска"
+      ],
+      "unit_id": "BASE-003",
+      "review_ids": [
+        "orchestration:3"
+      ],
+      "task_ids": [
+        "4.3",
+        "4.8"
+      ],
+      "disposition": [
+        "refine"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "normative-requirement",
+      "path": "openspec/changes/intelligent-lead-research/specs/adaptive-lead-research/spec.md",
+      "title": "Условия остановки и честный недобор",
+      "line": 31,
+      "sha256": "309462b52a9518658c1872b742f469b7cfa3b0e3543f83342acda38c037062ab",
+      "scenarios": [
+        "Неподтверждённые компании при цели 25"
+      ],
+      "unit_id": "BASE-004",
+      "review_ids": [
+        "orchestration:4"
+      ],
+      "task_ids": [
+        "11.1",
+        "4.11",
+        "4.7"
+      ],
+      "disposition": [
+        "refine"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "normative-requirement",
+      "path": "openspec/changes/intelligent-lead-research/specs/adaptive-lead-research/spec.md",
+      "title": "Недоверенное содержимое источников",
+      "line": 39,
+      "sha256": "9b1ed986de6f2945d718b4337b31b48c6a8165e66cf346fffa697324a2334583",
+      "scenarios": [
+        "Инструкция внутри страницы"
+      ],
+      "unit_id": "BASE-005",
+      "review_ids": [
+        "orchestration:5"
+      ],
+      "task_ids": [
+        "4.2",
+        "4.3"
+      ],
+      "disposition": [
+        "retain"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "normative-requirement",
+      "path": "openspec/changes/intelligent-lead-research/specs/adaptive-lead-research/spec.md",
+      "title": "Объяснимое текущее состояние",
+      "line": 47,
+      "sha256": "73c8a6230a46c423a1f10c4c31daeb2bc5ead86bca001571212deed93863fa06",
+      "scenarios": [
+        "Поиск сайта после нахождения номера компании"
+      ],
+      "unit_id": "BASE-006",
+      "review_ids": [
+        "orchestration:6"
+      ],
+      "task_ids": [
+        "11.2",
+        "4.12"
+      ],
+      "disposition": [
+        "refine"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "normative-requirement",
+      "path": "openspec/changes/intelligent-lead-research/specs/adaptive-lead-research/spec.md",
+      "title": "Единица результата фиксируется поручением",
+      "line": 55,
+      "sha256": "9fc8cb3026d21b2a135cc5c608c51f95df47b7e5bed96287d3847ec7eb5ede51",
+      "scenarios": [
+        "Цель компании с контактом"
+      ],
+      "unit_id": "BASE-007",
+      "review_ids": [
+        "orchestration:7"
+      ],
+      "task_ids": [
+        "1.1",
+        "4.9"
+      ],
+      "disposition": [
+        "refine"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "normative-requirement",
+      "path": "openspec/changes/intelligent-lead-research/specs/adaptive-lead-research/spec.md",
+      "title": "Зачёт следует устойчивому сохранению",
+      "line": 63,
+      "sha256": "91ef01ba794793cd37d664cfacca63ddeffcc50da2f6d50638b10caea4f7e08d",
+      "scenarios": [
+        "Извлечение успешно и запись не удалась",
+        "Два работника нашли один субъект",
+        "Дубли объединены до завершения"
+      ],
+      "unit_id": "BASE-008",
+      "review_ids": [
+        "orchestration:8"
+      ],
+      "task_ids": [
+        "4.10",
+        "4.9"
+      ],
+      "disposition": [
+        "refine"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "normative-requirement",
+      "path": "openspec/changes/intelligent-lead-research/specs/adaptive-lead-research/spec.md",
+      "title": "Состояние и полезный прогресс различаются",
+      "line": 79,
+      "sha256": "f7b9eccc280f744e07bcc0572dffeb91c29ac17cc57634fbdcce4a6fb6a16fbd",
+      "scenarios": [
+        "Работник жив без новых фактов"
+      ],
+      "unit_id": "BASE-009",
+      "review_ids": [
+        "orchestration:9"
+      ],
+      "task_ids": [
+        "11.2",
+        "4.7"
+      ],
+      "disposition": [
+        "refine"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "normative-requirement",
+      "path": "openspec/changes/intelligent-lead-research/specs/adaptive-lead-research/spec.md",
+      "title": "Завершение сохраняет исторический снимок",
+      "line": 87,
+      "sha256": "b972be96cb55bfefd490b3d1ad5c20319c99b9d6c60a4135d8ba644657e3b706",
+      "scenarios": [
+        "Поздний результат после deadline"
+      ],
+      "unit_id": "BASE-010",
+      "review_ids": [
+        "orchestration:10"
+      ],
+      "task_ids": [
+        "4.10"
+      ],
+      "disposition": [
+        "refine"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "normative-requirement",
+      "path": "openspec/changes/intelligent-lead-research/specs/adaptive-lead-research/spec.md",
+      "title": "Дообогащение памяти не создаёт новых полномочий миссии",
+      "line": 95,
+      "sha256": "0ba038a4dfd5d14d603c7887268690a6130ca23db4f9a1943abb7d4760b2c6a2",
+      "scenarios": [
+        "Контакт появился у активной миссии",
+        "Контакт появился после завершения",
+        "Отзыв вновь открыл потребность"
+      ],
+      "unit_id": "BASE-011",
+      "review_ids": [
+        "orchestration:11"
+      ],
+      "task_ids": [
+        "4.10",
+        "4.11",
+        "4.7"
+      ],
+      "disposition": [
+        "retain"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "normative-requirement",
+      "path": "openspec/changes/intelligent-lead-research/specs/adaptive-lead-research/spec.md",
+      "title": "Повтор стратегии ограничен",
+      "line": 111,
+      "sha256": "5ac22f92b147668febbf08da02b70c79d3266a2d920621312825047d7f476982",
+      "scenarios": [
+        "Перестановка слов того же запроса"
+      ],
+      "unit_id": "BASE-012",
+      "review_ids": [
+        "orchestration:12"
+      ],
+      "task_ids": [
+        "4.11"
+      ],
+      "disposition": [
+        "refine"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "normative-requirement",
+      "path": "openspec/changes/intelligent-lead-research/specs/inbound-lead-conversations/spec.md",
+      "title": "Источник обращения сохраняется",
+      "line": 7,
+      "sha256": "2e2ffb0829002c3766e0ae900a3d8e432841643788cb43358e858560651e8b36",
+      "scenarios": [
+        "Посетитель не указал компанию",
+        "Ответ существующего контакта"
+      ],
+      "unit_id": "BASE-013",
+      "review_ids": [
+        "communications:7"
+      ],
+      "task_ids": [
+        "10.3",
+        "10.9"
+      ],
+      "disposition": [
+        "retain"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "normative-requirement",
+      "path": "openspec/changes/intelligent-lead-research/specs/inbound-lead-conversations/spec.md",
+      "title": "Приём привязан к доверенной области",
+      "line": 19,
+      "sha256": "cd4f5b0b1d216ce5f226b796a7a203139befe399e9b71d178398d898c579576a",
+      "scenarios": [
+        "Подставлен заголовок другого tenant",
+        "Клиентский приёмник формы недоступен"
+      ],
+      "unit_id": "BASE-014",
+      "review_ids": [
+        "communications:8"
+      ],
+      "task_ids": [
+        "10.1",
+        "10.2"
+      ],
+      "disposition": [
+        "refine"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "normative-requirement",
+      "path": "openspec/changes/intelligent-lead-research/specs/inbound-lead-conversations/spec.md",
+      "title": "Повторная доставка не дублирует обращение",
+      "line": 31,
+      "sha256": "c8ac68de092e18644cca5000710f2777d67db1a685ecd582869ba6eb651c5d68",
+      "scenarios": [
+        "Повтор webhook",
+        "Перезапуск почтового подключения"
+      ],
+      "unit_id": "BASE-015",
+      "review_ids": [
+        "communications:9"
+      ],
+      "task_ids": [
+        "10.3",
+        "10.5"
+      ],
+      "disposition": [
+        "refine"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "normative-requirement",
+      "path": "openspec/changes/intelligent-lead-research/specs/inbound-lead-conversations/spec.md",
+      "title": "Корреляция переписки объяснима",
+      "line": 43,
+      "sha256": "36433544f219ea97dc9593a9caafab97a2406ec55c7daf5b589a56a4681435e9",
+      "scenarios": [
+        "Одинаковая тема разных компаний",
+        "Не удалось определить цепочку"
+      ],
+      "unit_id": "BASE-016",
+      "review_ids": [
+        "communications:10"
+      ],
+      "task_ids": [
+        "10.7",
+        "10.8"
+      ],
+      "disposition": [
+        "refine"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "normative-requirement",
+      "path": "openspec/changes/intelligent-lead-research/specs/inbound-lead-conversations/spec.md",
+      "title": "Смысл ответа влияет на следующий шаг",
+      "line": 55,
+      "sha256": "d244e0453356a5bee9851fa84504740752cbceabde47e3c9b7a3c0ef6331c659",
+      "scenarios": [
+        "Автоответ об отпуске",
+        "Интерес и просьба не писать"
+      ],
+      "unit_id": "BASE-017",
+      "review_ids": [
+        "communications:11"
+      ],
+      "task_ids": [
+        "10.10",
+        "10.11"
+      ],
+      "disposition": [
+        "experiment"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "normative-requirement",
+      "path": "openspec/changes/intelligent-lead-research/specs/inbound-lead-conversations/spec.md",
+      "title": "Наш обратный контакт реален",
+      "line": 67,
+      "sha256": "2f60427221d9b82208cde5a111d2ef6fcf276b348fb018ba3fc56df695a53bb2",
+      "scenarios": [
+        "Нет обязательного телефона отправителя",
+        "Оператор подтвердил отправку",
+        "Автоматический режим ещё не выбран и не разрешён"
+      ],
+      "unit_id": "BASE-018",
+      "review_ids": [
+        "communications:12"
+      ],
+      "task_ids": [
+        "10.7",
+        "9.5",
+        "9.7"
+      ],
+      "disposition": [
+        "pending-decision"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "normative-requirement",
+      "path": "openspec/changes/intelligent-lead-research/specs/inbound-lead-conversations/spec.md",
+      "title": "Переписка и исходы видны оператору",
+      "line": 83,
+      "sha256": "a9da1e4ec7637e952e9e09e202d11dec799a219bfa9e9e8efe3372e163b30ca8",
+      "scenarios": [
+        "Регистрационный номер из подписи"
+      ],
+      "unit_id": "BASE-019",
+      "review_ids": [
+        "communications:13"
+      ],
+      "task_ids": [
+        "10.12",
+        "10.9"
+      ],
+      "disposition": [
+        "retain"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "normative-requirement",
+      "path": "openspec/changes/intelligent-lead-research/specs/inbound-lead-conversations/spec.md",
+      "title": "Конфликт признаков корреляции не скрывается",
+      "line": 91,
+      "sha256": "a45ae0df7259dce1294f99c419f24483abcb165b69f41b3c12205ffff89e1a62",
+      "scenarios": [
+        "Reply ref и заголовок указывают разные кампании"
+      ],
+      "unit_id": "BASE-020",
+      "review_ids": [
+        "communications:14"
+      ],
+      "task_ids": [
+        "10.8"
+      ],
+      "disposition": [
+        "retain"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "normative-requirement",
+      "path": "openspec/changes/intelligent-lead-research/specs/inbound-lead-conversations/spec.md",
+      "title": "Связанный ответ ожидает разбора до продолжения",
+      "line": 99,
+      "sha256": "cb302526c5fcb7e2dbc620a607349a4dc6bea80a510b642d8ff0043aaf46784e",
+      "scenarios": [
+        "Модель разбора ответа недоступна"
+      ],
+      "unit_id": "BASE-021",
+      "review_ids": [
+        "communications:15"
+      ],
+      "task_ids": [
+        "10.14",
+        "9.4"
+      ],
+      "disposition": [
+        "refine"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "normative-requirement",
+      "path": "openspec/changes/intelligent-lead-research/specs/inbound-lead-conversations/spec.md",
+      "title": "Новое содержание отделяется от истории письма",
+      "line": 107,
+      "sha256": "29bedaa08f3fd055bf9b9342115192133455751596fa456a4299715dab7e72ba",
+      "scenarios": [
+        "Отказ после положительного цитируемого письма"
+      ],
+      "unit_id": "BASE-022",
+      "review_ids": [
+        "communications:16"
+      ],
+      "task_ids": [
+        "10.10",
+        "10.6"
+      ],
+      "disposition": [
+        "experiment"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "normative-requirement",
+      "path": "openspec/changes/intelligent-lead-research/specs/inbound-lead-conversations/spec.md",
+      "title": "Уникальные лиды отделяются от числа сообщений",
+      "line": 115,
+      "sha256": "1c57137eb6c1d4d1d532bb4c6963c7d9a49c68a573b5afcfd4cb74de8ed29ed4",
+      "scenarios": [
+        "Форма и несколько последующих писем"
+      ],
+      "unit_id": "BASE-023",
+      "review_ids": [
+        "communications:17"
+      ],
+      "task_ids": [
+        "10.12",
+        "10.9"
+      ],
+      "disposition": [
+        "retain"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "normative-requirement",
+      "path": "openspec/changes/intelligent-lead-research/specs/international-market-discovery/spec.md",
+      "title": "Российский рынок по умолчанию и выбор стран",
+      "line": 7,
+      "sha256": "290f3ad26f7a973393b127b7f1dbb613577ea194c11540ebd1cff66635d64c67",
+      "scenarios": [
+        "Заявка без изменения рынка",
+        "Несколько международных рынков"
+      ],
+      "unit_id": "BASE-024",
+      "review_ids": [
+        "markets_search:1"
+      ],
+      "task_ids": [
+        "5.1"
+      ],
+      "disposition": [
+        "refine"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "normative-requirement",
+      "path": "openspec/changes/intelligent-lead-research/specs/international-market-discovery/spec.md",
+      "title": "Исследование международных рынков запускается явно",
+      "line": 19,
+      "sha256": "2679dd24f53fd314e07668be26cf6a6ba5d8b5aaaf6ceb19db6be3f98098d4df",
+      "scenarios": [
+        "Кнопка международного исследования"
+      ],
+      "unit_id": "BASE-025",
+      "review_ids": [
+        "markets_search:2"
+      ],
+      "task_ids": [
+        "5.2"
+      ],
+      "disposition": [
+        "correct"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "normative-requirement",
+      "path": "openspec/changes/intelligent-lead-research/specs/international-market-discovery/spec.md",
+      "title": "Рекомендация рынка отличается от подтверждённого спроса",
+      "line": 27,
+      "sha256": "0d07b145979e8f13893ebfce9249dea2955b16fca835ecc0e7a433c0076c9271",
+      "scenarios": [
+        "Недостаточно данных о стране"
+      ],
+      "unit_id": "BASE-026",
+      "review_ids": [
+        "markets_search:3"
+      ],
+      "task_ids": [
+        "5.2",
+        "5.5"
+      ],
+      "disposition": [
+        "retain"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "normative-requirement",
+      "path": "openspec/changes/intelligent-lead-research/specs/international-market-discovery/spec.md",
+      "title": "Страновой профиль исследования",
+      "line": 35,
+      "sha256": "5f9468e4de40d00d0d8fdeaca025859dd1e94bb0dc0a7cc0272c5660718726a0",
+      "scenarios": [
+        "Компания без аналога ИНН в открытом источнике"
+      ],
+      "unit_id": "BASE-027",
+      "review_ids": [
+        "markets_search:4"
+      ],
+      "task_ids": [
+        "5.3",
+        "6.1"
+      ],
+      "disposition": [
+        "refine"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "normative-requirement",
+      "path": "openspec/changes/intelligent-lead-research/specs/international-market-discovery/spec.md",
+      "title": "Распределение цели и поддержка стран",
+      "line": 43,
+      "sha256": "5d381affb0edcdc61bd41b6665652d3022ed932a0a2ba664b6c13fba9555ecd4",
+      "scenarios": [
+        "Не хватает результатов одной страны"
+      ],
+      "unit_id": "BASE-028",
+      "review_ids": [
+        "markets_search:5"
+      ],
+      "task_ids": [
+        "5.4",
+        "5.5"
+      ],
+      "disposition": [
+        "refine"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "normative-requirement",
+      "path": "openspec/changes/intelligent-lead-research/specs/international-market-discovery/spec.md",
+      "title": "Страновая принадлежность подтверждается отдельно",
+      "line": 51,
+      "sha256": "61c42127366c5e49e73bce05ff4b15a11f143b35fad1976ee0bb8078e23a030c",
+      "scenarios": [
+        "Британское юрлицо продаёт в Германии"
+      ],
+      "unit_id": "BASE-029",
+      "review_ids": [
+        "markets_search:6"
+      ],
+      "task_ids": [
+        "5.3",
+        "5.4"
+      ],
+      "disposition": [
+        "retain"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "normative-requirement",
+      "path": "openspec/changes/intelligent-lead-research/specs/lead-entity-resolution/spec.md",
+      "title": "Юрисдикционная идентичность компании",
+      "line": 7,
+      "sha256": "38ce62485a922e86ba44e933b2b965d95f2a78ad8ed4809138792aca917537ea",
+      "scenarios": [
+        "Одинаковые названия в разных странах",
+        "Один бренд и несколько юрлиц"
+      ],
+      "unit_id": "BASE-030",
+      "review_ids": [
+        "identity_memory:1"
+      ],
+      "task_ids": [
+        "3.1",
+        "3.2",
+        "3.5"
+      ],
+      "disposition": [
+        "refine"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "normative-requirement",
+      "path": "openspec/changes/intelligent-lead-research/specs/lead-entity-resolution/spec.md",
+      "title": "Контекст принадлежности найденного контакта",
+      "line": 19,
+      "sha256": "0e911d06b0b6ff6b67c0df90384c63296c9e9f75a908861f6610ffbdc49d81f6",
+      "scenarios": [
+        "Реквизиты владельца каталога",
+        "Контакт в другом источнике"
+      ],
+      "unit_id": "BASE-031",
+      "review_ids": [
+        "identity_memory:2"
+      ],
+      "task_ids": [
+        "3.3",
+        "3.6"
+      ],
+      "disposition": [
+        "retain"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "normative-requirement",
+      "path": "openspec/changes/intelligent-lead-research/specs/lead-entity-resolution/spec.md",
+      "title": "Поздний контакт дополняет ранее найденную сущность",
+      "line": 31,
+      "sha256": "f0a4678688e77483604a35bfe2696ea8f1aa7fd6a31680163fc67b6ec0cb7aed",
+      "scenarios": [
+        "Email найден спустя время на другом сайте",
+        "Позднее совпадение только по названию"
+      ],
+      "unit_id": "BASE-032",
+      "review_ids": [
+        "identity_memory:3"
+      ],
+      "task_ids": [
+        "3.5",
+        "4.13",
+        "4.14",
+        "4.15"
+      ],
+      "disposition": [
+        "refine"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "normative-requirement",
+      "path": "openspec/changes/intelligent-lead-research/specs/lead-entity-resolution/spec.md",
+      "title": "Проверка идентификаторов и отрицательных свидетельств",
+      "line": 43,
+      "sha256": "ae23548499e448e392a56fdbb6c641190b807ee99a37c90b606a45f9f9d08bfc",
+      "scenarios": [
+        "Корректная контрольная сумма без реестра",
+        "Противоречащие номера"
+      ],
+      "unit_id": "BASE-033",
+      "review_ids": [
+        "identity_memory:4"
+      ],
+      "task_ids": [
+        "3.2",
+        "3.5",
+        "4.5"
+      ],
+      "disposition": [
+        "retain"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "normative-requirement",
+      "path": "openspec/changes/intelligent-lead-research/specs/lead-entity-resolution/spec.md",
+      "title": "Обратимое решение о тождестве",
+      "line": 55,
+      "sha256": "2c176cdb881522e334ed6168351d13f414fef3b375aaf14b3f0c3f073f7811f7",
+      "scenarios": [
+        "Ошибочное объединение одноимённых компаний"
+      ],
+      "unit_id": "BASE-034",
+      "review_ids": [
+        "identity_memory:5"
+      ],
+      "task_ids": [
+        "11.4",
+        "3.1",
+        "3.5"
+      ],
+      "disposition": [
+        "refine"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "normative-requirement",
+      "path": "openspec/changes/intelligent-lead-research/specs/lead-entity-resolution/spec.md",
+      "title": "Подтверждённая единица подсчёта",
+      "line": 63,
+      "sha256": "4569faae6e0e05687a0d413b296242ccfb0ec6a26851150b9ed84a94043b37cb",
+      "scenarios": [
+        "Три домена одной компании"
+      ],
+      "unit_id": "BASE-035",
+      "review_ids": [
+        "identity_memory:6"
+      ],
+      "task_ids": [
+        "3.5",
+        "4.15"
+      ],
+      "disposition": [
+        "retain"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "normative-requirement",
+      "path": "openspec/changes/intelligent-lead-research/specs/lead-entity-resolution/spec.md",
+      "title": "Страновая нормализация контактов",
+      "line": 71,
+      "sha256": "503debc62a199fd84a4fa44f971e61822f19318ace4e391dcf409547a0f50ff5",
+      "scenarios": [
+        "Локальный номер международной компании"
+      ],
+      "unit_id": "BASE-036",
+      "review_ids": [
+        "identity_memory:7"
+      ],
+      "task_ids": [
+        "3.6"
+      ],
+      "disposition": [
+        "refine"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "normative-requirement",
+      "path": "openspec/changes/intelligent-lead-research/specs/lead-entity-resolution/spec.md",
+      "title": "Доказательность определяется проверяемым отношением",
+      "line": 79,
+      "sha256": "1c3af9648f9afcecd1aa44c0e8fa475c08f89ab80186251c4bc83f7d0fd15bb3",
+      "scenarios": [
+        "Один надлежащий реестровый ответ",
+        "Деловой субъект без публичного ID"
+      ],
+      "unit_id": "BASE-037",
+      "review_ids": [
+        "identity_memory:8"
+      ],
+      "task_ids": [
+        "3.2",
+        "3.4",
+        "3.5"
+      ],
+      "disposition": [
+        "retain"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "normative-requirement",
+      "path": "openspec/changes/intelligent-lead-research/specs/lead-entity-resolution/spec.md",
+      "title": "Измерения качества контакта независимы",
+      "line": 91,
+      "sha256": "38e18248e687560c5382b347265bc5cb8dfea01c5fec96403570259a1ae463da",
+      "scenarios": [
+        "Email принадлежит компании без проверки ящика"
+      ],
+      "unit_id": "BASE-038",
+      "review_ids": [
+        "identity_memory:9"
+      ],
+      "task_ids": [
+        "3.4",
+        "3.6",
+        "3.8"
+      ],
+      "disposition": [
+        "correct"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "normative-requirement",
+      "path": "openspec/changes/intelligent-lead-research/specs/lead-entity-resolution/spec.md",
+      "title": "Проверенность утверждения объяснима пользователю",
+      "line": 99,
+      "sha256": "a14b3dec8262434383429db01cb4b9eb8ef6378457e0f0709f6c04dcd36f32ac",
+      "scenarios": [
+        "Проверка контакта устарела",
+        "OCR уверенно распознал email"
+      ],
+      "unit_id": "BASE-039",
+      "review_ids": [
+        "identity_memory:10"
+      ],
+      "task_ids": [
+        "3.7",
+        "3.8"
+      ],
+      "disposition": [
+        "refine"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "normative-requirement",
+      "path": "openspec/changes/intelligent-lead-research/specs/lead-research-memory/spec.md",
+      "title": "Свидетельство связывает утверждение с источником",
+      "line": 7,
+      "sha256": "d726e845eb87e907ea140af503541e7a74d21f0d4496b65036cf2d7e61742db7",
+      "scenarios": [
+        "Восстановление основания телефона"
+      ],
+      "unit_id": "BASE-040",
+      "review_ids": [
+        "identity_memory:11"
+      ],
+      "task_ids": [
+        "3.3"
+      ],
+      "disposition": [
+        "refine"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "normative-requirement",
+      "path": "openspec/changes/intelligent-lead-research/specs/lead-research-memory/spec.md",
+      "title": "Различимые состояния знания",
+      "line": 15,
+      "sha256": "c8501f1ff04174591cb3035a180f34df74e3dc3ae793fd241542359438cba846",
+      "scenarios": [
+        "LLM предположила официальный домен"
+      ],
+      "unit_id": "BASE-041",
+      "review_ids": [
+        "identity_memory:12"
+      ],
+      "task_ids": [
+        "3.4",
+        "3.8"
+      ],
+      "disposition": [
+        "correct"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "normative-requirement",
+      "path": "openspec/changes/intelligent-lead-research/specs/lead-research-memory/spec.md",
+      "title": "Временная история и независимость источников",
+      "line": 23,
+      "sha256": "582d71b80211b8c726376800157b65a4a7aa1bd73f4bf6c0c844a805f239e547",
+      "scenarios": [
+        "Смена контакта",
+        "Копии каталога"
+      ],
+      "unit_id": "BASE-042",
+      "review_ids": [
+        "identity_memory:13"
+      ],
+      "task_ids": [
+        "3.4"
+      ],
+      "disposition": [
+        "refine"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "normative-requirement",
+      "path": "openspec/changes/intelligent-lead-research/specs/lead-research-memory/spec.md",
+      "title": "Память исследовательских попыток",
+      "line": 35,
+      "sha256": "db6ff0d141eb35fc9203afdcbf393d79834bff28562bea0aabbc29128ccaf8b2",
+      "scenarios": [
+        "Пустой результат в другом регионе"
+      ],
+      "unit_id": "BASE-043",
+      "review_ids": [
+        "identity_memory:14"
+      ],
+      "task_ids": [
+        "4.5"
+      ],
+      "disposition": [
+        "refine"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "normative-requirement",
+      "path": "openspec/changes/intelligent-lead-research/specs/lead-research-memory/spec.md",
+      "title": "Изоляция памяти и контекста",
+      "line": 43,
+      "sha256": "bb0222896ca35efb592eb5531cecfd37047b1bdc4be7353a4da515b951e3c7bf",
+      "scenarios": [
+        "Похожий запрос другого клиента"
+      ],
+      "unit_id": "BASE-044",
+      "review_ids": [
+        "identity_memory:15"
+      ],
+      "task_ids": [
+        "11.3",
+        "3.1",
+        "4.6"
+      ],
+      "disposition": [
+        "correct"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "normative-requirement",
+      "path": "openspec/changes/intelligent-lead-research/specs/lead-research-memory/spec.md",
+      "title": "Отзыв и обновление производной памяти",
+      "line": 51,
+      "sha256": "281d35f13f48472a7deaf64ea9a647eb7c8218e80aba74a4d086369c0b82319f",
+      "scenarios": [
+        "Отозвано исходное основание"
+      ],
+      "unit_id": "BASE-045",
+      "review_ids": [
+        "identity_memory:16"
+      ],
+      "task_ids": [
+        "11.3",
+        "4.14"
+      ],
+      "disposition": [
+        "refine"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "normative-requirement",
+      "path": "openspec/changes/intelligent-lead-research/specs/lead-research-memory/spec.md",
+      "title": "Неполная компания и открытая потребность сохраняются",
+      "line": 59,
+      "sha256": "c50c2be94cb7cddeeeca39a013ea2038207476afe5ba3f3216d32cf210623e2b",
+      "scenarios": [
+        "Компания найдена без email",
+        "Частичный запуск завершён"
+      ],
+      "unit_id": "BASE-046",
+      "review_ids": [
+        "identity_memory:17"
+      ],
+      "task_ids": [
+        "3.3",
+        "4.13",
+        "4.15"
+      ],
+      "disposition": [
+        "correct"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "normative-requirement",
+      "path": "openspec/changes/intelligent-lead-research/specs/lead-research-memory/spec.md",
+      "title": "Предметные отношения и зависимости выводов различаются",
+      "line": 71,
+      "sha256": "025c445f77e9bd9f0a4a46b23e02be8ae7a9e5432f7a00e169e378b19e73a31e",
+      "scenarios": [
+        "Персонализация опиралась на утверждение"
+      ],
+      "unit_id": "BASE-047",
+      "review_ids": [
+        "identity_memory:18"
+      ],
+      "task_ids": [
+        "3.4",
+        "4.14",
+        "4.6"
+      ],
+      "disposition": [
+        "refine"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "normative-requirement",
+      "path": "openspec/changes/intelligent-lead-research/specs/lead-research-memory/spec.md",
+      "title": "Новое свидетельство пересматривает затронутые зависимости",
+      "line": 79,
+      "sha256": "b083377f8caaca0a63d868ef51a33a32ba6769c04148405ac2e4bf0809b53873",
+      "scenarios": [
+        "Поздний контакт закрывает пробел",
+        "Свидетельство другого tenant"
+      ],
+      "unit_id": "BASE-048",
+      "review_ids": [
+        "identity_memory:19"
+      ],
+      "task_ids": [
+        "4.14",
+        "4.15"
+      ],
+      "disposition": [
+        "refine"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "normative-requirement",
+      "path": "openspec/changes/intelligent-lead-research/specs/lead-research-memory/spec.md",
+      "title": "Альтернативные достаточные основания учитываются при отзыве",
+      "line": 91,
+      "sha256": "a232f215e2b85c22f0ecb6b7c0d00011dabe6db99877fd94ac07155664ba004c",
+      "scenarios": [
+        "Отозван единственный контактный блок",
+        "Сохранилось независимое достаточное основание"
+      ],
+      "unit_id": "BASE-049",
+      "review_ids": [
+        "identity_memory:20"
+      ],
+      "task_ids": [
+        "3.4",
+        "4.14"
+      ],
+      "disposition": [
+        "refine"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "normative-requirement",
+      "path": "openspec/changes/intelligent-lead-research/specs/regional-web-acquisition/spec.md",
+      "title": "Независимые географические параметры",
+      "line": 7,
+      "sha256": "ba1da03924a8d0d157e93593e48844a86bee27727b924807ea8ca95acc0c613c",
+      "scenarios": [
+        "Страна выдачи без прокси",
+        "Обязательный сетевой выход недоступен"
+      ],
+      "unit_id": "BASE-050",
+      "review_ids": [
+        "acquisition:1"
+      ],
+      "task_ids": [
+        "6.1",
+        "7.5"
+      ],
+      "disposition": [
+        "refine"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "normative-requirement",
+      "path": "openspec/changes/intelligent-lead-research/specs/regional-web-acquisition/spec.md",
+      "title": "Возможности движка объявляются явно",
+      "line": 19,
+      "sha256": "d49cde85ee4ad00ee7792021decbcd1216b13237b5fa7d676d56a86f8bdd91d9",
+      "scenarios": [
+        "Старый порт Firecrawl не передаёт страну"
+      ],
+      "unit_id": "BASE-051",
+      "review_ids": [
+        "acquisition:2"
+      ],
+      "task_ids": [
+        "1.5",
+        "7.1",
+        "7.2"
+      ],
+      "disposition": [
+        "refine"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "normative-requirement",
+      "path": "openspec/changes/intelligent-lead-research/specs/regional-web-acquisition/spec.md",
+      "title": "Географический выход отделяется от смысла результата",
+      "line": 27,
+      "sha256": "ff2b488e42164029cf66055eecf7b05b46d5f5c96afb577c3b7b90d659010779",
+      "scenarios": [
+        "Многошаговое чтение локализованного сайта"
+      ],
+      "unit_id": "BASE-052",
+      "review_ids": [
+        "acquisition:3"
+      ],
+      "task_ids": [
+        "7.5",
+        "7.6"
+      ],
+      "disposition": [
+        "refine"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "normative-requirement",
+      "path": "openspec/changes/intelligent-lead-research/specs/regional-web-acquisition/spec.md",
+      "title": "Получение артефакта сохраняет происхождение",
+      "line": 35,
+      "sha256": "ff26723d1cba71faabc742166f070d44bea3864072d893e6aa0faf47c5763a77",
+      "scenarios": [
+        "Контакт в документе"
+      ],
+      "unit_id": "BASE-053",
+      "review_ids": [
+        "acquisition:4"
+      ],
+      "task_ids": [
+        "3.3",
+        "7.2",
+        "8.7"
+      ],
+      "disposition": [
+        "refine"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "normative-requirement",
+      "path": "openspec/changes/intelligent-lead-research/specs/regional-web-acquisition/spec.md",
+      "title": "Разделение поиска и собственного индекса",
+      "line": 43,
+      "sha256": "29eaf37c0bed93f58bde6a8911e05f8f92440e5ac0cdd0da3e3478322763213c",
+      "scenarios": [
+        "Ничего нет в собственном корпусе"
+      ],
+      "unit_id": "BASE-054",
+      "review_ids": [
+        "acquisition:5"
+      ],
+      "task_ids": [
+        "6.1",
+        "6.4"
+      ],
+      "disposition": [
+        "retain"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "normative-requirement",
+      "path": "openspec/changes/intelligent-lead-research/specs/regional-web-acquisition/spec.md",
+      "title": "Собственный поисковый контур платформы",
+      "line": 51,
+      "sha256": "58b6dba8594d024894fdb4fafb703e441dfc29bba9f84eb42b7cd1f61552b012",
+      "scenarios": [
+        "Выбран иной backend метапоиска"
+      ],
+      "unit_id": "BASE-055",
+      "review_ids": [
+        "acquisition:6"
+      ],
+      "task_ids": [
+        "6.2",
+        "6.3"
+      ],
+      "disposition": [
+        "experiment"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "normative-requirement",
+      "path": "openspec/changes/intelligent-lead-research/specs/regional-web-acquisition/spec.md",
+      "title": "Собственный корпус и обновляемый индекс",
+      "line": 59,
+      "sha256": "7e662389c9ec8c4904e3d78f5e35ef8dd5747f9716ad741d92511effc8f5c033",
+      "scenarios": [
+        "Внешний поисковик недоступен"
+      ],
+      "unit_id": "BASE-056",
+      "review_ids": [
+        "acquisition:7"
+      ],
+      "task_ids": [
+        "6.4",
+        "6.5",
+        "7.2",
+        "7.4"
+      ],
+      "disposition": [
+        "refine"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "normative-requirement",
+      "path": "openspec/changes/intelligent-lead-research/specs/regional-web-acquisition/spec.md",
+      "title": "Сохранение рабочего demo",
+      "line": 67,
+      "sha256": "0b520ba54c4824f81410ca3dd0bcfe8cced9bf6228268cfcc4c606aa459c97be",
+      "scenarios": [
+        "Новый движок ещё не прошёл acceptance"
+      ],
+      "unit_id": "BASE-057",
+      "review_ids": [
+        "acquisition:8"
+      ],
+      "task_ids": [
+        "11.5",
+        "7.7"
+      ],
+      "disposition": [
+        "retain"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "normative-requirement",
+      "path": "openspec/changes/intelligent-lead-research/specs/regional-web-acquisition/spec.md",
+      "title": "Ограниченные браузерные сценарии",
+      "line": 75,
+      "sha256": "24085da591549fc596477a26023264d2df1b986c00f457a74d8b03b9671c38e3",
+      "scenarios": [
+        "Публичная вкладка контактов",
+        "Автономные клики ещё не разрешены"
+      ],
+      "unit_id": "BASE-058",
+      "review_ids": [
+        "acquisition:9"
+      ],
+      "task_ids": [
+        "7.6",
+        "8.1",
+        "8.2",
+        "8.3"
+      ],
+      "disposition": [
+        "refine"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "normative-requirement",
+      "path": "openspec/changes/intelligent-lead-research/specs/regional-web-acquisition/spec.md",
+      "title": "OCR сохраняет точное происхождение значения",
+      "line": 87,
+      "sha256": "99cec54536727c2ca8f008542337fde417d915ed5c74e8946405bfc8ed2ae7b6",
+      "scenarios": [
+        "Неоднозначный символ email",
+        "Контакты нескольких компаний на скане"
+      ],
+      "unit_id": "BASE-059",
+      "review_ids": [
+        "acquisition:10"
+      ],
+      "task_ids": [
+        "8.6",
+        "8.7",
+        "8.8",
+        "8.9"
+      ],
+      "disposition": [
+        "refine"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "normative-requirement",
+      "path": "openspec/changes/intelligent-lead-research/specs/regional-web-acquisition/spec.md",
+      "title": "Эскалация извлечения наблюдаема",
+      "line": 99,
+      "sha256": "49dbdd0df00370bf6b1c173b3dfea682c2e845da3916090ae9eb6284f7b7f081",
+      "scenarios": [
+        "PDF с качественным текстовым слоем"
+      ],
+      "unit_id": "BASE-060",
+      "review_ids": [
+        "acquisition:11"
+      ],
+      "task_ids": [
+        "1.4",
+        "7.2",
+        "8.4",
+        "8.5"
+      ],
+      "disposition": [
+        "refine"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "normative-requirement",
+      "path": "openspec/changes/intelligent-lead-research/specs/research-to-outreach/spec.md",
+      "title": "Готовность компании и адресата различаются",
+      "line": 7,
+      "sha256": "981b3647e44808abfffab071571c0d361caa15cf9fc0387b532b9bfa5a903a61",
+      "scenarios": [
+        "Найден только телефон"
+      ],
+      "unit_id": "BASE-061",
+      "review_ids": [
+        "communications:1"
+      ],
+      "task_ids": [
+        "9.1"
+      ],
+      "disposition": [
+        "retain"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "normative-requirement",
+      "path": "openspec/changes/intelligent-lead-research/specs/research-to-outreach/spec.md",
+      "title": "Материал опирается на разрешённый снимок фактов",
+      "line": 15,
+      "sha256": "0b81b1d70db95475594a4c80d87d0107bd3543bc99fa39b47878830777056f1c",
+      "scenarios": [
+        "Новость как предполагаемый сигнал"
+      ],
+      "unit_id": "BASE-062",
+      "review_ids": [
+        "communications:2"
+      ],
+      "task_ids": [
+        "9.1",
+        "9.2"
+      ],
+      "disposition": [
+        "refine"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "normative-requirement",
+      "path": "openspec/changes/intelligent-lead-research/specs/research-to-outreach/spec.md",
+      "title": "Точное утверждение и повторная проверка перед доставкой",
+      "line": 23,
+      "sha256": "522f99d633cfe419bc0f01502ce5f42fe70453468ca3a20da894766e5095b465",
+      "scenarios": [
+        "Адресат изменился после решения",
+        "Отписка после утверждения"
+      ],
+      "unit_id": "BASE-063",
+      "review_ids": [
+        "communications:3"
+      ],
+      "task_ids": [
+        "9.3",
+        "9.4"
+      ],
+      "disposition": [
+        "correct"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "normative-requirement",
+      "path": "openspec/changes/intelligent-lead-research/specs/research-to-outreach/spec.md",
+      "title": "Отдельный статус неопределённого исхода отправки",
+      "line": 35,
+      "sha256": "fb3dde4ed37427a95d54a7bb42721b0e7cba5f1072a82238047ea8e5366edb20",
+      "scenarios": [
+        "SMTP принял сообщение перед обрывом ответа"
+      ],
+      "unit_id": "BASE-064",
+      "review_ids": [
+        "communications:4"
+      ],
+      "task_ids": [
+        "9.4"
+      ],
+      "disposition": [
+        "refine"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "normative-requirement",
+      "path": "openspec/changes/intelligent-lead-research/specs/research-to-outreach/spec.md",
+      "title": "Обратная связь имеет правильную область",
+      "line": 43,
+      "sha256": "db544e0dd9af36b830b8182d98399b197d85201aa486901394979eea58e9989a",
+      "scenarios": [
+        "Возврат одного письма"
+      ],
+      "unit_id": "BASE-065",
+      "review_ids": [
+        "communications:5"
+      ],
+      "task_ids": [
+        "10.11",
+        "10.9"
+      ],
+      "disposition": [
+        "retain"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "normative-requirement",
+      "path": "openspec/changes/intelligent-lead-research/specs/research-to-outreach/spec.md",
+      "title": "Ответ учитывается на границе внешнего эффекта",
+      "line": 51,
+      "sha256": "8441c03e113b73c36faacf65df2cef2b5da7056c10479131c181ce5ec5c71661",
+      "scenarios": [
+        "Ответ принят до начала следующей отправки",
+        "Отказ после возможного принятия провайдером"
+      ],
+      "unit_id": "BASE-066",
+      "review_ids": [
+        "communications:6"
+      ],
+      "task_ids": [
+        "10.14",
+        "9.4"
+      ],
+      "disposition": [
+        "refine"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "design-decision",
+      "path": "openspec/changes/intelligent-lead-research/design.md",
+      "title": "1. ResearchMission до известной компании",
+      "line": 29,
+      "sha256": "394b90fce604cd331f1568d273e103c2d10c59754095f073420c6abb8e280d7b",
+      "unit_id": "BASE-067",
+      "review_ids": [
+        "architecture_delivery:1"
+      ],
+      "task_ids": [
+        "1.2",
+        "1.5"
+      ],
+      "disposition": [
+        "refine"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "design-decision",
+      "path": "openspec/changes/intelligent-lead-research/design.md",
+      "title": "2. Entity identity независимо от домена",
+      "line": 35,
+      "sha256": "4a8b880091b3c3bf42058b1792f770f58de10e1cc572df6e6218635ea97313a7",
+      "unit_id": "BASE-068",
+      "review_ids": [
+        "architecture_delivery:2"
+      ],
+      "task_ids": [
+        "1.2",
+        "11.5",
+        "12.4"
+      ],
+      "disposition": [
+        "refine"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "design-decision",
+      "path": "openspec/changes/intelligent-lead-research/design.md",
+      "title": "3. Evidence и identity decision — отдельные версии",
+      "line": 41,
+      "sha256": "e23a5bf944328adc2e22145265124423c26b3edb6bd285bf3ab55dea089efaa4",
+      "unit_id": "BASE-069",
+      "review_ids": [
+        "architecture_delivery:3"
+      ],
+      "task_ids": [
+        "1.2",
+        "2.1"
+      ],
+      "disposition": [
+        "retain"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "design-decision",
+      "path": "openspec/changes/intelligent-lead-research/design.md",
+      "title": "4. Scope и память",
+      "line": 47,
+      "sha256": "3b50762b255062175c10528a448118d64d57ceec0a1ff649e3da8ecba2db89d0",
+      "unit_id": "BASE-070",
+      "review_ids": [
+        "architecture_delivery:4"
+      ],
+      "task_ids": [
+        "1.5",
+        "2.3"
+      ],
+      "disposition": [
+        "correct"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "design-decision",
+      "path": "openspec/changes/intelligent-lead-research/design.md",
+      "title": "5. Международность в ядре",
+      "line": 53,
+      "sha256": "e40e4166ed913155c938261da7915d03621f94b249d02ca16aff4e2223466377",
+      "unit_id": "BASE-071",
+      "review_ids": [
+        "architecture_delivery:5"
+      ],
+      "task_ids": [
+        "1.5",
+        "12.1",
+        "2.4"
+      ],
+      "disposition": [
+        "refine"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "design-decision",
+      "path": "openspec/changes/intelligent-lead-research/design.md",
+      "title": "6. Собственный acquisition за capability contract",
+      "line": 59,
+      "sha256": "fbd2ef80bb38540ea816fc783428368d171445cb87451e0d4c0b1948a1c8c173",
+      "unit_id": "BASE-072",
+      "review_ids": [
+        "architecture_delivery:6"
+      ],
+      "task_ids": [
+        "11.5",
+        "2.2",
+        "2.3"
+      ],
+      "disposition": [
+        "experiment"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "design-decision",
+      "path": "openspec/changes/intelligent-lead-research/design.md",
+      "title": "7. Три вида поиска",
+      "line": 67,
+      "sha256": "d9402b447724199aefe23c577d693eeff7c4879fd31b4796cc8814804071579e",
+      "unit_id": "BASE-073",
+      "review_ids": [
+        "architecture_delivery:7"
+      ],
+      "task_ids": [
+        "1.5",
+        "2.3"
+      ],
+      "disposition": [
+        "refine"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "design-decision",
+      "path": "openspec/changes/intelligent-lead-research/design.md",
+      "title": "8. Browser и OCR — ограниченные инструменты",
+      "line": 73,
+      "sha256": "e1f6487188842179290c17752d47525b6c0f5e97df265f49c484181d429e346d",
+      "unit_id": "BASE-074",
+      "review_ids": [
+        "architecture_delivery:8"
+      ],
+      "task_ids": [
+        "12.2",
+        "2.2",
+        "2.3"
+      ],
+      "disposition": [
+        "experiment"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "design-decision",
+      "path": "openspec/changes/intelligent-lead-research/design.md",
+      "title": "9. Durable effects вне DB transaction",
+      "line": 81,
+      "sha256": "e97a19166f77ed2326756e586df28ebf156f114f7aa4efdadefd21840300a27d",
+      "unit_id": "BASE-075",
+      "review_ids": [
+        "architecture_delivery:9"
+      ],
+      "task_ids": [
+        "1.2",
+        "11.5",
+        "12.2"
+      ],
+      "disposition": [
+        "refine"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "design-decision",
+      "path": "openspec/changes/intelligent-lead-research/design.md",
+      "title": "10. Исследование передаётся в существующий outreach",
+      "line": 87,
+      "sha256": "47ad7afdba2d5f4861097f3eb4b0615a9f8e1156b1a552d983abd71682ad0ddf",
+      "unit_id": "BASE-076",
+      "review_ids": [
+        "architecture_delivery:10"
+      ],
+      "task_ids": [
+        "12.1",
+        "12.3"
+      ],
+      "disposition": [
+        "retain"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "design-decision",
+      "path": "openspec/changes/intelligent-lead-research/design.md",
+      "title": "11. Входящие обращения и переписка",
+      "line": 93,
+      "sha256": "d03353e4119cb2466e7990ce662f8e1ff1d8751332780cab0ea2afe2f5c4ae6a",
+      "unit_id": "BASE-077",
+      "review_ids": [
+        "architecture_delivery:11"
+      ],
+      "task_ids": [
+        "12.1",
+        "12.5"
+      ],
+      "disposition": [
+        "retain"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "design-decision",
+      "path": "openspec/changes/intelligent-lead-research/design.md",
+      "title": "12. Формы и контакты отправителя",
+      "line": 101,
+      "sha256": "dd38ceceeb78632da15a61f5c2ed2cf111301be85fd841a428b838603e83a93b",
+      "unit_id": "BASE-078",
+      "review_ids": [
+        "architecture_delivery:12"
+      ],
+      "task_ids": [
+        "12.1",
+        "12.5"
+      ],
+      "disposition": [
+        "pending-decision"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "design-decision",
+      "path": "openspec/changes/intelligent-lead-research/design.md",
+      "title": "13. Каталог и выпуск по этапам",
+      "line": 107,
+      "sha256": "5f7c66fef55290c4f005f25e819069a70853e02ae911a23f9a34daa06de6d1bd",
+      "unit_id": "BASE-079",
+      "review_ids": [
+        "architecture_delivery:13"
+      ],
+      "task_ids": [
+        "1.2",
+        "11.5"
+      ],
+      "disposition": [
+        "refine"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "design-decision",
+      "path": "openspec/changes/intelligent-lead-research/design.md",
+      "title": "14. Зачёт по версии цели и сохранённому membership",
+      "line": 113,
+      "sha256": "7c88a51ab98d849b1418129c54b0f4b8a6b0efa03d64217a5abbd02dfe9d09ab",
+      "unit_id": "BASE-080",
+      "review_ids": [
+        "architecture_delivery:14"
+      ],
+      "task_ids": [
+        "12.1",
+        "12.4",
+        "2.3"
+      ],
+      "disposition": [
+        "retain"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "design-decision",
+      "path": "openspec/changes/intelligent-lead-research/design.md",
+      "title": "15. Детерминированные приоритеты и отдельный lifecycle",
+      "line": 119,
+      "sha256": "b88b1c3678870cbea5c649df01ccbbdd28bbd005009b205de080748033fe6081",
+      "unit_id": "BASE-081",
+      "review_ids": [
+        "architecture_delivery:15"
+      ],
+      "task_ids": [
+        "12.1",
+        "2.3",
+        "2.4"
+      ],
+      "disposition": [
+        "experiment"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "design-decision",
+      "path": "openspec/changes/intelligent-lead-research/design.md",
+      "title": "16. Pending reply и конфликт correlation",
+      "line": 125,
+      "sha256": "26b8ad3af861bb36134a10c5ca3b75896f43c8ee138bbb336ce5a85b955249b7",
+      "unit_id": "BASE-082",
+      "review_ids": [
+        "architecture_delivery:16"
+      ],
+      "task_ids": [
+        "12.1",
+        "12.2"
+      ],
+      "disposition": [
+        "retain"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "design-decision",
+      "path": "openspec/changes/intelligent-lead-research/design.md",
+      "title": "17. Последовательные прототипы R1–R4",
+      "line": 133,
+      "sha256": "5a10115bd2af2b9c578b8c3e0a059449a1d6b23ad7918218e71642acaa69e911",
+      "unit_id": "BASE-083",
+      "review_ids": [
+        "architecture_delivery:17"
+      ],
+      "task_ids": [
+        "11.5",
+        "12.1",
+        "12.5"
+      ],
+      "disposition": [
+        "correct"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "design-decision",
+      "path": "openspec/changes/intelligent-lead-research/design.md",
+      "title": "18. Происхождение пользовательских уточнений",
+      "line": 139,
+      "sha256": "bd3a2bf6743a54828c16586f26f2dbc9f63953ea612bb4c3cba505f449e43af4",
+      "unit_id": "BASE-084",
+      "review_ids": [
+        "architecture_delivery:18"
+      ],
+      "task_ids": [
+        "2.5"
+      ],
+      "disposition": [
+        "retain"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "design-decision",
+      "path": "openspec/changes/intelligent-lead-research/design.md",
+      "title": "19. Полный объём и применение исследования обязательны",
+      "line": 145,
+      "sha256": "6b70efe8e88b475be87ef0e00fe4eb7b630c7aa27273459058386a5defd980e7",
+      "unit_id": "BASE-085",
+      "review_ids": [
+        "architecture_delivery:19"
+      ],
+      "task_ids": [
+        "12.5",
+        "2.5"
+      ],
+      "disposition": [
+        "refine"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "design-decision",
+      "path": "openspec/changes/intelligent-lead-research/design.md",
+      "title": "20. Межзапусковый граф знаний, потребностей и зависимостей",
+      "line": 153,
+      "sha256": "09c890c24d02c8480dafd181a1c5d53d9be506ac3dd92f4370bd08a9fdef017a",
+      "unit_id": "BASE-086",
+      "review_ids": [
+        "architecture_delivery:20"
+      ],
+      "task_ids": [
+        "1.2",
+        "12.1",
+        "2.1"
+      ],
+      "disposition": [
+        "refine"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "proposal-item",
+      "path": "openspec/changes/intelligent-lead-research/proposal.md",
+      "title": "Спроектировать интеллектуальную исследовательскую миссию с LLM-планированием следующего действия, проверяемыми инструментами, ограничениями стоимости и долговечным исполнением.",
+      "line": 13,
+      "sha256": "a823983a911429c13da50bac1a68a7b70481f38d35b1df6639e4ef35f18f2ee6",
+      "unit_id": "BASE-087",
+      "review_ids": [
+        "architecture_delivery:24"
+      ],
+      "task_ids": [
+        "2.3",
+        "2.4"
+      ],
+      "disposition": [
+        "experiment"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "proposal-item",
+      "path": "openspec/changes/intelligent-lead-research/proposal.md",
+      "title": "Ввести типизированные сущности и доказательные связи: юрлицо, регистрационный идентификатор, бренд, филиал, сайт, контакт и роль. Домен не становится универсальным ID юрлица.",
+      "line": 14,
+      "sha256": "a93fc1ab382774476b148a76e332dc0209820a55e121e3835765dc18a3d672f5",
+      "unit_id": "BASE-088",
+      "review_ids": [
+        "architecture_delivery:25"
+      ],
+      "task_ids": [
+        "1.2",
+        "11.5"
+      ],
+      "disposition": [
+        "refine"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "proposal-item",
+      "path": "openspec/changes/intelligent-lead-research/proposal.md",
+      "title": "Сохранять компанию без email и долговечный пробел, связывать поздний контакт из другого источника с прежней сущностью, пересматривать зависимые выводы по версиям оснований; показывать проверенность/достоверность конкретных сведений с методом, датой и ограничениями.",
+      "line": 15,
+      "sha256": "53fcba8c7cbeb43ae122e6bae0154d19d1270809c561ccc37e758afc7ae08f8b",
+      "unit_id": "BASE-089",
+      "review_ids": [
+        "architecture_delivery:26"
+      ],
+      "task_ids": [
+        "12.1",
+        "2.1"
+      ],
+      "disposition": [
+        "retain"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "proposal-item",
+      "path": "openspec/changes/intelligent-lead-research/proposal.md",
+      "title": "Разделить наблюдения источников, гипотезы, подтверждённые факты, решения о связывании и оценки аудитории; сохранять историю, противоречия и отрицательные результаты.",
+      "line": 16,
+      "sha256": "6d004abf88526c8682de8eae2bff87ec03073437b65077af3da8632cb630e6fb",
+      "unit_id": "BASE-090",
+      "review_ids": [
+        "architecture_delivery:27"
+      ],
+      "task_ids": [
+        "1.2",
+        "2.1"
+      ],
+      "disposition": [
+        "retain"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "proposal-item",
+      "path": "openspec/changes/intelligent-lead-research/proposal.md",
+      "title": "Сделать международные рынки частью продукта: Россия по умолчанию, кнопка исследования зарубежных рынков, выбор одной/нескольких стран, местные языки и идентификаторы.",
+      "line": 17,
+      "sha256": "416e58df51065a2e2e9f9845f11bb676d330c875591708e14923a21dc200d092",
+      "unit_id": "BASE-091",
+      "review_ids": [
+        "architecture_delivery:28"
+      ],
+      "task_ids": [
+        "12.1",
+        "2.4"
+      ],
+      "disposition": [
+        "refine"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "proposal-item",
+      "path": "openspec/changes/intelligent-lead-research/proposal.md",
+      "title": "Разделить географию целевой компании, поисковой выдачи, браузера и сетевого выхода. Планировать лицензируемый поисковый API, собственный вертикальный индекс и географические прокси как разные механизмы.",
+      "line": 18,
+      "sha256": "6a48afdc59001ec99ff98355c79d15f6d1bc177949d095d1c3b5a60798473b5e",
+      "unit_id": "BASE-092",
+      "review_ids": [
+        "architecture_delivery:29"
+      ],
+      "task_ids": [
+        "1.5",
+        "12.2"
+      ],
+      "disposition": [
+        "retain"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "proposal-item",
+      "path": "openspec/changes/intelligent-lead-research/proposal.md",
+      "title": "Использовать Firecrawl как существующий движок приобретения страниц. Для собственного обхода сравнить ранее выбранный Crawl4AI с Crawlee Python; рекомендуемый прототип — Crawlee Python + Playwright за общим acquisition contract. Добавить ограниченные browser recipes, document parsing и OCR с проверяемыми locators.",
+      "line": 19,
+      "sha256": "4aae33d400f9bfc6c3248b0c3e6690a8c7730c7ff57479f9f2fd0b3db9474b94",
+      "unit_id": "BASE-093",
+      "review_ids": [
+        "architecture_delivery:30"
+      ],
+      "task_ids": [
+        "11.5",
+        "2.2",
+        "2.3"
+      ],
+      "disposition": [
+        "experiment"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "proposal-item",
+      "path": "openspec/changes/intelligent-lead-research/proposal.md",
+      "title": "Спроектировать собственный поиск по корпусу, дополнительный metasearch (кандидат SearXNG) и независимый regional discovery backend, не смешивая их с глобальным поисковым индексом.",
+      "line": 20,
+      "sha256": "b0da2b9ab68c334706e8b340460a74aa9db33ea65e1a7984eda4695b47cbcc58",
+      "unit_id": "BASE-094",
+      "review_ids": [
+        "architecture_delivery:31"
+      ],
+      "task_ids": [
+        "1.5",
+        "2.3"
+      ],
+      "disposition": [
+        "refine"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "proposal-item",
+      "path": "openspec/changes/intelligent-lead-research/proposal.md",
+      "title": "Учесть формы на сайтах адресатов, наши формы/контакты, входящую почту и ответы: создавать/дополнять лиды, вести переписку и квалифицировать сигналы с tenant-safe корреляцией.",
+      "line": 21,
+      "sha256": "84ec5bf884882bea6ef258cbf2365f4fcdc3cfe5ad703b0817d18f8d38e63f8a",
+      "unit_id": "BASE-095",
+      "review_ids": [
+        "architecture_delivery:32"
+      ],
+      "task_ids": [
+        "12.1",
+        "12.5"
+      ],
+      "disposition": [
+        "pending-decision"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "proposal-item",
+      "path": "openspec/changes/intelligent-lead-research/proposal.md",
+      "title": "Связать подтверждённое исследование с текущими владельцами генерации, утверждения, доставки и наблюдения; сохранить точное утверждение версии материала и получателя.",
+      "line": 22,
+      "sha256": "ffee1080369adf05d74689a8bb0fd69b7abd46a8496db4944643100d5b6b8b92",
+      "unit_id": "BASE-096",
+      "review_ids": [
+        "architecture_delivery:33"
+      ],
+      "task_ids": [
+        "12.1"
+      ],
+      "disposition": [
+        "retain"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "proposal-item",
+      "path": "openspec/changes/intelligent-lead-research/proposal.md",
+      "title": "Оформить подробную концепцию, первичные источники, предлагаемую модель владения, этапы и измеримые критерии в отдельной ветке `concept/intelligent-lead-research`.",
+      "line": 23,
+      "sha256": "8a765a04df62716054c00c8d7588387f6538ef7bcb3a8497c6dc4baa69aa82b9",
+      "unit_id": "BASE-097",
+      "review_ids": [
+        "architecture_delivery:34"
+      ],
+      "task_ids": [
+        "1.5",
+        "2.5"
+      ],
+      "disposition": [
+        "refine"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "proposal-item",
+      "path": "openspec/changes/intelligent-lead-research/proposal.md",
+      "title": "Уточнить исполнимые правила: единица зачёта по версии поручения, принятие после устойчивого сохранения, независимые измерения качества, ограниченные стратегии, итог миссии и наблюдаемый разбор ответов. Первый прототип R1–R4 последовательно проверяет доказанный контакт, цель/прогресс и входящую переписку; расширенное acquisition подключается через тот же контракт.",
+      "line": 24,
+      "sha256": "7ffaa266fd2df004dd80474eb4145d25d8759bdc04eb4fb96d69ee51310846a1",
+      "unit_id": "BASE-098",
+      "review_ids": [
+        "architecture_delivery:35"
+      ],
+      "task_ids": [
+        "11.5",
+        "12.1",
+        "2.3"
+      ],
+      "disposition": [
+        "correct"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "proposal-item",
+      "path": "openspec/changes/intelligent-lead-research/proposal.md",
+      "title": "`lead-entity-resolution`: юрисдикционные идентификаторы, канонические сущности и обратимые решения об их тождестве; владелец `lead-management`.",
+      "line": 32,
+      "sha256": "bae9517d30e91b3ac4dbd4c4a395aaa839c2420f6d242fba54be5b6183db949e",
+      "unit_id": "BASE-099",
+      "review_ids": [
+        "architecture_delivery:37"
+      ],
+      "task_ids": [
+        "1.2",
+        "1.5"
+      ],
+      "disposition": [
+        "refine"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "proposal-item",
+      "path": "openspec/changes/intelligent-lead-research/proposal.md",
+      "title": "`lead-research-memory`: доказательства, временные утверждения, противоречия, история исследований и ограниченный контекст памяти; владелец `lead-management`.",
+      "line": 33,
+      "sha256": "b6f47b6a6d27a9c93a0415fee56777edc751ca7be2b2e9d896b3cbd5025d757d",
+      "unit_id": "BASE-100",
+      "review_ids": [
+        "architecture_delivery:37"
+      ],
+      "task_ids": [
+        "1.2",
+        "1.5"
+      ],
+      "disposition": [
+        "refine"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "proposal-item",
+      "path": "openspec/changes/intelligent-lead-research/proposal.md",
+      "title": "`adaptive-lead-research`: долговечное управление исследовательской миссией, действиями LLM, бюджетом и условиями остановки; владелец `agent-orchestration`.",
+      "line": 34,
+      "sha256": "fcc33845fa4cf66e01a1c92b2559e5b9885a1aede835b681bb1a00ed8c5acbb9",
+      "unit_id": "BASE-101",
+      "review_ids": [
+        "architecture_delivery:37"
+      ],
+      "task_ids": [
+        "1.2",
+        "1.5"
+      ],
+      "disposition": [
+        "refine"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "proposal-item",
+      "path": "openspec/changes/intelligent-lead-research/proposal.md",
+      "title": "`international-market-discovery`: рекомендации рынков по офферу, выбор стран и объяснимое распределение цели; владелец анализа `audience`, выбор заявки — `request-fulfillment`.",
+      "line": 35,
+      "sha256": "e932acdaabe62f9aa761b95a02b91e82a6990b04582e01c325ef24c54fd9c67e",
+      "unit_id": "BASE-102",
+      "review_ids": [
+        "architecture_delivery:37"
+      ],
+      "task_ids": [
+        "1.2",
+        "1.5"
+      ],
+      "disposition": [
+        "refine"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "proposal-item",
+      "path": "openspec/changes/intelligent-lead-research/proposal.md",
+      "title": "`regional-web-acquisition`: независимые search/fetch/registry инструменты, возможности движков и географический выход; владелец `integration-platform`.",
+      "line": 36,
+      "sha256": "bac388db4238e5e9b1a1f6629a78c7eb7487300be2a644de9681ee9df4da0ce5",
+      "unit_id": "BASE-103",
+      "review_ids": [
+        "architecture_delivery:37"
+      ],
+      "task_ids": [
+        "1.2",
+        "1.5"
+      ],
+      "disposition": [
+        "refine"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "proposal-item",
+      "path": "openspec/changes/intelligent-lead-research/proposal.md",
+      "title": "`research-to-outreach`: подтверждённый пакет исследования, адресат, версия письма, утверждение и обратная связь доставки; владелец перехода `outreach-orchestration`.",
+      "line": 37,
+      "sha256": "a47a76e95f8beeee5e0b2d879ad994667edac9c405823b8526808da355293038",
+      "unit_id": "BASE-104",
+      "review_ids": [
+        "architecture_delivery:37"
+      ],
+      "task_ids": [
+        "1.2",
+        "1.5"
+      ],
+      "disposition": [
+        "refine"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "proposal-item",
+      "path": "openspec/changes/intelligent-lead-research/proposal.md",
+      "title": "`inbound-lead-conversations`: входящие формы/почта, история и связывание лида; владелец `lead-management`, квалификация событий — `engagement-observation`, дальнейшее действие — `outreach-orchestration`.",
+      "line": 39,
+      "sha256": "e89d89af1ce12f7c45270441c1e91ccdaf5acbf528e3ee97fbb2a963c9fb20a9",
+      "unit_id": "BASE-105",
+      "review_ids": [
+        "architecture_delivery:37"
+      ],
+      "task_ids": [
+        "1.2",
+        "1.5"
+      ],
+      "disposition": [
+        "refine"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "proposal-item",
+      "path": "openspec/changes/intelligent-lead-research/proposal.md",
+      "title": "`lead-management`: владелец сущностей, доказательств и исследовательской памяти;",
+      "line": 49,
+      "sha256": "e13c7425e6dfecb35a6d20683ee76cd8b78d11179ab0bd7247db1568c58b4d03",
+      "unit_id": "BASE-106",
+      "review_ids": [
+        "architecture_delivery:39"
+      ],
+      "task_ids": [
+        "1.2"
+      ],
+      "disposition": [
+        "retain"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "proposal-item",
+      "path": "openspec/changes/intelligent-lead-research/proposal.md",
+      "title": "`agent-orchestration`: планирование миссий и исполнение инструментов через контракты владельцев;",
+      "line": 50,
+      "sha256": "eea427da2a2f545c305cc26433735e48a1912b06fe1927246d2a7b7535e63d5f",
+      "unit_id": "BASE-107",
+      "review_ids": [
+        "architecture_delivery:39"
+      ],
+      "task_ids": [
+        "1.2"
+      ],
+      "disposition": [
+        "retain"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "proposal-item",
+      "path": "openspec/changes/intelligent-lead-research/proposal.md",
+      "title": "`integration-platform`: источники, поиск, приобретение артефактов и географический выход;",
+      "line": 51,
+      "sha256": "07f5156308057d8badb8bf8444dae24ef583e248f0c2f4151ffe9b6ad308f85b",
+      "unit_id": "BASE-108",
+      "review_ids": [
+        "architecture_delivery:39"
+      ],
+      "task_ids": [
+        "1.2"
+      ],
+      "disposition": [
+        "retain"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "proposal-item",
+      "path": "openspec/changes/intelligent-lead-research/proposal.md",
+      "title": "`audience`: исследования рынков и оценка соответствия конкретной миссии;",
+      "line": 52,
+      "sha256": "28e09521e92628a4cc32f91a7545bafa8cc71b8232702405d0c3ece821513df4",
+      "unit_id": "BASE-109",
+      "review_ids": [
+        "architecture_delivery:39"
+      ],
+      "task_ids": [
+        "1.2"
+      ],
+      "disposition": [
+        "retain"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "proposal-item",
+      "path": "openspec/changes/intelligent-lead-research/proposal.md",
+      "title": "`request-fulfillment`: человеческая заявка, выбор рынков, бюджет и проекция результата;",
+      "line": 53,
+      "sha256": "b93c0da513e544d761d429ae5ffd2cb7370405fa6d83a2e62d799573383f53b1",
+      "unit_id": "BASE-110",
+      "review_ids": [
+        "architecture_delivery:39"
+      ],
+      "task_ids": [
+        "1.2"
+      ],
+      "disposition": [
+        "retain"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "proposal-item",
+      "path": "openspec/changes/intelligent-lead-research/proposal.md",
+      "title": "`content-production`: существующее производство и версионирование материала;",
+      "line": 54,
+      "sha256": "94ae6c217c878cb5e8caf00640630923a3a29f160259eaa4a373cbf27e845862",
+      "unit_id": "BASE-111",
+      "review_ids": [
+        "architecture_delivery:39"
+      ],
+      "task_ids": [
+        "1.2"
+      ],
+      "disposition": [
+        "retain"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "proposal-item",
+      "path": "openspec/changes/intelligent-lead-research/proposal.md",
+      "title": "`outreach-orchestration`: существующее решение оператора и последовательности;",
+      "line": 55,
+      "sha256": "496ccb58a4909d03368c33d522298e2d670fb6174bdd80169876e649188da247",
+      "unit_id": "BASE-112",
+      "review_ids": [
+        "architecture_delivery:39"
+      ],
+      "task_ids": [
+        "1.2"
+      ],
+      "disposition": [
+        "retain"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "proposal-item",
+      "path": "openspec/changes/intelligent-lead-research/proposal.md",
+      "title": "`message-delivery`: существующая доставка и доменная репутация;",
+      "line": 56,
+      "sha256": "b0e18e2417925be11216506be32f9634a981090c5acb051896dc2a6aec09ca0a",
+      "unit_id": "BASE-113",
+      "review_ids": [
+        "architecture_delivery:39"
+      ],
+      "task_ids": [
+        "1.2"
+      ],
+      "disposition": [
+        "retain"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "proposal-item",
+      "path": "openspec/changes/intelligent-lead-research/proposal.md",
+      "title": "`engagement-observation`, `analytics`: существующие наблюдения и измерение результата;",
+      "line": 57,
+      "sha256": "e44f862ac1b86f83c610bd12ee480abfd75291148ce79241a55b2540b9f97164",
+      "unit_id": "BASE-114",
+      "review_ids": [
+        "architecture_delivery:39"
+      ],
+      "task_ids": [
+        "1.2"
+      ],
+      "disposition": [
+        "retain"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "kind": "proposal-item",
+      "path": "openspec/changes/intelligent-lead-research/proposal.md",
+      "title": "`data-governance`, `platform-governance`: действующие области данных, полномочия, подавление контактов и аудит.",
+      "line": 58,
+      "sha256": "7f33fa207e705d90b3413ba398e73b96518a5fc69a31445343b767604357986c",
+      "unit_id": "BASE-115",
+      "review_ids": [
+        "architecture_delivery:39"
+      ],
+      "task_ids": [
+        "1.2"
+      ],
+      "disposition": [
+        "retain"
+      ],
+      "review_granularity": "Смысловое требование вместе со сценариями / решение design / пункт proposal; групповые capability и context-impact пункты проверены общим owner review."
+    },
+    {
+      "unit_id": "TASK-1.1",
+      "kind": "implementation-task",
+      "task_id": "1.1",
+      "audit_lane": "orchestration",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 9,
+      "sha256": "ff0ca5763e0652d617dbc1b630d0ead778c22d96b232a3cc31c68528e9afadcb",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-1.2",
+      "kind": "implementation-task",
+      "task_id": "1.2",
+      "audit_lane": "architecture_delivery",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 10,
+      "sha256": "44b851025135ec2304ea2d21f68f88763e85ca0022fe55adc0ee545424db6f14",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-1.3",
+      "kind": "implementation-task",
+      "task_id": "1.3",
+      "audit_lane": "acquisition",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 11,
+      "sha256": "c1c2fd25c1fff4b0f5573fef86478a7c8b67ffd1291e75c00c22c4eeddff02c8",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-1.4",
+      "kind": "implementation-task",
+      "task_id": "1.4",
+      "audit_lane": "acquisition",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 12,
+      "sha256": "0766b95ccb9bf84da02461e1e1abe004a4d4d1f6b15cc5ba15f44aae7e12c1e7",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-1.5",
+      "kind": "implementation-task",
+      "task_id": "1.5",
+      "audit_lane": "architecture_delivery",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 13,
+      "sha256": "dc31449e0f88d47523c42c989a9c59938fcc3e472d89f726d481b60f34ceacdd",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-2.1",
+      "kind": "implementation-task",
+      "task_id": "2.1",
+      "audit_lane": "architecture_delivery",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 17,
+      "sha256": "1b024cf25726cbec71c2e3989ba0e529e20b40dd0f4d89d28d667b2bc2e59125",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-2.2",
+      "kind": "implementation-task",
+      "task_id": "2.2",
+      "audit_lane": "architecture_delivery",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 18,
+      "sha256": "27c929edc425c5cadab04a3f23771058de226719516d10092b3b189370466607",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-2.3",
+      "kind": "implementation-task",
+      "task_id": "2.3",
+      "audit_lane": "architecture_delivery",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 19,
+      "sha256": "45141293335f44b8affc6c1cdee7645fb2fba1e011ef445fbff78f9d6cd28fc9",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-2.4",
+      "kind": "implementation-task",
+      "task_id": "2.4",
+      "audit_lane": "architecture_delivery",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 20,
+      "sha256": "904953454fd0c2234d2730b0c6e45ff298f8ad9d0ab8b50ddbcec79f6ba469a3",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-2.5",
+      "kind": "implementation-task",
+      "task_id": "2.5",
+      "audit_lane": "architecture_delivery",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 21,
+      "sha256": "4103c7ee346210e44cf61004c3a33d2db434f94fd591269bdfdf6183cd0b6336",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-3.1",
+      "kind": "implementation-task",
+      "task_id": "3.1",
+      "audit_lane": "identity_memory",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 25,
+      "sha256": "795a8d7b92d4d728cfa1c45bf6537d2214f1541447a75382b22dade1cbda73d9",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-3.2",
+      "kind": "implementation-task",
+      "task_id": "3.2",
+      "audit_lane": "identity_memory",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 26,
+      "sha256": "afb72de126bd8523e704f418ca3dd33db7aa431006bf6729359b53efb329a3f1",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-3.3",
+      "kind": "implementation-task",
+      "task_id": "3.3",
+      "audit_lane": "identity_memory",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 27,
+      "sha256": "891dddfe86c6db7eb55b0a67a522b81d7da1005dee2e4280f3b3d6489371242b",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-3.4",
+      "kind": "implementation-task",
+      "task_id": "3.4",
+      "audit_lane": "identity_memory",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 28,
+      "sha256": "7a42a86382350c378979f7d178c79d5fce6ce914fdf920cce8cd7f9759d0d83a",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-3.5",
+      "kind": "implementation-task",
+      "task_id": "3.5",
+      "audit_lane": "identity_memory",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 29,
+      "sha256": "e031209e248b9097846e2e1063d8bbced3ab2a0852e2bf51516238bd9d1ef7d7",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-3.6",
+      "kind": "implementation-task",
+      "task_id": "3.6",
+      "audit_lane": "identity_memory",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 30,
+      "sha256": "d2d9cd148e770e3c1bee64e9b69955ec56840c90a145f827978b481d48a68796",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-3.7",
+      "kind": "implementation-task",
+      "task_id": "3.7",
+      "audit_lane": "identity_memory",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 31,
+      "sha256": "8f12b87593aeb1c880d8e1a0c286f919305c52b97a7ee5b91b41add9bfeb2cfa",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-3.8",
+      "kind": "implementation-task",
+      "task_id": "3.8",
+      "audit_lane": "identity_memory",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 33,
+      "sha256": "0224807d1c5afdfd9295bc579e98377c93628eb08bb283981b95aaab0f812dfa",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-4.1",
+      "kind": "implementation-task",
+      "task_id": "4.1",
+      "audit_lane": "orchestration",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 37,
+      "sha256": "65868f6fbdfcae46208905174bbbca450cb5a82b0f974710c9e6a7cb1d8a115a",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-4.2",
+      "kind": "implementation-task",
+      "task_id": "4.2",
+      "audit_lane": "orchestration",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 38,
+      "sha256": "7c51495afb923f12fd2ce70db80b5a53d4d0e4d93c02958ec683dbb60c273166",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-4.3",
+      "kind": "implementation-task",
+      "task_id": "4.3",
+      "audit_lane": "orchestration",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 39,
+      "sha256": "201677b33cd92a57d68f241e70651d485903a3ed4cb887fa615932d46b11c8a1",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-4.4",
+      "kind": "implementation-task",
+      "task_id": "4.4",
+      "audit_lane": "orchestration",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 40,
+      "sha256": "8b1533fd42b30981efc6ae0ce5f3fb90227da84db69fd2f5edf8014f9997be2b",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-4.5",
+      "kind": "implementation-task",
+      "task_id": "4.5",
+      "audit_lane": "identity_memory",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 41,
+      "sha256": "7454bb5d8f04a343aa264bb464e9c066d52d0e66c0449efbd694f962822aec7e",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-4.6",
+      "kind": "implementation-task",
+      "task_id": "4.6",
+      "audit_lane": "identity_memory",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 42,
+      "sha256": "3bfb4a9dcc7826509e6aa32353f4ce6410ec5faacaf92f08cae370ec2b6129d4",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-4.7",
+      "kind": "implementation-task",
+      "task_id": "4.7",
+      "audit_lane": "orchestration",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 43,
+      "sha256": "546a37642a93f1e9414a94cd65e0a6b1bd1413bc66ef39f701e4500b840437b3",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-4.8",
+      "kind": "implementation-task",
+      "task_id": "4.8",
+      "audit_lane": "orchestration",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 44,
+      "sha256": "0af17f979a5d032fba576639c113269701cc8252a8b1d167e331c58ab9024d89",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-4.9",
+      "kind": "implementation-task",
+      "task_id": "4.9",
+      "audit_lane": "orchestration",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 46,
+      "sha256": "7137f9794520e6bf4f6153a8a449b99bd84748f1d8105b592cf0709e27d89bb1",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-4.10",
+      "kind": "implementation-task",
+      "task_id": "4.10",
+      "audit_lane": "orchestration",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 47,
+      "sha256": "4c219809e7868b891fb79dbaf9d3aab5af3f431d8d11bb6db51f0941cf0db315",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-4.11",
+      "kind": "implementation-task",
+      "task_id": "4.11",
+      "audit_lane": "orchestration",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 48,
+      "sha256": "a8ca06721310457da0ce2901e3773794094777446588965bb5cf0af6013607a5",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-4.12",
+      "kind": "implementation-task",
+      "task_id": "4.12",
+      "audit_lane": "orchestration",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 49,
+      "sha256": "7bf490da47197480272414c80fccf01f604db34d9171778ec77d44c36d817ca1",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-4.13",
+      "kind": "implementation-task",
+      "task_id": "4.13",
+      "audit_lane": "identity_memory",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 51,
+      "sha256": "3b578790fe656d3cc02b7539d7920a673ea519b1a350db3962d155b6d0326e3a",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-4.14",
+      "kind": "implementation-task",
+      "task_id": "4.14",
+      "audit_lane": "identity_memory",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 52,
+      "sha256": "7d33b0870aca40b0f5bb527a9c08724d83b0655e5f970e0baacefe9653b6d697",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-4.15",
+      "kind": "implementation-task",
+      "task_id": "4.15",
+      "audit_lane": "identity_memory",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 53,
+      "sha256": "637d8b3684e41cc1cc62ed41c6e40aa29cb3a0797878fb7874981bfee3d90c81",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-5.1",
+      "kind": "implementation-task",
+      "task_id": "5.1",
+      "audit_lane": "markets_search",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 57,
+      "sha256": "99b774330ab22045cbb7bce0710e163d769de20ac45942157ca04ebdac18ecd9",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-5.2",
+      "kind": "implementation-task",
+      "task_id": "5.2",
+      "audit_lane": "markets_search",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 58,
+      "sha256": "2b66982082fad4898b56f3e1f4f7d6b655822bab34039ef62d866c9f9f4dca3a",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-5.3",
+      "kind": "implementation-task",
+      "task_id": "5.3",
+      "audit_lane": "markets_search",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 59,
+      "sha256": "9b22dc46227a29a0a4a3ab8a52df1b891bfe5e998a4283c686ed1552d1aba22e",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-5.4",
+      "kind": "implementation-task",
+      "task_id": "5.4",
+      "audit_lane": "markets_search",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 60,
+      "sha256": "a93ae7292ccb7031177a5d1cd59c5627f60db9cd2935d2387e9d3892abf641d7",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-5.5",
+      "kind": "implementation-task",
+      "task_id": "5.5",
+      "audit_lane": "markets_search",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 61,
+      "sha256": "699fe04b56b62a2469ec72450bdd45c1c8ddd9f6092ff6c95434aef633840783",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-6.1",
+      "kind": "implementation-task",
+      "task_id": "6.1",
+      "audit_lane": "markets_search",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 65,
+      "sha256": "e2b1290c1efd335577d7fcfa4c58fa3e26114ca94a352d69742da9a3c60733d1",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-6.2",
+      "kind": "implementation-task",
+      "task_id": "6.2",
+      "audit_lane": "markets_search",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 66,
+      "sha256": "11465c34ffdb7796eff3be0b70e510df27d87260ca8db38cf8376b57d8f0c1b0",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-6.3",
+      "kind": "implementation-task",
+      "task_id": "6.3",
+      "audit_lane": "markets_search",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 67,
+      "sha256": "6c311fe7b0a419ba66a7b14968e2aa15e91284cf3819f9c261fb7a896554ba35",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-6.4",
+      "kind": "implementation-task",
+      "task_id": "6.4",
+      "audit_lane": "markets_search",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 68,
+      "sha256": "bfec2fb22354e0308fb8d61a3bbf2593178473b92b64bc3f658f51246b2ffa05",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-6.5",
+      "kind": "implementation-task",
+      "task_id": "6.5",
+      "audit_lane": "markets_search",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 69,
+      "sha256": "3ad63134523bdc8d24c00aee998462b85bca165ec83f63a4e7057f867bd05806",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-6.6",
+      "kind": "implementation-task",
+      "task_id": "6.6",
+      "audit_lane": "markets_search",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 70,
+      "sha256": "d71189f11a2c12114d3d2729605dd1c61f15da42a3d00b63842fb1dd50bf2e46",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-7.1",
+      "kind": "implementation-task",
+      "task_id": "7.1",
+      "audit_lane": "acquisition",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 74,
+      "sha256": "955f2c8b8ed364a9b751cb208c4557311348cfe2554920a895186323c5ee33da",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-7.2",
+      "kind": "implementation-task",
+      "task_id": "7.2",
+      "audit_lane": "acquisition",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 75,
+      "sha256": "d2ceac252e5fbc779a5088cd57b9f005798ae86ed19edeb3872b77bb1b8069ef",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-7.3",
+      "kind": "implementation-task",
+      "task_id": "7.3",
+      "audit_lane": "acquisition",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 76,
+      "sha256": "c6be1752911f4cc9baaf26d1527e00396c969e96b669258f1929571ccdd4cd5b",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-7.4",
+      "kind": "implementation-task",
+      "task_id": "7.4",
+      "audit_lane": "acquisition",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 77,
+      "sha256": "f4696357bfab970b332bbfa0ea57806ec31d0e980c268c2a4bbabe1daabd8144",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-7.5",
+      "kind": "implementation-task",
+      "task_id": "7.5",
+      "audit_lane": "acquisition",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 78,
+      "sha256": "539097157cec9547836165567ccbd4ca306bac894d47804e4f8e84139cd79335",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-7.6",
+      "kind": "implementation-task",
+      "task_id": "7.6",
+      "audit_lane": "acquisition",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 79,
+      "sha256": "3aceef01b5913d7ed5ae786ba3262458180afe73d23b4573f51d45cbcc46e5d2",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-7.7",
+      "kind": "implementation-task",
+      "task_id": "7.7",
+      "audit_lane": "acquisition",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 80,
+      "sha256": "2145dad3d08542bcad7338c86fae998ae736f37f6fe7d261830d709415cf4e1d",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-8.1",
+      "kind": "implementation-task",
+      "task_id": "8.1",
+      "audit_lane": "acquisition",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 84,
+      "sha256": "636a65095ee7a311275442294615b08ac07e7de43116eb39371f4f14cdea557d",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-8.2",
+      "kind": "implementation-task",
+      "task_id": "8.2",
+      "audit_lane": "acquisition",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 85,
+      "sha256": "015140b63068e8f32fb6e6114f8b1e71b60f779a758c295d490b143499837da5",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-8.3",
+      "kind": "implementation-task",
+      "task_id": "8.3",
+      "audit_lane": "acquisition",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 86,
+      "sha256": "a2b5702c6bbdf577374bd58fb4bec12752490e7acb8249b65897ea6fd4fd9f10",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-8.4",
+      "kind": "implementation-task",
+      "task_id": "8.4",
+      "audit_lane": "acquisition",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 87,
+      "sha256": "0971d10a4f320136652eb1b30dfe258f8f94705b3801f38d0fe7cb8761cc71e8",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-8.5",
+      "kind": "implementation-task",
+      "task_id": "8.5",
+      "audit_lane": "acquisition",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 88,
+      "sha256": "2a628c698300b43095e8532da764f80f46f516efcd9821e365fe1f6286093a51",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-8.6",
+      "kind": "implementation-task",
+      "task_id": "8.6",
+      "audit_lane": "acquisition",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 89,
+      "sha256": "9ec745252e8a44e4567c9241fc31e1a88df422faabfc3ebf96cf872c1200d704",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-8.7",
+      "kind": "implementation-task",
+      "task_id": "8.7",
+      "audit_lane": "acquisition",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 90,
+      "sha256": "d67b67d8fa24416eccf65542e06e831dbd1eb985ed0e82c4d0639ef20e858589",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-8.8",
+      "kind": "implementation-task",
+      "task_id": "8.8",
+      "audit_lane": "acquisition",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 91,
+      "sha256": "e82c4115c82b8415aa12f458ace42924ce0e5ea20522c5b0cb5233078793e024",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-8.9",
+      "kind": "implementation-task",
+      "task_id": "8.9",
+      "audit_lane": "acquisition",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 92,
+      "sha256": "864a2f884d16c1038a07fa948d5e593a78fd31be79e59b91b665aacdc1165f05",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-9.1",
+      "kind": "implementation-task",
+      "task_id": "9.1",
+      "audit_lane": "communications",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 96,
+      "sha256": "a0f56263c4c6746c01966b4262d376b3bd761c856a3c1f959a2eccb9003616d2",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-9.2",
+      "kind": "implementation-task",
+      "task_id": "9.2",
+      "audit_lane": "communications",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 97,
+      "sha256": "317d9fa734925309449e01a734f71418713de5b5b64a33199192c0003479f1e6",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-9.3",
+      "kind": "implementation-task",
+      "task_id": "9.3",
+      "audit_lane": "communications",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 98,
+      "sha256": "04dc4eae957866575908e34f63f0365ea592844604aaab1b1b961fa47b080f66",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-9.4",
+      "kind": "implementation-task",
+      "task_id": "9.4",
+      "audit_lane": "communications",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 99,
+      "sha256": "a073cc45ba7627df0e2c7f6b3d8122bd65a56e362d24bb08a2fb699a84531239",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-9.5",
+      "kind": "implementation-task",
+      "task_id": "9.5",
+      "audit_lane": "communications",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 100,
+      "sha256": "140ce8b5567593d129497516128f1e1ffbd871edcfdc29170f291374747a93f6",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-9.6",
+      "kind": "implementation-task",
+      "task_id": "9.6",
+      "audit_lane": "communications",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 101,
+      "sha256": "d6b738b289245610e2f7514126975bab0cac87b92c8d2ab4ad0df429d8033594",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-9.7",
+      "kind": "implementation-task",
+      "task_id": "9.7",
+      "audit_lane": "communications",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 102,
+      "sha256": "a6be28d60867ffad9bee6549de0908abd95c933fdd2a4310f01e1b83845414f3",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-10.1",
+      "kind": "implementation-task",
+      "task_id": "10.1",
+      "audit_lane": "communications",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 106,
+      "sha256": "127f5ec10086b42086d6a4fd77864ab1f10613091a9f7b9936f7474cee38d91d",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-10.2",
+      "kind": "implementation-task",
+      "task_id": "10.2",
+      "audit_lane": "communications",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 107,
+      "sha256": "b81256c45fe4967dbd70a5e73d9c96de9f4f5fb3f066713ef2280d48ba574972",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-10.3",
+      "kind": "implementation-task",
+      "task_id": "10.3",
+      "audit_lane": "communications",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 108,
+      "sha256": "f1bd22b64d07f5588f699bcd631379bfb64d084154104121ca0867d3b062fb22",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-10.4",
+      "kind": "implementation-task",
+      "task_id": "10.4",
+      "audit_lane": "communications",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 109,
+      "sha256": "c00f07e6b50d07b9991c02cba7c24d98c0549ca68304f680518d226d4f6c09ce",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-10.5",
+      "kind": "implementation-task",
+      "task_id": "10.5",
+      "audit_lane": "communications",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 110,
+      "sha256": "ff7901cc7ff36cd3d5887a466728ad3b88dfaafe7966ae8dee9bd1bbdc0768c1",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-10.6",
+      "kind": "implementation-task",
+      "task_id": "10.6",
+      "audit_lane": "communications",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 111,
+      "sha256": "88a5201134ecb67ccc278e6c3be87f42ec5f64ad83fed0674e7639c595b40621",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-10.7",
+      "kind": "implementation-task",
+      "task_id": "10.7",
+      "audit_lane": "communications",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 112,
+      "sha256": "39967472058d0c2535a1cd719bd580df110e8b6a4d090eca8b2b58a460381d04",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-10.8",
+      "kind": "implementation-task",
+      "task_id": "10.8",
+      "audit_lane": "communications",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 113,
+      "sha256": "78600d8060531c5628f28628e6ea7c12fa1bf77d7dad61c8eef1372310d29204",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-10.9",
+      "kind": "implementation-task",
+      "task_id": "10.9",
+      "audit_lane": "communications",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 114,
+      "sha256": "13957caf06c3025d037e4c2349d9a2d5ff10c7179c385ab7a506bfa08f0dbd01",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-10.10",
+      "kind": "implementation-task",
+      "task_id": "10.10",
+      "audit_lane": "communications",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 115,
+      "sha256": "ab1a4be7578171604e7562e3adc9066f16a2e29defcd5509e81824186df17fe8",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-10.11",
+      "kind": "implementation-task",
+      "task_id": "10.11",
+      "audit_lane": "communications",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 116,
+      "sha256": "2945f0fefc92d9e96a72f30d56eb113407b5b98fcd2a4138ceef11c3da64c433",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-10.12",
+      "kind": "implementation-task",
+      "task_id": "10.12",
+      "audit_lane": "communications",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 117,
+      "sha256": "090f2ee50adeac686f5ef10c3542ded0584861cdcccee41e0edaa59d13bc2881",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-10.13",
+      "kind": "implementation-task",
+      "task_id": "10.13",
+      "audit_lane": "communications",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 118,
+      "sha256": "6f520b69ca1c01915de3013f016c21f5705e7fcf0e335c8cbcd0e5f4b00b9348",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-10.14",
+      "kind": "implementation-task",
+      "task_id": "10.14",
+      "audit_lane": "communications",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 120,
+      "sha256": "5500156bedf7ce7d2d4a896e4bcdc23a58cd87ab1d53bd3238e55ddbdc8df945",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-11.1",
+      "kind": "implementation-task",
+      "task_id": "11.1",
+      "audit_lane": "orchestration",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 124,
+      "sha256": "5115796c90f0f574fc0a4abd8e929673bdd82bd867d256a51f9397286b97b6a2",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-11.2",
+      "kind": "implementation-task",
+      "task_id": "11.2",
+      "audit_lane": "orchestration",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 125,
+      "sha256": "037a276e57c14bb868fc75ed6dae5f38162e232ca0f1249d5b3ec4a0193bdce5",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-11.3",
+      "kind": "implementation-task",
+      "task_id": "11.3",
+      "audit_lane": "identity_memory",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 126,
+      "sha256": "c4036212276f5834280b18b7f1214c6aebd5bd8027fabf366cac44ef74fcd5d6",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-11.4",
+      "kind": "implementation-task",
+      "task_id": "11.4",
+      "audit_lane": "identity_memory",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 127,
+      "sha256": "4decefcf4fede6a1010aef099010019bcd7cbb2bb2f10e982040c424be01e632",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-11.5",
+      "kind": "implementation-task",
+      "task_id": "11.5",
+      "audit_lane": "architecture_delivery",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 128,
+      "sha256": "ff2201afb9bec0fe0002b8d8757a7fcdf7cd04e6098f573160c979bd1c882495",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-12.1",
+      "kind": "implementation-task",
+      "task_id": "12.1",
+      "audit_lane": "architecture_delivery",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 132,
+      "sha256": "d07cc89a8d7515976ae1f2ee4926f6794e8d3de74b1c34cadcc7edbabd65ab6e",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-12.2",
+      "kind": "implementation-task",
+      "task_id": "12.2",
+      "audit_lane": "architecture_delivery",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 133,
+      "sha256": "acb9a73b848a0eb8efd68624b8b4f0471d0e478997ee8642ec8ebec5c7c25572",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-12.3",
+      "kind": "implementation-task",
+      "task_id": "12.3",
+      "audit_lane": "architecture_delivery",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 134,
+      "sha256": "ac05a95256a03daffe5910a411cece53ff3f1904001787a97f7b5af2441d8b70",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-12.4",
+      "kind": "implementation-task",
+      "task_id": "12.4",
+      "audit_lane": "architecture_delivery",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 136,
+      "sha256": "bbd6623443efe5118e90982b44b3959d5242d7a26a614fb79a1336c813030627",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    },
+    {
+      "unit_id": "TASK-12.5",
+      "kind": "implementation-task",
+      "task_id": "12.5",
+      "audit_lane": "architecture_delivery",
+      "blueprint": "task-blueprints.json",
+      "disposition": "Конкретизированы зависимости, вход/выход, шаги, отказы, проверка.",
+      "path": "openspec/changes/intelligent-lead-research/tasks.md",
+      "line": 137,
+      "sha256": "f1ab1a990e927b2506f5e04300cc78762c484e93c55d4e73aed0e7993d6f2099",
+      "hash_scope": "Полная строка задачи без завершающего LF."
+    }
+  ],
+  "post_audit_additions": [
+    "4.16",
+    "4.17",
+    "4.18"
+  ],
+  "trace_rule": "Исходный текст доступен по baseline commit/path/line; SHA256 проверяет точный блок, сохранённый для аудита. Современная редакция меняется по выводам, baseline hashes не пересчитываются под неё.",
+  "current_spec_counts": {
+    "requirements": 73,
+    "scenarios": 156
+  },
+  "post_audit_requirement_additions": [
+    {
+      "path": "openspec/changes/intelligent-lead-research/specs/adaptive-lead-research/spec.md",
+      "title": "Поиск начинается с оффера и целевой аудитории",
+      "task_ids": [
+        "1.1",
+        "4.1",
+        "4.2",
+        "4.16"
+      ],
+      "status": "Новая нормативная конкретизация после baseline audit; реализация pending."
+    },
+    {
+      "path": "openspec/changes/intelligent-lead-research/specs/adaptive-lead-research/spec.md",
+      "title": "Портфель стратегий обнаружения и обогащения",
+      "task_ids": [
+        "4.5",
+        "4.11",
+        "4.16",
+        "4.17",
+        "4.18"
+      ],
+      "status": "Новая нормативная конкретизация после baseline audit; реализация pending."
+    },
+    {
+      "path": "openspec/changes/intelligent-lead-research/specs/adaptive-lead-research/spec.md",
+      "title": "Единое владение исследовательской очередью",
+      "task_ids": [
+        "4.3",
+        "4.11",
+        "4.17",
+        "7.3"
+      ],
+      "status": "Новая нормативная конкретизация после baseline audit; реализация pending."
+    },
+    {
+      "path": "openspec/changes/intelligent-lead-research/specs/adaptive-lead-research/spec.md",
+      "title": "Общий денежный бюджет применяется только к Firecrawl",
+      "task_ids": [
+        "4.3",
+        "4.4",
+        "4.10",
+        "5.2"
+      ],
+      "status": "Новая нормативная конкретизация после baseline audit; реализация pending."
+    },
+    {
+      "path": "openspec/changes/intelligent-lead-research/specs/regional-web-acquisition/spec.md",
+      "title": "Единственный управляемый технический frontier",
+      "task_ids": [
+        "7.2",
+        "7.3",
+        "7.4"
+      ],
+      "status": "Новая нормативная конкретизация после baseline audit; реализация pending."
+    },
+    {
+      "path": "openspec/changes/intelligent-lead-research/specs/regional-web-acquisition/spec.md",
+      "title": "Версионированная политика источника и сетевой выход",
+      "task_ids": [
+        "1.3",
+        "7.5",
+        "7.6"
+      ],
+      "status": "Новая нормативная конкретизация после baseline audit; реализация pending."
+    },
+    {
+      "path": "openspec/changes/intelligent-lead-research/specs/regional-web-acquisition/spec.md",
+      "title": "Денежный бюджет приложения только для Firecrawl",
+      "task_ids": [
+        "4.3",
+        "4.4",
+        "5.2",
+        "7.2"
+      ],
+      "status": "Новая нормативная конкретизация после baseline audit; реализация pending."
+    }
+  ],
+  "later_user_override": "CL-17 отменяет фиксированную цель; baseline scenario title со старым числом сохранён только как историческая ссылка на исходную версию. Current specs и задачи используют количество из конкретной заявки."
+}

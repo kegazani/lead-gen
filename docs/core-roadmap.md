@@ -5,7 +5,7 @@ core», из каких изменений он состоит, в каком п
 подхватывать работу. Это план, а не спецификация: требования живут в
 `openspec/`, канонические границы — в `architecture/domain-catalog.yaml`.
 
-**Текущая полная программа (2026-10-15, ветка `concept/intelligent-lead-research`):** [36 обязательных требований и применение всех изученных материалов](intelligent-lead-platform-roadmap.md). Пользователь подтвердил необходимость полного объёма; R1–R4 определяют старт, весь остальной функционал остаётся обязательным. [Задачи](../openspec/changes/intelligent-lead-research/tasks.md) и [покрытие](concepts/intelligent-lead-research/implementation-coverage.json) сохраняют связь с исходными требованиями; план не означает выполненную реализацию.
+**Текущая полная программа (2026-10-15, ветка `concept/intelligent-lead-research`):** [36 обязательных требований и применение всех изученных материалов](intelligent-lead-platform-roadmap.md). Пользователь подтвердил необходимость полного объёма; S0–S6 ставят поиск и краулинг первыми, весь остальной функционал остаётся обязательным. [Задачи](../openspec/changes/intelligent-lead-research/tasks.md) и [покрытие](concepts/intelligent-lead-research/implementation-coverage.json) сохраняют связь с исходными требованиями; план не означает выполненную реализацию.
 
 **Базовый demo scope (2026-10-12, сохраняется для рабочего demo):** ограниченный change
 [`customer-demo-request-to-emails`](../openspec/changes/customer-demo-request-to-emails/).

@@ -32,7 +32,8 @@
       "provenance": {
         "kind": "user-explicit",
         "clarification_ids": [
-          "CL-01"
+          "CL-01",
+          "CL-16"
         ]
       }
     },
@@ -40,24 +41,29 @@
       "id": "REQ-02",
       "group": "A",
       "required": true,
-      "acceptance": "Планировщик закрывает конкретные пробелы, выбирает разрешённый инструмент, сохраняет краткое основание и останавливает бесполезные повторы.",
+      "acceptance": "SearchBrief и портфель discovery находят новых кандидатов без seed; bounded LLM предлагает проверяемые шаги, scheduler использует историю, уникальный результат и останавливает повторы. Пользовательские критерии отделены от гипотез.",
       "capabilities": [
         "adaptive-lead-research"
       ],
       "task_ids": [
         "4.2",
         "4.5",
-        "4.11"
+        "4.11",
+        "4.16",
+        "4.17",
+        "4.18"
       ],
       "concept_documents": [
-        "03-agent-and-memory.md"
+        "03-agent-and-memory.md",
+        "11-search-implementation-blueprint.md"
       ],
       "implementation_acceptance": "pending",
       "requirement": "LLM самостоятельно выбирает полезные шаги исследования",
       "provenance": {
         "kind": "user-explicit",
         "clarification_ids": [
-          "CL-00"
+          "CL-00",
+          "CL-15"
         ]
       }
     },
@@ -113,7 +119,8 @@
       "provenance": {
         "kind": "user-derived",
         "clarification_ids": [
-          "CL-00"
+          "CL-00",
+          "CL-15"
         ]
       }
     },
@@ -252,7 +259,8 @@
       "provenance": {
         "kind": "user-explicit",
         "clarification_ids": [
-          "CL-03"
+          "CL-03",
+          "CL-16"
         ]
       }
     },
@@ -332,7 +340,8 @@
       "provenance": {
         "kind": "user-explicit",
         "clarification_ids": [
-          "CL-04"
+          "CL-04",
+          "CL-16"
         ]
       }
     },
@@ -366,7 +375,7 @@
       "id": "REQ-14",
       "group": "C",
       "required": true,
-      "acceptance": "Обязательны реальный self-hosted runtime, наши profiles/frontier/evidence/session/budget механизмы и поддержка выбранной версии upstream/patches.",
+      "acceptance": "Обязательны реальный self-hosted runtime, наши profiles/frontier/evidence/session/technical-limits механизмы и поддержка выбранной версии upstream/patches.",
       "capabilities": [
         "regional-web-acquisition"
       ],
@@ -388,7 +397,8 @@
         "kind": "user-explicit",
         "clarification_ids": [
           "CL-05",
-          "CL-06"
+          "CL-06",
+          "CL-15"
         ]
       }
     },
@@ -474,17 +484,20 @@
       "id": "REQ-18",
       "group": "C",
       "required": true,
-      "acceptance": "Gateway подключает принятый regional provider/API; внешний поиск, metasearch и наш корпус различимы в результатах и стоимости.",
+      "acceptance": "Gateway подключает принятые regional источники; query families и разные классы источников дают сохраняемые компании. Интернет, metasearch и собственный корпус различимы; кредитный бюджет приложения только Firecrawl.",
       "capabilities": [
         "regional-web-acquisition"
       ],
       "task_ids": [
         "6.1",
         "6.2",
-        "5.5"
+        "5.5",
+        "4.16",
+        "4.17"
       ],
       "concept_documents": [
-        "05-acquisition-and-crawlers.md"
+        "05-acquisition-and-crawlers.md",
+        "11-search-implementation-blueprint.md"
       ],
       "implementation_acceptance": "pending",
       "requirement": "Интернет discovery по нужным странам",
@@ -492,7 +505,8 @@
         "kind": "user-derived",
         "clarification_ids": [
           "CL-04",
-          "CL-07"
+          "CL-07",
+          "CL-15"
         ]
       }
     },
@@ -554,7 +568,7 @@
       "id": "REQ-21",
       "group": "C",
       "required": true,
-      "acceptance": "Source registry, query planner, frontier, session pool, artifacts, model gateway, verification, memory, budgets, review и evaluation связаны контрактами владельцев.",
+      "acceptance": "Source registry, query planner, frontier, session pool, artifacts, model gateway, verification, memory, review и evaluation связаны контрактами владельцев. Денежный ledger только Firecrawl у integration-platform; остальные инструменты используют существующий proxy и технические caps.",
       "capabilities": [
         "adaptive-lead-research",
         "regional-web-acquisition"
@@ -577,7 +591,9 @@
       "provenance": {
         "kind": "proposed-design",
         "clarification_ids": [
-          "CL-07"
+          "CL-07",
+          "CL-15",
+          "CL-16"
         ]
       }
     },
@@ -585,7 +601,7 @@
       "id": "REQ-22",
       "group": "D",
       "required": true,
-      "acceptance": "Единица результата фиксируется; засчитываются сохранённые проверенные субъекты, доступен добор либо partial с объяснимым недобором.",
+      "acceptance": "Фиксированной общей цели нет: количество и единица результата задаются в заявке; засчитываются сохранённые проверенные субъекты, доступен добор либо partial с объяснимым недобором.",
       "capabilities": [
         "adaptive-lead-research"
       ],
@@ -600,11 +616,12 @@
         "02-identity-and-evidence.md"
       ],
       "implementation_acceptance": "pending",
-      "requirement": "Цель 25 и добор без дублей",
+      "requirement": "Выбранный объём результатов и добор без дублей",
       "provenance": {
         "kind": "user-explicit",
         "clarification_ids": [
-          "CL-13"
+          "CL-13",
+          "CL-17"
         ]
       }
     },
@@ -897,7 +914,7 @@
       "id": "REQ-33",
       "group": "F",
       "required": true,
-      "acceptance": "Результат переживает рестарт; retries, partial, ошибки sources, расходы и in-flight/unknown effects объяснимы и не создают бесконечные платные циклы.",
+      "acceptance": "Результат переживает рестарт; retries, partial, source errors и in-flight/unknown effects объяснимы. Единый account/mission-or-study Firecrawl credit ledger не удваивает списания; proxy-инструменты не имеют app monetary gate, технические loops ограничены.",
       "capabilities": [
         "adaptive-lead-research",
         "regional-web-acquisition"
@@ -919,10 +936,11 @@
       "implementation_acceptance": "pending",
       "requirement": "Долговечность, наблюдаемость и расход",
       "provenance": {
-        "kind": "proposed-design",
+        "kind": "user-derived",
         "clarification_ids": [
           "CL-00",
-          "CL-12"
+          "CL-12",
+          "CL-16"
         ]
       }
     },
@@ -992,7 +1010,7 @@
       "id": "REQ-36",
       "group": "F",
       "required": true,
-      "acceptance": "R1–R4 — начальные срезы; программа закрывается по всем required требованиям с evidence и связью с apply tasks, перенос сохраняет требование открытым.",
+      "acceptance": "S0–S6 — этапы, R1–R4 — проверочные сценарии; программа закрывается по всем required требованиям с evidence и связью с apply tasks, перенос сохраняет требование открытым.",
       "capabilities": [
         "lead-entity-resolution",
         "lead-research-memory",
@@ -1016,7 +1034,9 @@
         "kind": "user-explicit",
         "clarification_ids": [
           "CL-12",
-          "CL-00"
+          "CL-00",
+          "CL-15",
+          "CL-17"
         ]
       }
     }
@@ -1057,7 +1077,10 @@
       "required_application": "Использовать полезность/насыщение для приоритета frontier и остановки, отдельно от доказательства идентичности.",
       "task_ids": [
         "4.11",
-        "7.3"
+        "7.3",
+        "4.16",
+        "4.17",
+        "4.18"
       ],
       "requirement_ids": [
         "REQ-02",
@@ -1562,14 +1585,13 @@
       "id": "CL-13",
       "topic": "Ранее уточнённые требования demo",
       "quotes": [
-        "сделай заявку на 25 лидов",
         "давай пока просто сделаем чтобы в заявках можно было видеть порцесс парсинга",
         "подходящие вообще убрать у нас могут быть разные компании.",
         "чтобы были действительно контактная информация.",
         "в лиды тоже не могу перекижывает на форму логина. отчеты 404.",
         "Docker Compose"
       ],
-      "retained_requirement": "Сохраняются цель 25, честный прогресс/сохранение, качество контактов, оценки по заявке, tenant/UI переходы и Compose deployment.",
+      "retained_requirement": "Сохраняются честный прогресс/сохранение, качество контактов, оценки по заявке, tenant/UI переходы и Compose deployment.",
       "requirement_ids": [
         "REQ-07",
         "REQ-22",
@@ -1579,7 +1601,14 @@
         "REQ-32",
         "REQ-34"
       ],
-      "source_description": "Несколько более ранних сообщений и ответ о способе деплоя; цитаты приведены отдельными фрагментами"
+      "source_description": "Несколько более ранних сообщений и ответ о способе деплоя; цитаты приведены отдельными фрагментами",
+      "superseded_quotes": [
+        {
+          "quote": "сделай заявку на 25 лидов",
+          "superseded_by": "CL-17",
+          "scope": "Фиксированная цель отменена; историческая реплика не является действующим требованием."
+        }
+      ]
     },
     {
       "id": "CL-14",
@@ -1597,6 +1626,63 @@
       "source_description": "Уточнение пользователя при запросе единой концепции от общего к частному, 2026-10-15",
       "refines": [
         "CL-00"
+      ]
+    },
+    {
+      "id": "CL-15",
+      "topic": "Приоритет поиска и краулинга",
+      "quotes": [
+        "главное это продумать краулинг поиск лидов я накидал примерные требования"
+      ],
+      "retained_requirement": "Главный первый результат — поиск компаний от оффера/аудитории и качественный краулинг. Примеры направляют концепцию; конкретные алгоритмы/движки уточняются исследованием. Письма и inbound остаются в полной программе, не блокируя первый поиск.",
+      "requirement_ids": [
+        "REQ-02",
+        "REQ-04",
+        "REQ-14",
+        "REQ-18",
+        "REQ-21",
+        "REQ-36"
+      ],
+      "source_description": "Уточнение пользователя во время полного аудита change, 2026-10-15",
+      "refines": [
+        "CL-00",
+        "CL-12"
+      ]
+    },
+    {
+      "id": "CL-16",
+      "topic": "Бюджет только Firecrawl",
+      "quotes": [
+        "общий бюджет только для firecrawl для остального не нужно там уже proxy ты это учел?"
+      ],
+      "retained_requirement": "Денежный бюджет приложения и credit reservation/ledger нужны только Firecrawl. Остальные инструменты используют существующий proxy без второго финансового gate. Технические лимиты времени/параллельности/попыток сохраняются. Исчерпание Firecrawl отключает его действия, но не доступные разрешённые пути через память/proxy/свой runtime. Возможности географического выхода proxy проверяются отдельно.",
+      "requirement_ids": [
+        "REQ-01",
+        "REQ-09",
+        "REQ-12",
+        "REQ-21",
+        "REQ-33"
+      ],
+      "source_description": "Прямое уточнение пользователя во время аудита, 2026-10-15; заменяет прежний широкий бюджетный дизайн ассистента.",
+      "refines": [
+        "CL-00",
+        "CL-04"
+      ]
+    },
+    {
+      "id": "CL-17",
+      "topic": "Отмена фиксированной количественной цели",
+      "quotes": [
+        "цель 25 убери совсем"
+      ],
+      "retained_requirement": "Фиксированная цель отменена в концепции, спецификациях, задачах и приёмке. Количество выбирается для конкретной заявки; универсального числового target или обязательного прогона на него нет. Историческая реплика CL-13 в этой части отменена.",
+      "requirement_ids": [
+        "REQ-22",
+        "REQ-36"
+      ],
+      "source_description": "Прямое уточнение пользователя при завершении полного аудита, 2026-10-15",
+      "supersedes": [
+        "CL-13:fixed-result-target"
       ]
     }
   ],
@@ -1685,5 +1771,16 @@
         "REQ-20"
       ]
     }
-  ]
+  ],
+  "audit": {
+    "summary": "12-change-audit.md",
+    "search_blueprint": "11-search-implementation-blueprint.md",
+    "findings": "audit-findings.json",
+    "coverage": "audit-coverage.json",
+    "task_blueprints": "task-blueprints.json",
+    "additional_source_receipts": "audit-sources.json",
+    "priority_clarification": "CL-15",
+    "budget_clarification": "CL-16",
+    "goal_clarification": "CL-17"
+  }
 }

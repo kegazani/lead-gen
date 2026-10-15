@@ -104,12 +104,14 @@ Core-контексты выражают конкурентное преимущ
 | `lead-entity-resolution` | `lead-management` | Юрлицо/бренд/сайт и типизированные доказательные связи; домен не универсальная юридическая идентичность |
 | `lead-research-memory` | `lead-management` | Источники, временные утверждения, открытые потребности, сеть зависимостей и производная память в разрешённой области |
 | `inbound-lead-conversations` | `lead-management` | Клиентские входящие обращения, связь с лидом/контактом и переписка; qualification — у `engagement-observation` |
-| `adaptive-lead-research` | `agent-orchestration` | Миссия, допустимые действия LLM, долговечность и бюджет; факты принадлежат `lead-management` |
+| `adaptive-lead-research` | `agent-orchestration` | Миссия, SearchBrief/StrategyCell/QueryFamily, действия LLM, долговечность и grant_ref; факты принадлежат `lead-management` |
 | `international-market-discovery` | `audience` | Рекомендации рынков по офферу; человеческий выбор стран заявки — у `request-fulfillment` |
-| `regional-web-acquisition` | `integration-platform` | Search/fetch/registry/browser/document/OCR, capabilities и receipts без предметного вердикта |
+| `regional-web-acquisition` | `integration-platform` | Search/fetch/registry/browser/document/OCR, capabilities, технический frontier/leases и единый Firecrawl credit ledger; receipts без предметного вердикта |
 | `research-to-outreach` | `outreach-orchestration` | Передача исследования в существующие материал, точное решение и доставку; владельцы текста/адреса не меняются |
 
 В уточнении CL-14 `OpenNeed` и зависимости утверждений планируются у `lead-management`: компания без email сохраняется между запусками, поздний контакт дополняет прежнее досье. Статусы относятся к конкретному факту и методу проверки. Миссия и разрешение нового внешнего действия остаются у `agent-orchestration`; обновление знания не открывает бюджет и не переписывает завершённый run. Подробности — [сеть во времени](concepts/intelligent-lead-research/02-identity-and-evidence.md#213-сеть-отношений-и-зависимостей-во-времени).
+
+CL-15 ставит discovery от аудитории и краулинг первыми. CL-16 ограничивает денежный ledger приложения только Firecrawl: integration-platform владеет reservation/charge с account и mission/study grant, agent хранит ссылку и проекцию; остальные инструменты используют существующий proxy и технические caps. Исчерпание FC не запрещает остальные допустимые действия. Raw SearchBrief/query/prompt payloads планируются в client red repository агента, evidence у lead-management, opaque refs в green/Temporal. Python acquisition исполняет bounded задачи, не владеет вторым durable scheduler. [Полный план](concepts/intelligent-lead-research/11-search-implementation-blueprint.md).
 
 Диаграмма bounded contexts помечает эти назначения как план. Добавление entity/aggregate/event/relationship при реализации требует синхронного обновления каталога, этой модели и затронутых диаграмм; ни тело входящего письма, ни контактные данные не становятся общей зелёной памятью платформы.
 

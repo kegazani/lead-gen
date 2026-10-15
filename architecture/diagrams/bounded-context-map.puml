@@ -16,6 +16,8 @@ package "Generic" {
     budget contract; no foreign domain import
     План intelligent-lead-research:
     regional-web-acquisition
+    Один technical frontier / leases
+    Денежный ledger только Firecrawl
   end note
 }
 package "Core" {
@@ -43,6 +45,8 @@ package "Core" {
   note right of Agents
     План intelligent-lead-research:
     adaptive-lead-research
+    SearchBrief / StrategyCell / QueryFamily, grant_ref
+    Discovery и enrichment в одной миссии
     Позднее знание: пересмотр в пределах миссии (план)
   end note
 }
