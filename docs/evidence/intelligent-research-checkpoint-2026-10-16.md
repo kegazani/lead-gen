@@ -21,13 +21,23 @@ composition и Docker Compose overlay. Новые миграции, тесты, 
   [runtime evidence](intelligent-research-runtime-2026-10-15.md).
   Это сохранённые результаты предыдущего запуска, а не повтор всех suites
   после восстановления сессии. Полный повтор перед этим commit не выполнялся.
-- Последние изменения текстов фаз UI ещё не проверены отдельным повтором
-  полного контейнерного сценария. Полная сборка Dockerfile этим smoke
+- HTTP-тесты request-fulfillment, включая последние тексты фаз UI, повторно
+  прошли после сохранения (1,020 с). Полный контейнерный сценарий после них
+  отдельно не повторялся. Полная сборка Dockerfile этим smoke
   не подтверждена: использовался собранный binary в cached runtime image.
-- Последний реальный контактный прогон требует итоговой сверки persistent
-  результата. Сохранённый handoff сообщает partial: восемь компаний,
-  ноль контактов и зачтённых результатов, 20 учтённых Firecrawl credits.
-  Контактная цель не принята; повторных платных вызовов для сохранения нет.
+- Последний реальный контактный прогон повторно сверен read-only по PostgreSQL
+  и сохранённым HTTP/Chromium artifacts: миссия
+  `research-289ca8e4d3de6ec2993fc91493fef661`, revision160,
+  completed/finished, outcome `partial`, причина
+  `firecrawl-exhausted-no-alternative`. Обнаружено 27, документов 12,
+  сохранено восемь компаний; accepted/contacts/email-ready — ноль.
+  Владелец заявки `main-ui-1792084501175793186` — failed, version5.
+  Grant20: spent20, reserved0, unknown0; 16 завершённых acquisition attempts.
+  В assertions также нет email/phone: отсутствие контактов подтверждено
+  в хранилище, а не только в UI. Сохранённый Chromium отчёт содержит
+  восемь строк, четыре экрана, без JS exceptions и переполнения.
+  Readiness на момент повторной проверки HTTP200/up, обе worker-пробы up.
+  Контактная цель не принята; новых платных вызовов не было.
 - SearXNG полезная внешняя выдача заблокирована proxy CONNECT 403.
   Самостоятельный crawler/browser/OCR, MarketStudy, формы, inbound/outbound,
   полный индекс и связь нового досье со старым каталогом/письмами не завершены.
@@ -40,3 +50,17 @@ Provider env, console password, staged secret bundles, сырые HTTP/LLM от�
 локальные SQL/runtime logs и прочие private artifacts остаются вне checkout
 или в ignored `.runtime/`. Включены только публичные исходники, конфигурация
 с подстановками переменных, тестовые fixtures и очищенные evidence.
+
+## Сохранение и повторные адресные проверки
+
+Реализация сохранена и отправлена коммитом
+`f7d4faa7ba0ec039215fd35b0ee4c89b0a3553ff` (182 файла). До дальнейшей
+правки этого отчёта рабочая копия была чистой; remote branch указывала на тот
+же SHA. Проверка staged-файлов не нашла provider tokens/private keys.
+
+После push повторно прошли `openspec validate intelligent-lead-research --strict`,
+`go -C tools/archlint run .` и HTTP package tests request-fulfillment.
+Это адресные проверки; прежний отказ общего `make check` ими не снимается.
+Сохранённый actual-provider прогон выполнен предыдущим собранным binary;
+новый платный end-to-end именно commit `f7d4faa` не запускался. Учёт credits
+основан на тарифе адаптера, отдельно с provider billing не сверялся.
