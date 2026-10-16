@@ -68,12 +68,30 @@ Platform --> Agents : PL / policy\nasync · amqp\ntenant-context
 Analytics --> Platform : C/S / query\nsync · http-json\ncampaign-report
 Analytics --> Leads : C/S / command\nsync · http-json\nrecommendation-apply
 
+Agents --> Requests : C/S / command + query\nsync · in-process\nresearch-mission
+Agents --> Requests : C/S / command\nsync · in-process\nresearch-plan
+Leads --> Agents : C/S / command + query\nsync · in-process\nresearch-memory
+Leads --> Requests : C/S / query\nsync · in-process\nresearch-memory
+Integration ..> Agents : ACL / command + query\nsync · in-process\nresearch-acquisition
+Integration ..> Agents : ACL / command\nsync · in-process\nprovider-port (planner)
+
+note bottom of Agents
+  Новый research путь: PostgreSQL mission/leases в red.
+  Новых research events/outbox пока нет.
+  agent-event выше относится к legacy agent-run.
+end note
+
+Integration ..> Leads : research-extraction\nsync · in-process
+Leads --> Requests : research-memory / IdentityPort\nsync · in-process
+
 legend bottom
   PL = Published Language
   C/S = Customer / Supplier
   ACL = Anticorruption Layer
   Стрелка направлена от upstream к downstream.
-  Транспорт: sync · http-json — command/query; async · amqp — event/policy.
+  Транспорт: sync · http-json — сетевые command/query;
+  sync · in-process — новые typed ports при co-location;
+  async · amqp — event/policy.
 endlegend
 
 ' CTX:platform-governance

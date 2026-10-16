@@ -26,7 +26,7 @@ func writeTempFile(t *testing.T, name, content string) string {
 }
 
 // TestLoadRealSources проверяет сборку графа из настоящих источников:
-// двенадцать узлов-сервисов, сорок девять рёбер с транспортом и контрактом,
+// двенадцать узлов-сервисов, шестьдесят два ребра с транспортом и контрактом,
 // группы deploy и инфраструктурные узлы.
 func TestLoadRealSources(t *testing.T) {
 	graph, err := Load(realCatalogPath, realServicesPath, realInfrastructurePath)
@@ -65,8 +65,8 @@ func TestLoadRealSources(t *testing.T) {
 	if infrastructure != 8 {
 		t.Errorf("инфраструктурных узлов: %d, ожидалось 8", infrastructure)
 	}
-	if len(graph.Edges) != 51 {
-		t.Errorf("рёбер: %d, ожидалось 51", len(graph.Edges))
+	if len(graph.Edges) != 62 {
+		t.Errorf("рёбер: %d, ожидалось 62", len(graph.Edges))
 	}
 	if !containsString(groups["outreach-orchestration"], "core") {
 		t.Errorf("группы outreach-orchestration = %v, ожидалась core", groups["outreach-orchestration"])
@@ -254,5 +254,49 @@ func TestReadServicesRejectsUnknownKey(t *testing.T) {
 		"processes:\n  - name: core\n    services:\n      - id: a\n        roles: [api]\n        bogus: 1\n")
 	if _, err := readServices(path); err == nil {
 		t.Fatal("неизвестное поле сервиса не отвергнуто")
+	}
+}
+
+// expectedResearchEdges фиксирует владельцев и опубликованные порты сборки
+// deploy/research-client.json; произвольный in-process здесь не разрешается.
+func expectedResearchEdges() map[string][5]string {
+	return map[string][5]string{
+		"research-mission-commands-for-requests":   {"agent-orchestration", "request-fulfillment", "research-mission", "sync", "in-process"},
+		"research-mission-status-for-requests":     {"agent-orchestration", "request-fulfillment", "research-mission", "sync", "in-process"},
+		"research-plans-for-requests":              {"agent-orchestration", "request-fulfillment", "research-plan", "sync", "in-process"},
+		"research-memory-writes-for-agents":        {"lead-management", "agent-orchestration", "research-memory", "sync", "in-process"},
+		"research-memory-reads-for-agents":         {"lead-management", "agent-orchestration", "research-memory", "sync", "in-process"},
+		"research-dossiers-for-requests":           {"lead-management", "request-fulfillment", "research-memory", "sync", "in-process"},
+		"research-acquisition-for-agents":          {"integration-platform", "agent-orchestration", "research-acquisition", "sync", "in-process"},
+		"research-acquisition-receipts-for-agents": {"integration-platform", "agent-orchestration", "research-acquisition", "sync", "in-process"},
+		"research-models-for-agents":               {"integration-platform", "agent-orchestration", "provider-port", "sync", "in-process"},
+		"research-identity-commands-for-requests":  {"lead-management", "request-fulfillment", "research-memory", "sync", "in-process"},
+		"research-models-for-memory":               {"integration-platform", "lead-management", "research-extraction", "sync", "in-process"},
+	}
+}
+
+func TestResearchRelationshipsKeepExactOwnerAndTransport(t *testing.T) {
+	want := expectedResearchEdges()
+	graph, err := Load(realCatalogPath, realServicesPath, realInfrastructurePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	edges := graph.Edges
+	for _, edge := range edges {
+		expected, exists := want[edge.ID]
+		if !exists {
+			if edge.Mechanism == "in-process" {
+				t.Errorf("неожиданная in-process связь %s", edge.ID)
+			}
+			continue
+		}
+		actual := [5]string{edge.Upstream, edge.Downstream, edge.Contract, edge.Transport, edge.Mechanism}
+		if actual != expected {
+			t.Errorf("связь %s: %v, ожидалось %v", edge.ID, actual, expected)
+		}
+		delete(want, edge.ID)
+	}
+	if len(want) != 0 {
+		t.Errorf("research связи отсутствуют: %v", want)
 	}
 }

@@ -19,10 +19,14 @@ package llm
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"iter"
 	"strings"
 )
+
+// ErrInvalidPlan отличает отвергнутую схему ответа от недоступности модели.
+var ErrInvalidPlan = errors.New("llm: недопустимая схема плана")
 
 // Port — порт LLM. Реализуется OpenAI-совместимым клиентом (провайдер DeepSeek).
 type Port interface {
@@ -79,6 +83,13 @@ type PlanRequest struct {
 	// магазины, отдельные статьи) и признаки потребности, чтобы цели обхода вели
 	// к сайтам компаний, а не к обзорным материалам.
 	Interpretation Interpretation
+	// StrictTargets включает строгую схему ответа нового исследовательского
+	// планировщика; старый путь сохраняет совместимость по умолчанию.
+	StrictTargets bool
+	// MaxTargets — технический предел предложений, не денежный бюджет.
+	MaxTargets int
+	// QueryOnly запрещает предложения URL в фазе обнаружения компаний.
+	QueryOnly bool
 }
 
 // Target — один пункт плана: либо поисковый запрос, либо стартовый URL.
@@ -93,6 +104,9 @@ type Target struct {
 func (r PlanRequest) Validate() error {
 	if strings.TrimSpace(r.Query) == "" {
 		return fmt.Errorf("llm: plan request: query обязателен")
+	}
+	if r.StrictTargets && (r.MaxTargets < 1 || r.MaxTargets > 64) {
+		return fmt.Errorf("llm: plan request: строгая схема требует max_targets от 1 до 64")
 	}
 	return nil
 }

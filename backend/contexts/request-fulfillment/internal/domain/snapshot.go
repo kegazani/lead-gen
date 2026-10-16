@@ -35,6 +35,8 @@ type TransitionSnapshot struct {
 // OfferHistory хранит прежние версии оффера; Transitions сохраняют порядок
 // переходов.
 type RequestSnapshot struct {
+	ExecutionMode      string             `json:"ExecutionMode,omitempty"`
+	ResearchSelection  *ResearchSelection `json:"ResearchSelection,omitempty"`
 	ID                 RequestID
 	TenantID           TenantID
 	Status             RequestStatus
@@ -72,6 +74,7 @@ func (r *Request) Snapshot() RequestSnapshot {
 		})
 	}
 	return RequestSnapshot{
+		ExecutionMode: r.executionMode, ResearchSelection: r.ResearchSelection(),
 		ID:                    r.id,
 		TenantID:              r.tenantID,
 		Status:                r.status,
@@ -105,6 +108,9 @@ func decisionSnapshot(d *ValidationDecision) *ValidationDecisionSnapshot {
 // положительную версию, рост ревизий оффера и непустой журнал переходов.
 // События не эмитятся.
 func RehydrateRequest(s RequestSnapshot) (*Request, error) {
+	if err := validateExecutionSnapshot(s); err != nil {
+		return nil, err
+	}
 	if err := s.ID.validate(); err != nil {
 		return nil, err
 	}
@@ -183,7 +189,13 @@ func RehydrateRequest(s RequestSnapshot) (*Request, error) {
 		return nil, err
 	}
 
+	var researchSelection *ResearchSelection
+	if s.ResearchSelection != nil {
+		copy := s.ResearchSelection.Clone()
+		researchSelection = &copy
+	}
 	return &Request{
+		executionMode: s.ExecutionMode, researchSelection: researchSelection,
 		id:                    s.ID,
 		tenantID:              s.TenantID,
 		status:                s.Status,

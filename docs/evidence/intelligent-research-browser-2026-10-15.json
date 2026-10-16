@@ -1,0 +1,31 @@
+{
+  "state": {
+    "rows": 16,
+    "status": "",
+    "heading": "Исследование лидов"
+  },
+  "pages": {
+    "dossier": {
+      "heading": "Поревит",
+      "rows": 2,
+      "assertions": 4,
+      "width": 1350,
+      "viewport": 1365
+    },
+    "queue": {
+      "heading": "Заявки",
+      "rows": 1,
+      "assertions": 0,
+      "width": 1365,
+      "viewport": 1365
+    },
+    "execution": {
+      "heading": "Исполнение исследований",
+      "rows": 1,
+      "assertions": 0,
+      "width": 1365,
+      "viewport": 1365
+    }
+  },
+  "exceptions": []
+}

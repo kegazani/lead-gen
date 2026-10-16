@@ -1,0 +1,6 @@
+# Дополнительный профиль для существующего proxy с частным корнем CA.
+# SEARXNG_PROXY_CA_FILE — путь HOST, SEARXNG_CA_BUNDLE — путь CONTAINER.
+services:
+  searxng:
+    volumes:
+      - ${SEARXNG_PROXY_CA_FILE:?Укажите существующий CA bundle}:/run/lead-research/ca.pem:ro

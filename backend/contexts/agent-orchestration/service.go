@@ -81,6 +81,10 @@ type Config struct {
 	// владельца; nil — блок поиска честно недоступен.
 	LeadSearch leadsearch.Port
 
+	// Research — отдельный durable worker нового исследовательского пути.
+	// nil сохраняет существующий demo; запускается только в роли worker.
+	Research *ResearchService
+
 	// SearchLimit — сколько компаний просит блок поиска; 0 — одна компания.
 	SearchLimit int
 
@@ -471,7 +475,7 @@ func (s *Service) runAPI(ctx context.Context) error {
 // outbox) и воркер workflow, исполняющий шаги агентов. Падение любого контура
 // останавливает роль.
 func (s *Service) runWorker(ctx context.Context) error {
-	if s.slice.Relay == nil && s.workflowWorker == nil && s.availabilityMonitor == nil {
+	if s.slice.Relay == nil && s.workflowWorker == nil && s.availabilityMonitor == nil && s.config.Research == nil {
 		return fmt.Errorf("worker: ни публикация событий агента, ни воркер workflow не собраны")
 	}
 	if s.slice.Relay != nil {
@@ -480,9 +484,14 @@ func (s *Service) runWorker(ctx context.Context) error {
 	if s.workflowWorker == nil {
 		s.logger.Warn("worker: воркер workflow не собран (Temporal не подключён)", observ.Fields{}, "service", ServiceID)
 	}
+	workflowRun := s.runWorkflowWorker
+	if s.workflowWorker == nil {
+		workflowRun = nil
+	}
 	return s.runContours(ctx, []namedContour{
 		{name: "relay", fn: relayRunner(s.slice.Relay)},
-		{name: "workflow", fn: s.runWorkflowWorker},
+		{name: "workflow", fn: workflowRun},
+		{name: "research", fn: researchRunner(s.config.Research, s.logger)},
 		{name: "runtime-monitor", fn: monitorRunner(s.availabilityMonitor)},
 	})
 }
@@ -614,3 +623,16 @@ var _ composition.Service = (*Service)(nil)
 // Проверка использования имени схемы адаптера (граница данных зафиксирована в
 // миграциях и адаптере).
 var _ = outboxpersistence.Schema
+
+// researchRunner не регистрируется в chains: там живут старые Temporal-процессы.
+// Каждое действие нового worker уже имеет собственный persisted lease и epoch.
+func researchRunner(research *ResearchService, logger observ.Logger) func(context.Context) error {
+	if research == nil {
+		return nil
+	}
+	return func(ctx context.Context) error {
+		return research.RunWorker(ctx, 16, func(err error) {
+			logger.Error("research: проход долговечной очереди", err, observ.Fields{}, "service", ServiceID)
+		})
+	}
+}

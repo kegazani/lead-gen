@@ -44,7 +44,7 @@ var (
 
 	// ErrInvalidReasonCode — код причины сбоя исполнения пуст или не входит в
 	// согласованный набор (search_failed, draft_failed, handoff_failed,
-	// transition_rejected, workflow_timed_out).
+	// transition_rejected, workflow_timed_out, research_partial, research_failed).
 	ErrInvalidReasonCode = errors.New("домен: недопустимый код причины сбоя исполнения")
 
 	// ErrInvalidOfferRevision — сохранённая версия оффера некорректна.

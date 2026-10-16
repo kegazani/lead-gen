@@ -24,8 +24,9 @@ const (
 	transportSync  = "sync"
 	transportAsync = "async"
 
-	mechanismHTTPJSON = "http-json"
-	mechanismAMQP     = "amqp"
+	mechanismHTTPJSON  = "http-json"
+	mechanismAMQP      = "amqp"
+	mechanismInProcess = "in-process"
 )
 
 // allowedMechanisms — допустимые значения mechanism группы деплоя:
@@ -143,7 +144,8 @@ func validateContextRoles(catalog Catalog) []string {
 
 // validateRelationshipTransports — правило 2.3 «транспорт объявлен и
 // согласован»: у каждой связи есть transport и mechanism; command/query →
-// sync + http-json, event/policy → async + amqp. Ошибка называет id связи.
+// sync + http-json либо явно описанный co-location, event/policy → async + amqp.
+// Проверка самого co-location выполняется validateInProcessBindings.
 func validateRelationshipTransports(catalog Catalog) []string {
 	var problems []string
 	for _, relationship := range catalog.Relationships {
@@ -159,7 +161,7 @@ func validateRelationshipTransports(catalog Catalog) []string {
 		}
 		if relationship.Mechanism == "" {
 			problems = append(problems, fmt.Sprintf("relationships.%s: не объявлен mechanism", relationship.ID))
-		} else if relationship.Mechanism != expectedMechanism {
+		} else if relationship.Mechanism != expectedMechanism && !(expectedTransport == transportSync && relationship.Mechanism == mechanismInProcess) {
 			problems = append(problems, fmt.Sprintf("relationships.%s: mechanism %q несовместим с интеграцией %q (ожидался %q)", relationship.ID, relationship.Mechanism, relationship.Integration, expectedMechanism))
 		}
 	}

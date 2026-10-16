@@ -25,11 +25,11 @@
       "id": "lead-management",
       "name": "Управление лидами",
       "classification": "core",
-      "purpose": "Приём, нормализация, обогащение и проверка компаний и контактов в пуле клиента. План intelligent-lead-research: долгоживущие сущности, открытые потребности, доказательные связи и зависимости выводов между запусками.",
+      "purpose": "Приём, нормализация, обогащение и проверка компаний и контактов в пуле клиента. Исследовательский путь хранит scoped сущности, источники, утверждения и открытые потребности; полная сеть зависимостей остаётся частью программы intelligent-lead-research.",
       "capabilities": ["osint-enrichment", "company-size-assessment", "email-verification", "lead-workflow", "lead-email", "email-template-library", "search-strategy", "company-quota-search", "forum-lead-signals", "lead-relevance", "search-job-control", "search-job-lifecycle", "search-job-progress", "search-job-error-codes", "search-job-events", "job-journal-console", "lead-cards-console", "console-appearance", "semantic-lead-search", "lead-search", "email-generation", "search-recommendation", "lead-entity-resolution", "lead-research-memory", "inbound-lead-conversations"],
       "service": "lead-management",
       "roles": ["api", "worker"],
-      "contracts": ["lead-profile", "lead-verified", "company-profile", "lead-search", "email-generation", "delivery-target", "lead-relevance", "recommendation-apply", "address-verification"]
+      "contracts": ["lead-profile", "lead-verified", "company-profile", "lead-search", "email-generation", "delivery-target", "lead-relevance", "recommendation-apply", "address-verification", "research-memory"]
     },
     {
       "id": "audience",
@@ -99,7 +99,7 @@
       "capabilities": ["provider-agnostic-integrations", "firecrawl-credit-budget", "crawler-proxy-pool", "integration-call-resilience", "provider-token-budget", "vector-recall", "regional-web-acquisition"],
       "service": "integration-platform",
       "roles": ["api", "ingest", "worker", "chains", "schedule"],
-      "contracts": ["adapter-capability", "adapter-status", "integration-error", "provider-port", "vector"]
+      "contracts": ["adapter-capability", "adapter-status", "integration-error", "provider-port", "vector", "research-acquisition", "research-extraction"]
     },
     {
       "id": "request-fulfillment",
@@ -119,7 +119,7 @@
       "capabilities": ["company-agent-orchestration", "adaptive-lead-research"],
       "service": "agent-orchestration",
       "roles": ["api", "worker", "chains", "schedule"],
-      "contracts": ["agent-command", "agent-run-state", "agent-event"]
+      "contracts": ["agent-command", "agent-run-state", "agent-event", "research-mission", "research-plan"]
     }
   ],
   "entities": [
@@ -164,7 +164,25 @@
     {"id": "pipeline-step", "name": "Шаг пайплайна", "owner_context": "agent-orchestration", "zone": "green", "storage": "relational"},
     {"id": "agent-run", "name": "Запуск агента", "owner_context": "agent-orchestration", "zone": "green", "storage": "relational"},
     {"id": "agent-step-run", "name": "Шаг запуска агента", "owner_context": "agent-orchestration", "zone": "green", "storage": "relational"},
-    {"id": "quality-insight", "name": "Инсайт качества поиска", "owner_context": "analytics", "zone": "analytics", "storage": "analytics"}
+    {"id": "quality-insight", "name": "Инсайт качества поиска", "owner_context": "analytics", "zone": "analytics", "storage": "analytics"},
+    {"id": "research-entity", "name": "Исследуемая сущность", "owner_context": "lead-management", "zone": "red", "storage": "client-relational"},
+    {"id": "research-observation", "name": "Наблюдение источника", "owner_context": "lead-management", "zone": "red", "storage": "client-relational"},
+    {"id": "research-assertion", "name": "Утверждение о сущности", "owner_context": "lead-management", "zone": "red", "storage": "client-relational"},
+    {"id": "research-open-need", "name": "Открытая потребность в сведениях", "owner_context": "lead-management", "zone": "red", "storage": "client-relational"},
+    {"id": "research-source", "name": "Версия исследовательского источника", "owner_context": "lead-management", "zone": "red", "storage": "client-relational"},
+    {"id": "research-attempt-memory", "name": "Память попытки исследования", "owner_context": "lead-management", "zone": "red", "storage": "client-relational"},
+    {"id": "research-mission", "name": "Исследовательская миссия", "owner_context": "agent-orchestration", "zone": "red", "storage": "client-relational"},
+    {"id": "research-action", "name": "Действие исследования", "owner_context": "agent-orchestration", "zone": "red", "storage": "client-relational"},
+    {"id": "research-member", "name": "Участие сущности в миссии", "owner_context": "agent-orchestration", "zone": "red", "storage": "client-relational"},
+    {"id": "firecrawl-credit-account", "name": "Кредитный счёт Firecrawl", "owner_context": "integration-platform", "zone": "red", "storage": "client-relational"},
+    {"id": "firecrawl-credit-grant", "name": "Разрешение расхода Firecrawl", "owner_context": "integration-platform", "zone": "red", "storage": "client-relational"},
+    {"id": "research-acquisition-attempt", "name": "Попытка получения источника", "owner_context": "integration-platform", "zone": "red", "storage": "client-relational"},
+    {"id": "firecrawl-reconciliation", "name": "Сверка расхода Firecrawl", "owner_context": "integration-platform", "zone": "red", "storage": "client-relational"},
+    {"id": "research-identity-scope", "name": "Поколение карты тождества в области", "owner_context": "lead-management", "zone": "red", "storage": "client-relational"},
+    {"id": "research-identity-decision", "name": "Решение человека о тождестве", "owner_context": "lead-management", "zone": "red", "storage": "client-relational"},
+    {"id": "research-source-policy", "name": "Технические ограничения proxy-источника", "owner_context": "integration-platform", "zone": "red", "storage": "client-relational"},
+    {"id": "research-source-attempt", "name": "Техническая попытка proxy-источника", "owner_context": "integration-platform", "zone": "red", "storage": "client-relational"},
+    {"id": "research-identity-candidate", "name": "Кандидат для проверки тождества", "owner_context": "lead-management", "zone": "red", "storage": "client-relational"}
   ],
   "aggregates": [
     {
@@ -406,6 +424,122 @@
       "domain_events": ["quality-insight-refreshed", "quality-recommendation-issued"],
       "policies": ["minimum-group-threshold"],
       "invariants": ["Инсайт не содержит персональных данных и содержимого красной зоны: только агрегаты и обезличенные признаки.", "Различаются «нет сигнала», «опровергнуто» и «ошибка извлечения»: ошибка извлечения не смешивается с отрицательным решением.", "Рекомендация выдаётся только с наблюдаемым основанием; при недостатке данных рекомендация не формируется.", "Снимок воспроизводим по watermark и версии формул.", "Срез ниже порога минимальной группы не показывается."]
+    },
+    {
+      "id": "research-dossier",
+      "owner_context": "lead-management",
+      "root_entity": "research-entity",
+      "entities": ["research-entity", "research-observation", "research-assertion", "research-open-need"],
+      "value_objects": ["research-memory-scope", "research-identifier", "evidence-locator", "assertion-validity", "open-need-state"],
+      "domain_events": [],
+      "policies": [],
+      "invariants": [
+        "Компания без email сохраняется; наличие контакта не означает пригодность для любой миссии или доставляемость email.",
+        "Сопоставление и чтение ограничены tenant и purpose; имя и домен не являются глобальной юридической идентичностью.",
+        "Утверждение имеет источник, метод, субъект и проверяемый locator; отзыв источника учитывается при чтении.",
+        "Повтор observation_id с другим payload отклоняется; поздний контакт не переписывает завершённый состав чужой миссии."
+      ]
+    },
+    {
+      "id": "research-source",
+      "owner_context": "lead-management",
+      "root_entity": "research-source",
+      "entities": ["research-source"],
+      "value_objects": ["research-source-revision", "research-source-access"],
+      "domain_events": [],
+      "policies": [],
+      "invariants": [
+        "Источник может поддерживать несколько досье, оставаясь в одной разрешённой области.",
+        "Повтор URL и ревизии с другим содержимым не заменяет доказательство молча.",
+        "Отозванное содержимое не возвращается чтением досье."
+      ]
+    },
+    {
+      "id": "research-attempt-memory",
+      "owner_context": "lead-management",
+      "root_entity": "research-attempt-memory",
+      "entities": ["research-attempt-memory"],
+      "value_objects": ["research-attempt-key"],
+      "domain_events": [],
+      "policies": [],
+      "invariants": [
+        "Отрицательная попытка имеет время и срок применимости; новый источник или вопрос не блокируется бессрочно.",
+        "История попытки не разрешает самостоятельное начало внешнего действия."
+      ]
+    },
+    {
+      "id": "research-mission",
+      "owner_context": "agent-orchestration",
+      "root_entity": "research-mission",
+      "entities": ["research-mission", "research-action", "research-member"],
+      "value_objects": ["research-mission-scope", "search-brief", "search-strategy-plan", "query-family", "strategy-cell", "research-technical-limits", "research-action-lease", "research-firecrawl-grant-ref"],
+      "domain_events": [],
+      "policies": [],
+      "invariants": [
+        "Миссия привязана к человеческой заявке, tenant/purpose и версиям критериев/плана; фиксированной количественной цели нет.",
+        "Внешний вызов выполняется вне транзакции после сохранения намерения и аренды.",
+        "Состав результата пополняется после сохранения наблюдения у владельца памяти; терминальный снимок состава не переписывается.",
+        "Неизвестный внешний исход не превращается в автоматическое разрешение повторного эффекта."
+      ]
+    },
+    {
+      "id": "firecrawl-credit-account",
+      "owner_context": "integration-platform",
+      "root_entity": "firecrawl-credit-account",
+      "entities": ["firecrawl-credit-account", "firecrawl-credit-grant"],
+      "value_objects": ["firecrawl-credit-balance", "firecrawl-grant-scope"],
+      "domain_events": [],
+      "policies": [],
+      "invariants": [
+        "Общий финансовый cap принадлежит Firecrawl account; параллельные grant используют один учёт.",
+        "Нулевой cap означает отсутствие настроенного денежного потолка, а не скрытую числовую цель.",
+        "Неизвестный расход сохраняет reservation до подтверждённой сверки; у остальных proxy-инструментов такого ledger нет."
+      ]
+    },
+    {
+      "id": "research-acquisition-attempt",
+      "owner_context": "integration-platform",
+      "root_entity": "research-acquisition-attempt",
+      "entities": ["research-acquisition-attempt", "firecrawl-reconciliation"],
+      "value_objects": ["research-acquisition-receipt", "research-provider-profile", "research-geography", "research-acquisition-lease"],
+      "domain_events": [],
+      "policies": [],
+      "invariants": [
+        "Существующий receipt возвращается без нового запроса; повтор изменённой команды конфликтует.",
+        "Утверждение о компании не выводится из самого факта успешного fetch/search.",
+        "Сырые URL/страницы и receipt сохраняются только в клиентской red зоне.",
+        "Неподдержанная обязательная география отклоняется до списания; неизвестный исход требует сверки."
+      ]
+    },
+    {
+      "id": "research-identity-map",
+      "owner_context": "lead-management",
+      "root_entity": "research-identity-scope",
+      "entities": ["research-identity-scope", "research-identity-decision", "research-identity-candidate"],
+      "value_objects": ["research-identity-evidence", "research-canonical-group", "research-identity-change"],
+      "domain_events": [],
+      "policies": [],
+      "invariants": [
+        "Команда link/reject/revoke имеет человеческого автора, причину, evidence и проверяет ожидаемые ревизии исходных сущностей.",
+        "Исходные entity и source refs сохраняются; canonical membership является пересчитываемой проекцией, не физическим слиянием данных.",
+        "Конфликт сильных идентификаторов, reject и отзыв supporting source учитываются при построении текущей карты.",
+        "Решение, новая ревизия карты и red changefeed сохраняются атомарно; чтение changefeed не означает публикацию AMQP-события.",
+        "Кандидат по имени, тому же origin и наблюдаемой навигации требует проверки; сам сигнал не сливает сущности."
+      ]
+    },
+    {
+      "id": "research-proxy-source",
+      "owner_context": "integration-platform",
+      "root_entity": "research-source-policy",
+      "entities": ["research-source-policy", "research-source-attempt"],
+      "value_objects": ["research-source-technical-cap", "research-source-attempt-receipt"],
+      "domain_events": [],
+      "policies": [],
+      "invariants": [
+        "Денежный account/grant Firecrawl не участвует в admission proxy-источника.",
+        "Источник ограничивает конкурентность, число попыток и минимальный интервал; сеть находится вне транзакции.",
+        "Attempt содержит tenant/purpose/action/command hash и epoch; неизвестный исход сохраняется отдельно от успешного receipt."
+      ]
     }
   ],
   "value_objects": [
@@ -462,7 +596,34 @@
     {"id": "block-outcome", "owner_context": "agent-orchestration", "owner_aggregate": "agent-run", "semantics": "Исход шага: успех, отказ с нормализованной причиной без секретов или явная недоступность внешней системы."},
     {"id": "insight-scope", "owner_context": "analytics", "owner_aggregate": "quality-insight", "semantics": "Разрез анализа: задание, источник, ниша или период."},
     {"id": "rejection-reason", "owner_context": "analytics", "owner_aggregate": "quality-insight", "semantics": "Категория причины «не подходит»: нет сигнала, потребность опровергнута, ошибка извлечения."},
-    {"id": "recommendation", "owner_context": "analytics", "owner_aggregate": "quality-insight", "semantics": "Рекомендация оператору с наблюдаемым основанием; без основания не формируется."}
+    {"id": "recommendation", "owner_context": "analytics", "owner_aggregate": "quality-insight", "semantics": "Рекомендация оператору с наблюдаемым основанием; без основания не формируется."},
+    {"id": "research-memory-scope", "owner_context": "lead-management", "owner_aggregate": "research-dossier", "semantics": "Явная область tenant_id и purpose для чтения, связывания и сохранения знаний."},
+    {"id": "research-identifier", "owner_context": "lead-management", "owner_aggregate": "research-dossier", "semantics": "Нормализованный идентификатор с юрисдикцией, authority, методом и исходным значением."},
+    {"id": "evidence-locator", "owner_context": "lead-management", "owner_aggregate": "research-dossier", "semantics": "Байтовый диапазон и цитата в сохранённом представлении источника."},
+    {"id": "assertion-validity", "owner_context": "lead-management", "owner_aggregate": "research-dossier", "semantics": "Независимые оси knowledge, freshness и access, даты наблюдения и допустимости."},
+    {"id": "open-need-state", "owner_context": "lead-management", "owner_aggregate": "research-dossier", "semantics": "Состояние знания open/satisfied/blocked/obsolete отдельно от присоединённых миссий."},
+    {"id": "research-source-revision", "owner_context": "lead-management", "owner_aggregate": "research-source", "semantics": "URL, ревизия, hash и фактическое представление сохранённого источника."},
+    {"id": "research-source-access", "owner_context": "lead-management", "owner_aggregate": "research-source", "semantics": "Отзыв использования конкретного источника в tenant/purpose области."},
+    {"id": "research-attempt-key", "owner_context": "lead-management", "owner_aggregate": "research-attempt-memory", "semantics": "Область, вопрос, URL, ревизия источника, locale и субъект для ограниченного повторного использования попытки."},
+    {"id": "research-mission-scope", "owner_context": "agent-orchestration", "owner_aggregate": "research-mission", "semantics": "Явные tenant_id/purpose_id, человеческая заявка и версия критериев."},
+    {"id": "search-brief", "owner_context": "agent-orchestration", "owner_aggregate": "research-mission", "semantics": "Снимок оффера, ICP, человеческих критериев, рынков, языка, количества и единицы результата."},
+    {"id": "search-strategy-plan", "owner_context": "agent-orchestration", "owner_aggregate": "research-mission", "semantics": "Версионированный портфель с QueryFamily, StrategyCell и происхождением ограниченных предложений LLM."},
+    {"id": "query-family", "owner_context": "agent-orchestration", "owner_aggregate": "research-mission", "semantics": "Поисковый вопрос и query с происхождением, страной, языком и семейством источника."},
+    {"id": "strategy-cell", "owner_context": "agent-orchestration", "owner_aggregate": "research-mission", "semantics": "Связка query family с конкретной версией доступного источника, рынком и сегментом."},
+    {"id": "research-technical-limits", "owner_context": "agent-orchestration", "owner_aggregate": "research-mission", "semantics": "Технические пределы действий, попыток, времени, глубины и размера артефакта без денежного бюджета proxy-инструментов."},
+    {"id": "research-action-lease", "owner_context": "agent-orchestration", "owner_aggregate": "research-mission", "semantics": "Epoch и срок аренды действия для отклонения устаревшего результата."},
+    {"id": "research-firecrawl-grant-ref", "owner_context": "agent-orchestration", "owner_aggregate": "research-mission", "semantics": "Ссылка и проекция credit grant владельца integration-platform; не второй ledger."},
+    {"id": "firecrawl-credit-balance", "owner_context": "integration-platform", "owner_aggregate": "firecrawl-credit-account", "semantics": "Учёт spent/reserved/unknown credits только Firecrawl, общий для account и выделенного grant."},
+    {"id": "firecrawl-grant-scope", "owner_context": "integration-platform", "owner_aggregate": "firecrawl-credit-account", "semantics": "Привязка разрешения к account, tenant/purpose и человеческому mission или market_study intent."},
+    {"id": "research-acquisition-receipt", "owner_context": "integration-platform", "owner_aggregate": "research-acquisition-attempt", "semantics": "Сохранённый ответ с operation/action/attempt, hash, исходными артефактами, техническим исходом и расходом Firecrawl."},
+    {"id": "research-provider-profile", "owner_context": "integration-platform", "owner_aggregate": "research-acquisition-attempt", "semantics": "Версия фактических search/fetch возможностей и представлений поставщика."},
+    {"id": "research-geography", "owner_context": "integration-platform", "owner_aggregate": "research-acquisition-attempt", "semantics": "Различимые target/requested/applied/observed страны и языки; запрошенная география не является доказанной."},
+    {"id": "research-acquisition-lease", "owner_context": "integration-platform", "owner_aggregate": "research-acquisition-attempt", "semantics": "Epoch, expiry и command hash конкретной попытки внешнего вызова."},
+    {"id": "research-identity-evidence", "owner_context": "lead-management", "owner_aggregate": "research-identity-map", "semantics": "Scoped assertion refs, actor, reason, method/version и CAS исходных entity для человеческого решения."},
+    {"id": "research-canonical-group", "owner_context": "lead-management", "owner_aggregate": "research-identity-map", "semantics": "Canonical ref, исходные участники и поколение проекции; active/revoked/unavailable/conflict не переписывают историю решения."},
+    {"id": "research-identity-change", "owner_context": "lead-management", "owner_aggregate": "research-identity-map", "semantics": "Долговечная red запись revision/event_id/cause/entity_ids, читаемая через ReadIdentityChanges после cursor; внешнего broker publisher пока нет."},
+    {"id": "research-source-technical-cap", "owner_context": "integration-platform", "owner_aggregate": "research-proxy-source", "semantics": "max_concurrent, max_attempts, min_interval и next_allowed_at без финансового бюджета."},
+    {"id": "research-source-attempt-receipt", "owner_context": "integration-platform", "owner_aggregate": "research-proxy-source", "semantics": "Scoped операция, lease и completed/unknown receipt, включая поздний ответ без скрытого повторного вызова."}
   ],
   "domain_events": [
     {"id": "tenant-access-changed", "owner_context": "platform-governance", "producing_aggregate": "tenant-access"},
@@ -541,11 +702,9 @@
     {"id": "outreach-to-delivery", "upstream": "outreach-orchestration", "downstream": "message-delivery", "pattern": "published-language", "integration": "command", "transport": "sync", "mechanism": "http-json", "contract": "approved-action"},
     {"id": "delivery-to-observation", "upstream": "message-delivery", "downstream": "engagement-observation", "pattern": "published-language", "integration": "event", "transport": "async", "mechanism": "amqp", "contract": "delivery-event"},
     {"id": "observation-to-outreach", "upstream": "engagement-observation", "downstream": "outreach-orchestration", "pattern": "published-language", "integration": "event", "transport": "async", "mechanism": "amqp", "contract": "engagement-event"},
-
     {"id": "outreach-to-analytics", "upstream": "outreach-orchestration", "downstream": "analytics", "pattern": "published-language", "integration": "event", "transport": "async", "mechanism": "amqp", "contract": "analytics-event"},
     {"id": "delivery-to-analytics", "upstream": "message-delivery", "downstream": "analytics", "pattern": "published-language", "integration": "event", "transport": "async", "mechanism": "amqp", "contract": "delivery-event"},
     {"id": "observation-to-analytics", "upstream": "engagement-observation", "downstream": "analytics", "pattern": "published-language", "integration": "event", "transport": "async", "mechanism": "amqp", "contract": "engagement-event"},
-
     {"id": "platform-access-for-outreach", "upstream": "platform-governance", "downstream": "outreach-orchestration", "pattern": "published-language", "integration": "policy", "transport": "async", "mechanism": "amqp", "contract": "access-decision"},
     {"id": "platform-access-for-data-governance", "upstream": "platform-governance", "downstream": "data-governance", "pattern": "published-language", "integration": "policy", "transport": "async", "mechanism": "amqp", "contract": "access-decision"},
     {"id": "platform-access-check-for-outreach", "upstream": "platform-governance", "downstream": "outreach-orchestration", "pattern": "published-language", "integration": "query", "transport": "sync", "mechanism": "http-json", "contract": "access-decision"},
@@ -557,14 +716,11 @@
     {"id": "integrations-for-delivery", "upstream": "integration-platform", "downstream": "message-delivery", "pattern": "anticorruption-layer", "integration": "command", "transport": "sync", "mechanism": "http-json", "contract": "provider-port"},
     {"id": "leads-for-delivery", "upstream": "lead-management", "downstream": "message-delivery", "pattern": "customer-supplier", "integration": "query", "transport": "sync", "mechanism": "http-json", "contract": "delivery-target"},
     {"id": "lead-verification-for-outreach", "upstream": "lead-management", "downstream": "outreach-orchestration", "pattern": "customer-supplier", "integration": "query", "transport": "sync", "mechanism": "http-json", "contract": "address-verification"},
-
     {"id": "integrations-status-for-governance", "upstream": "integration-platform", "downstream": "platform-governance", "pattern": "customer-supplier", "integration": "query", "transport": "sync", "mechanism": "http-json", "contract": "adapter-status"},
-
     {"id": "integrations-for-outreach", "upstream": "integration-platform", "downstream": "outreach-orchestration", "pattern": "anticorruption-layer", "integration": "command", "transport": "sync", "mechanism": "http-json", "contract": "provider-port"},
     {"id": "delivery-to-lead", "upstream": "message-delivery", "downstream": "lead-management", "pattern": "published-language", "integration": "event", "transport": "async", "mechanism": "amqp", "contract": "delivery-event"},
     {"id": "engagement-to-audience", "upstream": "engagement-observation", "downstream": "audience", "pattern": "published-language", "integration": "event", "transport": "async", "mechanism": "amqp", "contract": "engagement-event"},
     {"id": "governance-policy-for-audience", "upstream": "data-governance", "downstream": "audience", "pattern": "published-language", "integration": "policy", "transport": "async", "mechanism": "amqp", "contract": "data-zone-policy"},
-
     {"id": "tenant-context-for-requests", "upstream": "platform-governance", "downstream": "request-fulfillment", "pattern": "published-language", "integration": "policy", "transport": "async", "mechanism": "amqp", "contract": "tenant-context"},
     {"id": "leads-for-requests", "upstream": "lead-management", "downstream": "request-fulfillment", "pattern": "customer-supplier", "integration": "query", "transport": "sync", "mechanism": "http-json", "contract": "lead-profile"},
     {"id": "audience-for-requests", "upstream": "audience", "downstream": "request-fulfillment", "pattern": "customer-supplier", "integration": "query", "transport": "sync", "mechanism": "http-json", "contract": "audience-snapshot"},
@@ -574,7 +730,6 @@
     {"id": "requests-to-outreach", "upstream": "outreach-orchestration", "downstream": "request-fulfillment", "pattern": "published-language", "integration": "command", "transport": "sync", "mechanism": "http-json", "contract": "outreach-handoff"},
     {"id": "content-for-requests", "upstream": "content-production", "downstream": "request-fulfillment", "pattern": "customer-supplier", "integration": "command", "transport": "sync", "mechanism": "http-json", "contract": "content-request"},
     {"id": "delivery-events-for-requests", "upstream": "message-delivery", "downstream": "request-fulfillment", "pattern": "published-language", "integration": "event", "transport": "async", "mechanism": "amqp", "contract": "delivery-event"},
-
     {"id": "lead-search-for-agents", "upstream": "lead-management", "downstream": "agent-orchestration", "pattern": "customer-supplier", "integration": "query", "transport": "sync", "mechanism": "http-json", "contract": "lead-search"},
     {"id": "email-generation-for-agents", "upstream": "lead-management", "downstream": "agent-orchestration", "pattern": "customer-supplier", "integration": "query", "transport": "sync", "mechanism": "http-json", "contract": "email-generation"},
     {"id": "lead-relevance-for-agents", "upstream": "lead-management", "downstream": "agent-orchestration", "pattern": "customer-supplier", "integration": "query", "transport": "sync", "mechanism": "http-json", "contract": "lead-relevance"},
@@ -587,7 +742,18 @@
     {"id": "tenant-context-for-agents", "upstream": "platform-governance", "downstream": "agent-orchestration", "pattern": "published-language", "integration": "policy", "transport": "async", "mechanism": "amqp", "contract": "tenant-context"},
     {"id": "content-request-for-agents", "upstream": "content-production", "downstream": "agent-orchestration", "pattern": "customer-supplier", "integration": "command", "transport": "sync", "mechanism": "http-json", "contract": "content-request"},
     {"id": "approved-action-for-agents", "upstream": "outreach-orchestration", "downstream": "agent-orchestration", "pattern": "published-language", "integration": "query", "transport": "sync", "mechanism": "http-json", "contract": "approved-action"},
-    {"id": "analytics-metrics-for-governance", "upstream": "analytics", "downstream": "platform-governance", "pattern": "customer-supplier", "integration": "query", "transport": "sync", "mechanism": "http-json", "contract": "campaign-report"}
+    {"id": "analytics-metrics-for-governance", "upstream": "analytics", "downstream": "platform-governance", "pattern": "customer-supplier", "integration": "query", "transport": "sync", "mechanism": "http-json", "contract": "campaign-report"},
+    {"id": "research-mission-commands-for-requests", "upstream": "agent-orchestration", "downstream": "request-fulfillment", "pattern": "customer-supplier", "integration": "command", "transport": "sync", "mechanism": "in-process", "co_location": "research-client", "contract": "research-mission"},
+    {"id": "research-mission-status-for-requests", "upstream": "agent-orchestration", "downstream": "request-fulfillment", "pattern": "customer-supplier", "integration": "query", "transport": "sync", "mechanism": "in-process", "co_location": "research-client", "contract": "research-mission"},
+    {"id": "research-plans-for-requests", "upstream": "agent-orchestration", "downstream": "request-fulfillment", "pattern": "customer-supplier", "integration": "command", "transport": "sync", "mechanism": "in-process", "co_location": "research-client", "contract": "research-plan"},
+    {"id": "research-memory-writes-for-agents", "upstream": "lead-management", "downstream": "agent-orchestration", "pattern": "customer-supplier", "integration": "command", "transport": "sync", "mechanism": "in-process", "co_location": "research-client", "contract": "research-memory"},
+    {"id": "research-memory-reads-for-agents", "upstream": "lead-management", "downstream": "agent-orchestration", "pattern": "customer-supplier", "integration": "query", "transport": "sync", "mechanism": "in-process", "co_location": "research-client", "contract": "research-memory"},
+    {"id": "research-dossiers-for-requests", "upstream": "lead-management", "downstream": "request-fulfillment", "pattern": "customer-supplier", "integration": "query", "transport": "sync", "mechanism": "in-process", "co_location": "research-client", "contract": "research-memory"},
+    {"id": "research-acquisition-for-agents", "upstream": "integration-platform", "downstream": "agent-orchestration", "pattern": "anticorruption-layer", "integration": "command", "transport": "sync", "mechanism": "in-process", "co_location": "research-client", "contract": "research-acquisition"},
+    {"id": "research-acquisition-receipts-for-agents", "upstream": "integration-platform", "downstream": "agent-orchestration", "pattern": "anticorruption-layer", "integration": "query", "transport": "sync", "mechanism": "in-process", "co_location": "research-client", "contract": "research-acquisition"},
+    {"id": "research-models-for-agents", "upstream": "integration-platform", "downstream": "agent-orchestration", "pattern": "anticorruption-layer", "integration": "command", "transport": "sync", "mechanism": "in-process", "co_location": "research-client", "contract": "provider-port"},
+    {"id": "research-identity-commands-for-requests", "upstream": "lead-management", "downstream": "request-fulfillment", "pattern": "customer-supplier", "integration": "command", "transport": "sync", "mechanism": "in-process", "co_location": "research-client", "contract": "research-memory"},
+    {"id": "research-models-for-memory", "upstream": "integration-platform", "downstream": "lead-management", "pattern": "anticorruption-layer", "integration": "command", "transport": "sync", "mechanism": "in-process", "co_location": "research-client", "contract": "research-extraction"}
   ],
   "required_diagrams": [
     {"id": "bounded-context-map", "path": "architecture/diagrams/bounded-context-map.puml", "contexts": ["platform-governance", "data-governance", "lead-management", "audience", "content-production", "outreach-orchestration", "message-delivery", "engagement-observation", "analytics", "integration-platform", "request-fulfillment", "agent-orchestration"]},

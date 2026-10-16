@@ -1782,5 +1782,14 @@
     "priority_clarification": "CL-15",
     "budget_clarification": "CL-16",
     "goal_clarification": "CL-17"
+  },
+  "implementation_checkpoint": {
+    "date": "2026-10-15",
+    "status": "partial-implementation",
+    "evidence": "docs/evidence/intelligent-research-runtime-2026-10-15.md",
+    "task_review": "docs/evidence/intelligent-research-task-coverage-2026-10-15.md",
+    "accepted_tasks": 0,
+    "total_tasks": 94,
+    "note": "Действующий search/LLM/Firecrawl/PG/UI срез не заменяет полную приёмку. Независимый аудит всех задач сохраняет недостающие критерии; все required требования остаются обязательными."
   }
 }

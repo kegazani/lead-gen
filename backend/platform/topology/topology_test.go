@@ -119,6 +119,7 @@ func TestBuildRealSources(t *testing.T) {
 	}
 
 	var catalogEdges, derived int
+	researchEdges := expectedResearchEdges()
 	nodeIDs := make(map[string]bool, len(graph.Nodes))
 	for _, node := range graph.Nodes {
 		nodeIDs[node.ID] = true
@@ -133,8 +134,12 @@ func TestBuildRealSources(t *testing.T) {
 			}
 			switch edge.Integration {
 			case "command", "query":
-				if edge.Transport != "sync" || edge.Mechanism != "http-json" {
-					t.Errorf("связь %q: %s/%s, ожидалось sync/http-json", edge.ID, edge.Transport, edge.Mechanism)
+				mechanism := "http-json"
+				if _, declared := researchEdges[edge.ID]; declared {
+					mechanism = "in-process"
+				}
+				if edge.Transport != "sync" || edge.Mechanism != mechanism {
+					t.Errorf("связь %q: %s/%s, ожидалось sync/%s", edge.ID, edge.Transport, edge.Mechanism, mechanism)
 				}
 			case "event", "policy":
 				if edge.Transport != "async" || edge.Mechanism != "amqp" {
@@ -154,8 +159,8 @@ func TestBuildRealSources(t *testing.T) {
 			t.Errorf("ребро %q: интенсивность %+v, ожидался unknown без измерения", edge.ID, edge.Intensity)
 		}
 	}
-	if catalogEdges != 51 {
-		t.Errorf("связей каталога: %d, ожидалось 51", catalogEdges)
+	if catalogEdges != 62 {
+		t.Errorf("связей каталога: %d, ожидалось 62", catalogEdges)
 	}
 	if derived == 0 {
 		t.Error("не выведено ни одного ребра «сервис → инфраструктура»")
@@ -354,4 +359,45 @@ func TestLoaderConcurrentAccess(t *testing.T) {
 		}()
 	}
 	wait.Wait()
+}
+
+// expectedResearchEdges фиксирует владельцев и опубликованные порты сборки
+// deploy/research-client.json; произвольный in-process здесь не разрешается.
+func expectedResearchEdges() map[string][6]string {
+	return map[string][6]string{
+		"research-mission-commands-for-requests":   {"agent-orchestration", "request-fulfillment", "command", "research-mission", "sync", "in-process"},
+		"research-mission-status-for-requests":     {"agent-orchestration", "request-fulfillment", "query", "research-mission", "sync", "in-process"},
+		"research-plans-for-requests":              {"agent-orchestration", "request-fulfillment", "command", "research-plan", "sync", "in-process"},
+		"research-memory-writes-for-agents":        {"lead-management", "agent-orchestration", "command", "research-memory", "sync", "in-process"},
+		"research-memory-reads-for-agents":         {"lead-management", "agent-orchestration", "query", "research-memory", "sync", "in-process"},
+		"research-dossiers-for-requests":           {"lead-management", "request-fulfillment", "query", "research-memory", "sync", "in-process"},
+		"research-acquisition-for-agents":          {"integration-platform", "agent-orchestration", "command", "research-acquisition", "sync", "in-process"},
+		"research-acquisition-receipts-for-agents": {"integration-platform", "agent-orchestration", "query", "research-acquisition", "sync", "in-process"},
+		"research-models-for-agents":               {"integration-platform", "agent-orchestration", "command", "provider-port", "sync", "in-process"},
+		"research-identity-commands-for-requests":  {"lead-management", "request-fulfillment", "command", "research-memory", "sync", "in-process"},
+		"research-models-for-memory":               {"integration-platform", "lead-management", "command", "research-extraction", "sync", "in-process"},
+	}
+}
+
+func TestResearchRelationshipsKeepExactOwnerAndTransport(t *testing.T) {
+	want := expectedResearchEdges()
+	graph := Build(realSources())
+	edges := graph.Edges
+	for _, edge := range edges {
+		expected, exists := want[edge.ID]
+		if !exists {
+			if edge.Mechanism == "in-process" {
+				t.Errorf("неожиданная in-process связь %s", edge.ID)
+			}
+			continue
+		}
+		actual := [6]string{edge.From, edge.To, edge.Integration, edge.Contract, edge.Transport, edge.Mechanism}
+		if actual != expected {
+			t.Errorf("связь %s: %v, ожидалось %v", edge.ID, actual, expected)
+		}
+		delete(want, edge.ID)
+	}
+	if len(want) != 0 {
+		t.Errorf("research связи отсутствуют: %v", want)
+	}
 }

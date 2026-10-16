@@ -19,6 +19,22 @@
 > [`docs/e2e-plan.md`](e2e-plan.md). Не считать capability реализованной до обновления
 > фактических строк матрицы после проверки кода и live acceptance.
 
+## Исследовательский контур — 2026-10-15
+
+| Часть | Фактическая реализация и проверка | Оставшаяся граница |
+|---|---|---|
+| Поиск и миссия | SearchBrief/portfolio, PostgreSQL actions/receipts, recovery, pause/resume/cancel; реальные Firecrawl + DeepSeek | Адаптивное обучение, полная Temporal/outbox приёмка |
+| Память и identity | Tenant/purpose, источники/локаторы, поздние контакты, отзыв, ручные link/reject/revoke; PostgreSQL/race | Независимый quality corpus, все производные проекции/retention |
+| Заявка и UI | Атомарный режим human approval, scoped досье/прогресс, CSRF; Chromium подтвердил две разные компании и request-owned terminal статус | Полный email/conversation путь и связь с прежним каталогом лидов |
+| Контакты | Точные цитаты; строгий раздел реквизитов; реальный DeepSeek replay и запись email/полного телефона в PostgreSQL | Полный поиск контактной цели пока не принят; два широких прогона дали partial, нужна связь brand/legal/profile |
+| Свой metasearch | SearXNG adapter + PostgreSQL technical receipts, официальный pinned runtime | Внешние engines заблокированы cloud egress; выдача пока не принята |
+| Browser/OCR/переписка | Существующий полный план остаётся обязательным | В новом исследовательском пути пока не реализованы |
+
+[Отчёт и точные результаты](evidence/intelligent-research-runtime-2026-10-15.md).
+Все 94 task blueprint проверены [независимым аудитом](evidence/intelligent-research-task-coverage-2026-10-15.md): частичная реализация не закрывает недостающие критерии.
+Денежный учёт только Firecrawl, количество выбирается в конкретной заявке.
+Новый путь активируется [отдельным overlay](../deploy/research/README.md).
+
 ## 0. Заглушки к незамедлительному исправлению (P0)
 
 > Правило запрета заглушек — `AGENTS.md` §3: заглушка не считается реализацией и

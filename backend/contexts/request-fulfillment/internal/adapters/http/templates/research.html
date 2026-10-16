@@ -1,0 +1,66 @@
+{{define "content"}}
+<section data-research-page data-tenant-id="{{.View.TenantID}}" data-request-id="{{.View.Request.RequestID}}" data-refresh-error="{{text "research.refresh_error"}}" data-refresh-updated="{{text "research.refresh_updated"}}" data-session-expired="{{text "research.session_expired"}}">
+ {{template "live" .View.Live}}
+ <h1>{{text "research.title"}}</h1>
+ <p class="hint">{{text "research.search_only"}}</p>
+ <p><a href="/requests/{{.View.Request.RequestID}}/validation?tenant_id={{urlquery .View.TenantID}}">{{text "research.back"}}</a></p>
+ <dl class="facts"><div><dt>{{text "research.offer"}}</dt><dd>{{.View.Request.Offer.Content}}</dd></div><div><dt>{{text "research.icp"}}</dt><dd>{{.View.Request.Offer.Target}}</dd></div></dl>
+ {{with .View.Notice}}<p class="notice" role="alert">{{.}}</p>{{end}}
+ <p role="status" aria-live="polite" data-research-refresh-status></p>
+ <p hidden data-research-login><a href="/login">{{text "research.login"}}</a></p>
+ {{if or .View.CanStart .View.CanApprove}}
+ <form class="fact-panel" method="post" action="/requests/{{.View.Request.RequestID}}/{{if .View.CanApprove}}validation/approve{{else}}research/start{{end}}">
+  <input type="hidden" name="tenant_id" value="{{.View.TenantID}}"><input type="hidden" name="csrf" value="{{.View.CSRF}}"><input type="hidden" name="research_mode" value="research">
+  <p class="field"><label for="research-quantity">{{text "research.quantity"}}</label><input id="research-quantity" name="research_quantity" type="number" min="1" step="1" {{if gt .View.Quantity 0}}value="{{.View.Quantity}}"{{end}} required></p>
+  <p class="field"><label for="research-unit">{{text "research.unit"}}</label><select id="research-unit" name="research_unit" required><option value="company" {{if eq .View.Unit "company"}}selected{{end}}>{{text "research.unit.company"}}</option><option value="company-with-contact" {{if eq .View.Unit "company-with-contact"}}selected{{end}}>{{text "research.unit.company-with-contact"}}</option>{{if .View.EmailReadyAvailable}}<option value="email-ready" {{if eq .View.Unit "email-ready"}}selected{{end}}>{{text "research.unit.email-ready"}}</option>{{end}}</select></p>
+  <fieldset><legend>{{text "research.countries"}}</legend>{{range .View.Countries}}<label><input type="checkbox" name="research_country" value="{{.Code}}" {{if .Selected}}checked{{end}}> {{.Name}} ({{.Code}})</label> <label>{{text "research.languages"}} <input type="text" name="research_language_{{.Code}}" value="{{.Languages}}" maxlength="40"></label><br> {{end}}<p class="hint">{{text "research.countries_hint"}}</p></fieldset>
+  <p class="hint">{{text "research.budget_hint"}}</p>
+  <button type="submit">{{if .View.CanApprove}}{{text "research.approve"}}{{else}}{{text "research.start"}}{{end}}</button>
+ </form>
+ {{else if not .View.Snapshot}}<p class="hint">{{text "research.approval_required"}}</p>{{end}}
+ {{template "research-snapshot" .View}}
+</section>
+{{end}}
+
+{{define "research-snapshot"}}
+<div data-research-snapshot data-request-id="{{.Request.RequestID}}" data-tenant-id="{{.TenantID}}" data-mission-id="{{if .Snapshot}}{{.Snapshot.MissionID}}{{end}}" data-revision="{{if .Snapshot}}{{.Snapshot.Revision}}{{else}}0{{end}}">
+ {{if .Snapshot}}
+ <section class="fact-panel">
+ <dl class="facts">
+  <div><dt>{{text "research.planner"}}</dt><dd>{{label "research.planner_status" .Snapshot.PlannerStatus}}</dd></div><div><dt>{{text "research.state"}}</dt><dd>{{label "research.state" .Snapshot.State}}</dd></div><div><dt>{{text "research.phase"}}</dt><dd>{{label "research.phase" .Snapshot.Phase}}</dd></div>
+  {{with .Snapshot.WaitingReason}}<div><dt>{{text "research.wait"}}</dt><dd>{{label "research.reason" .}}</dd></div>{{end}}
+  {{with .Snapshot.Outcome}}<div><dt>{{text "research.outcome"}}</dt><dd>{{label "research.outcome" .}}</dd></div>{{end}}
+  {{with .Snapshot.StopReason}}<div><dt>{{text "research.reason"}}</dt><dd>{{label "research.reason" .}}</dd></div>{{end}}
+  <div><dt>{{text "research.target"}}</dt><dd>{{.Snapshot.Goal.Quantity}} · {{label "research.unit" .Snapshot.Goal.Unit}}</dd></div>
+  <div><dt>{{text "research.discovered"}}</dt><dd>{{.Snapshot.Counters.Discovered}}</dd></div>
+  <div><dt>{{text "research.saved"}}</dt><dd><a href="?tenant_id={{urlquery .TenantID}}&amp;filter=all">{{.Snapshot.Counters.Saved}}</a></dd></div>
+  <div><dt>{{text "research.accepted"}}</dt><dd><a href="?tenant_id={{urlquery .TenantID}}&amp;filter=accepted">{{.Snapshot.Counters.Accepted}}</a></dd></div>
+  <div><dt>{{text "research.contact"}}</dt><dd><a href="?tenant_id={{urlquery .TenantID}}&amp;filter=contact">{{.Snapshot.Counters.ContactReady}}</a></dd></div>
+  <div><dt>{{text "research.email"}}</dt><dd><a href="?tenant_id={{urlquery .TenantID}}&amp;filter=email">{{.Snapshot.Counters.EmailReady}}</a></dd></div>
+  <div><dt>{{text "research.shortfall"}}</dt><dd>{{.Shortfall}}</dd></div>
+  <div><dt>{{text "research.revision"}}</dt><dd>{{.Snapshot.Revision}}</dd></div>
+  <div><dt>{{text "research.updated"}}</dt><dd>{{formatDateTime .Snapshot.UpdatedAt}} UTC</dd></div>
+  {{if not .Snapshot.HeartbeatAt.IsZero}}<div><dt>{{text "research.heartbeat"}}</dt><dd>{{formatDateTime .Snapshot.HeartbeatAt}} UTC</dd></div>{{end}}
+  {{if not .Snapshot.LastProgressAt.IsZero}}<div><dt>{{text "research.progress"}}</dt><dd>{{formatDateTime .Snapshot.LastProgressAt}} UTC</dd></div>{{end}}
+ </dl>
+ {{if .Snapshot.Diagnostics}}<h3>{{text "research.diagnostics"}}</h3><ul>{{range .Snapshot.Diagnostics}}<li>{{.Code}} · {{.Market}} · {{.Detail}}</li>{{end}}</ul>{{end}}
+ {{if .Snapshot.Warnings}}<section data-research-warnings><h3>{{text "research.warnings"}}</h3><ul>{{range .Snapshot.Warnings}}<li><strong>{{label "research.warning" .Code}}</strong> <span class="cell-sub">{{.Country}} / {{.Language}} · {{.SourceID}}</span><details><summary>{{text "research.reference"}}</summary><code>{{.ActionID}}</code></details>{{with .EntityID}} <a href="/requests/{{$.Request.RequestID}}/research/candidates/{{.}}/identity?tenant_id={{urlquery $.TenantID}}">{{text "research.identity.open"}}</a>{{end}}</li>{{end}}</ul></section>{{end}}
+ {{if .Snapshot.Firecrawl.Available}}<dl class="facts"><div><dt>{{text "research.firecrawl_actual"}}</dt><dd>{{.Snapshot.Firecrawl.Actual}}</dd></div><div><dt>{{text "research.firecrawl_reserved"}}</dt><dd>{{.Snapshot.Firecrawl.Reserved}}</dd></div><div><dt>{{text "research.firecrawl_unknown"}}</dt><dd>{{.Snapshot.Firecrawl.Unknown}}</dd></div></dl>{{else}}<p class="hint">{{text "research.firecrawl_unavailable"}}</p>{{end}}
+ <p class="hint">{{text "research.budget_hint"}} {{text "research.firecrawl_tariff_hint"}}</p>
+ {{if or (eq .Snapshot.State "queued") (eq .Snapshot.State "running") (eq .Snapshot.State "paused")}}
+ <form method="post" action="/requests/{{.Request.RequestID}}/research/control">
+ <input type="hidden" name="tenant_id" value="{{.TenantID}}"><input type="hidden" name="csrf" value="{{.CSRF}}"><input type="hidden" name="revision" value="{{.Snapshot.Revision}}">
+ {{if eq .Snapshot.State "paused"}}<button type="submit" name="command" value="resume">{{text "research.resume"}}</button>{{else}}<button type="submit" name="command" value="pause">{{text "research.pause"}}</button>{{end}}
+ <button type="submit" name="command" value="cancel" class="button-danger">{{text "research.cancel"}}</button>
+ </form>{{end}}
+ </section>
+ <section><h2>{{text "research.saved"}}</h2>
+ <form method="get"><input type="hidden" name="tenant_id" value="{{.TenantID}}"><label for="research-filter">{{text "research.filter"}}</label> <select id="research-filter" name="filter"><option value="all" {{if or (eq .Filter "") (eq .Filter "all")}}selected{{end}}>{{text "research.all"}}</option><option value="accepted" {{if eq .Filter "accepted"}}selected{{end}}>{{text "research.accepted"}}</option><option value="contact" {{if eq .Filter "contact"}}selected{{end}}>{{text "research.contact"}}</option><option value="email" {{if eq .Filter "email"}}selected{{end}}>{{text "research.email"}}</option></select> <button type="submit" class="button-secondary">{{text "research.filter"}}</button></form>
+ <table class="table"><thead><tr><th>{{text "research.company"}}</th><th>{{text "research.country"}}</th><th>{{text "research.credit"}}</th><th>{{text "research.reason"}}</th><th>{{text "research.dossier"}}</th></tr></thead><tbody>
+ {{range .Candidates}}<tr data-entity-id="{{.Member.EntityID}}"><td>{{if .Unavailable}}{{text "research.unavailable_entity"}}{{else}}{{.Entity.Name}}{{end}} <details><summary>{{text "research.reference"}}</summary><code>{{.Member.EntityID}}</code></details></td><td>{{if .Entity.Country}}{{.Entity.Country}}{{else}}{{text "research.country_unknown"}}{{end}}</td><td>{{if .Member.Accepted}}{{text "research.accepted_yes"}}{{else}}{{text "research.accepted_no"}}{{end}}</td><td>{{label "research.reason" .Member.Reason}}</td><td><a href="/requests/{{$.Request.RequestID}}/research/candidates/{{.Member.EntityID}}?tenant_id={{urlquery $.TenantID}}">{{text "research.dossier"}}</a></td></tr>
+ {{else}}<tr><td colspan="5">{{if eq .Snapshot.Counters.Saved 0}}{{text "research.no_candidates"}}{{else}}{{text "research.no_filtered"}}{{end}}</td></tr>{{end}}
+ </tbody></table><p class="hint">{{text "research.current_dossier"}}</p></section>
+ {{if .Snapshot.Actions}}<section><h2>{{text "research.actions"}}</h2><table class="table"><thead><tr><th>{{text "research.phase"}}</th><th>{{text "research.source"}}</th><th>{{text "research.country"}}</th><th>{{text "research.state"}}</th><th>{{text "research.reason"}}</th></tr></thead><tbody>{{range .Snapshot.Actions}}<tr><td>{{label "research.action" .Kind}}<details><summary>{{text "research.reference"}}</summary><code>{{.ID}} · {{.StrategyCellID}}</code></details></td><td>{{.SourceID}}</td><td>{{.Country}} / {{.Language}}</td><td>{{label "research.state" .State}} · {{.Attempt}}</td><td>{{label "research.reason" .Reason}}{{with .SettlementState}}<p>{{text "research.settlement"}}: {{label "research.settlement_state" .}}</p>{{end}}{{with .SettlementReason}}<span class="cell-sub">{{label "research.warning" .}}</span>{{end}}{{with .SettlementNextAt}}<span class="cell-sub">{{text "research.next_check"}}: {{.Format "02.01.2006 15:04 UTC"}}</span>{{end}}{{if .Diagnostics}}<ul>{{range .Diagnostics}}<li>{{label "research.warning" .}}</li>{{end}}</ul>{{end}}</td></tr>{{end}}</tbody></table></section>{{end}}
+ {{else}}<p>{{text "research.empty"}}</p>{{end}}
+</div>
+{{end}}

@@ -1,8 +1,11 @@
 {{- define "content" -}}
 <section class="approval-queue">
   {{ template "live" .View.Live }}
-  <h1>{{ text "request.approval_queue.title" }}</h1>
-  <p class="hint">{{ text "request.approval_queue.hint" }} <span class="tenant-label">{{ text "request.tenant" }} {{.View.TenantID}}</span></p>
+  <h1>{{if .View.OnlyResearch}}{{text "research.execution_title"}}{{else}}{{ text "request.approval_queue.title" }}{{end}}</h1>
+  <p class="hint">{{if .View.OnlyResearch}}{{text "research.search_only"}}{{else}}{{ text "request.approval_queue.hint" }}{{end}} <span class="tenant-label">{{ text "request.tenant" }} {{.View.TenantID}}</span></p>
+
+  {{- if or .View.OnlyResearch .View.ResearchItems}}<section><h2>{{text "research.title"}}</h2><p class="hint">{{text "research.search_only"}}</p><table class="table"><thead><tr><th>{{text "request.queue.col.request"}}</th><th>{{text "request.queue.col.status"}}</th><th>{{text "research.phase"}}</th><th>{{text "research.accepted"}}</th><th>{{text "research.saved"}}</th><th>{{text "research.dossier"}}</th></tr></thead><tbody>{{range .View.ResearchItems}}<tr><td>{{.Offer.Content}}</td><td>{{label "request.status" .Status}}</td><td>{{if .ExecutionKnown}}{{label "research.phase" .Phase}} · {{.Execution}}{{else if .ExecutionUnavailable}}{{text "research.refresh_error"}}{{else}}{{text "research.empty"}}{{end}}</td><td>{{if .ExecutionKnown}}{{.Found}} / {{.Target}}{{else}}—{{end}}</td><td>{{if .ExecutionKnown}}{{.Saved}}{{else}}—{{end}}</td><td><a href="/requests/{{.RequestID}}/research?tenant_id={{urlquery $.View.TenantID}}">{{text "research.open"}}</a></td></tr>{{else}}<tr><td colspan="6">{{text "research.empty"}}</td></tr>{{end}}</tbody></table></section>{{end}}
+  {{- if not .View.OnlyResearch}}
   {{- if .View.Unavailable }}
   <p class="watermark" role="status">{{ text "request.approval_queue.unavailable" }}</p>
   {{- else }}
@@ -83,6 +86,6 @@
     <p class="queue-empty">{{ text "request.execution_history.empty" }}</p>
     {{- end }}
     {{- end }}
-  </section>
+  </section>{{end}}
 </section>
 {{- end -}}

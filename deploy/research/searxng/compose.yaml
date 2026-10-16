@@ -1,0 +1,21 @@
+# Запускать из repository root с --project-directory .
+# Digest многоплатформенного official image фиксируется по результату manifest inspection.
+services:
+  searxng:
+    profiles: [searxng]
+    image: ${SEARXNG_IMAGE:-ghcr.io/searxng/searxng@sha256:ad273460b12390ab1ad9c6ea630dafed39045ab0b9096a85ca31f5246517c670}
+    ports:
+      - "127.0.0.1:${SEARXNG_PORT:-18888}:8080"
+    environment:
+      SEARXNG_SETTINGS_PATH: /etc/searxng/settings.yml
+    volumes:
+      - ./deploy/research/searxng/.runtime/settings.yml:/etc/searxng/settings.yml:ro
+    restart: unless-stopped
+    mem_limit: 768m
+    pids_limit: 128
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=3)"]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 20s

@@ -66,7 +66,7 @@ func (h *ApprovalQueueHandler) Handle(ctx context.Context, q ApprovalQueue) ([]A
 	}
 	items := make([]ApprovalItem, 0, len(requests))
 	for _, request := range requests {
-		if request.TenantID() != q.TenantID {
+		if request.TenantID() != q.TenantID || request.ExecutionMode() == domain.ExecutionModeResearch {
 			continue
 		}
 		status, err := h.status.WorkflowStatus(ctx, request.ID().String())

@@ -56,6 +56,7 @@ type Relationship struct {
 	Contract    string `json:"contract"`
 	Transport   string `json:"transport"`
 	Mechanism   string `json:"mechanism"`
+	CoLocation  string `json:"co_location,omitempty"`
 }
 
 type Diagram struct {
@@ -467,6 +468,7 @@ func run(root, catalogPath, schemaPath string) (Catalog, InfrastructureConfig, [
 	problems = append(problems, validateServiceModules(root, catalog)...)
 	problems = append(problems, validateContextRoles(catalog)...)
 	problems = append(problems, validateRelationshipTransports(catalog)...)
+	problems = append(problems, validateInProcessBindings(root, catalog)...)
 	var deploy DeployConfig
 	if loaded, err := loadDeploy(filepath.Join(root, "deploy", "services.yaml")); err != nil {
 		problems = append(problems, err.Error())

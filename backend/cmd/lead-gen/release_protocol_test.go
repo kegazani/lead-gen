@@ -532,7 +532,7 @@ func TestReleaseMigrationManifestPinsOnlyApprovedPilotFiles(t *testing.T) {
 	if err == nil {
 		t.Fatal("request migrations outside the additive G1 manifest unexpectedly accepted")
 	}
-	if requestManifest.PolicyVersion != "g1-additive-v1" || len(requestManifest.Approved) != 4 || len(requestManifest.DeferredG1) != 6 {
+	if requestManifest.PolicyVersion != "g1-additive-v1" || len(requestManifest.Approved) != 4 || len(requestManifest.DeferredG1) != 7 {
 		t.Fatalf("unexpected request G1 migration manifest: %+v", requestManifest)
 	}
 	for _, target := range []string{"consoleauth", "integration-platform"} {

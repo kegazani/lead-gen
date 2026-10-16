@@ -68,6 +68,8 @@ const defaultHTTPTimeout = 60 * time.Second
 
 // Config — настройки адаптера Firecrawl.
 type Config struct {
+	// LegacyDisabled — явный запрет старого платного пути при opt-in research.
+	LegacyDisabled bool
 	// APIKey — ключ доступа Firecrawl. Пустой ключ допустим для тестов с
 	// локальным httptest-сервером, который не проверяет авторизацию.
 	APIKey string
@@ -83,10 +85,11 @@ type Config struct {
 
 // Client — HTTP-клиент Firecrawl, реализующий search.Port и crawl.Port.
 type Client struct {
-	apiKey     string
-	baseURL    string
-	httpClient *http.Client
-	logger     observ.Logger
+	legacyDisabled bool
+	apiKey         string
+	baseURL        string
+	httpClient     *http.Client
+	logger         observ.Logger
 }
 
 // Проверка на этапе компиляции, что Client реализует оба порта.
@@ -108,10 +111,11 @@ func New(cfg Config) *Client {
 		client = &http.Client{Timeout: defaultHTTPTimeout}
 	}
 	return &Client{
-		apiKey:     cfg.APIKey,
-		baseURL:    baseURL,
-		httpClient: client,
-		logger:     cfg.Logger,
+		legacyDisabled: cfg.LegacyDisabled,
+		apiKey:         cfg.APIKey,
+		baseURL:        baseURL,
+		httpClient:     client,
+		logger:         cfg.Logger,
 	}
 }
 
@@ -516,6 +520,9 @@ func pageURL(fieldURL string, meta map[string]string) string {
 // doJSON отправляет JSON-запрос и декодирует ответ. Неуспешный статус и ошибка
 // транспорта возвращаются обычной ошибкой Go без утечки типов http.Response.
 func (c *Client) doJSON(ctx context.Context, method, url string, body any, out any) error {
+	if c.legacyDisabled && method == http.MethodPost {
+		return legacyDisabledError()
+	}
 	var reader io.Reader
 	if body != nil {
 		payload, err := json.Marshal(body)
@@ -540,9 +547,17 @@ func (c *Client) doJSON(ctx context.Context, method, url string, body any, out a
 	}
 	defer resp.Body.Close()
 
-	data, err := io.ReadAll(resp.Body)
+	var responseReader io.Reader = resp.Body
+	maxResponseBytes, _ := ctx.Value(responseLimitKey{}).(int64)
+	if maxResponseBytes > 0 {
+		responseReader = io.LimitReader(resp.Body, maxResponseBytes+1)
+	}
+	data, err := io.ReadAll(responseReader)
 	if err != nil {
 		return fmt.Errorf("firecrawl: чтение ответа: %w", err)
+	}
+	if maxResponseBytes > 0 && int64(len(data)) > maxResponseBytes {
+		return ErrResponseTooLarge
 	}
 	if resp.StatusCode < http.StatusOK || resp.StatusCode >= http.StatusMultipleChoices {
 		return &HTTPError{

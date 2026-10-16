@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -11,6 +12,37 @@ import (
 
 	"lead-gen/backend/platform/observability/observ"
 )
+
+func TestSelfLivenessUsesReachableAddressForWildcardListener(t *testing.T) {
+	for address, want := range map[string]string{
+		"0.0.0.0:19090":   "http://127.0.0.1:19090/livez",
+		"[::]:19090":      "http://[::1]:19090/livez",
+		":19090":          "http://127.0.0.1:19090/livez",
+		"127.0.0.1:19090": "http://127.0.0.1:19090/livez",
+		"[::1]:19090":     "http://[::1]:19090/livez",
+	} {
+		if got := selfLivenessURL(address); got != want {
+			t.Errorf("адрес слушателя %s: %s, ожидался %s", address, got, want)
+		}
+	}
+	listener, err := net.Listen("tcp4", "0.0.0.0:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	server := httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/livez" {
+			t.Errorf("неверный путь самопроверки: %s", r.URL.Path)
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	server.Listener.Close()
+	server.Listener = listener
+	server.Start()
+	defer server.Close()
+	if !probeLiveness(context.Background(), selfLivenessURL(listener.Addr().String()), time.Second) {
+		t.Fatal("действующий wildcard listener недоступен собственной loopback-пробе")
+	}
+}
 
 // TestLivenessWatchdogTerminatesOnSustainedLoss проверяет (а): при устойчивой
 // потере liveness (threshold подряд неудач) сторож инициирует завершение —

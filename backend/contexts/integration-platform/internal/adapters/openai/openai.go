@@ -99,10 +99,14 @@ func (c *Client) Plan(ctx context.Context, r llm.PlanRequest) ([]llm.Target, llm
 		return nil, llm.Usage{}, err
 	}
 
+	systemPrompt := planSystemPrompt
+	if r.StrictTargets {
+		systemPrompt = strictPlanSystemPrompt(r.MaxTargets, r.QueryOnly)
+	}
 	body := chatRequest{
 		Model: c.model,
 		Messages: []chatMessage{
-			{Role: "system", Content: planSystemPrompt},
+			{Role: "system", Content: systemPrompt},
 			{Role: "user", Content: planUserMessage(r)},
 		},
 		ResponseFormat: &responseFormat{Type: "json_object"},
@@ -119,6 +123,13 @@ func (c *Client) Plan(ctx context.Context, r llm.PlanRequest) ([]llm.Target, llm
 	content := response.Choices[0].Message.Content
 	if strings.TrimSpace(content) == "" {
 		return nil, llm.Usage{}, fmt.Errorf("openai: пустой ответ модели")
+	}
+	if r.StrictTargets {
+		targets, err := decodeStrictPlan(content, r.MaxTargets, r.QueryOnly)
+		if err != nil {
+			return nil, usageFrom(response.Usage), fmt.Errorf("%w: %v", llm.ErrInvalidPlan, err)
+		}
+		return targets, usageFrom(response.Usage), err
 	}
 
 	// Основной формат — объект {"targets": [...]}; extractJSONObject вырезает
@@ -804,7 +815,8 @@ type responseFormat struct {
 // достаточное для извлечения текста ассистента и учёта токенов.
 type chatResponse struct {
 	Choices []struct {
-		Message struct {
+		FinishReason string `json:"finish_reason"`
+		Message      struct {
 			Content string `json:"content"`
 		} `json:"message"`
 	} `json:"choices"`

@@ -20,7 +20,7 @@ type TransitionInput struct {
 
 	// ReasonCode — машинный код причины перехода. Обязателен для сбоя исполнения
 	// (набор: search_failed, draft_failed, handoff_failed, transition_rejected,
-	// workflow_timed_out); для прочих переходов пуст.
+	// workflow_timed_out, research_partial, research_failed); для прочих переходов пуст.
 	ReasonCode string
 
 	// EventID — стабильный идентификатор порождаемого события.
@@ -111,11 +111,13 @@ type NewRequestParams struct {
 // оптимистичной блокировки: каждое изменение повышает его на единицу, а
 // репозиторий сверяет сохранённую версию с ожидаемой.
 type Request struct {
-	id               RequestID
-	tenantID         TenantID
-	status           RequestStatus
-	executionPurpose string
-	senderCompany    *SenderCompanySnapshot
+	id                RequestID
+	tenantID          TenantID
+	status            RequestStatus
+	executionMode     string
+	researchSelection *ResearchSelection
+	executionPurpose  string
+	senderCompany     *SenderCompanySnapshot
 
 	offer        *Offer
 	offerHistory []Offer
@@ -341,6 +343,10 @@ func (r *Request) StartValidation(in TransitionInput) ([]DomainEvent, error) {
 // Повторное применение к заявке в validated — no-op: решение не создаётся
 // повторно, событие не эмитится.
 func (r *Request) Validate(in TransitionInput) ([]DomainEvent, error) {
+	return r.ValidateForExecution(in, ExecutionModeLegacy, nil)
+}
+
+func (r *Request) validateApproved(in TransitionInput) ([]DomainEvent, error) {
 	from, changed, err := r.applyTransition(StatusValidated, in, false)
 	if err != nil {
 		return nil, err
@@ -520,9 +526,11 @@ func (r *Request) FailureReason() (code string, text string, ok bool) {
 }
 
 // failureReasonCodes — согласованный набор машинных кодов причины сбоя исполнения.
-// Должен совпадать с кодами, которые задаёт адаптер workflow (fulfillment.go):
-// новый код сбоя обязан попасть и туда, и сюда — иначе домен отвергнет переход.
+// Коды workflow и отдельного research-reconciler проверяются владельцем заявки;
+// новый код обязан появиться здесь прежде, чем его отправит соответствующий адаптер.
 var failureReasonCodes = []string{
+	"research_partial",
+	"research_failed",
 	"search_failed",
 	"draft_failed",
 	"handoff_failed",

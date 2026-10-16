@@ -84,6 +84,14 @@ func (s *Server) handleCompanyCancel(w http.ResponseWriter, r *http.Request) {
 // AlreadyStarted. Комментарий необязателен.
 func (s *Server) handleCompanyRerun(w http.ResponseWriter, r *http.Request) {
 	s.companyAction(w, r, func(req *http.Request) error {
+		request, err := s.deps.GetRequest.Handle(req.Context(), query.GetRequest{RequestID: domain.RequestID(req.PathValue("requestID")), TenantID: domain.TenantID(activeTenant(req))})
+		if err != nil {
+			return err
+		}
+		if request.ExecutionMode == domain.ExecutionModeResearch {
+			return domain.ErrExecutionModeConflict
+		}
+
 		if s.deps.ExecutionProtocol == ports.ExecutionProtocolV2 {
 			// Пока нет trusted runtime-history verifier-а, новый бизнес-rerun
 			// невозможен. Не создаём CommandID и не выдаём его за принятую команду.
@@ -148,7 +156,7 @@ func (s *Server) renderCompanyRequests(w http.ResponseWriter, r *http.Request, s
 			Transitions:  view.Transitions,
 			CanReturn:    view.Status == domain.StatusValidating || view.Status == domain.StatusProcessing,
 			CanCancel:    view.Status == domain.StatusNeedsRevision || view.Status == domain.StatusProcessing,
-			CanRerun:     view.Status == domain.StatusFailed && s.deps.ExecutionProtocol != ports.ExecutionProtocolV2,
+			CanRerun:     view.Status == domain.StatusFailed && view.ExecutionMode != domain.ExecutionModeResearch && s.deps.ExecutionProtocol != ports.ExecutionProtocolV2,
 		})
 	}
 	s.render(w, status, pageCompanyRequests, components.Page{

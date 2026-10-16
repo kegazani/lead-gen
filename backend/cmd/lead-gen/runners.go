@@ -132,6 +132,14 @@ type buildOptions struct {
 	// каждый контекст собирается на in-memory адаптерах (dev).
 	supportGreenDSN string // DSN зелёной зоны; пусто — in-memory адаптеры
 
+	researchEnabled                                      bool
+	researchRedDSN, researchAccountID, researchCountries string
+	researchAccountCredits, researchMaxActions           int
+	researchContactFreshness, researchTimeout            time.Duration
+	researchOnlyProvider                                 bool
+	researchSearXNGURL, researchSearXNGEngines           string
+	research                                             *researchRuntime
+
 	// Runtime-only DB policy применяется только к отдельной intake-группе.
 	dbPolicy             intakeDBPolicy
 	intakeRuntimeDSNs    *intakeRuntimeDSNs
@@ -585,6 +593,9 @@ func buildService(
 			cfg.DeliveryEventsDeduper = inbox.NewMemoryDeduper()
 			cfg.DeliveryEventsQueue = opts.requestDeliveryQueue
 		}
+		if opts.research != nil {
+			cfg.Research = opts.research.requests
+		}
 		service, err := requestfulfillment.New(cfg)
 		if err != nil {
 			return nil, err
@@ -671,9 +682,10 @@ func buildService(
 		// честно недоступны, работа идёт на ручных материалах (не молчаливая подмена).
 		if strings.TrimSpace(opts.firecrawlKey) != "" {
 			fc, err := integrationplatform.NewFirecrawl(integrationplatform.FirecrawlConfig{
-				APIKey:  opts.firecrawlKey,
-				BaseURL: opts.firecrawlURL,
-				Logger:  opts.logger,
+				DisableLegacyOperations: opts.researchOnlyProvider,
+				APIKey:                  opts.firecrawlKey,
+				BaseURL:                 opts.firecrawlURL,
+				Logger:                  opts.logger,
 			})
 			if err != nil {
 				return nil, fmt.Errorf("content-production: Firecrawl: %w", err)
@@ -893,6 +905,9 @@ func buildAgentOrchestration(opts buildOptions, tracer observ.Tracer, broker amq
 		return nil, fmt.Errorf("agent-orchestration: реестр объявленных блоков: %w", err)
 	}
 	cfg.Blocks = blocks
+	if opts.research != nil {
+		cfg.Research = opts.research.missions
+	}
 
 	// Персистентность по DSN зелёной зоны: пайплайны, запуски и журнал outbox
 	// переживают рестарт процесса. Без DSN — in-memory dev с честным предупреждением.
@@ -1118,7 +1133,8 @@ func (p *analyticsOperationsPort) Clients(ctx context.Context, request campaignr
 // доступа здесь нет, поэтому секреты не могут попасть в раздел консоли.
 func adapterStatusSource(opts buildOptions) *integrationplatform.AdapterStatusSource {
 	firecrawlProbe := integrationplatform.NewFirecrawlProbe(integrationplatform.FirecrawlConfig{
-		APIKey: opts.firecrawlKey, BaseURL: opts.firecrawlURL,
+		DisableLegacyOperations: opts.researchOnlyProvider,
+		APIKey:                  opts.firecrawlKey, BaseURL: opts.firecrawlURL,
 	})
 	llmProbe := integrationplatform.NewLLMProbe(integrationplatform.OpenAIConfig{
 		BaseURL: opts.llmBaseURL, Model: opts.llmModel, APIKey: opts.llmKey,
@@ -1582,9 +1598,10 @@ func buildLeadManagement(opts buildOptions, tracer observ.Tracer, broker amqp.Pu
 	}
 
 	firecrawlClient, err := integrationplatform.NewFirecrawl(integrationplatform.FirecrawlConfig{
-		APIKey:  opts.firecrawlKey,
-		BaseURL: opts.firecrawlURL,
-		Logger:  opts.logger,
+		DisableLegacyOperations: opts.researchOnlyProvider,
+		APIKey:                  opts.firecrawlKey,
+		BaseURL:                 opts.firecrawlURL,
+		Logger:                  opts.logger,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("lead-management: Firecrawl: %w", err)
@@ -1595,10 +1612,11 @@ func buildLeadManagement(opts buildOptions, tracer observ.Tracer, broker amqp.Pu
 	// расхода. Задание без явного бюджета (maxCredits == 0) обрабатывается самой
 	// обёрткой как безлимитное: лимит не применяется, расход фиксируется.
 	guard, err := integrationplatform.NewFirecrawlGuard(integrationplatform.FirecrawlGuardConfig{
-		APIKey:        opts.firecrawlKey,
-		BaseURL:       opts.firecrawlURL,
-		Logger:        opts.logger,
-		CrawlInterval: opts.firecrawlCrawlInterval,
+		DisableLegacyOperations: opts.researchOnlyProvider,
+		APIKey:                  opts.firecrawlKey,
+		BaseURL:                 opts.firecrawlURL,
+		Logger:                  opts.logger,
+		CrawlInterval:           opts.firecrawlCrawlInterval,
 	})
 	if err != nil {
 		return nil, fmt.Errorf("lead-management: Firecrawl guard: %w", err)

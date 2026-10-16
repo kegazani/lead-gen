@@ -189,7 +189,8 @@
         "integration": {"enum": ["command", "event", "query", "policy"]},
         "contract": {"$ref": "#/$defs/identifier"},
         "transport": {"enum": ["sync", "async"]},
-        "mechanism": {"enum": ["http-json", "amqp"]}
+        "mechanism": {"enum": ["http-json", "amqp", "in-process"]},
+        "co_location": {"$ref": "#/$defs/identifier"}
       }
     },
     "diagram": {

@@ -156,6 +156,17 @@ func main() {
 	leadRedDSN := flag.String("lead-red-dsn", envOr("LEADGEN_LEAD_RED_DSN", ""), "DSN красной зоны lead-management (пусто — DSN зелёной зоны)")
 	requestGreenDSN := flag.String("request-green-dsn", envOr("LEADGEN_REQUEST_GREEN_DSN", ""), "DSN зелёной зоны request-fulfillment (пусто — in-memory адаптеры)")
 	supportGreenDSN := flag.String("support-green-dsn", envOr("LEADGEN_SUPPORT_GREEN_DSN", ""), "DSN зелёной зоны supporting-контекстов (пусто — in-memory адаптеры)")
+	researchEnabled := flag.Bool("research-enabled", envBoolOr("LEADGEN_RESEARCH_ENABLED", false), "включить новый исследовательский путь в совмещённом клиентском процессе")
+	researchRedDSN := flag.String("research-red-dsn", envOr("LEADGEN_RESEARCH_RED_DSN", ""), "отдельная red БД для исследовательских документов, миссий и Firecrawl receipts")
+	researchAccountID := flag.String("research-firecrawl-account", envOr("LEADGEN_RESEARCH_FIRECRAWL_ACCOUNT", ""), "стабильный ID общего аккаунта Firecrawl для учёта")
+	researchAccountCredits := flag.Int("research-firecrawl-account-credits", envIntOr("LEADGEN_RESEARCH_FIRECRAWL_ACCOUNT_CREDITS", 0), "денежный потолок общего аккаунта Firecrawl; 0 — явный потолок не задан")
+	researchCountries := flag.String("research-countries", envOr("LEADGEN_RESEARCH_COUNTRIES", "*"), "разрешённые целевые рынки ISO через запятую или *; не обещает географию выхода провайдера")
+	researchMaxActions := flag.Int("research-max-actions", envIntOr("LEADGEN_RESEARCH_MAX_ACTIONS", 100), "технический предел действий исследования, не количество лидов")
+	researchTimeout := flag.Duration("research-timeout", envDurationOr("LEADGEN_RESEARCH_TIMEOUT", time.Hour), "предельное время одного исследования")
+	researchContactFreshness := flag.Duration("research-contact-freshness", envDurationOr("LEADGEN_RESEARCH_CONTACT_FRESHNESS", 30*24*time.Hour), "срок актуальности наблюдения контакта; не проверка доставляемости")
+	researchOnlyProvider := flag.Bool("research-only-provider", envBoolOr("LEADGEN_RESEARCH_ONLY_PROVIDER", false), "запретить старые платные операции Firecrawl вне общего исследовательского учёта")
+	researchSearXNGURL := flag.String("research-searxng-url", envOr("LEADGEN_RESEARCH_SEARXNG_URL", ""), "адрес собственной установки SearXNG; пусто — не подключать")
+	researchSearXNGEngines := flag.String("research-searxng-engines", envOr("LEADGEN_RESEARCH_SEARXNG_ENGINES", ""), "разрешённые upstream engines SearXNG через запятую")
 	firecrawlKey := flag.String("firecrawl-key", envOr("FIRECRAWL_API_KEY", ""), "ключ доступа Firecrawl (поиск и обход)")
 	firecrawlURL := flag.String("firecrawl-url", envOr("FIRECRAWL_BASE_URL", ""), "базовый адрес Firecrawl API (пусто — адрес по умолчанию)")
 	llmBaseURL := flag.String("llm-base-url", envOr("LLM_BASE_URL", ""), "базовый адрес LLM API (DeepSeek; пусто — адрес по умолчанию)")
@@ -468,31 +479,42 @@ func main() {
 		analyticsURL:             *analyticsURL,
 		requestExecutionsURL:     *requestExecutionsURL,
 
-		consumer:               consumer,
-		requestDeliveryQueue:   *requestDeliveryQueue,
-		analyticsDeliveryQueue: *analyticsDeliveryQueue,
-		publishInterval:        *publishInterval,
-		actor:                  *actor,
-		tenant:                 *tenant,
-		leadGreenDSN:           *leadGreenDSN,
-		leadRedDSN:             *leadRedDSN,
-		requestGreenDSN:        *requestGreenDSN,
-		supportGreenDSN:        *supportGreenDSN,
-		dbPolicy:               policy,
-		intakeRuntimeDSNs:      intakeDSNs,
-		intakeRuntimeDBOps:     defaultIntakeRuntimeDBOps(),
-		intakeRuntimeFactory:   defaultIntakeRuntimeConstructors(),
-		runtimeDBResources:     runtimePools,
-		firecrawlKey:           *firecrawlKey,
-		firecrawlURL:           *firecrawlURL,
-		llmBaseURL:             *llmBaseURL,
-		llmModel:               *llmModel,
-		llmKey:                 *llmKey,
-		embeddingBaseURL:       *embeddingBaseURL,
-		embeddingModel:         *embeddingModel,
-		embeddingKey:           *embeddingKey,
-		consoleUser:            *consoleUser,
-		consolePassword:        consolePassword,
+		consumer:                 consumer,
+		requestDeliveryQueue:     *requestDeliveryQueue,
+		analyticsDeliveryQueue:   *analyticsDeliveryQueue,
+		publishInterval:          *publishInterval,
+		actor:                    *actor,
+		tenant:                   *tenant,
+		leadGreenDSN:             *leadGreenDSN,
+		leadRedDSN:               *leadRedDSN,
+		requestGreenDSN:          *requestGreenDSN,
+		supportGreenDSN:          *supportGreenDSN,
+		researchEnabled:          *researchEnabled,
+		researchRedDSN:           *researchRedDSN,
+		researchAccountID:        *researchAccountID,
+		researchAccountCredits:   *researchAccountCredits,
+		researchCountries:        *researchCountries,
+		researchMaxActions:       *researchMaxActions,
+		researchTimeout:          *researchTimeout,
+		researchContactFreshness: *researchContactFreshness,
+		researchOnlyProvider:     *researchOnlyProvider,
+		researchSearXNGURL:       *researchSearXNGURL,
+		researchSearXNGEngines:   *researchSearXNGEngines,
+		dbPolicy:                 policy,
+		intakeRuntimeDSNs:        intakeDSNs,
+		intakeRuntimeDBOps:       defaultIntakeRuntimeDBOps(),
+		intakeRuntimeFactory:     defaultIntakeRuntimeConstructors(),
+		runtimeDBResources:       runtimePools,
+		firecrawlKey:             *firecrawlKey,
+		firecrawlURL:             *firecrawlURL,
+		llmBaseURL:               *llmBaseURL,
+		llmModel:                 *llmModel,
+		llmKey:                   *llmKey,
+		embeddingBaseURL:         *embeddingBaseURL,
+		embeddingModel:           *embeddingModel,
+		embeddingKey:             *embeddingKey,
+		consoleUser:              *consoleUser,
+		consolePassword:          consolePassword,
 		console: components.ConsoleBases{
 			components.ConsoleServiceLeads:    *consoleLeadsBase,
 			components.ConsoleServiceRequests: *consoleRequestsBase,
@@ -640,6 +662,11 @@ func main() {
 	// запуска сервисов: владелец platform-governance (если выбран) связывается с
 	// контрактом in-process адаптером; иначе потребители честно отвечают отказом.
 	assembleAccessDecision(selected, &opts, buildOnce, logger)
+	if err := assembleResearchRuntime(selected, &opts); err != nil {
+		logger.Error("lead-gen: сборка исследовательского пути", err, observ.Fields{})
+		runtimePools.closeAll()
+		os.Exit(1)
+	}
 
 	// Сборщик признаков риска пакетного пути (risk-screening) собирается до запуска
 	// сервисов: он держит контракты владельцев (delivery-target, suppression-policy,

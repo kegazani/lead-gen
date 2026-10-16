@@ -20,6 +20,7 @@ import (
 	workflowadapter "lead-gen/backend/contexts/request-fulfillment/internal/adapters/workflow"
 	"lead-gen/backend/contexts/request-fulfillment/internal/app/command"
 	"lead-gen/backend/contexts/request-fulfillment/internal/app/query"
+	"lead-gen/backend/contexts/request-fulfillment/internal/app/researchbridge"
 	"lead-gen/backend/contexts/request-fulfillment/internal/ports"
 	composition "lead-gen/backend/platform/composition"
 	"lead-gen/backend/platform/consoleauth"
@@ -54,7 +55,10 @@ func (SystemClock) Now() time.Time { return time.Now() }
 
 // Config — параметры сборки сервиса, задаваемые точкой входа cmd/lead-gen.
 type Config struct {
-	readinessWorkerActive *atomic.Bool
+	readinessWorkerActive   *atomic.Bool
+	readinessResearchWorker *researchWorkerHealth
+	// Research — явно подключённый исследовательский путь утверждённой заявки.
+	Research *ResearchConfig
 	// ExecutionProtocol выбирает путь команд исполнения. Нулевое значение
 	// fail-closed и означает v1; production composition не переключается на v2.
 	ExecutionProtocol ExecutionProtocol
@@ -256,9 +260,10 @@ type Config struct {
 
 // Slice — собранный контекст среза: порты, адаптеры и use cases.
 type Slice struct {
-	Repository ports.RequestRepository
-	Journal    platformoutbox.Journal
-	UnitOfWork ports.UnitOfWork
+	researchReconciler *researchbridge.Reconciler
+	Repository         ports.RequestRepository
+	Journal            platformoutbox.Journal
+	UnitOfWork         ports.UnitOfWork
 
 	// Relay не равен nil только если при сборке задан Publisher.
 	Relay *platformoutbox.Relay
@@ -457,7 +462,17 @@ func Build(cfg Config) (*Slice, error) {
 	// сигнала остаётся nil — обработчик честно сообщает недоступность.
 	concludeDelivery := command.NewConcludeDeliveryHandler(repository, workflowSignaler, cfg.Logger)
 
+	researchBridge, err := buildResearchBridge(cfg.Research, getRequest, validate, workflowStatus)
+	if err != nil {
+		return nil, err
+	}
+	var researchReconciler *researchbridge.Reconciler
+	if researchBridge != nil {
+		researchReconciler = researchbridge.NewReconciler(repository, cfg.Research.Missions, startProcessing, fulfill, failRequest, cancel)
+		researchBridge.SetReconciler(researchReconciler)
+	}
 	server := httpapi.NewServer(httpapi.Dependencies{
+		Research:               researchBridge,
 		SubmitRequest:          submit,
 		StartValidation:        startValidation,
 		ValidateRequest:        validate,
@@ -493,7 +508,7 @@ func Build(cfg Config) (*Slice, error) {
 		EmailDrafts:            emailDrafts,
 		RequestWatcher:         notifier,
 		Runtime:                cfg.Runtime,
-		Readiness:              readinessProfile(repository, cfg.Runtime, cfg.WorkflowClient, cfg.readinessWorkerActive, protocol, cfg.CallContract != nil),
+		Readiness:              requestReadinessProfile(repository, cfg, protocol),
 		ReadinessEvaluator:     readiness.New(readiness.Config{Timeout: 750 * time.Millisecond, TTL: 2 * time.Second}),
 		Console:                cfg.Console,
 		BasePath:               cfg.BasePath,
@@ -515,11 +530,12 @@ func Build(cfg Config) (*Slice, error) {
 	}
 
 	return &Slice{
-		Repository: repository,
-		Journal:    journal,
-		UnitOfWork: unitOfWork,
-		Relay:      relay,
-		Server:     server,
+		researchReconciler: researchReconciler,
+		Repository:         repository,
+		Journal:            journal,
+		UnitOfWork:         unitOfWork,
+		Relay:              relay,
+		Server:             server,
 
 		SubmitRequest:          submit,
 		StartValidation:        startValidation,
@@ -578,8 +594,9 @@ type Service struct {
 
 	// deliverySubscriber подписан на события доставки и маршрутизирует их к
 	// исполнениям заявок. nil, если подписка не собрана (источник не задан).
-	deliverySubscriber    *transport.Subscriber
-	readinessWorkerActive *atomic.Bool
+	deliverySubscriber      *transport.Subscriber
+	readinessWorkerActive   *atomic.Bool
+	readinessResearchWorker *researchWorkerHealth
 }
 
 // New собирает сервис из адаптеров и переданных зависимостей.
@@ -599,6 +616,8 @@ func New(cfg Config) (*Service, error) {
 
 	workerActive := &atomic.Bool{}
 	cfg.readinessWorkerActive = workerActive
+	researchWorker := &researchWorkerHealth{}
+	cfg.readinessResearchWorker = researchWorker
 	slice, err := Build(cfg)
 	if err != nil {
 		return nil, err
@@ -628,14 +647,15 @@ func New(cfg Config) (*Service, error) {
 	}
 
 	service := &Service{
-		slice:                 slice,
-		apiAddr:               cfg.APIAddr,
-		logger:                cfg.Logger,
-		metrics:               cfg.Metrics,
-		tracer:                cfg.Tracer,
-		workflowWorker:        workflowWorker,
-		deliverySubscriber:    deliverySubscriber,
-		readinessWorkerActive: workerActive,
+		slice:                   slice,
+		apiAddr:                 cfg.APIAddr,
+		logger:                  cfg.Logger,
+		metrics:                 cfg.Metrics,
+		tracer:                  cfg.Tracer,
+		workflowWorker:          workflowWorker,
+		deliverySubscriber:      deliverySubscriber,
+		readinessWorkerActive:   workerActive,
+		readinessResearchWorker: researchWorker,
 	}
 	// Монитор доступности живёт вместе с ролью, владеющей клиентом: она же
 	// запускает воркер. Без подключённого рантайма и без пробы готовности монитор
@@ -705,6 +725,10 @@ func newActivities(slice *Slice, cfg Config) *workflowadapter.Activities {
 // ID реализует composition.Service.
 func (s *Service) ID() string { return ServiceID }
 
+// HTTPHandler возвращает тот же API, которым владеет роль api собранного сервиса.
+// Сам обработчик не запускает фоновые роли и не подменяет их готовность.
+func (s *Service) HTTPHandler() http.Handler { return s.slice.Server }
+
 // RoleRunner реализует composition.Service. Раннеры ролей владеют только
 // запуском и адаптерами: доменных правил здесь нет.
 func (s *Service) RoleRunner(role composition.Role) (composition.RoleRunner, bool) {
@@ -756,7 +780,7 @@ func (s *Service) runAPI(ctx context.Context) error {
 // события доставки собирается при заданном источнике; без неё это честно
 // логируется, а не скрывается.
 func (s *Service) runWorker(ctx context.Context) error {
-	if s.slice.Relay == nil && s.workflowWorker == nil && s.availabilityMonitor == nil && s.deliverySubscriber == nil {
+	if s.slice.Relay == nil && s.workflowWorker == nil && s.availabilityMonitor == nil && s.deliverySubscriber == nil && s.slice.researchReconciler == nil {
 		return fmt.Errorf("worker: ни публикация событий заявки, ни воркер workflow, ни подписка на доставку не собраны")
 	}
 	if s.slice.Relay != nil {
@@ -776,7 +800,7 @@ func (s *Service) runWorker(ctx context.Context) error {
 	workerCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 
-	errCh := make(chan error, 4)
+	errCh := make(chan error, 5)
 	var wg sync.WaitGroup
 	run := func(name string, fn func(context.Context) error) {
 		wg.Add(1)
@@ -798,6 +822,9 @@ func (s *Service) runWorker(ctx context.Context) error {
 	}
 	if s.availabilityMonitor != nil {
 		run("runtime-monitor", s.availabilityMonitor.Run)
+	}
+	if s.slice.researchReconciler != nil {
+		run("research-request-status", s.runResearchReconciler)
 	}
 
 	// Ждём первого исхода: отмены контекста или ошибки контура. Ошибка отменяет

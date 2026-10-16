@@ -41,6 +41,8 @@ type ValidationDecisionView struct {
 
 // RequestView — представление заявки для чтения.
 type RequestView struct {
+	ExecutionMode      string
+	ResearchSelection  *domain.ResearchSelection
 	RequestID          string
 	TenantID           string
 	Status             domain.RequestStatus
@@ -88,6 +90,7 @@ func (h *GetRequestHandler) Handle(ctx context.Context, q GetRequest) (RequestVi
 // buildView переводит агрегат в представление чтения.
 func buildView(request *domain.Request) RequestView {
 	view := RequestView{
+		ExecutionMode: request.ExecutionMode(), ResearchSelection: request.ResearchSelection(),
 		RequestID:          request.ID().String(),
 		TenantID:           request.TenantID().String(),
 		Status:             request.Status(),

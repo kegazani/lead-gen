@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "observed_at": "2026-10-15T16:27:18.985408343Z",
+  "candidate": "SearXNG",
+  "image": "ghcr.io/searxng/searxng@sha256:ad273460b12390ab1ad9c6ea630dafed39045ab0b9096a85ca31f5246517c670",
+  "platforms": [
+    "amd64",
+    "arm64",
+    "armv7"
+  ],
+  "configured_engines": [
+    "duckduckgo",
+    "brave"
+  ],
+  "provider_revision": "searxng-search-api-v1-research-1",
+  "health": "ok",
+  "search_http_status": 200,
+  "search_status": "unavailable",
+  "search_error_code": "no_engine_results",
+  "result_count": 0,
+  "engine_failures": [
+    {
+      "engine": "brave",
+      "reason": "proxy error"
+    },
+    {
+      "engine": "duckduckgo",
+      "reason": "proxy error"
+    }
+  ],
+  "live_receipt_sha256": "ac40c2755b061589d9aca3d63854f885a8b7412f5c6c6d9e3ca551bef0544db1",
+  "live_receipt_persisted": true,
+  "cost_state": "not_reported",
+  "financial_gate": false,
+  "acceptance": "blocked_egress_policy",
+  "reason": "Штатный proxy возвращает CONNECT 403 для html.duckduckgo.com и search.brave.com также вне Docker. Контейнер и JSON endpoint работают; полезные внешние результаты пока не получены.",
+  "remaining_verification": [
+    "Разрешённая deployment-сеть к выбранным engines",
+    "Повторный live discovery с useful results",
+    "Engine language/operator/geography capabilities",
+    "Сравнение unique entity/contact yield с Firecrawl baseline"
+  ]
+}

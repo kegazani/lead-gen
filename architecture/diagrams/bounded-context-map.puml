@@ -14,20 +14,21 @@ package "Generic" {
     primary owner: integration-platform
     lead-management consumes published LLM
     budget contract; no foreign domain import
-    План intelligent-lead-research:
-    regional-web-acquisition
-    Один technical frontier / leases
+    Первый research путь:
+    research-acquisition-attempt / receipt
+    firecrawl-credit-account / grant
     Денежный ledger только Firecrawl
+    Browser/OCR и собственный crawler — план
   end note
 }
 package "Core" {
   rectangle "Управление лидами\n<<core>>" as Leads
   note right of Leads
     capability: lead-workflow, lead-email
-    План intelligent-lead-research:
-    lead-entity-resolution, lead-research-memory
-    Открытые потребности и граф зависимостей (план)
-    inbound-lead-conversations
+    Первый research путь:
+    research-dossier / source / attempt-memory
+    Sources, assertions, OpenNeed в red
+    Полный граф и inbound conversations — план
   end note
   rectangle "Аудитория\n<<core>>" as Audience
   note right of Audience
@@ -43,11 +44,11 @@ package "Core" {
   rectangle "Исполнение заявок\nклиента\n<<core>>" as Requests
   rectangle "Оркестрация агентов\nкомпаний\n<<core>>" as Agents
   note right of Agents
-    План intelligent-lead-research:
-    adaptive-lead-research
+    Первый research путь:
+    research-mission / action / member
     SearchBrief / StrategyCell / QueryFamily, grant_ref
-    Discovery и enrichment в одной миссии
-    Позднее знание: пересмотр в пределах миссии (план)
+    PostgreSQL intent / lease / receipt
+    Новый research outbox не публикуется
   end note
 }
 package "Supporting" {
@@ -85,14 +86,23 @@ Integration ..> Leads : ACL / provider-port
 Integration ..> Content : ACL / provider-port
 Integration ..> Delivery : ACL / provider-port
 Integration --> Platform : adapter-status
+Agents --> Requests : research-mission / research-plan
+Leads --> Agents : research-memory
+Leads --> Requests : research-memory (dossier)
+Integration ..> Agents : research-acquisition / provider-port
+
+Integration ..> Leads : research-extraction\nsync · in-process
+Leads --> Requests : research-memory / IdentityPort\nsync · in-process
 
 legend bottom
   Границы сервисов совпадают с границами bounded contexts:
   один контекст — один сервис (12 сервисов).
   Роли api / ingest / sender / worker / chains / schedule —
   режимы запуска внутри сервиса, а не единицы размещения.
-  Пометки «План intelligent-lead-research» назначают владельцев;
-  новые функции, агрегаты и связи исполнения пока не реализованы.
+  Пометки «План» сохраняют объём последующих capability.
+  Первый research путь — написанные модели и published ports;
+  полная приёмка фиксируется отдельно в OpenSpec tasks.
+  Новые связи research при co-location: sync · in-process.
   Консоль топологии — эксплуатационная проекция роли api
   сервиса platform-governance, а не отдельный контекст или сервис:
   граф строится из объявлений каталога, метрики читаются

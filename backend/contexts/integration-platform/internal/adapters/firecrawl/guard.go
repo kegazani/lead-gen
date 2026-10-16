@@ -132,6 +132,9 @@ func mustNewRegistry(cfg RegistryConfig) *Registry {
 // измеряется; перед каждой затратной операцией всё равно запрашивается свежий
 // остаток аккаунта, и без него операция не запускается.
 func (g *Guard) Task(id string, maxCredits int) (*Task, error) {
+	if g.client.legacyDisabled {
+		return nil, legacyDisabledError()
+	}
 	b, err := g.registry.GetOrCreate(id, maxCredits)
 	if err != nil {
 		return nil, err

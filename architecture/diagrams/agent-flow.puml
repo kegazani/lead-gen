@@ -40,6 +40,46 @@ end
 Agents -> Agents : блок decide-next и agent-run-completed
 Agents --> Analytics : agent-event
 
+newpage Первый исследовательский путь: published ports и PostgreSQL
+participant "request-fulfillment" as Requests
+participant "integration-platform" as Integration
+
+Requests -> Requests : Проверить tenant/права и человеческое одобрение
+Requests -> Agents : research-plan.Plan(brief)
+Agents -> Integration : provider-port / llm.Plan (bounded)
+Integration --> Agents : предложения модели и диагностика
+Agents -> Agents : валидировать human criteria / sources / markets
+Agents --> Requests : версионированный search portfolio
+Requests -> Agents : research-mission.Start(scope, intent, plan)
+Agents -> Agents : сохранить research-mission в red PostgreSQL
+loop ограниченный RunReady / Step
+  Agents -> Agents : CAS intent + epoch/lease; commit
+  Agents -> Integration : research-acquisition.Search/Fetch
+  Integration -> Integration : Firecrawl reservation; commit
+  Integration -> Integration : provider call вне transaction
+  Integration -> Integration : durable receipt / charge или unknown
+  Integration --> Agents : scoped receipt
+  Agents -> Leads : research-memory.Analyze / SaveObservation
+  Leads -> Integration : provider-port / LLM extraction (при необходимости)
+  Integration --> Leads : данные для проверки locator / субъектов
+  Leads -> Leads : проверить evidence; сохранить source/assertion/OpenNeed
+  Leads --> Agents : entity/revision и результат сохранения
+  Agents -> Agents : CAS membership + progress по актуальному epoch
+end
+Requests -> Agents : research-mission.Get
+Agents --> Requests : причины, прогресс, состав и FC projection
+Requests -> Leads : research-memory.Get(scope, entity)
+Leads --> Requests : dossier с источниками и состояниями сведений
+Requests -> Leads : IdentityPort.DecideIdentity (человек, CAS, evidence)
+Leads -> Leads : immutable decision + canonical projection + red changefeed
+Leads --> Requests : текущая группа и ревизия
+note over Requests, Integration
+  Это отдельный исследовательский путь с PostgreSQL persistence.
+  Identity changefeed читается через порт памяти; внешнего broker publisher нет.
+  Автоматическая отправка не следует из записи исследовательских фактов.
+  Неизвестный исход не разрешает слепой повтор; полный scope остаётся в tasks.
+end note
+
 ' CTX:platform-governance
 ' CTX:agent-orchestration
 ' CTX:lead-management
@@ -48,4 +88,6 @@ Agents --> Analytics : agent-event
 ' CTX:message-delivery
 ' CTX:engagement-observation
 ' CTX:analytics
+' CTX:request-fulfillment
+' CTX:integration-platform
 @enduml

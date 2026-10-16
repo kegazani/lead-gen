@@ -6,7 +6,7 @@ skinparam shadowing false
 
 rectangle "platform-governance\n---\ntenant [green]\nuser-role [green]\naudit-record [green]" as Platform
 rectangle "data-governance\n---\nprocessing-basis [red]\nsuppression-entry [red]" as Governance
-rectangle "lead-management\n---\ncompany [mixed]\ncontact [red]\nattribute-provenance [red]\nemail-verification [red]\ncompany-size-profile [green]\noutbound-message [green]\nemail-template [green]\nlead-status [green]\nlead-assessment [green]" as Leads
+rectangle "lead-management\n---\ncompany [mixed]\ncontact [red]\nattribute-provenance [red]\nemail-verification [red]\ncompany-size-profile [green]\noutbound-message [green]\nemail-template [green]\nlead-status [green]\nlead-assessment [green]\nresearch-entity / observation / assertion [red]\nresearch-open-need / source [red]\nresearch-attempt-memory [red]\nresearch-identity-scope / decision / candidate [red]\ncanonical membership / changefeed [red]" as Leads
 rectangle "audience\n---\nlead-score [red]\nsegment [red]\naudience-snapshot [red]" as Audience
 rectangle "content-production\n---\ncontent-asset [green]\ncontent-version [green]\nlanding-content [green]\ndocument [green]\nrender-job [green]" as Content
 rectangle "outreach-orchestration\n---\ncampaign [green]\nsequence-definition [green]\nsequence-execution [green]\naction-draft [green]\noperator-decision [green]\ncall [red]" as Outreach
@@ -14,6 +14,8 @@ rectangle "message-delivery\n---\nmessage [green]\nsender-reputation [green]" as
 rectangle "request-fulfillment\n---\nrequest aggregate [green]\nrequest / offer [E]\nrequest-execution aggregate [catalog]\nexecution-intent [root] / execution-attempt [E]\nevents: request-execution-failed [request]\nevents: execution-intent-accepted [request-execution]\nplanned only: terminal intent / handoff manifest / delivery receipt" as Requests
 rectangle "engagement-observation\n---\nengagement-event [analytics]" as Engagement
 rectangle "analytics\n---\nreport-snapshot [analytics]" as Analytics
+rectangle "agent-orchestration\n---\nagent-run / agent-pipeline [green, legacy]\nresearch-mission / action / member [red]\nSearchBrief / query / plan / receipt [red]" as Agents
+rectangle "integration-platform\n---\nadapter-registration / invocation [green, legacy]\nfirecrawl-credit-account / grant [red]\nresearch-acquisition-attempt / receipt [red]\nfirecrawl-reconciliation [red]\nresearch-source-policy / attempt [red]" as Integration
 
 Platform -[hidden]-> Governance
 Governance -[hidden]-> Leads
@@ -24,12 +26,35 @@ Outreach -[hidden]-> Delivery
 Delivery -[hidden]-> Engagement
 Engagement -[hidden]-> Requests
 Requests -[hidden]-> Analytics
+Analytics -[hidden]-> Agents
+Agents -[hidden]-> Integration
 
 note bottom
   Owner изменяет authoritative state.
   Другие contexts хранят только ID, contract snapshot или собственную projection.
   red = client-controlled storage; mixed = zoning per attribute;
   analytics = обезличенная/агрегированная read model; external = внешний system of record.
+end note
+
+note right of Leads
+  Решение тождества, projection и changefeed
+  атомарны; исходные entity/source refs сохраняются.
+  IdentityPort читает revisions; AMQP publisher не заявлен.
+end note
+
+note right of Agents
+  Первый research путь хранит полный payload
+  в PostgreSQL клиентской red зоны.
+  Старый agent-mission VO не заменяется.
+  Status UI — scoped query projection.
+end note
+
+note right of Integration
+  Firecrawl ledger пока в той же red БД, что receipts.
+  Общий account cap охватывает grants.
+  Proxy-инструменты не получают денежный ledger.
+  Proxy attempts имеют свои durable receipts.
+  Внешние research events не публикуются.
 end note
 
 note right of Requests
@@ -62,4 +87,6 @@ end note
 ' CTX:engagement-observation
 ' CTX:request-fulfillment
 ' CTX:analytics
+' CTX:agent-orchestration
+' CTX:integration-platform
 @enduml

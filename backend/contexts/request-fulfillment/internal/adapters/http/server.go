@@ -16,6 +16,7 @@ import (
 
 	"lead-gen/backend/contexts/request-fulfillment/internal/app/command"
 	"lead-gen/backend/contexts/request-fulfillment/internal/app/query"
+	"lead-gen/backend/contexts/request-fulfillment/internal/app/researchbridge"
 	"lead-gen/backend/contexts/request-fulfillment/internal/domain"
 	"lead-gen/backend/contexts/request-fulfillment/internal/ports"
 	"lead-gen/backend/platform/consoleauth"
@@ -42,6 +43,8 @@ const (
 // контекста. FulfillmentQuery допускается равным nil только вместе с запросом
 // статусов артефактов.
 type Dependencies struct {
+	// Research — явно подключённый путь исследования; nil сохраняет прежнее demo.
+	Research               *researchbridge.Service
 	ExecutionProtocol      ports.ExecutionProtocol
 	ExecutionConsumer      ports.ExecutionIntentConsumer
 	AdmitExecution         *command.AdmitExecutionHandler
@@ -190,6 +193,7 @@ func (s *Server) handleRoot(w http.ResponseWriter, r *http.Request) {
 // /requests/{id}/validation/*), а контрактные обязаны оставаться анонимными.
 func (s *Server) routes() http.Handler {
 	mux := http.NewServeMux()
+	s.registerResearchRoutes(mux)
 
 	// Вход и выход консоли: публичные HTML-страницы под теми же заголовками
 	// безопасности, что и остальные экраны. Вход ограничен по частоте (7.5).
@@ -446,6 +450,9 @@ func writeDomainError(w http.ResponseWriter, err error) {
 // найдены приходят как 404, конфликты версий и состояний — как 409, нарушение
 // формы запроса — как 400, отказ чтения контракта — как 502.
 func statusForError(err error) int {
+	if errors.Is(err, domain.ErrExecutionModeConflict) || errors.Is(err, domain.ErrResearchSelectionConflict) {
+		return http.StatusConflict
+	}
 	switch {
 	case errors.Is(err, ports.ErrRequestNotFound):
 		return http.StatusNotFound

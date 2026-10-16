@@ -1,0 +1,23 @@
+{{define "content"}}
+<section>
+ {{template "live" .View.Live}}<h1>{{text "research.identity.open"}}</h1>
+ <p><a href="/requests/{{.View.View.Request.RequestID}}/research/candidates/{{.View.Left.Entity.ID}}?tenant_id={{urlquery .View.TenantID}}">{{text "research.dossier"}}</a></p>
+ <p class="hint">{{text "research.identity.hint"}}</p>
+ <h2>{{.View.Left.Entity.Name}}</h2>
+ <form method="get"><input type="hidden" name="tenant_id" value="{{.View.TenantID}}"><label for="identity-query">{{text "research.identity.search"}}</label> <input id="identity-query" name="q" value="{{.View.Query}}" maxlength="256"><button type="submit">{{text "research.identity.search"}}</button></form>
+ <form method="get"><input type="hidden" name="tenant_id" value="{{.View.TenantID}}"><label for="identity-other">{{text "research.identity.other"}}</label><select id="identity-other" name="other" required>{{range .View.Choices}}{{if ne .ID $.View.Left.Entity.ID}}<option value="{{.ID}}" {{if $.View.Right}}{{if eq .ID $.View.Right.Entity.ID}}selected{{end}}{{end}}>{{.Name}} · {{.ID}}</option>{{end}}{{end}}</select><button type="submit">{{text "research.identity.choose"}}</button></form>
+ {{if .View.Right}}
+ <form method="post" class="fact-panel">
+  <input type="hidden" name="tenant_id" value="{{.View.TenantID}}"><input type="hidden" name="csrf" value="{{.View.CSRF}}"><input type="hidden" name="decision_id" value="{{.View.CommandID}}"><input type="hidden" name="right_entity_id" value="{{.View.Right.Entity.ID}}">
+  {{range $id,$revision:=.View.ExpectedRevisions}}<input type="hidden" name="revision.{{$id}}" value="{{$revision}}">{{end}}
+  <h2>{{text "research.identity.evidence"}}</h2>
+  <fieldset><legend>{{.View.Left.Entity.Name}}</legend>{{range .View.Left.Assertions}}<label class="field"><input type="checkbox" name="evidence" value="{{.ID}}">{{label "research.predicate" .Predicate}}: {{.Value}} · {{label "research.knowledge" .Knowledge}} / {{label "research.freshness" .Freshness}} / {{label "research.support" .SupportState}}<blockquote>{{.Locator.Quote}}</blockquote><span class="cell-sub">{{.SourceID}} · {{formatDateTime .ObservedAt}} UTC</span></label>{{end}}</fieldset>
+  <fieldset><legend>{{.View.Right.Entity.Name}}</legend>{{range .View.Right.Assertions}}<label class="field"><input type="checkbox" name="evidence" value="{{.ID}}">{{label "research.predicate" .Predicate}}: {{.Value}} · {{label "research.knowledge" .Knowledge}} / {{label "research.freshness" .Freshness}} / {{label "research.support" .SupportState}}<blockquote>{{.Locator.Quote}}</blockquote><span class="cell-sub">{{.SourceID}} · {{formatDateTime .ObservedAt}} UTC</span></label>{{end}}</fieldset>
+  <p><label for="identity-reason">{{text "research.identity.reason"}}</label><textarea id="identity-reason" name="reason" required maxlength="4000" rows="3"></textarea></p>
+  <button type="submit" name="action" value="link">{{text "research.identity.link"}}</button> <button type="submit" name="action" value="reject" class="button-secondary">{{text "research.identity.reject"}}</button>
+ </form>{{end}}
+ <h2>{{text "research.identity.history"}}</h2>
+ {{range .View.Decisions}}<article class="fact-panel"><p>{{.Action}} · {{.State}} · {{.LeftEntityID}} → {{.RightEntityID}}</p><p>{{.Reason}}</p><dl><dt>{{text "research.identity.actor"}}</dt><dd>{{.Actor}}</dd><dt>{{text "research.identity.time"}}</dt><dd>{{formatDateTime .RecordedAt}} UTC</dd><dt>{{text "research.identity.evidence"}}</dt><dd>{{range .EvidenceAssertionIDs}}{{.}} {{end}}</dd></dl></article>{{else}}<p>{{text "research.identity.none"}}</p>{{end}}
+ {{range .View.RevokeOptions}}<form method="post" class="fact-panel"><h3>{{text "research.identity.revoke"}} · {{.Decision.ID}}</h3><p class="hint">{{text "research.identity.revoke_hint"}}</p><input type="hidden" name="tenant_id" value="{{$.View.TenantID}}"><input type="hidden" name="csrf" value="{{$.View.CSRF}}"><input type="hidden" name="decision_id" value="{{index $.View.RevokeCommands .Decision.ID}}"><input type="hidden" name="action" value="revoke"><input type="hidden" name="revoke_decision_id" value="{{.Decision.ID}}">{{range $id,$revision:=.ExpectedRevisions}}<input type="hidden" name="revision.{{$id}}" value="{{$revision}}">{{end}}<label>{{text "research.identity.reason"}}<textarea name="reason" required maxlength="4000" rows="2"></textarea></label><button type="submit" class="button-danger">{{text "research.identity.revoke"}}</button></form>{{end}}
+</section>
+{{end}}

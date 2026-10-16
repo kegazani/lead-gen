@@ -7,6 +7,8 @@ core», из каких изменений он состоит, в каком п
 
 **Текущая полная программа (2026-10-15, ветка `concept/intelligent-lead-research`):** [36 обязательных требований и применение всех изученных материалов](intelligent-lead-platform-roadmap.md). Пользователь подтвердил необходимость полного объёма; S0–S6 ставят поиск и краулинг первыми, весь остальной функционал остаётся обязательным. [Задачи](../openspec/changes/intelligent-lead-research/tasks.md) и [покрытие](concepts/intelligent-lead-research/implementation-coverage.json) сохраняют связь с исходными требованиями; план не означает выполненную реализацию.
 
+**Фактическое начало реализации (2026-10-15):** исследовательские порты и UI соединены с PostgreSQL, Firecrawl и DeepSeek; результаты реальных прогонов, ограничения и оставшийся объём находятся в [отчёте](evidence/intelligent-research-runtime-2026-10-15.md). Новый путь включается отдельным Compose overlay, без скрытого переключения прежнего демо.
+
 **Базовый demo scope (2026-10-12, сохраняется для рабочего demo):** ограниченный change
 [`customer-demo-request-to-emails`](../openspec/changes/customer-demo-request-to-emails/).
 Последовательность — [`docs/e2e-plan.md`](e2e-plan.md): existing registration/profile

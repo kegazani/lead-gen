@@ -4,6 +4,8 @@ import (
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/base64"
+	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -410,7 +412,7 @@ func TestStageSecretBundlePublishesCompleteGeneration(t *testing.T) {
 		if err != nil {
 			t.Fatalf("published %s: %v", name, err)
 		}
-		stat := info.Sys().(*unix.Stat_t)
+		stat := info.Sys().(*syscall.Stat_t)
 		if stat.Uid != 65532 || stat.Gid != 65532 || info.Mode().Perm() != 0o400 {
 			t.Fatalf("wrong staged metadata for %s: uid=%d gid=%d mode=%o", name, stat.Uid, stat.Gid, info.Mode().Perm())
 		}
@@ -444,16 +446,39 @@ func TestVerifyStagedBundleRequiresExactAllowlistAndGeneration(t *testing.T) {
 	if err := stageSecretBundleAt("request-migrate", source, volume, "verify-generation", false); err != nil {
 		t.Fatal(err)
 	}
-	if err := verifyStagedSecretBundle("request-migrate", volume, "verify-generation"); err != nil {
+	if err := verifyStagedSecretBundle("request-migrate", volume, "verify-generation"); err == nil {
+		t.Fatal("production verifier принял альтернативный путь")
+	}
+	// Root читает реальные staged bytes через descriptor и проверяет metadata
+	// runtime-владельца. Production readSecretFile продолжает требовать свой euid.
+	readFixture := func(path string) (string, error) {
+		fd, err := unix.Open(path, unix.O_RDONLY|unix.O_CLOEXEC|unix.O_NOFOLLOW|unix.O_NONBLOCK, 0)
+		if err != nil {
+			return "", err
+		}
+		file := os.NewFile(uintptr(fd), path)
+		defer file.Close()
+		info, err := file.Stat()
+		if err != nil {
+			return "", err
+		}
+		stat, ok := info.Sys().(*syscall.Stat_t)
+		if !ok || !info.Mode().IsRegular() || info.Mode().Perm() != 0o400 || stat.Uid != 65532 || stat.Gid != 65532 || stat.Nlink != 1 || info.Size() <= 0 || info.Size() > 1<<20 {
+			return "", errors.New("fixture staged-файла имеет неверные метаданные")
+		}
+		data, err := io.ReadAll(file)
+		return string(data), err
+	}
+	if err := verifyStagedSecretBundleAt("request-migrate", volume, "verify-generation", readFixture); err != nil {
 		t.Fatalf("valid bundle rejected: %v", err)
 	}
-	if err := verifyStagedSecretBundle("request-migrate", volume, "stale-generation"); err == nil {
+	if err := verifyStagedSecretBundleAt("request-migrate", volume, "stale-generation", readFixture); err == nil {
 		t.Fatal("stale generation accepted")
 	}
 	if err := os.WriteFile(filepath.Join(volume, "verify-generation", "unexpected"), []byte("x"), 0o400); err != nil {
 		t.Fatal(err)
 	}
-	if err := verifyStagedSecretBundle("request-migrate", volume, "verify-generation"); err == nil {
+	if err := verifyStagedSecretBundleAt("request-migrate", volume, "verify-generation", readFixture); err == nil {
 		t.Fatal("bundle with an unallowlisted file accepted")
 	}
 }
@@ -494,12 +519,15 @@ func TestG15MigrationPolicyPinsAllTenFilesButKeepsReleaseDeferred(t *testing.T) 
 			t.Fatalf("G1.5 migration catalog is not exact/sorted at index %d: %+v", i, migration)
 		}
 	}
-	if len(deferredG1RequestMigrations) != 6 {
-		t.Fatal("G1-original must continue to defer migrations 0005-0010")
+	if len(deferredG1RequestMigrations) != 7 {
+		t.Fatal("G1-original must continue to defer migrations 0005-0011")
 	}
 	manifest, err := validateG15MigrationManifest(root)
 	if err != nil || manifest.PolicyVersion != "g1.5-schema-0010" || len(manifest.Approved) != 10 {
 		t.Fatalf("G1.5 exact catalog validation failed: manifest=%+v err=%v", manifest, err)
+	}
+	if len(manifest.DeferredG1) != 1 || manifest.DeferredG1[0] != "0011_research_execution_mode.sql" {
+		t.Fatal("research migration must remain outside approved G1.5")
 	}
 	if _, err := validateReleaseMigrationManifest(root, "request-fulfillment"); err == nil {
 		t.Fatal("G1-original accepted request migrations 0005-0010")
@@ -513,6 +541,9 @@ func TestG15MigrationPolicyRejectsMissingAndUnknownMigrations(t *testing.T) {
 		name   string
 		mutate func(string) error
 	}{
+		{name: "research-tampered", mutate: func(dir string) error {
+			return os.WriteFile(filepath.Join(dir, "0011_research_execution_mode.sql"), []byte("-- schema: request-fulfillment\nSELECT 1;\n"), 0o600)
+		}},
 		{name: "missing", mutate: func(dir string) error { return os.Remove(filepath.Join(dir, "0010_verified_runtime_resolution.sql")) }},
 		{name: "unknown", mutate: func(dir string) error {
 			return os.WriteFile(filepath.Join(dir, "0011_unknown.sql"), []byte("-- schema: request-fulfillment\nSELECT 1;\n"), 0o600)

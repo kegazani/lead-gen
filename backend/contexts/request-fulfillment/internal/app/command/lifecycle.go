@@ -24,7 +24,11 @@ type LifecycleFields struct {
 type StartValidation struct{ LifecycleFields }
 
 // ValidateRequest — команда подтверждения валидации заявки.
-type ValidateRequest struct{ LifecycleFields }
+type ValidateRequest struct {
+	LifecycleFields
+	ExecutionMode     string
+	ResearchSelection *domain.ResearchSelection
+}
 
 // StartProcessing — команда запуска исполнения заявки.
 type StartProcessing struct{ LifecycleFields }
@@ -122,7 +126,7 @@ func NewValidateRequestHandler(uow ports.UnitOfWork, clock ports.Clock, ids port
 // Handle переводит заявку validating → validated.
 func (h *ValidateRequestHandler) Handle(ctx context.Context, cmd ValidateRequest) (TransitionResult, error) {
 	return h.advance(ctx, cmd.LifecycleFields, "", func(r *domain.Request, in domain.TransitionInput) ([]domain.DomainEvent, error) {
-		return r.Validate(in)
+		return r.ValidateForExecution(in, cmd.ExecutionMode, cmd.ResearchSelection)
 	})
 }
 

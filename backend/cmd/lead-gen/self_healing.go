@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"fmt"
+	"net"
 	"net/http"
 	"strings"
 	"time"
@@ -122,7 +123,7 @@ func startSelfHealing(
 	if timeout <= 0 {
 		timeout = selfHealDefaultTimeout
 	}
-	url := "http://" + livenessAddr + "/livez"
+	url := selfLivenessURL(livenessAddr)
 	w := livenessWatchdog{
 		url:         url,
 		interval:    interval,
@@ -143,4 +144,21 @@ func startSelfHealing(
 		}
 	}()
 	return ch
+}
+
+// Wildcard задаёт интерфейсы слушателя, но не адрес HTTP-клиента. Самопроверка
+// обращается к loopback, чтобы адрес 0.0.0.0 не уходил во внешний HTTP proxy.
+func selfLivenessURL(listenAddr string) string {
+	host, port, err := net.SplitHostPort(listenAddr)
+	if err == nil {
+		ip := net.ParseIP(host)
+		if host == "" || (ip != nil && ip.IsUnspecified()) {
+			host = "127.0.0.1"
+			if ip != nil && ip.To4() == nil {
+				host = "::1"
+			}
+			listenAddr = net.JoinHostPort(host, port)
+		}
+	}
+	return "http://" + listenAddr + "/livez"
 }

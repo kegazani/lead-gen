@@ -17,6 +17,9 @@ import (
 )
 
 var (
+	// ErrLegacyExecutionDisabled — старый платный путь выключен оператором при
+	// включении research ledger. Это запрет маршрута, не исчерпание кредита.
+	ErrLegacyExecutionDisabled = errors.New("budget: старый поиск отключён; используйте исследовательский запуск")
 	// ErrRegistryCapacity — реестр не может принять новый scope без вытеснения
 	// незавершённых или ещё удерживаемых записей.
 	ErrRegistryCapacity = errors.New("budget: реестр задач заполнен")

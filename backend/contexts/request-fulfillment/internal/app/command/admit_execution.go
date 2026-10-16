@@ -100,6 +100,10 @@ func (h *AdmitExecutionHandler) Handle(ctx context.Context, cmd AdmitExecution) 
 			return ports.ErrExecutionAdmissionBlocked
 		}
 
+		if request.ExecutionMode() == domain.ExecutionModeResearch {
+			return domain.ErrExecutionModeConflict
+		}
+
 		target := domain.LeadTarget{State: domain.LeadTargetUnspecified}
 		if cmd.LeadTarget != nil {
 			target = domain.LeadTarget{State: domain.LeadTargetExplicit, Value: *cmd.LeadTarget}

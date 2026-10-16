@@ -1,0 +1,12 @@
+# Совмещённый клиентский исследовательский процесс. Владельцы red-портов
+# подключаются опубликованными конструкторами в cmd/lead-gen/research_runtime.go.
+processes:
+  - name: research-client
+    mechanism: in-process
+    services:
+      - id: request-fulfillment
+        roles: [api, worker]
+      - id: platform-governance
+        roles: [api, worker]
+      - id: agent-orchestration
+        roles: [worker]

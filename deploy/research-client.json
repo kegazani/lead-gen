@@ -1,0 +1,72 @@
+{
+  "version": 1,
+  "id": "research-client",
+  "process": "research-client",
+  "activation_flag": "research-enabled",
+  "deployment": "deploy/research/services.yaml",
+  "composition_root": "backend/cmd/lead-gen/research_runtime.go",
+  "required_roles": [
+    {
+      "id": "request-fulfillment",
+      "roles": [
+        "api"
+      ]
+    },
+    {
+      "id": "agent-orchestration",
+      "roles": [
+        "worker"
+      ]
+    }
+  ],
+  "bindings": [
+    {
+      "owner": "agent-orchestration",
+      "contract": "research-mission",
+      "interface_file": "contracts/agent-orchestration/researchmission/researchmission.go",
+      "interface_name": "Port",
+      "constructor_file": "backend/contexts/agent-orchestration/research.go",
+      "constructor": "NewResearchService"
+    },
+    {
+      "owner": "agent-orchestration",
+      "contract": "research-plan",
+      "interface_file": "contracts/agent-orchestration/researchplan/plan.go",
+      "interface_name": "Planner",
+      "constructor_file": "backend/contexts/agent-orchestration/research_planner.go",
+      "constructor": "NewResearchPlanner"
+    },
+    {
+      "owner": "lead-management",
+      "contract": "research-memory",
+      "interface_file": "contracts/lead-management/researchmemory/researchmemory.go",
+      "interface_name": "Port",
+      "constructor_file": "backend/contexts/lead-management/research.go",
+      "constructor": "NewPostgresResearchMemory"
+    },
+    {
+      "owner": "integration-platform",
+      "contract": "research-acquisition",
+      "interface_file": "contracts/integration-platform/researchacquisition/researchacquisition.go",
+      "interface_name": "Port",
+      "constructor_file": "backend/contexts/integration-platform/research.go",
+      "constructor": "NewResearchAcquisition"
+    },
+    {
+      "owner": "integration-platform",
+      "contract": "provider-port",
+      "interface_file": "contracts/integration-platform/llm/llm.go",
+      "interface_name": "Port",
+      "constructor_file": "backend/contexts/integration-platform/adapters.go",
+      "constructor": "NewOpenAI"
+    },
+    {
+      "owner": "integration-platform",
+      "contract": "research-extraction",
+      "interface_file": "contracts/integration-platform/llm/research_extract.go",
+      "interface_name": "ResearchExtraction",
+      "constructor_file": "backend/contexts/integration-platform/adapters.go",
+      "constructor": "NewOpenAI"
+    }
+  ]
+}

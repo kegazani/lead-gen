@@ -95,11 +95,11 @@ Core-контексты выражают конкурентное преимущ
 
 Владение сущностью всегда у bounded context — не у сервиса и не у роли. Сервис собирает application services своего контекста; совмещённый первый деплой может собрать в одной группе несколько сервисов, но модель и владелец остаются за контекстами (`docs/system-map.md` §2.0, `docs/architecture.md` §8).
 
-### Планируемое исследование и входящие обращения
+### Исследовательский путь и полная программа
 
-Изменение [intelligent-lead-research](../openspec/changes/intelligent-lead-research/proposal.md) регистрирует **назначения primary owners**, а не реализованные функции. Runtime, текущий Firecrawl и demo не меняются; новые агрегаты/контракты ниже ещё не зарегистрированы как существующая модель. Полная [концепция](concepts/intelligent-lead-research/README.md), [предлагаемые агрегаты и события](concepts/intelligent-lead-research/07-architecture-and-delivery-plan.md) и [открытые задачи](../openspec/changes/intelligent-lead-research/tasks.md) определяют будущий apply.
+Изменение [intelligent-lead-research](../openspec/changes/intelligent-lead-research/proposal.md) сохраняет полный объём [концепции](concepts/intelligent-lead-research/README.md). Первый исследовательский срез добавляет опубликованные порты, PostgreSQL-модели памяти/миссии/получения источников и мост от одобренной человеком заявки. Ниже зарегистрированы написанные модели и их владельцы; сквозное подключение, измеренное качество и завершённость задач подтверждаются отдельно [приёмкой change](../openspec/changes/intelligent-lead-research/tasks.md). Наличие модели или конструктора не закрывает весь объём capability.
 
-| Запланированная capability | Primary owner | Предметная граница |
+| Capability полной программы | Primary owner | Предметная граница |
 |---|---|---|
 | `lead-entity-resolution` | `lead-management` | Юрлицо/бренд/сайт и типизированные доказательные связи; домен не универсальная юридическая идентичность |
 | `lead-research-memory` | `lead-management` | Источники, временные утверждения, открытые потребности, сеть зависимостей и производная память в разрешённой области |
@@ -109,11 +109,25 @@ Core-контексты выражают конкурентное преимущ
 | `regional-web-acquisition` | `integration-platform` | Search/fetch/registry/browser/document/OCR, capabilities, технический frontier/leases и единый Firecrawl credit ledger; receipts без предметного вердикта |
 | `research-to-outreach` | `outreach-orchestration` | Передача исследования в существующие материал, точное решение и доставку; владельцы текста/адреса не меняются |
 
-В уточнении CL-14 `OpenNeed` и зависимости утверждений планируются у `lead-management`: компания без email сохраняется между запусками, поздний контакт дополняет прежнее досье. Статусы относятся к конкретному факту и методу проверки. Миссия и разрешение нового внешнего действия остаются у `agent-orchestration`; обновление знания не открывает бюджет и не переписывает завершённый run. Подробности — [сеть во времени](concepts/intelligent-lead-research/02-identity-and-evidence.md#213-сеть-отношений-и-зависимостей-во-времени).
+У `lead-management` появились `research-dossier`, `research-source` и `research-attempt-memory`: компания сохраняется без email; источник, субъект, locator и история проверок принадлежат памяти. `OpenNeed` хранит состояние знания отдельно от присоединённых запусков. Добавлена `research-identity-map`: человеческие link/reject/revoke с CAS и evidence сохраняют исходные сущности, а canonical membership пересчитывается. Полная произвольная сеть зависимостей, входящие письма и общая графовая память остаются отдельными задачами программы.
 
-CL-15 ставит discovery от аудитории и краулинг первыми. CL-16 ограничивает денежный ledger приложения только Firecrawl: integration-platform владеет reservation/charge с account и mission/study grant, agent хранит ссылку и проекцию; остальные инструменты используют существующий proxy и технические caps. Исчерпание FC не запрещает остальные допустимые действия. Raw SearchBrief/query/prompt payloads планируются в client red repository агента, evidence у lead-management, opaque refs в green/Temporal. Python acquisition исполняет bounded задачи, не владеет вторым durable scheduler. [Полный план](concepts/intelligent-lead-research/11-search-implementation-blueprint.md).
+`agent-orchestration` владеет `research-mission` и вложенными действиями/участием, снимком SearchBrief и discovery-портфелем. Старая `agent-mission` — VO legacy `agent-run` — остаётся самостоятельной моделью. Новый service выполняет ограниченные шаги с PostgreSQL CAS/lease через `RunReady`/`Step`; он не объявлен новым Temporal workflow. Право человека и исходную заявку проверяет `request-fulfillment` до запуска planner/mission. Состояние страницы — проекция опубликованных портов, отдельного агрегата UI нет.
 
-Диаграмма bounded contexts помечает эти назначения как план. Добавление entity/aggregate/event/relationship при реализации требует синхронного обновления каталога, этой модели и затронутых диаграмм; ни тело входящего письма, ни контактные данные не становятся общей зелёной памятью платформы.
+CL-16 отражён в `integration-platform`: `firecrawl-credit-account` и `research-acquisition-attempt` отвечают за единый account/grant ledger и подтверждение вызовов. Резервирование денег относится только к Firecrawl. У остальных инструментов через proxy технические пределы. Эти новые таблицы, включая ledger и receipts, в первом срезе находятся в клиентской red БД, переданной `NewResearchAcquisition`; разделение ledger metadata в green здесь не заявляется. Исчерпание Firecrawl исключает его новые вызовы, но само по себе не запрещает остальные разрешённые источники.
+
+| Владелец | Фактические таблицы первой модели | Зона и создание |
+|---|---|---|
+| `lead-management` | `research_entity`, `research_source`, `research_observation`, `research_identifier`, `research_assertion`, `research_need`, `research_need_run`, `research_attempt` | schema `lead-management`, red; `migrations/red/0002_research_memory.sql`, `NewPostgresResearchMemory(redPool)` |
+| `lead-management` | `research_identity_scope`, `research_identity_decision`, `research_identity_evidence`, `research_identity_state`, `research_identity_member`, `research_identity_change`, `research_identity_candidate` | schema `lead-management`, red; `migrations/red/0003_research_identity.sql`, `0004_research_identity_candidates.sql`; опубликованный `IdentityPort` |
+| `agent-orchestration` | `research_missions` с версионированным JSON payload миссии, плана, действий и состава | schema `agent-orchestration`, red; `migrations/red/0001_research_mission.sql`, `NewResearchService(ResearchConfig{RedPool: ...})` |
+| `integration-platform` | `research_fc_account`, `research_fc_grant`, `research_acquisition_attempt`, `research_fc_reconciliation` | schema `integration-platform`, red; `migrations/red/0001_research_acquisition.sql`, `NewResearchAcquisition(ResearchAcquisitionConfig{Pool: ...})` |
+| `integration-platform` | `research_source_policy`, `research_source_attempt` | schema `integration-platform`, red; `migrations/red/0002_proxy_research_acquisition.sql`, `NewSearXNGResearch`; технические caps без денежных полей |
+
+Миграции должны применяться к соответствующей red БД до конструкторов. PostgreSQL full-text поиск работает по scoped research assertions; глобальный legacy vector store не считается этой памятью. Решение тождества, canonical projection и `research_identity_change` записываются одной транзакцией. `ReadIdentityChanges` предоставляет долговечную последовательность revision для polling; внешнего AMQP publisher пока нет. В каталоге списки брокерных research events и политик остаются пусты, проверяемые ограничения записаны как инварианты. Знание и receipt сохраняются синхронными командами; внешние эффекты находятся вне транзакции.
+
+Новые связи помечены `sync · in-process`: это типизированные контракты владельцев при co-location, без чужих `internal` imports. `research-plan` — опубликованный Planner и value types, `research-memory` включает анализ страницы и запись/чтение доказательств. Отдельные HTTP-адаптеры этих новых контрактов не объявляются готовыми. Схема каталога допускает `in-process` для явного отражения уже разрешённого в архитектуре совмещённого размещения. Потребитель подтверждается ролью процесса либо вызовом собственного публичного конструктора в том же composition root; библиотеке контекста не приписывается роль API. Анализатор `lead-management` использует `research-extraction`: отдельный опубликованный интерфейс `llm.ResearchExtraction` у `integration-platform`, реализованный тем же model gateway; legacy `llm.Port` не расширяется.
+
+Python crawler, browser/OCR, market study, почтовые коннекторы и полный research-to-outreach не следуют автоматически из этой регистрации. Их владельцы и полный [план](concepts/intelligent-lead-research/11-search-implementation-blueprint.md) сохраняются. Прямые proxy-вызовы не создают второго финансового gate. Отсутствие фиксированного количества не отменяет человеческие quantity/unit конкретного brief.
 
 ### Capability matrix
 
@@ -243,6 +257,17 @@ CL-15 ставит discovery от аудитории и краулинг пер�
 
 ### `lead-management`
 
+- **`research-dossier`** (AR: `research-entity`): E: `research-entity`, `research-observation`, `research-assertion`, `research-open-need`; VO: `research-memory-scope`, `research-identifier`, `evidence-locator`, `assertion-validity`, `open-need-state`.
+  - Инварианты: tenant/purpose явны; компания без контакта сохраняется; утверждение имеет источник/субъект/locator; knowledge, freshness и access независимы; повтор observation с другим payload конфликтует. Контакт в досье не равен вердикту пригодности для миссии или проверенной доставляемости.
+  - События и опубликованные policies: —. Внутренние ограничения обеспечиваются domain/app/repository, а не придуманным research outbox.
+- **`research-source`** (AR: `research-source`): E: `research-source`; VO: `research-source-revision`, `research-source-access`.
+  - Источник с содержимым и ревизией может поддерживать несколько досье той же области; ревизия не заменяет содержимое молча, отзыв учитывается при чтении. События и policies: —.
+- **`research-attempt-memory`** (AR: `research-attempt-memory`): E: `research-attempt-memory`; VO: `research-attempt-key`.
+  - Ограниченная память вопроса, источника, ревизии, locale и исхода с TTL; отрицательный результат не запрещает новый источник и не разрешает внешний запуск. События и policies: —.
+
+- **`research-identity-map`** (AR: `research-identity-scope`): E: `research-identity-decision`, `research-identity-candidate`; VO: `research-identity-evidence`, `research-canonical-group`, `research-identity-change`.
+  - Транзакционная область карты — tenant/purpose. Решения человека неизменяемы; link/reject/revoke проверяют CAS и provenance. Current membership и доступность доказательств пересчитываются без переноса исходных entity/source ID. Кандидаты по нормализованному имени, тому же origin и реально наблюдаемой навигации требуют проверки; автоматического слияния нет. Их current state — pending/linked/rejected/unavailable. Reject требует evidence с обеих сторон. Локальная последовательность изменений читается `IdentityPort`; брокерных событий нет.
+
 - **`lead-profile`** (AR: `company`): E: `company`, `company-size-profile`; VO: `company-identity`, `confidence-score`, `lead-status`.
   - Инварианты: нормализованный идентификатор компании не меняется молча; профиль размера компании согласован с актуальными атрибутами компании.
   - События: `lead-profile-enriched`.
@@ -302,6 +327,10 @@ CL-15 ставит discovery от аудитории и краулинг пер�
 
 ### `agent-orchestration`
 
+- **`research-mission`** (AR: `research-mission`): E: `research-mission`, `research-action`, `research-member`; VO: `research-mission-scope`, `search-brief`, `search-strategy-plan`, `query-family`, `strategy-cell`, `research-technical-limits`, `research-action-lease`, `research-firecrawl-grant-ref`.
+  - Инварианты: неизменяемая привязка человеческого brief к tenant/purpose и версиям; network вне транзакции после intent/lease; membership получает подтверждение сохранения памяти; терминальный состав заморожен; unknown не разрешает слепой повтор.
+  - `ResearchMission` хранит red payload; `ResearchService` — application service поверх PostgreSQL, published acquisition/memory/analyzer. События и policies: —; старые `agent-run-*` не подменяют новые события.
+
 - **`agent-pipeline`** (AR: `agent-pipeline`): E: `agent-pipeline`, `pipeline-step`; VO: `block-ref`, `step-config`, `pipeline-version`.
   - Инварианты: опубликованная версия пайплайна неизменяема — изменение состава шагов создаёт новую версию; шаг ссылается только на зарегистрированный блок, незарегистрированный блок не исполняется и не подменяется другим.
   - События: `agent-pipeline-published`.
@@ -343,6 +372,14 @@ CL-15 ставит discovery от аудитории и краулинг пер�
 
 ### `integration-platform`
 
+- **`research-proxy-source`** (AR: `research-source-policy`): E: `research-source-attempt`; VO: `research-source-technical-cap`, `research-source-attempt-receipt`.
+  - SearXNG имеет собственные concurrency/interval/attempt caps и durable receipts. Денежный Firecrawl grant не требуется; unknown/late result не превращается в скрытый повтор. События и policies: —.
+
+- **`firecrawl-credit-account`** (AR: `firecrawl-credit-account`): E: `firecrawl-credit-account`, `firecrawl-credit-grant`; VO: `firecrawl-credit-balance`, `firecrawl-grant-scope`.
+  - Инварианты: один account cap охватывает grants; grant связан с tenant/purpose/intent; неизвестный расход удерживает резерв до сверки; нулевой cap не вводит скрытого потолка. Только Firecrawl имеет финансовый ledger. События и policies: —.
+- **`research-acquisition-attempt`** (AR: `research-acquisition-attempt`): E: `research-acquisition-attempt`, `firecrawl-reconciliation`; VO: `research-acquisition-receipt`, `research-provider-profile`, `research-geography`, `research-acquisition-lease`.
+  - Инварианты: command hash защищает повтор; сохранённый receipt не вызывает провайдера снова; неизвестный исход требует сверки; неподдержанная обязательная география отклоняется до charge. Receipt — технический результат с red артефактом, не подтверждение компании. События и policies: —.
+
 - **`adapter-registration`** (AR: `adapter-registration`): E: `adapter-registration`; VO: `manifest-version`.
   - Инварианты: возможности адаптера проверяются до вызова; секреты не входят в доменные события и ошибки.
   - События: `adapter-registered`.
@@ -361,6 +398,8 @@ CL-15 ставит discovery от аудитории и краулинг пер�
   - Примечание: жизненный цикл — `submitted → validating → validated → processing → fulfilled`; терминальные — `rejected`, `cancelled` и `failed`; возврат на доработку — нетерминальный `needs-revision` (`validating | processing → needs-revision → submitted` повторной подачей либо `cancelled` отменой с комментарием). `failed` — терминальный исход необратимого сбоя исполнения (`processing → failed` с кодом из набора `search_failed`/`draft_failed`/`handoff_failed`/`transition_rejected`/`workflow_timed_out` и текстом причины): переход инициируется доменным решением (команда `FailRequest`, событие `request-execution-failed`), а не чтением Temporal-статуса; причина персистится в агрегате и доступна через контракт `request-intent`. `failed` не «хоронит» восстановимую заявку: явный re-run (`failed → validated` отдельной операцией, вне `canTransitionTo`) возвращает заявку на стартовую позицию, после чего `validated → processing` запускает новое исполнение. Для заявки с недобором `fulfilled` означает полное покрытие доставкой переданных писем: пауза исполнения снимается не только сигналом консоли заявок, но и наблюдаемым завершением доставки (`delivery-event` по кампании заявки), а недоставка в срок даёт `cancelled` с явной причиной (`request-delivery-conclusion`). `offer` версионируется (`revision`): прежняя версия остаётся неизменной. Фулфилмент-состояние ссылается на артефакты других контекстов (`audience-snapshot`, `campaign`) по идентификаторам, а не по указателям. Workflow исполнения (движение по статусной машине) — application service этого контекста, а не отдельная граница (`temporal-execution-platform`, change №2). Валидация оффера админом (capability `request-validation`) — прикладной use case того же контекста: `submitted → validating` (взятие в работу), звонок-уточнение, правки оффера на месте, `validating → validated | rejected` с решением внутри агрегата; звонок принадлежит `outreach-orchestration` и вызывается командой `call-intent`, а заявка хранит его `call_id`. После валидации оффер получает эмбеддинг (контракт `vector`, capability `semantic-lead-search`) как вход recall; правка оффера сбрасывает устаревший вектор.
 
 ## Межконтекстные отношения и контракты
+
+Первый исследовательский путь использует `sync · in-process` published contracts: `agent-orchestration → request-fulfillment` (`research-mission`, команды/статус; `research-plan`, построение плана), `lead-management → agent-orchestration` (`research-memory`, анализ/команды/чтение), `lead-management → request-fulfillment` (`research-memory`, dossier query), `integration-platform → agent-orchestration` (`research-acquisition`, команды/receipt query; `provider-port`, LLM planner). Стрелка, как и в остальном каталоге, направлена от владельца upstream к потребителю downstream. Финансовый владелец не переносится в mission или UI.
 
 `published-language` означает стабильный версионированный контракт владельца. `customer-supplier` означает, что upstream согласует контракт с потребностью downstream. `anticorruption-layer` означает обязательный перевод модели внешней системы в язык потребляющего контекста.
 

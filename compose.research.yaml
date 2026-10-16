@@ -1,0 +1,57 @@
+# Явное расширение demo: docker compose -f compose.demo.yaml -f compose.research.yaml up -d --build
+# Все платные старые пути в обоих процессах отключены, Firecrawl вызывается
+# через общий PostgreSQL ledger исследовательских миссий.
+services:
+  app:
+    environment:
+      LEADGEN_RESEARCH_ENABLED: "true"
+      LEADGEN_RESEARCH_ONLY_PROVIDER: "true"
+      LEADGEN_RESEARCH_RED_DSN: postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/leadgen_lead_red?sslmode=disable
+      LEADGEN_RESEARCH_FIRECRAWL_ACCOUNT: ${LEADGEN_RESEARCH_FIRECRAWL_ACCOUNT:-demo-primary}
+      LEADGEN_RESEARCH_FIRECRAWL_ACCOUNT_CREDITS: ${FIRECRAWL_ACCOUNT_MAX_CREDITS:-0}
+      LEADGEN_RESEARCH_COUNTRIES: ${LEADGEN_RESEARCH_COUNTRIES:-*}
+      LEADGEN_RESEARCH_MAX_ACTIONS: ${LEADGEN_RESEARCH_MAX_ACTIONS:-100}
+      LEADGEN_RESEARCH_TIMEOUT: ${LEADGEN_RESEARCH_TIMEOUT:-1h}
+      LEADGEN_RESEARCH_CONTACT_FRESHNESS: ${LEADGEN_RESEARCH_CONTACT_FRESHNESS:-720h}
+      LEADGEN_RESEARCH_SEARXNG_URL: ${LEADGEN_RESEARCH_SEARXNG_URL:-}
+      LEADGEN_RESEARCH_SEARXNG_ENGINES: ${LEADGEN_RESEARCH_SEARXNG_ENGINES:-}
+      FIRECRAWL_API_KEY: ${FIRECRAWL_API_KEY:?задайте FIRECRAWL_API_KEY}
+      LLM_API_KEY: ${LLM_API_KEY:?задайте LLM_API_KEY}
+      LLM_BASE_URL: ${LLM_BASE_URL:-https://api.deepseek.com}
+      LLM_MODEL: ${LLM_MODEL:-deepseek-flash}
+    command:
+      - -config
+      - /deploy/research/services.yaml
+      - -process
+      - research-client
+      - -db-policy
+      - legacy
+      - -api-port-base
+      - "19080"
+      - -api-bind-host
+      - 0.0.0.0
+      - -liveness-addr
+      - 0.0.0.0:19090
+      - -request-green-dsn
+      - postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/leadgen?sslmode=disable
+      - -support-green-dsn
+      - postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/leadgen?sslmode=disable
+      - -broker-url
+      - amqp://demo:demo@rabbitmq:5672/
+      - -request-intent-url
+      - http://127.0.0.1:19080
+      - -request-executions-url
+      - http://127.0.0.1:19080
+      - -lead-search-url
+      - http://demand:19082
+      - -email-generation-url
+      - http://demand:19082
+      - -analytics-url
+      - http://reports:19083
+      - -firecrawl-max-credits
+      - ${FIRECRAWL_MAX_CREDITS:-150}
+      - -firecrawl-crawl-interval
+      - ${FIRECRAWL_CRAWL_INTERVAL:-2s}
+  demand:
+    environment:
+      LEADGEN_RESEARCH_ONLY_PROVIDER: "true"

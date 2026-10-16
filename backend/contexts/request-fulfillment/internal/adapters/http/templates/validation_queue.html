@@ -17,7 +17,7 @@
     </thead>
     <tbody>
     {{- range .View.Items }}
-      {{- $screen := "validation" }}{{- if .HasExecution }}{{- $screen = "approval" }}{{- end }}
+      {{- $screen := "validation" }}{{- if .HasExecution }}{{- $screen = "approval" }}{{- end }}{{- if .IsResearch }}{{- $screen = "research" }}{{- end }}
       <tr class="queue-item" data-request-id="{{.RequestID}}">
         <td>
           <a class="cell-main" href="/requests/{{.RequestID}}/{{$screen}}?tenant_id={{urlquery $.View.TenantID}}">{{.Offer.Content}}</a>
@@ -26,7 +26,7 @@
         <td><span class="status status-{{.Status}}">{{ label "request.status" .Status }}</span></td>
         <td>
           {{- if .ExecutionKnown }}
-          {{- if .Phase }}<span class="status status-{{.Phase}}">{{ label "request.phase" .Phase }}</span>{{- end }}
+          {{- if .Phase }}<span class="status status-{{.Phase}}">{{if .IsResearch}}{{label "research.phase" .Phase}}{{else}}{{ label "request.phase" .Phase }}{{end}}</span>{{- end }}
           {{- if .Execution }}<span class="cell-sub">{{.Execution}}</span>{{- end }}
           {{- else if .ExecutionUnavailable }}
           <span class="cell-sub">{{ text "request.execution_history.unavailable" }}</span>
@@ -34,9 +34,9 @@
           <span class="cell-sub">{{ text "request.progress.pending" }}</span>
           {{- else }}—{{- end }}
         </td>
-        <td>{{- if .ExecutionKnown }}{{.Found}}{{if gt .Target 0}} / {{.Target}}{{end}}{{- else }}—{{- end }}</td>
-        <td>{{- if .ExecutionKnown }}{{.Drafted}}{{- else }}—{{- end }}</td>
-        <td><a class="button button-secondary" href="/requests/{{.RequestID}}/{{$screen}}?tenant_id={{urlquery $.View.TenantID}}">{{ text "request.queue.open" }}</a></td>
+        <td>{{- if .ExecutionKnown }}{{.Found}}{{if gt .Target 0}} / {{.Target}}{{end}}{{if .IsResearch}}<span class="cell-sub">{{text "research.accepted"}}; {{text "research.saved"}}: {{.Saved}}</span>{{end}}{{- else }}—{{- end }}</td>
+        <td>{{- if and .ExecutionKnown (not .IsResearch) }}{{.Drafted}}{{- else }}—{{- end }}</td>
+        <td><a class="button button-secondary" href="/requests/{{.RequestID}}/{{$screen}}?tenant_id={{urlquery $.View.TenantID}}">{{ text "request.queue.open" }}</a>{{if and $.View.ResearchEnabled (not .IsResearch)}} <a class="button button-secondary" href="/requests/{{.RequestID}}/research?tenant_id={{urlquery $.View.TenantID}}">{{text "research.open"}}</a>{{end}}</td>
       </tr>
     {{- else }}
       <tr><td colspan="6" class="queue-empty">{{ text "request.validation_queue.empty" }}</td></tr>

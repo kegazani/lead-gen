@@ -17,6 +17,9 @@ import (
 // пакетом. Внутренние детали (HTTP-клиент, таймауты) сюда не протекают: они
 // настраиваются внутри адаптера.
 type FirecrawlConfig struct {
+	// DisableLegacyOperations выключает платные raw-вызовы при переходе на
+	// research ledger. По умолчанию прежний demo сохраняет поведение.
+	DisableLegacyOperations bool
 	// APIKey — ключ доступа Firecrawl. Обязателен.
 	APIKey string
 	// BaseURL — базовый адрес API. Пустое значение заменяется на адрес по
@@ -45,9 +48,10 @@ func NewFirecrawl(cfg FirecrawlConfig) (*firecrawl.Client, error) {
 		return nil, fmt.Errorf("integrationplatform: firecrawl: APIKey обязателен")
 	}
 	return firecrawl.New(firecrawl.Config{
-		APIKey:  cfg.APIKey,
-		BaseURL: cfg.BaseURL,
-		Logger:  cfg.Logger,
+		APIKey:         cfg.APIKey,
+		LegacyDisabled: cfg.DisableLegacyOperations,
+		BaseURL:        cfg.BaseURL,
+		Logger:         cfg.Logger,
 	}), nil
 }
 
@@ -55,6 +59,8 @@ func NewFirecrawl(cfg FirecrawlConfig) (*firecrawl.Client, error) {
 // задачу задаётся потребителем при вызове Guard.Begin (maxCredits), поэтому
 // сюда выносится только общая настройка лимитера и повторов.
 type FirecrawlGuardConfig struct {
+	// DisableLegacyOperations запрещает Begin старого task scope без intent/grant.
+	DisableLegacyOperations bool
 	// APIKey — ключ доступа Firecrawl. Обязателен.
 	APIKey string
 	// BaseURL — базовый адрес API. Пустое значение — адрес по умолчанию.
@@ -87,7 +93,7 @@ func NewFirecrawlGuard(cfg FirecrawlGuardConfig) (*firecrawl.Guard, error) {
 	if cfg.RegistryMaxEntries < 0 || cfg.RegistryFinishedTTL < 0 {
 		return nil, fmt.Errorf("integrationplatform: firecrawl guard registry limits не могут быть отрицательными")
 	}
-	client, err := NewFirecrawl(FirecrawlConfig{APIKey: cfg.APIKey, BaseURL: cfg.BaseURL, Logger: cfg.Logger})
+	client, err := NewFirecrawl(FirecrawlConfig{APIKey: cfg.APIKey, BaseURL: cfg.BaseURL, Logger: cfg.Logger, DisableLegacyOperations: cfg.DisableLegacyOperations})
 	if err != nil {
 		return nil, err
 	}

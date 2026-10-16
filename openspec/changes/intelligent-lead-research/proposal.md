@@ -38,10 +38,13 @@
 - `research-to-outreach`: подтверждённый пакет исследования, адресат, версия письма, утверждение и обратная связь доставки; владелец перехода `outreach-orchestration`.
 
 - `inbound-lead-conversations`: входящие формы/почта, история и связывание лида; владелец `lead-management`, квалификация событий — `engagement-observation`, дальнейшее действие — `outreach-orchestration`.
+- `content-production`: добавить отсутствовавшую спецификацию уже существующей capability одноимённого владельца: опубликованные `content-request`/`content-version`, неизменяемые версии и режим `version-only`. Это согласование каталога с существующим контрактом в задаче 1.2, без изменения поведения производства материала.
 
 ### Modified Capabilities
 
-В этой планировочной поставке требования существующих capability не переписываются. При реализации сохраняются `company-agent-orchestration`, `outreach-approval`, `delivery-bridge`, `vector-recall` и действующие ограничения `osint-enrichment`. Изменения старой идентичности company, управляемой браузерной навигации и прежнего исключения почтовой синхронизации выделены в явные зависимости применения. Прежний pending `outreach-channel-form` предлагал ручную отправку; итоговый режим новой программы фиксируется задачей 9.7; публичный form-submission не начинает хранить PII в зелёной зоне.
+- `service-topology`: явно описанные `sync · in-process` связи первого исследовательского процесса; проверка deployment, обязательных ролей и опубликованного интерфейса/публичного конструктора владельца. `event`/`policy` сохраняют `async · amqp`.
+
+Существующие требования миграций не переписываются; `service-topology` получает дополнительное требование проверки co-location. Отсутствовавшая спецификация `content-production` добавляется выше как `ADDED`, поскольку канонической спецификации ещё нет. При реализации сохраняются `company-agent-orchestration`, `outreach-approval`, `delivery-bridge`, `vector-recall` и действующие ограничения `osint-enrichment`. Изменения старой идентичности company, управляемой браузерной навигации и прежнего исключения почтовой синхронизации выделены в явные зависимости применения. Прежний pending `outreach-channel-form` предлагал ручную отправку; итоговый режим новой программы фиксируется задачей 9.7; публичный form-submission не начинает хранить PII в зелёной зоне.
 
 ## Impact
 
@@ -60,6 +63,6 @@
 
 Предлагаются новые сущности и контракты. Primary owners семи capability регистрируются в `architecture/domain-catalog.yaml`, `docs/domain-model.md` и диаграмме как план. Регистрация предлагаемых агрегатов/событий/контрактов и связей при apply описана отдельной матрицей; назначения не объявляют runtime реализованным. Не добавляются runtime-зависимости. PostgreSQL/Temporal и существующие границы владельцев переиспользуются. Новый scoped research index, client red payload repositories и artifact adapters требуют реализации: существующий vector store не является готовой pgvector memory, а research object-store adapter не обнаружен. Green/Temporal/outbox хранят разрешённые metadata и refs; сырой brief/query/context/evidence разрешается клиентским executor. Графовая СУБД и дополнительные providers не считаются выбранными.
 
-Приёмка разделяет 120-object smoke/инструментальный corpus, независимый holdout contact-link качества и реальный end-to-end поиск. Точность, coverage, Firecrawl credits и технический usage измеряются отдельно; фикстура не доказывает живую интеграцию. Legacy domain/tenant collision, вызовы executor внутри UoW и исходная ошибка archlint `content-production` учитываются как конкретные зависимости, а не повод переписывать платформу целиком.
+Приёмка разделяет 120-object smoke/инструментальный corpus, независимый holdout contact-link качества и реальный end-to-end поиск. Точность, coverage, Firecrawl credits и технический usage измеряются отдельно; фикстура не доказывает живую интеграцию. Legacy domain/tenant collision и вызовы executor внутри UoW учитываются как конкретные зависимости. Исходная ошибка archlint `content-production` устраняется добавлением отсутствовавшей спецификации существующего контракта в задаче 1.2.
 
 Связанные изменения: `self-hosted-crawler`, `intelligent-lead-operations`, `customer-demo-request-to-emails`. Концепция не закрывает их незавершённые задачи и явно фиксирует пересечения.

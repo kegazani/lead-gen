@@ -13,6 +13,7 @@ import (
 
 	"lead-gen/backend/contexts/request-fulfillment/internal/app/command"
 	"lead-gen/backend/contexts/request-fulfillment/internal/app/query"
+	"lead-gen/backend/contexts/request-fulfillment/internal/app/researchbridge"
 	"lead-gen/backend/contexts/request-fulfillment/internal/domain"
 	"lead-gen/backend/contexts/request-fulfillment/internal/ports"
 	"lead-gen/backend/platform/consoleauth"
@@ -40,20 +41,23 @@ const (
 // newPages собирает набор шаблонов экрана валидации: каркас и общие фрагменты из
 // frontend/components плюс страницы экрана. Разбор идёт при сборке сервиса.
 func newPages() (*components.Set, error) {
-	return components.NewWithMessages(consoleMessages(), templateFS, pageLogin, pageValidationQueue, pageValidationScreen, pageApprovalQueue, pageApprovalScreen, pageCompanyRequests)
+	return components.NewWithMessages(consoleMessages(), templateFS, pageLogin, pageValidationQueue, pageValidationScreen, pageApprovalQueue, pageApprovalScreen, pageCompanyRequests, pageResearch, pageResearchDossier, pageResearchIdentity)
 }
 
 // queueView — модель списка заявок текущего тенанта на всех стадиях.
 type queueView struct {
-	Live     components.Live
-	TenantID string
-	Actor    string
-	Items    []requestQueueRow
+	ResearchEnabled bool
+	Live            components.Live
+	TenantID        string
+	Actor           string
+	Items           []requestQueueRow
 }
 
 // requestQueueRow сохраняет заявку в списке, даже если её workflow пока
 // недоступен. Счётчики показываются только при полученном состоянии исполнения.
 type requestQueueRow struct {
+	IsResearch bool
+	Saved      int
 	query.ValidationItem
 	HasExecution         bool
 	ExecutionKnown       bool
@@ -68,6 +72,8 @@ type requestQueueRow struct {
 // screenView — модель экрана валидации одной заявки. Поля форм собираются здесь, а
 // не в шаблоне: правила показа решает владелец экрана.
 type screenView struct {
+	OnlyResearch        bool
+	ResearchEnabled     bool
 	Live                components.Live
 	TenantID            string
 	Actor               string
@@ -107,7 +113,21 @@ func (s *Server) handleValidationQueue(w http.ResponseWriter, r *http.Request) {
 		case domain.StatusValidated, domain.StatusProcessing, domain.StatusFulfilled, domain.StatusFailed:
 			row.HasExecution = true
 		}
-		if row.HasExecution {
+
+		row.IsResearch = item.ExecutionMode == domain.ExecutionModeResearch
+		if row.IsResearch && s.deps.Research != nil {
+			state, e := s.deps.Research.ReadStatus(r.Context(), researchbridge.Input{TenantID: tenant, RequestID: item.RequestID, Actor: actor})
+			if e != nil {
+				row.ExecutionUnavailable = true
+			} else if state.Snapshot != nil {
+				row.ExecutionKnown = true
+				row.Phase = state.Snapshot.Phase
+				row.Execution = consoleMessages().Label("research.state", state.Snapshot.State)
+				row.Found = state.Snapshot.Counters.Accepted
+				row.Target = state.Snapshot.Goal.Quantity
+				row.Saved = state.Snapshot.Counters.Saved
+			}
+		} else if row.HasExecution {
 			if s.deps.WorkflowStatus == nil {
 				row.ExecutionUnavailable = true
 			} else {
@@ -133,7 +153,7 @@ func (s *Server) handleValidationQueue(w http.ResponseWriter, r *http.Request) {
 			Scripts: append(append([]string{}, components.ConsoleScripts...), "/static/request_progress.js"),
 		},
 		Sidebar: s.consoleNav(components.ConsoleSectionRequests, tenant, actor),
-		View:    queueView{Live: consoleLive, TenantID: tenant, Actor: actor, Items: rows},
+		View:    queueView{ResearchEnabled: s.deps.Research != nil, Live: consoleLive, TenantID: tenant, Actor: actor, Items: rows},
 	})
 }
 
@@ -175,6 +195,14 @@ func (s *Server) handleValidationOffer(w http.ResponseWriter, r *http.Request) {
 // не выдаётся за успех, но валидация уже применена; недоступность рантайма
 // workflow — честная деградация (см. startFulfillment).
 func (s *Server) handleValidationApprove(w http.ResponseWriter, r *http.Request) {
+	if r.FormValue("research_mode") == "research" {
+		s.handleResearchApprove(w, r)
+		return
+	}
+	if s.researchOnly() {
+		s.rejectLegacyResearchMode(w)
+		return
+	}
 	s.validationAction(w, r, func(req *http.Request) error {
 		// Цель разбирается до применения одобрения: некорректное значение не
 		// должно оставить заявку validated без запущенного исполнения.
@@ -267,6 +295,9 @@ func (s *Server) startFulfillment(req *http.Request, leadTarget int) error {
 	if err != nil {
 		return err
 	}
+	if requestView.ExecutionMode == domain.ExecutionModeResearch {
+		return domain.ErrExecutionModeConflict
+	}
 	_, err = s.deps.WorkflowStarter.StartFulfillment(req.Context(), ports.StartFulfillment{
 		RequestID:        string(lifecycle.RequestID),
 		TenantID:         string(lifecycle.TenantID),
@@ -350,6 +381,8 @@ func (s *Server) loadScreen(r *http.Request, tenant, actor, notice string) (scre
 		return screenView{}, err
 	}
 	model := screenModel(tenant, actor, notice, view)
+	model.ResearchEnabled = s.deps.Research != nil
+	model.OnlyResearch = s.researchOnly()
 	// CSRF-токен живёт в сессии: подставляем его в формы экрана, чтобы браузер
 	// отправлял его на изменяющих запросах.
 	model.CSRF = consoleauth.CSRF(r)

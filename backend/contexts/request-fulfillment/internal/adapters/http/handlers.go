@@ -149,6 +149,10 @@ func (s *Server) handleStartValidation(w http.ResponseWriter, r *http.Request) {
 
 // handleValidate обслуживает POST /requests/{requestID}/validation/complete.
 func (s *Server) handleValidate(w http.ResponseWriter, r *http.Request) {
+	if s.researchOnly() {
+		s.rejectLegacyResearchMode(w)
+		return
+	}
 	body, ok := s.decodeTransition(w, r)
 	if !ok {
 		return
@@ -481,6 +485,10 @@ type startWorkflowBody struct {
 // текущем статусе. Повторный старт уже бегущего исполнения — не 503, а явный
 // идемпотентный исход «уже запущено» (200).
 func (s *Server) handleStartWorkflow(w http.ResponseWriter, r *http.Request) {
+	if s.researchOnly() {
+		s.rejectLegacyResearchMode(w)
+		return
+	}
 	if s.deps.ExecutionProtocol == ports.ExecutionProtocolV2 {
 		if !s.executionAdmissionReady() {
 			writeErrorMessage(w, http.StatusServiceUnavailable, "durable admission недоступна: нет активного consumer")
@@ -540,6 +548,10 @@ func (s *Server) handleStartWorkflow(w http.ResponseWriter, r *http.Request) {
 	})
 	if err != nil {
 		writeDomainError(w, err)
+		return
+	}
+	if requestView.ExecutionMode == domain.ExecutionModeResearch {
+		writeDomainError(w, domain.ErrExecutionModeConflict)
 		return
 	}
 	run, err := s.deps.WorkflowStarter.StartFulfillment(r.Context(), ports.StartFulfillment{

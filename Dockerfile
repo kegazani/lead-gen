@@ -45,6 +45,7 @@ COPY --from=build --chown=65532:65532 /out/release-state /run/leadgen-release
 # копию поверх этого пути (bind-mount на чтение) и передаёт флаги. Каталог нужен
 # консоли топологии и проверкам; адреса инфраструктуры — только внутренние.
 COPY deploy/services.yaml /deploy/services.yaml
+COPY deploy/research/services.yaml /deploy/research/services.yaml
 COPY deploy/infrastructure.yaml /deploy/infrastructure.yaml
 COPY architecture/domain-catalog.yaml /architecture/domain-catalog.yaml
 

@@ -14,10 +14,11 @@ type ValidationQueue struct {
 
 // ValidationItem — строка очереди валидации: идентификаторы и оффер.
 type ValidationItem struct {
-	RequestID string
-	Status    domain.RequestStatus
-	Offer     OfferView
-	Version   int
+	ExecutionMode string
+	RequestID     string
+	Status        domain.RequestStatus
+	Offer         OfferView
+	Version       int
 }
 
 // ValidationQueueHandler — use case чтения очереди валидации.
@@ -44,10 +45,11 @@ func (h *ValidationQueueHandler) Handle(ctx context.Context, q ValidationQueue) 
 			continue
 		}
 		items = append(items, ValidationItem{
-			RequestID: request.ID().String(),
-			Status:    request.Status(),
-			Offer:     offerView(request.Offer()),
-			Version:   request.Version(),
+			ExecutionMode: request.ExecutionMode(),
+			RequestID:     request.ID().String(),
+			Status:        request.Status(),
+			Offer:         offerView(request.Offer()),
+			Version:       request.Version(),
 		})
 	}
 	return items, nil

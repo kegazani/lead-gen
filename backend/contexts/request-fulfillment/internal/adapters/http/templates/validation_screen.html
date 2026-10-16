@@ -14,7 +14,8 @@
   <p class="notice" role="status">{{.}}</p>
   {{- end }}
 
-  <div class="split">
+  {{if .View.ResearchEnabled}}<p><a class="button button-secondary" href="/requests/{{.View.Request.RequestID}}/research?tenant_id={{urlquery .View.TenantID}}">{{text "research.open"}}</a></p>
+  {{end}}<div class="split">
     <div>
       <section id="offer" hx-target="this" hx-swap="innerHTML" data-focus-after-swap="#offer" data-live-announce="{{ text "request.live.offer" }}">
         {{ template "offer-fragment" .View }}
@@ -46,7 +47,7 @@
       {{- if .View.CanDecide }}
       <div class="fact-panel">
         <h2>{{ text "request.validation.decide.title" }}</h2>
-        <form method="post" action="/requests/{{.View.Request.RequestID}}/validation/approve">
+        {{if .View.OnlyResearch}}<p><a class="button" href="/requests/{{.View.Request.RequestID}}/research?tenant_id={{urlquery .View.TenantID}}">{{text "research.approve"}}</a></p>{{else}}<form method="post" action="/requests/{{.View.Request.RequestID}}/validation/approve">
           <input type="hidden" name="tenant_id" value="{{.View.TenantID}}">
           <input type="hidden" name="csrf" value="{{.View.CSRF}}">
           {{- if .View.ExecutionProtocolV2 }}<input type="hidden" name="command_id" value="{{.View.CommandID}}">{{- end }}
@@ -57,7 +58,7 @@
             <span class="field-hint">{{ text "request.validation.lead_target_hint" }}</span>
           </p>
           <button type="submit">{{ text "request.validation.approve" }}</button>
-        </form>
+        </form>{{end}}
 
         <form class="card-section" method="post" action="/requests/{{.View.Request.RequestID}}/validation/call">
           <input type="hidden" name="tenant_id" value="{{.View.TenantID}}">

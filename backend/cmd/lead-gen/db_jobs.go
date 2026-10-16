@@ -60,6 +60,12 @@ var additiveReleaseMigrations = map[string][]migrate.ApprovedMigration{
 	},
 }
 
+// Research mode не входит в утверждённый G1/G1.5 набор. Его hash учитывается
+// отдельно: наличие файла не расширяет signed release allowlist.
+var deferredResearchRequestMigrations = map[string]string{
+	"0011_research_execution_mode.sql": "68c2ad4138b736adecd48e495eaea7d2b0bdf6816a6ad0fbf47134153451ab42",
+}
+
 var deferredG1RequestMigrations = map[string]string{
 	"0005_execution_resolution.sql":                    "a100a40102e9aa205264ea1a44424728fa4aa6e0b8dacd369368252bd4d35690",
 	"0006_execution_resolution_revisions.sql":          "ca16960b0e9e0a3ab0a807ddf36e4068e2dfb793f5b072414df7671236fe03ef",
@@ -67,6 +73,7 @@ var deferredG1RequestMigrations = map[string]string{
 	"0008_execution_resolution_integrity_recheck.sql":  "dfda9197da1316ff9a9b6f63a2a6a9d2c3ff4d58b9d7b5706812c7b1f5f8dbcf",
 	"0009_execution_resolution_trigger_definition.sql": "2df84bef75437599ae7170bdf530bb8cadbbf22b48a835eca5838db7b32660d9",
 	"0010_verified_runtime_resolution.sql":             "36e9873af6d074632c9eb68c64ba4e304f0f2957144782400d7a1b9fe26669ad",
+	"0011_research_execution_mode.sql":                 "68c2ad4138b736adecd48e495eaea7d2b0bdf6816a6ad0fbf47134153451ab42",
 }
 
 // Exact G1.5 catalog. Release stays deferred until the compatibility
@@ -141,16 +148,31 @@ func validateG15MigrationManifest(root string) (releaseMigrationManifest, error)
 	target := "request-fulfillment"
 	directory := filepath.Join(root, dbTargets[target].migrationsDir)
 	loaded, err := migrate.Load(directory, dbTargets[target].schema)
-	if err != nil || len(loaded) != len(g15RequestMigrations) {
+	if err != nil || len(loaded) != len(g15RequestMigrations)+len(deferredResearchRequestMigrations) {
 		return releaseMigrationManifest{}, errors.New("lead-gen: G1.5 migration catalog is incomplete")
 	}
-	for i, migration := range loaded {
-		digest := sha256.Sum256([]byte(migration.SQL))
-		if migration.Name != g15RequestMigrations[i].Name || hex.EncodeToString(digest[:]) != g15RequestMigrations[i].SHA256 {
-			return releaseMigrationManifest{}, errors.New("lead-gen: G1.5 migration catalog differs from pinned exact hashes")
-		}
+	approved := make(map[string]string, len(g15RequestMigrations))
+	for _, migration := range g15RequestMigrations {
+		approved[migration.Name] = migration.SHA256
 	}
-	return releaseMigrationManifest{PolicyVersion: g15MigrationPolicyVersion, Target: target, Approved: g15RequestMigrations}, nil
+	deferred := []string{}
+	for _, migration := range loaded {
+		digest := sha256.Sum256([]byte(migration.SQL))
+		checksum := hex.EncodeToString(digest[:])
+		if expected, ok := approved[migration.Name]; ok && checksum == expected {
+			delete(approved, migration.Name)
+			continue
+		}
+		if expected, ok := deferredResearchRequestMigrations[migration.Name]; ok && checksum == expected {
+			deferred = append(deferred, migration.Name)
+			continue
+		}
+		return releaseMigrationManifest{}, errors.New("lead-gen: G1.5 migration catalog differs from pinned exact hashes")
+	}
+	if len(approved) > 0 || len(deferred) != len(deferredResearchRequestMigrations) {
+		return releaseMigrationManifest{}, errors.New("lead-gen: G1.5 migration catalog is incomplete")
+	}
+	return releaseMigrationManifest{PolicyVersion: g15MigrationPolicyVersion, Target: target, Approved: g15RequestMigrations, DeferredG1: deferred}, nil
 }
 
 func validateCandidateTargetPolicy(root, target string, manifest CandidateManifest) (releaseMigrationManifest, error) {
@@ -708,8 +730,17 @@ func validateStagingSourceAt(dirFD int, name string) error {
 // verifyStagedSecretBundle проверяет опубликованный bundle как runtime uid. Он
 // печатает только подтверждение и имена файлов, никогда содержимое и его hash.
 func verifyStagedSecretBundle(bundle, volumeDir, generation string) error {
+	if volumeDir != "/run/secrets" {
+		return errors.New("lead-gen: недопустимая конфигурация проверки bundle")
+	}
+	return verifyStagedSecretBundleAt(bundle, volumeDir, generation, readSecretFile)
+}
+
+// verifyStagedSecretBundleAt отделяет проверку состава от production reader.
+// Runtime-обёртка сохраняет фиксированный путь и descriptor/UID-проверки.
+func verifyStagedSecretBundleAt(bundle, volumeDir, generation string, readFile func(string) (string, error)) error {
 	files, ok := stagingBundles[bundle]
-	if !ok || volumeDir != "/run/secrets" || !validSecretGeneration(generation) {
+	if !ok || volumeDir == "" || !validSecretGeneration(generation) || readFile == nil {
 		return errors.New("lead-gen: недопустимая конфигурация проверки bundle")
 	}
 	root := filepath.Join(volumeDir, generation)
@@ -720,14 +751,14 @@ func verifyStagedSecretBundle(bundle, volumeDir, generation string) error {
 	if stat, ok := info.Sys().(*syscall.Stat_t); !ok || stat.Uid != 65532 || stat.Gid != 65532 {
 		return errors.New("lead-gen: bundle отсутствует, неполон или устарел")
 	}
-	marker, err := readSecretFile(filepath.Join(root, "generation"))
+	marker, err := readFile(filepath.Join(root, "generation"))
 	if err != nil || string(marker) != generation+"\n" {
 		return errors.New("lead-gen: bundle отсутствует, неполон или устарел")
 	}
 	expected := map[string]struct{}{"generation": {}}
 	for _, item := range files {
 		expected[item.target] = struct{}{}
-		if _, err := readSecretFile(filepath.Join(root, item.target)); err != nil {
+		if _, err := readFile(filepath.Join(root, item.target)); err != nil {
 			return errors.New("lead-gen: bundle отсутствует, неполон или устарел")
 		}
 	}

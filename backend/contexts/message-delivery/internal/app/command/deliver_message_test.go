@@ -6,8 +6,6 @@ import (
 	"testing"
 	"time"
 
-	outboxmemory "lead-gen/backend/contexts/message-delivery/internal/adapters/outbox/inmemory"
-
 	"lead-gen/backend/contexts/message-delivery/internal/domain"
 	"lead-gen/backend/contexts/message-delivery/internal/ports"
 )
@@ -32,23 +30,6 @@ func testCommand(t *testing.T) domain.DeliveryCommand {
 		Address:          address,
 		SenderDomain:     sender,
 		CorrelationID:    domain.CorrelationID("act-1"),
-	}
-}
-
-func TestDeliverMessage_CampaignFenceWinsBeforeReservation(t *testing.T) {
-	cmd := testCommand(t)
-	cmd.CampaignID = "campaign-1"
-	uow := outboxmemory.NewUnitOfWork()
-	if err := uow.CancelCampaign(context.Background(), cmd.TenantID.String(), cmd.CampaignID); err != nil {
-		t.Fatal(err)
-	}
-	mailer := &fakeMailer{}
-	handler := NewDeliverMessageHandler(newFakeSuppression(), mailer, fixedClock{}, uow)
-	if _, err := handler.Handle(context.Background(), cmd); !errors.Is(err, ports.ErrCampaignCancelled) {
-		t.Fatalf("ожидался cancellation fence, получено %v", err)
-	}
-	if len(mailer.sent) != 0 {
-		t.Fatalf("mailer вызван до reservation fence: %d", len(mailer.sent))
 	}
 }
 

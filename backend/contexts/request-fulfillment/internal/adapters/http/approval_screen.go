@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"lead-gen/backend/contexts/request-fulfillment/internal/app/query"
+	"lead-gen/backend/contexts/request-fulfillment/internal/app/researchbridge"
 	"lead-gen/backend/contexts/request-fulfillment/internal/domain"
 	"lead-gen/backend/contexts/request-fulfillment/internal/ports"
 	"lead-gen/backend/platform/consoleauth"
@@ -18,6 +19,8 @@ import (
 // исполнение стоит на человеческой паузе. Unavailable различает честный исход
 // «исполнение недоступно» и пустую очередь.
 type approvalQueueView struct {
+	OnlyResearch       bool
+	ResearchItems      []requestQueueRow
 	Live               components.Live
 	TenantID           string
 	Actor              string
@@ -98,6 +101,39 @@ func (s *Server) handleApprovalQueue(w http.ResponseWriter, r *http.Request) {
 	}
 	actor := actorOf(r)
 	view := approvalQueueView{Live: consoleLive, TenantID: tenant, Actor: actor}
+	researchIDs := map[string]bool{}
+	if s.deps.Research != nil && s.deps.ValidationQueue != nil {
+		items, err := s.deps.ValidationQueue.Handle(r.Context(), query.ValidationQueue{TenantID: domain.TenantID(tenant)})
+		if err != nil {
+			s.researchError(w, err)
+			return
+		}
+		for _, item := range items {
+			if item.ExecutionMode != domain.ExecutionModeResearch {
+				continue
+			}
+			researchIDs[item.RequestID] = true
+			row := requestQueueRow{ValidationItem: item, IsResearch: true}
+			state, err := s.deps.Research.ReadStatus(r.Context(), researchbridge.Input{TenantID: tenant, RequestID: item.RequestID, Actor: actor})
+			if err != nil {
+				row.ExecutionUnavailable = true
+			} else if state.Snapshot != nil {
+				row.ExecutionKnown = true
+				row.Phase = state.Snapshot.Phase
+				row.Execution = consoleMessages().Label("research.state", state.Snapshot.State)
+				row.Found = state.Snapshot.Counters.Accepted
+				row.Target = state.Snapshot.Goal.Quantity
+				row.Saved = state.Snapshot.Counters.Saved
+			}
+			view.ResearchItems = append(view.ResearchItems, row)
+		}
+	}
+	view.OnlyResearch = s.researchOnly()
+	if view.OnlyResearch {
+		s.renderApprovalQueueView(w, view)
+		return
+	}
+
 	if s.deps.ApprovalQueue == nil {
 		view.Unavailable = true
 	} else {
@@ -122,6 +158,9 @@ func (s *Server) handleApprovalQueue(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		for _, request := range requests {
+			if researchIDs[request.RequestID] {
+				continue
+			}
 			if !isExecutionHistoryStatus(request.Status) {
 				continue
 			}
@@ -158,9 +197,13 @@ func (s *Server) handleApprovalQueue(w http.ResponseWriter, r *http.Request) {
 			})
 		}
 	}
+	s.renderApprovalQueueView(w, view)
+}
+
+func (s *Server) renderApprovalQueueView(w http.ResponseWriter, view approvalQueueView) {
 	s.render(w, http.StatusOK, pageApprovalQueue, components.Page{
 		Layout:  components.Layout{Title: consoleMessages().Text(msgReqApprovalQueueTitle)},
-		Sidebar: s.consoleNav(components.ConsoleSectionExecution, tenant, actor),
+		Sidebar: s.consoleNav(components.ConsoleSectionExecution, view.TenantID, view.Actor),
 		View:    view,
 	})
 }
@@ -204,6 +247,18 @@ func executionStatusLabel(status string) string {
 // handleApprovalScreen обслуживает GET /requests/{requestID}/approval: экран
 // утверждения одной заявки.
 func (s *Server) handleApprovalScreen(w http.ResponseWriter, r *http.Request) {
+	if s.deps.Research != nil {
+		state, err := s.deps.Research.ReadStatus(r.Context(), researchInput(r))
+		if err != nil {
+			s.researchError(w, err)
+			return
+		}
+		if state.Request.ExecutionMode == domain.ExecutionModeResearch {
+			http.Redirect(w, r, researchURL(state.Request.RequestID, state.Request.TenantID), http.StatusSeeOther)
+			return
+		}
+	}
+
 	s.renderApprovalScreen(w, r, http.StatusOK, activeTenant(r), actorOf(r), "")
 }
 

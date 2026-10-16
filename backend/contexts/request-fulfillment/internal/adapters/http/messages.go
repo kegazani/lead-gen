@@ -280,7 +280,7 @@ const (
 // consoleMessages возвращает каталог сообщений экранов заявок: базовый каталог
 // общего слоя, дополненный текстами экранов.
 func consoleMessages() *components.Messages {
-	return components.WithMessages(components.DefaultMessages(), requestCatalog)
+	return components.WithMessages(components.WithMessages(components.DefaultMessages(), requestCatalog), researchCatalog)
 }
 
 // consoleLive — область живых объявлений консоли заявок: общий скрипт
